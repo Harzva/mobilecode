@@ -35,4 +35,6 @@ The iOS build requires macOS, Xcode, and valid signing credentials.
 
 ## Release Notes
 
-Version `v0.1.0` publishes the product site and source preview. APK/AAB/IPA artifacts should be added to a later release once the mobile build environment is complete.
+Version `v0.1.0` publishes the product site, source preview, and a real Android APK built from `mobile_agent/lib/main.dart` through GitHub Actions.
+
+The iOS build still requires macOS, Xcode, and signing credentials.

@@ -480,7 +480,7 @@ class _ThemeBuilder {
         ),
       ),
       // -- Card --
-      cardTheme: CardTheme(
+      cardTheme: CardThemeData(
         elevation: 0,
         margin: EdgeInsets.zero,
         color: surface,

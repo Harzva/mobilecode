@@ -1,0 +1,67 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub Release tag to upload the APK to
+        required: false
+        default: v0.1.0
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Recreate Android platform project
+        working-directory: mobile_agent
+        run: |
+          rm -rf android
+          flutter create --platforms=android --project-name mobile_agent --org com.mobilecode .
+
+      - name: Resolve Flutter dependencies
+        working-directory: mobile_agent
+        run: flutter pub get
+
+      - name: Build release APK
+        working-directory: mobile_agent
+        run: flutter build apk --release --target lib/release_main.dart
+
+      - name: Stage APK
+        run: |
+          mkdir -p artifacts
+          cp mobile_agent/build/app/outputs/flutter-apk/app-release.apk artifacts/mobilecode-preview-v0.1.0.apk
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobilecode-preview-apk
+          path: artifacts/mobilecode-preview-v0.1.0.apk
+
+      - name: Upload APK to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+        run: |
+          gh release upload "$RELEASE_TAG" artifacts/mobilecode-preview-v0.1.0.apk --clobber --repo "$GITHUB_REPOSITORY"

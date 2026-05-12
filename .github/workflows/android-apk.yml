@@ -48,20 +48,96 @@ jobs:
           text = text.replace(
               '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
               '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
-              '    <uses-permission android:name="android.permission.INTERNET" />',
+              '    <uses-permission android:name="android.permission.INTERNET" />\n'
+              '    <queries>\n'
+              '        <package android:name="com.termux" />\n'
+              '        <package android:name="com.termux.api" />\n'
+              '        <intent>\n'
+              '            <action android:name="android.intent.action.MAIN" />\n'
+              '        </intent>\n'
+              '    </queries>',
               1,
           )
           text = text.replace(
               '<application',
-              '<application\n        android:usesCleartextTraffic="true"',
+              '<application\n        android:hardwareAccelerated="true"\n        android:usesCleartextTraffic="true"',
               1,
           )
           manifest.write_text(text)
+
+          gradle = Path("android/app/build.gradle.kts")
+          if gradle.exists():
+              gradle_text = gradle.read_text()
+              gradle_text = gradle_text.replace("minSdk = flutter.minSdkVersion", "minSdk = 24")
+              gradle.write_text(gradle_text)
+
+          activity = Path("android/app/src/main/kotlin/com/mobilecode/mobile_agent/MainActivity.kt")
+          activity.parent.mkdir(parents=True, exist_ok=True)
+          activity.write_text('''package com.mobilecode.mobile_agent
+
+import android.content.pm.PackageManager
+import android.os.Build
+import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
+
+class MainActivity : FlutterActivity() {
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mobilecode/system_tools").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isPackageInstalled" -> {
+                    val packageName = call.argument<String>("packageName")
+                    if (packageName.isNullOrBlank()) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    result.success(isPackageInstalled(packageName))
+                }
+                "launchPackage" -> {
+                    val packageName = call.argument<String>("packageName")
+                    if (packageName.isNullOrBlank()) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+                    val intent = packageManager.getLaunchIntentForPackage(packageName)
+                    if (intent == null) {
+                        result.success(false)
+                    } else {
+                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                        result.success(true)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun isPackageInstalled(packageName: String): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0)
+            }
+            true
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        }
+    }
+}
+''')
           PY
 
       - name: Resolve Flutter dependencies
         working-directory: mobile_agent
         run: flutter pub get
+
+      - name: Analyze Flutter sources
+        working-directory: mobile_agent
+        run: flutter analyze lib/main.dart lib/screens/home_screen.dart --no-fatal-infos --no-fatal-warnings
 
       - name: Build release APK
         working-directory: mobile_agent

@@ -4,8 +4,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 enum _ApiFlavor { openAi, anthropic }
 
@@ -49,6 +51,7 @@ const _violet = Color(0xFF8B5CF6);
 const _blue = Color(0xFF6EA8FF);
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
+const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 
 class _ProbeResult {
   const _ProbeResult({
@@ -341,6 +344,171 @@ String _compact(String value, {int limit = 800}) {
   return '${trimmed.substring(0, limit)}...';
 }
 
+Future<bool?> _isAndroidPackageInstalled(String packageName) async {
+  try {
+    return await _systemToolsChannel.invokeMethod<bool>('isPackageInstalled', {
+      'packageName': packageName,
+    });
+  } on MissingPluginException {
+    return null;
+  } on PlatformException {
+    return null;
+  }
+}
+
+Future<bool> _launchAndroidPackage(String packageName) async {
+  try {
+    return await _systemToolsChannel.invokeMethod<bool>('launchPackage', {
+          'packageName': packageName,
+        }) ??
+        false;
+  } on MissingPluginException {
+    return false;
+  } on PlatformException {
+    return false;
+  }
+}
+
+String _agent2048Html() {
+  return r'''<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>MobileCode Agent 2048</title>
+  <style>
+    :root { color-scheme: dark; --bg:#05070c; --panel:#101522; --cell:#1a2133; --line:#293049; --text:#f0f3fa; --muted:#9ea6bd; --mint:#7af2c7; --amber:#ffc66b; --violet:#8b5cf6; --cyan:#62d9ff; --rose:#ff6e87; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; min-height: 100svh; display: grid; place-items: center; background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, "Segoe UI", sans-serif; padding: 18px; touch-action: none; }
+    .app { width: min(100%, 430px); }
+    header { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+    h1 { margin: 0; font-size: 50px; line-height: .95; letter-spacing: 0; }
+    .sub { color: var(--muted); margin: 6px 0 0; font-size: 13px; }
+    .scores { display: flex; gap: 8px; }
+    .score { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; min-width: 76px; text-align: center; }
+    .score span { display:block; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+    .score strong { font-size: 20px; }
+    .board { display:grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 100%; aspect-ratio: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
+    .tile { display:grid; place-items:center; border-radius: 8px; background: var(--cell); color: var(--text); font-weight: 900; font-size: clamp(22px, 8vw, 42px); transition: transform .1s ease, background .15s ease; user-select:none; }
+    .tile.new { animation: pop .16s ease both; }
+    @keyframes pop { from { transform: scale(.82); } to { transform: scale(1); } }
+    .v2 { background:#1e2d3d; color:var(--mint); } .v4 { background:#223940; color:#9ff7d8; } .v8 { background:#4f3a25; color:var(--amber); } .v16 { background:#5b2d31; color:#ffb1bf; } .v32 { background:#522d64; color:#d4b9ff; } .v64 { background:#253b67; color:#b9d7ff; }
+    .v128,.v256,.v512 { background: linear-gradient(135deg, var(--violet), var(--cyan)); color:#05070c; } .v1024,.v2048 { background: linear-gradient(135deg, var(--mint), var(--amber)); color:#05070c; }
+    .controls { display:flex; gap:10px; margin-top:16px; }
+    button { flex:1; border:1px solid var(--line); border-radius:8px; padding:14px 12px; background:var(--panel); color:var(--text); font-weight:900; }
+    button.primary { background:var(--violet); border-color: transparent; }
+    .hint { margin-top:14px; color:var(--muted); text-align:center; font-size:13px; line-height:1.45; }
+    .status { color: var(--rose); font-weight: 900; }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>2048</h1>
+        <p class="sub">Generated locally by MobileCode Agent</p>
+      </div>
+      <div class="scores">
+        <div class="score"><span>score</span><strong id="score">0</strong></div>
+        <div class="score"><span>best</span><strong id="best">0</strong></div>
+      </div>
+    </header>
+    <section class="board" id="board" aria-label="2048 board"></section>
+    <div class="controls">
+      <button class="primary" id="new">New game</button>
+      <button id="undo">Undo</button>
+    </div>
+    <p class="hint">Swipe on the board. Merge tiles until <span class="status">2048</span>.</p>
+  </main>
+  <script>
+    const board = document.querySelector("#board");
+    const scoreEl = document.querySelector("#score");
+    const bestEl = document.querySelector("#best");
+    const size = 4;
+    let grid = [];
+    let previous = null;
+    let score = 0;
+    let best = Number(localStorage.getItem("mobilecode-2048-best") || 0);
+    bestEl.textContent = best;
+
+    function emptyGrid() { return Array.from({ length: size }, () => Array(size).fill(0)); }
+    function clone(value) { return value.map(row => row.slice()); }
+    function emptyCells() {
+      const cells = [];
+      for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (!grid[r][c]) cells.push([r, c]);
+      return cells;
+    }
+    function addTile() {
+      const cells = emptyCells();
+      if (!cells.length) return;
+      const [r, c] = cells[Math.floor(Math.random() * cells.length)];
+      grid[r][c] = Math.random() < .9 ? 2 : 4;
+    }
+    function render() {
+      board.innerHTML = "";
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          const value = grid[r][c];
+          const tile = document.createElement("div");
+          tile.className = "tile" + (value ? " v" + value : "");
+          tile.textContent = value || "";
+          board.appendChild(tile);
+        }
+      }
+      scoreEl.textContent = score;
+      best = Math.max(best, score);
+      bestEl.textContent = best;
+      localStorage.setItem("mobilecode-2048-best", best);
+    }
+    function compact(row) {
+      const values = row.filter(Boolean);
+      for (let i = 0; i < values.length - 1; i++) {
+        if (values[i] === values[i + 1]) {
+          values[i] *= 2;
+          score += values[i];
+          values.splice(i + 1, 1);
+        }
+      }
+      while (values.length < size) values.push(0);
+      return values;
+    }
+    function rotateRight(matrix) {
+      return matrix[0].map((_, i) => matrix.map(row => row[i]).reverse());
+    }
+    function rotateLeft(matrix) {
+      return matrix[0].map((_, i) => matrix.map(row => row[size - 1 - i]));
+    }
+    function move(direction) {
+      previous = { grid: clone(grid), score };
+      const before = JSON.stringify(grid);
+      if (direction === "left") grid = grid.map(compact);
+      if (direction === "right") grid = grid.map(row => compact(row.slice().reverse()).reverse());
+      if (direction === "up") { grid = rotateLeft(grid); grid = grid.map(compact); grid = rotateRight(grid); }
+      if (direction === "down") { grid = rotateLeft(grid); grid = grid.map(row => compact(row.slice().reverse()).reverse()); grid = rotateRight(grid); }
+      if (JSON.stringify(grid) !== before) addTile();
+      render();
+    }
+    function reset() { grid = emptyGrid(); score = 0; previous = null; addTile(); addTile(); render(); }
+    document.querySelector("#new").onclick = reset;
+    document.querySelector("#undo").onclick = () => { if (previous) { grid = previous.grid; score = previous.score; previous = null; render(); } };
+    window.addEventListener("keydown", event => {
+      const map = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
+      if (map[event.key]) move(map[event.key]);
+    });
+    let startX = 0, startY = 0;
+    board.addEventListener("touchstart", event => { startX = event.touches[0].clientX; startY = event.touches[0].clientY; }, { passive: true });
+    board.addEventListener("touchend", event => {
+      const dx = event.changedTouches[0].clientX - startX;
+      const dy = event.changedTouches[0].clientY - startY;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+      move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
+    }, { passive: true });
+    reset();
+  </script>
+</body>
+</html>''';
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -405,30 +573,41 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadConfig() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _baseUrlController.text = prefs.getString(_baseUrlKey) ?? '';
-      _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
-      _modelController.text = prefs.getString(_modelKey) ?? 'gpt-4o-mini';
-    });
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _baseUrlController.text = prefs.getString(_baseUrlKey) ?? '';
+        _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
+        _modelController.text = prefs.getString(_modelKey) ?? 'gpt-4o-mini';
+      });
+    } on Object catch (error) {
+      _addLog('Config load failed', _compact(error.toString(), limit: 120), Icons.error_outline, _rose);
+    }
   }
 
   Future<void> _saveConfig() async {
     setState(() => _saving = true);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_baseUrlKey, _baseUrlController.text.trim());
-    await prefs.setString(_apiKeyKey, _apiKeyController.text.trim());
-    await prefs.setString(_modelKey, _modelController.text.trim());
-    if (!mounted) return;
-    setState(() => _saving = false);
-    _addLog(
-      'API profile saved',
-      '${_flavorLabel(_flavor)} - ${_modelController.text.trim().isEmpty ? 'default model' : _modelController.text.trim()}',
-      Icons.key_outlined,
-      _mint,
-    );
-    _showMessage('API config saved');
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_baseUrlKey, _baseUrlController.text.trim());
+      await prefs.setString(_apiKeyKey, _apiKeyController.text.trim());
+      await prefs.setString(_modelKey, _modelController.text.trim());
+      if (!mounted) return;
+      _addLog(
+        'API profile saved',
+        '${_flavorLabel(_flavor)} - ${_modelController.text.trim().isEmpty ? 'default model' : _modelController.text.trim()}',
+        Icons.key_outlined,
+        _mint,
+      );
+      _showMessage('API config saved');
+    } on Object catch (error) {
+      if (!mounted) return;
+      _addLog('API save failed', _compact(error.toString(), limit: 140), Icons.error_outline, _rose);
+      _showMessage('API config save failed');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _checkHealth() async {
@@ -583,7 +762,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _checkHealth();
         break;
       case _ModuleAction.webDemo:
-        _openUrl(_demo2048Url, '2048 web demo');
+        _openMobileCodingLabSheet(autoGenerate: true);
         break;
       case _ModuleAction.githubTest:
         _openGitHubTestSheet();
@@ -660,20 +839,65 @@ class _HomeScreenState extends State<HomeScreen> {
         apiKey: _apiKeyController.text.trim(),
         model: _modelController.text.trim(),
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
+        onAgentPrompt: _handleAgentPrompt,
+      ),
+    );
+  }
+
+  Future<void> _handleAgentPrompt(String prompt) async {
+    final lower = prompt.toLowerCase();
+    if (lower.contains('2048') ||
+        lower.contains('game') ||
+        lower.contains('网页') ||
+        lower.contains('游戏') ||
+        lower.contains('preview') ||
+        lower.contains('预览')) {
+      _openMobileCodingLabSheet(autoGenerate: true);
+      return;
+    }
+    if (lower.contains('termux') || lower.contains('终端')) {
+      _openTermuxSheet();
+      return;
+    }
+    if (lower.contains('github') || lower.contains('仓库')) {
+      _openGitHubTestSheet();
+      return;
+    }
+    _openToolLabSheet();
+  }
+
+  void _openMobileCodingLabSheet({bool autoGenerate = false}) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _MobileCodingLabSheet(
+        autoGenerate: autoGenerate,
+        onOpenOnlineDemo: () => _openUrl(_demo2048Url, 'published 2048 demo'),
+        onOpenGitHub: () => _openUrl(_githubTestUrl, 'GitHub test page'),
+        onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
       ),
     );
   }
 
   Future<void> _openUrl(String url, String label) async {
-    final uri = Uri.parse(url);
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    _addLog(
-      opened ? 'Opened $label' : 'Failed to open $label',
-      url,
-      opened ? Icons.open_in_browser_outlined : Icons.error_outline,
-      opened ? _mint : _rose,
-    );
-    if (!opened) {
+    try {
+      final uri = Uri.parse(url);
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      _addLog(
+        opened ? 'Opened $label' : 'Failed to open $label',
+        url,
+        opened ? Icons.open_in_browser_outlined : Icons.error_outline,
+        opened ? _mint : _rose,
+      );
+      if (!opened) {
+        _showMessage('Could not open $label');
+      }
+    } on Object catch (error) {
+      _addLog('Open URL failed', _compact(error.toString(), limit: 120), Icons.error_outline, _rose);
       _showMessage('Could not open $label');
     }
   }
@@ -719,7 +943,7 @@ class _HomeScreenState extends State<HomeScreen> {
         baseUrl: _baseUrlController.text.trim(),
         apiKey: _apiKeyController.text.trim(),
         model: _modelController.text.trim(),
-        onOpen2048: () => _openUrl(_demo2048Url, '2048 web demo'),
+        onOpen2048: () => _openMobileCodingLabSheet(autoGenerate: true),
         onOpenGitHubWeb: () => _openUrl(_githubTestUrl, 'GitHub test page'),
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
       ),
@@ -1302,11 +1526,11 @@ class _DemoLabPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _HeroDemoTile(
-            title: '2048 Web demo',
-            subtitle: 'A phone-first game hosted on GitHub Pages. Use it to prove MobileCode can create and publish a playable web experience.',
+            title: 'Agent codes 2048',
+            subtitle: 'Generate a real local HTML/CSS/JS project on the phone, save it, then preview it inside MobileCode WebView.',
             icon: Icons.grid_4x4_outlined,
             color: _mint,
-            primaryLabel: 'Open online',
+            primaryLabel: 'Code + preview',
             secondaryLabel: 'GitHub test',
             onPrimary: onOpen2048,
             onSecondary: onGitHub,
@@ -1469,6 +1693,324 @@ class _DemoActionTile extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _MobileCodingLabSheet extends StatefulWidget {
+  const _MobileCodingLabSheet({
+    required this.autoGenerate,
+    required this.onOpenOnlineDemo,
+    required this.onOpenGitHub,
+    required this.onLog,
+  });
+
+  final bool autoGenerate;
+  final VoidCallback onOpenOnlineDemo;
+  final VoidCallback onOpenGitHub;
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
+
+  @override
+  State<_MobileCodingLabSheet> createState() => _MobileCodingLabSheetState();
+}
+
+class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
+  String? _projectPath;
+  String? _html;
+  String _stage = 'Idle';
+  int? _lastGenerateMs;
+  bool _generating = false;
+  bool _autoStarted = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (widget.autoGenerate && !_autoStarted) {
+      _autoStarted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _generate2048());
+    }
+  }
+
+  Future<void> _generate2048() async {
+    final started = DateTime.now();
+    setState(() {
+      _generating = true;
+      _stage = 'Preparing project directory';
+    });
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final projectDirectory = Directory('${directory.path}/mobilecode_projects/agent_2048');
+      await projectDirectory.create(recursive: true);
+      if (!mounted) return;
+      setState(() => _stage = 'Generating HTML/CSS/JS');
+      final html = _agent2048Html();
+      final tempFile = File('${projectDirectory.path}/index.html.tmp');
+      final file = File('${projectDirectory.path}/index.html');
+      await tempFile.writeAsString(html, flush: true);
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await tempFile.rename(file.path);
+      if (!mounted) return;
+      setState(() {
+        _projectPath = file.path;
+        _html = html;
+        _stage = 'Generated and saved';
+        _lastGenerateMs = DateTime.now().difference(started).inMilliseconds;
+      });
+      widget.onLog('Agent generated 2048', '${file.path} - ${_lastGenerateMs}ms', Icons.grid_4x4_outlined, _mint);
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _stage = 'Generation failed');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Generate failed: $error')));
+      widget.onLog('2048 generation failed', _compact(error.toString(), limit: 120), Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _generating = false);
+    }
+  }
+
+  void _preview() {
+    final html = _html;
+    if (html == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generate the 2048 project first')));
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _WebPreviewSheet(
+        title: '2048 local preview',
+        subtitle: _projectPath ?? 'Generated HTML loaded into WebView',
+        html: html,
+      ),
+    );
+  }
+
+  Future<void> _copyCode() async {
+    final html = _html;
+    if (html == null) return;
+    await Clipboard.setData(ClipboardData(text: html));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generated index.html copied')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.code_outlined,
+      title: 'Mobile Coding Lab',
+      subtitle: 'Agent writes a real local 2048 project, saves index.html, and previews it in WebView.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Agent tool plan',
+                  style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 16),
+                ),
+                const SizedBox(height: 10),
+                _InlineStatus(
+                  icon: _generating ? Icons.sync_outlined : Icons.check_circle_outline,
+                  label: _lastGenerateMs == null ? _stage : '$_stage - ${_lastGenerateMs}ms',
+                  color: _generating ? _amber : (_html == null ? _faint : _mint),
+                ),
+                const SizedBox(height: 10),
+                for (final item in const [
+                  '1. Generate a complete HTML/CSS/JS 2048 game.',
+                  '2. Save it to app documents as mobilecode_projects/agent_2048/index.html.',
+                  '3. Load the generated file content into an in-app WebView preview.',
+                  '4. Keep the code visible so the user can copy, inspect, or publish it.',
+                ])
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 7),
+                    child: Text(item, style: const TextStyle(color: _muted, height: 1.35)),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _generating ? null : _generate2048,
+                  icon: _generating
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.auto_fix_high_outlined),
+                  label: Text(_generating ? 'Coding' : 'Agent code 2048'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _preview,
+                  icon: const Icon(Icons.visibility_outlined),
+                  label: const Text('Preview'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _html == null ? null : _copyCode,
+                  icon: const Icon(Icons.copy_outlined),
+                  label: const Text('Copy code'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: widget.onOpenGitHub,
+                  icon: const Icon(Icons.hub_outlined),
+                  label: const Text('GitHub test'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_projectPath != null)
+            _Panel(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  const Icon(Icons.description_outlined, color: _mint, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _projectPath!,
+                      style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: SelectableText(
+              _html == null
+                  ? 'No generated code yet. Tap "Agent code 2048" to create a real local project.'
+                  : _compact(_html!, limit: 2600),
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.4, fontFamily: 'monospace'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextButton.icon(
+            onPressed: widget.onOpenOnlineDemo,
+            icon: const Icon(Icons.public_outlined),
+            label: const Text('Open already published online 2048 demo'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WebPreviewSheet extends StatefulWidget {
+  const _WebPreviewSheet({
+    required this.title,
+    required this.subtitle,
+    required this.html,
+  });
+
+  final String title;
+  final String subtitle;
+  final String html;
+
+  @override
+  State<_WebPreviewSheet> createState() => _WebPreviewSheetState();
+}
+
+class _WebPreviewSheetState extends State<_WebPreviewSheet> {
+  late final WebViewController _controller;
+  int _progress = 0;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(_bg)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onProgress: (progress) {
+            if (mounted) setState(() => _progress = progress);
+          },
+          onWebResourceError: (error) {
+            if (mounted) {
+              setState(() => _error = '${error.errorCode}: ${error.description}');
+            }
+          },
+        ),
+      )
+      ..loadHtmlString(widget.html);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.preview_outlined,
+      title: widget.title,
+      subtitle: widget.subtitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Panel(
+            padding: EdgeInsets.zero,
+            child: Stack(
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.72,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: WebViewWidget(controller: _controller),
+                  ),
+                ),
+                if (_progress < 100)
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: 0,
+                    child: LinearProgressIndicator(value: _progress / 100),
+                  ),
+              ],
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            _Panel(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.error_outline, color: _rose, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(_error!, style: const TextStyle(color: _rose, fontSize: 12, height: 1.35)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          const Text(
+            'Preview mode runs generated HTML inside the app through Android WebView. JavaScript is enabled for local demos.',
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+          ),
+        ],
       ),
     );
   }
@@ -2273,9 +2815,9 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
   static const _tools = [
     _ToolProbe(name: 'AI provider health', detail: 'Uses configured Base URL and model.', icon: Icons.monitor_heart_outlined, action: 'health'),
     _ToolProbe(name: 'GitHub web tester', detail: 'Opens a Pages test page for token and repo checks.', icon: Icons.hub_outlined, action: 'github_web'),
-    _ToolProbe(name: '2048 web demo', detail: 'Opens the published game in the phone browser.', icon: Icons.grid_4x4_outlined, action: 'demo_2048'),
+    _ToolProbe(name: 'Code 2048 project', detail: 'Runs the local coding lab and WebView preview flow.', icon: Icons.grid_4x4_outlined, action: 'demo_2048'),
     _ToolProbe(name: 'Local storage', detail: 'Writes and reads SharedPreferences.', icon: Icons.save_outlined, action: 'storage'),
-    _ToolProbe(name: 'Termux handler', detail: 'Checks whether a termux:// URI can be launched.', icon: Icons.terminal_outlined, action: 'termux'),
+    _ToolProbe(name: 'Termux package', detail: 'Checks com.termux through Android package manager.', icon: Icons.terminal_outlined, action: 'termux'),
   ];
 
   Future<void> _runAll() async {
@@ -2297,7 +2839,7 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
     }
     if (action == 'demo_2048') {
       widget.onOpen2048();
-      _addResult('2048 web demo', true, 'Opened external browser page.');
+      _addResult('Code 2048 project', true, 'Opened Mobile Coding Lab.');
       return;
     }
     if (action == 'storage') {
@@ -2309,8 +2851,22 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
       return;
     }
     if (action == 'termux') {
-      final ok = await canLaunchUrl(Uri.parse('termux://'));
-      _addResult('Termux handler', ok, ok ? 'termux:// handler is visible.' : 'No termux:// handler. Termux may be missing or not exposed.');
+      final installed = await _isAndroidPackageInstalled('com.termux');
+      final apiInstalled = await _isAndroidPackageInstalled('com.termux.api');
+      if (installed == true) {
+        _addResult('Termux package', true, apiInstalled == true ? 'com.termux and com.termux.api detected.' : 'com.termux detected. Termux:API not detected.');
+      } else if (installed == false) {
+        _addResult('Termux package', false, 'com.termux is not installed or not visible to package manager.');
+      } else {
+        final urlVisible = await canLaunchUrl(Uri.parse('termux://'));
+        _addResult(
+          'Termux package',
+          urlVisible,
+          urlVisible
+              ? 'termux:// handler is visible. Package channel unavailable.'
+              : 'Package channel unavailable; termux:// is not reliable for installed Termux detection.',
+        );
+      }
       return;
     }
     if (action == 'health') {
@@ -2367,7 +2923,22 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
       title: 'Mobile Tool Tests',
       subtitle: 'Run small probes for phone-optimized tools and see what fails.',
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Tool capability map', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                SizedBox(height: 8),
+                _ToolScopeLine(icon: Icons.phone_android_outlined, color: _mint, title: 'Direct Android/Flutter', detail: 'storage, network, WebView preview, clipboard, sensors, camera, microphone, notifications, secure storage, GitHub HTTP APIs'),
+                _ToolScopeLine(icon: Icons.terminal_outlined, color: _amber, title: 'Needs Termux', detail: 'Linux shell, git/ssh binaries, npm/python package managers, local build scripts, long-running command sessions'),
+                _ToolScopeLine(icon: Icons.cloud_outlined, color: _cyan, title: 'Better remote', detail: 'heavy builds, concurrent agent runs, private repo automation, CI release signing, team sync'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
@@ -2435,6 +3006,45 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
   }
 }
 
+class _ToolScopeLine extends StatelessWidget {
+  const _ToolScopeLine({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.detail,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                children: [
+                  TextSpan(text: '$title: ', style: TextStyle(color: color, fontWeight: FontWeight.w900)),
+                  TextSpan(text: detail),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _TermuxSheet extends StatefulWidget {
   const _TermuxSheet({
     required this.onOpenInstall,
@@ -2455,25 +3065,46 @@ class _TermuxSheetState extends State<_TermuxSheet> {
   Future<void> _check() async {
     setState(() {
       _checking = true;
-      _status = 'Checking termux:// handler...';
+      _status = 'Checking Android package manager for com.termux...';
     });
     try {
-      final canOpen = await canLaunchUrl(Uri.parse('termux://'));
+      final installed = await _isAndroidPackageInstalled('com.termux');
+      final apiInstalled = await _isAndroidPackageInstalled('com.termux.api');
+      final urlVisible = await canLaunchUrl(Uri.parse('termux://'));
       if (!mounted) return;
+      final status = installed == true
+          ? 'Termux is installed. ${apiInstalled == true ? 'Termux:API is also installed.' : 'Termux:API is not detected; command automation may need it.'}'
+          : installed == false
+              ? 'com.termux is not visible to Android package manager. Install Termux from F-Droid, or check package visibility.'
+              : 'Package channel is unavailable in this build. termux:// visible: $urlVisible. URL scheme alone is not reliable.';
       setState(() {
-        _status = canOpen
-            ? 'Termux handler is visible. Next production step: bind a robust Android package check and command bridge.'
-            : 'Termux handler was not found. Termux may not be installed, or this Android build does not expose a termux:// handler.';
+        _status = status;
       });
       widget.onLog(
-        canOpen ? 'Termux reachable' : 'Termux not detected',
+        installed == true ? 'Termux detected' : 'Termux check completed',
         _status,
-        canOpen ? Icons.terminal_outlined : Icons.error_outline,
-        canOpen ? _mint : _amber,
+        installed == true ? Icons.terminal_outlined : Icons.info_outline,
+        installed == true ? _mint : _amber,
       );
     } finally {
       if (mounted) setState(() => _checking = false);
     }
+  }
+
+  Future<void> _launch() async {
+    final opened = await _launchAndroidPackage('com.termux');
+    if (!mounted) return;
+    setState(() {
+      _status = opened
+          ? 'Termux launch intent sent. Return to MobileCode after preparing the shell.'
+          : 'Could not launch com.termux. The package may be missing, disabled, or hidden from this build.';
+    });
+    widget.onLog(
+      opened ? 'Termux launched' : 'Termux launch failed',
+      _status,
+      opened ? Icons.open_in_new_outlined : Icons.error_outline,
+      opened ? _mint : _rose,
+    );
   }
 
   @override
@@ -2503,6 +3134,18 @@ class _TermuxSheetState extends State<_TermuxSheet> {
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton.icon(
+                  onPressed: _launch,
+                  icon: const Icon(Icons.open_in_new_outlined),
+                  label: const Text('Launch'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
                   onPressed: widget.onOpenInstall,
                   icon: const Icon(Icons.download_outlined),
                   label: const Text('Install guide'),
@@ -2512,7 +3155,7 @@ class _TermuxSheetState extends State<_TermuxSheet> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Production requirement: add Android package visibility queries for com.termux and com.termux.api, then connect the existing TermuxService setup wizard.',
+            'Termux is not mandatory for every tool. Pure Flutter tools can use storage, network, WebView, camera, microphone, and GitHub APIs directly. Termux is needed for Linux-like shell commands, local build tools, package managers, git/ssh binaries, and long-running developer scripts.',
             style: TextStyle(color: _muted, fontSize: 12, height: 1.4),
           ),
         ],
@@ -2527,12 +3170,14 @@ class _ChatPanel extends StatefulWidget {
     required this.apiKey,
     required this.model,
     required this.onLog,
+    required this.onAgentPrompt,
   });
 
   final String baseUrl;
   final String apiKey;
   final String model;
   final void Function(String title, String detail, IconData icon, Color color) onLog;
+  final Future<void> Function(String prompt) onAgentPrompt;
 
   @override
   State<_ChatPanel> createState() => _ChatPanelState();
@@ -2753,6 +3398,49 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
   }
 
+  Future<void> _runAgent() async {
+    final prompt = _promptController.text.trim();
+    if (prompt.isEmpty) {
+      _showMessage('Describe what the agent should build or test');
+      return;
+    }
+    final active = _activeSession;
+    if (active == null) {
+      _showMessage('Chat is still loading');
+      return;
+    }
+
+    final lower = prompt.toLowerCase();
+    final toolName = lower.contains('2048') || lower.contains('game') || lower.contains('网页') || lower.contains('游戏')
+        ? 'mobile_coding.generate_2048_preview'
+        : lower.contains('termux') || lower.contains('终端')
+            ? 'mobile_tools.termux_probe'
+            : lower.contains('github') || lower.contains('仓库')
+                ? 'github.connectivity_test'
+                : 'mobile_tools.core_probe';
+    final assistantText =
+        'Agent selected tool: `$toolName`\n\nI am opening the matching mobile tool surface now. This is local tool execution, not just chat text.';
+    final now = DateTime.now();
+    final next = active.copyWith(
+      title: active.title == 'New chat' ? _chatTitle(prompt) : active.title,
+      updatedAt: now,
+      turns: [
+        ...active.turns,
+        _ChatTurn(role: 'user', content: prompt, time: now),
+        _ChatTurn(role: 'assistant', content: assistantText, time: DateTime.now()),
+      ],
+    );
+
+    setState(() {
+      _error = null;
+      _promptController.clear();
+      _storeSession(next);
+    });
+    await _persist();
+    widget.onLog('Agent tool selected', toolName, Icons.psychology_alt_outlined, _violet);
+    await widget.onAgentPrompt(prompt);
+  }
+
   Map<String, dynamic> _requestBody(_ApiFlavor flavor, List<_ChatTurn> turns) {
     final model = widget.model.isEmpty
         ? (flavor == _ApiFlavor.anthropic ? 'claude-3-5-haiku-latest' : 'gpt-4o-mini')
@@ -2940,7 +3628,15 @@ class _ChatPanelState extends State<_ChatPanel> {
                         icon: _sending
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Icon(Icons.send_outlined),
-                        label: Text(_sending ? 'Sending' : 'Send with memory'),
+                        label: Text(_sending ? 'Sending' : 'Send'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _sending ? null : _runAgent,
+                        icon: const Icon(Icons.psychology_alt_outlined),
+                        label: const Text('Agent'),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -3477,6 +4173,43 @@ class _MiniChip extends StatelessWidget {
       child: Text(
         label,
         style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _InlineStatus extends StatelessWidget {
+  const _InlineStatus({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.09),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.24)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w800),
+            ),
+          ),
+        ],
       ),
     );
   }

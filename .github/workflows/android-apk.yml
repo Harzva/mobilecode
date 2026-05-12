@@ -34,6 +34,32 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Prepare preview pubspec
+        working-directory: mobile_agent
+        run: |
+          cp pubspec.yaml pubspec.full.yaml
+          cat > pubspec.yaml <<'YAML'
+          name: mobile_agent
+          description: "MobileCode preview APK"
+          publish_to: 'none'
+          version: 0.1.0+1
+
+          environment:
+            sdk: ^3.6.0
+
+          dependencies:
+            flutter:
+              sdk: flutter
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^5.0.0
+
+          flutter:
+            uses-material-design: true
+          YAML
+
       - name: Recreate Android platform project
         working-directory: mobile_agent
         run: |

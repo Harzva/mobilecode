@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.mobilecode.app">
+    <!-- 
+      DEBUG build only - allows debugging tools
+      This file is ONLY used in debug builds (flutter run)
+      Release builds use the main AndroidManifest.xml
+    -->
+    
+    <!-- Debug: Allow cleartext for local dev server preview -->
+    <application 
+        android:usesCleartextTraffic="true"
+        android:networkSecurityConfig="@xml/network_security_config_debug">
+    </application>
+    
+    <!-- Debug: Allow internet for Flutter debugging -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+</manifest>

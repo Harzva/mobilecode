@@ -1,0 +1,104 @@
+name: mobile_agent
+description: "Mobile Agent - A lightweight Vibing Coding AI companion for mobile devices"
+publish_to: 'none'
+
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.6.0
+  flutter: ^3.29.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.6.1
+  riverpod_annotation: ^2.6.1
+
+  # Routing
+  go_router: ^14.8.1
+
+  # Networking
+  dio: ^5.8.0
+  web_socket_channel: ^3.0.2
+  dartssh2: ^2.11.0
+
+  # SSH & Secure Storage
+  flutter_secure_storage: ^9.2.4
+  encrypt: ^5.0.3
+  crypto: ^3.0.6
+
+  # Local Storage
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  shared_preferences: ^2.5.2
+
+  # GitHub API
+  github: ^9.24.0
+
+  # Filesystem
+  path_provider: ^2.1.5
+  path: ^1.9.1
+
+  # Code Editor & Syntax Highlighting
+  flutter_code_editor: ^0.3.2
+  highlight: ^0.7.0
+  flutter_highlight: ^0.7.0
+
+  # UI & Content
+  flutter_markdown: ^0.7.6
+  cupertino_icons: ^1.0.8
+
+  # Platform Services
+  share_plus: ^10.1.4
+  url_launcher: ^6.3.1
+
+  # Utilities
+  freezed_annotation: ^2.4.4
+  json_annotation: ^4.9.0
+  uuid: ^4.5.1
+  intl: ^0.20.2
+
+  # Code Generation (runtime)
+  riverpod_generator: ^2.6.5
+
+  # Responsive
+  flutter_screenutil: ^5.9.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+  # Code Generation
+  build_runner: ^2.4.15
+  freezed: ^2.5.8
+  json_serializable: ^6.9.4
+  custom_lint: ^0.7.5
+  riverpod_lint: ^2.6.5
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icons/
+
+  fonts:
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/JetBrainsMono-Italic.ttf
+          style: italic
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700

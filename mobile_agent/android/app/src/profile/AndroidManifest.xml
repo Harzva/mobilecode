@@ -1,0 +1,22 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.mobilecode.app">
+    <!-- 
+      PROFILE build only - performance profiling
+      This file is ONLY used in profile builds (flutter run --profile)
+      
+      Profile builds are INTERMEDIATE between debug and release:
+      - Optimized code (not debuggable)
+      - But with profiling data collection
+      - NO cleartext traffic allowed
+      - Debuggable is FALSE (like release)
+    -->
+    
+    <!-- Profile: No cleartext, same security as release -->
+    <application 
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:debuggable="false">
+    </application>
+    
+    <uses-permission android:name="android.permission.INTERNET"/>
+</manifest>

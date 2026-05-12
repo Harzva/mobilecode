@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+release/*.zip
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+pubspec.lock
+*.log
+.env
+.env.*
+android/key.properties
+*.jks
+*.keystore

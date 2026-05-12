@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network Security Configuration for MobileCode
+  
+  Security Rules:
+  - Only HTTPS connections are allowed by default
+  - cleartextTrafficPermitted is FALSE (no HTTP)
+  - Certificate pinning for known API endpoints
+  - No user-defined trust anchors
+  - Debug-overrides are removed in release builds
+-->
+<network-security-config>
+  <!-- Base config: cleartext traffic is NOT permitted -->
+  <base-config cleartextTrafficPermitted="false">
+    <trust-anchors>
+      <certificates src="system"/>
+    </trust-anchors>
+  </base-config>
+
+  <!-- Domain-specific config for known API endpoints -->
+  <domain-config cleartextTrafficPermitted="false">
+    <domain includeSubdomains="true">api.openai.com</domain>
+    <domain includeSubdomains="true">api.anthropic.com</domain>
+    <domain includeSubdomains="true">generativelanguage.googleapis.com</domain>
+    <domain includeSubdomains="true">api.github.com</domain>
+    <domain includeSubdomains="true">github.com</domain>
+    <domain includeSubdomains="true">openrouter.ai</domain>
+    <domain includeSubdomains="true">generativelanguage.googleapis.com</domain>
+    <trust-anchors>
+      <certificates src="system"/>
+    </trust-anchors>
+    <pin-set expiration="2030-01-01">
+      <!-- Pins for major CA certificates -->
+      <pin digest="SHA-256">r/mIkG3eEpVdm+u/ko/cwxzOMo1bk4Ty+38oS6M5oQE=</pin>
+      <pin digest="SHA-256">jQJTbIh0grw0/1TkHSumWb+Fs0Ggogr621gT3PvPKG0=</pin>
+    </pin-set>
+  </domain-config>
+
+  <!-- Debug configuration (ONLY for debug builds) -->
+  <!-- This section is automatically stripped in release builds -->
+  <debug-overrides>
+    <trust-anchors>
+      <certificates src="user"/>
+      <certificates src="system"/>
+    </trust-anchors>
+  </debug-overrides>
+</network-security-config>

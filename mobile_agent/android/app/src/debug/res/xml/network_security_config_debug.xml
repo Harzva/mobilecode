@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only Network Security Config
+
+  ONLY used in debug builds. Allows:
+  - Cleartext traffic for local dev server (localhost)
+  - User certificates for debugging
+
+  This file is NOT included in release builds!
+  Release builds use the strict network_security_config.xml.
+
+  SECURITY RESTRICTIONS:
+  - Only localhost/127.0.0.1 allowed for cleartext (no private IP ranges)
+  - User certificates only for SSL debugging
+  - 10.x.x.x and 192.168.x.x ranges REMOVED for security
+-->
+<network-security-config>
+  <!-- Allow cleartext for localhost only (local preview server) -->
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">localhost</domain>
+    <domain includeSubdomains="true">127.0.0.1</domain>
+    <!-- SECURITY: Removed 10.0.0.0 and 192.168.0.0 ranges -->
+    <!-- These would allow cleartext on ANY private network device -->
+  </domain-config>
+
+  <!-- Allow user certificates for SSL debugging -->
+  <debug-overrides>
+    <trust-anchors>
+      <certificates src="user"/>
+      <certificates src="system"/>
+    </trust-anchors>
+  </debug-overrides>
+</network-security-config>

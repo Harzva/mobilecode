@@ -213,7 +213,7 @@ class _SplashScreenState extends State<SplashScreen>
                         return AppTheme.auroraGradient.createShader(bounds);
                       },
                       child: const Text(
-                        'Mobile Agent',
+                        'MobileCode',
                         style: TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.bold,
@@ -238,7 +238,7 @@ class _SplashScreenState extends State<SplashScreen>
                   child: SlideTransition(
                     position: _textSlide,
                     child: Text(
-                      '随时随地，Vibing Coding',
+                      'Code anywhere with AI',
                       style: TextStyle(
                         fontSize: 14,
                         color: AppTheme.textSecondary.withOpacity(0.8),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'themes/app_theme.dart';
 import 'screens/splash_screen.dart';
@@ -24,7 +25,7 @@ void main() {
     ),
   );
 
-  runApp(const MobileAgentApp());
+  runApp(const ProviderScope(child: MobileAgentApp()));
 }
 
 /// Root app widget

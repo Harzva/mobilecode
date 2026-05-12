@@ -34,37 +34,12 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Prepare preview pubspec
-        working-directory: mobile_agent
-        run: |
-          cp pubspec.yaml pubspec.full.yaml
-          cat > pubspec.yaml <<'YAML'
-          name: mobile_agent
-          description: "MobileCode preview APK"
-          publish_to: 'none'
-          version: 0.1.0+1
-
-          environment:
-            sdk: ^3.6.0
-
-          dependencies:
-            flutter:
-              sdk: flutter
-
-          dev_dependencies:
-            flutter_test:
-              sdk: flutter
-            flutter_lints: ^5.0.0
-
-          flutter:
-            uses-material-design: true
-          YAML
-
       - name: Recreate Android platform project
         working-directory: mobile_agent
         run: |
           rm -rf android
           flutter create --platforms=android --project-name mobile_agent --org com.mobilecode .
+          sed -i 's/android:label="mobile_agent"/android:label="MobileCode"/' android/app/src/main/AndroidManifest.xml
 
       - name: Resolve Flutter dependencies
         working-directory: mobile_agent
@@ -72,22 +47,22 @@ jobs:
 
       - name: Build release APK
         working-directory: mobile_agent
-        run: flutter build apk --release --target lib/release_main.dart
+        run: flutter build apk --release --target lib/main.dart
 
       - name: Stage APK
         run: |
           mkdir -p artifacts
-          cp mobile_agent/build/app/outputs/flutter-apk/app-release.apk artifacts/mobilecode-preview-v0.1.0.apk
+          cp mobile_agent/build/app/outputs/flutter-apk/app-release.apk artifacts/mobilecode-v0.1.0.apk
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mobilecode-preview-apk
-          path: artifacts/mobilecode-preview-v0.1.0.apk
+          name: mobilecode-apk
+          path: artifacts/mobilecode-v0.1.0.apk
 
       - name: Upload APK to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
         run: |
-          gh release upload "$RELEASE_TAG" artifacts/mobilecode-preview-v0.1.0.apk --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" artifacts/mobilecode-v0.1.0.apk --clobber --repo "$GITHUB_REPOSITORY"

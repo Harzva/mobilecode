@@ -24,7 +24,7 @@ class HomeScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Mobile Agent',
+                      'MobileCode',
                       style: Theme.of(context).textTheme.displaySmall,
                     ),
                     const SizedBox(height: 8),

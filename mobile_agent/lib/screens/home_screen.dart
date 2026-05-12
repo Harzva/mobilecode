@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum _HealthState { unknown, checking, healthy, failed }
 
+enum _ApiFlavor { openAi, anthropic }
+
 class _ProbeResult {
   const _ProbeResult({
     required this.uri,
@@ -21,6 +23,54 @@ class _ProbeResult {
   final String message;
 
   bool get isHealthy => statusCode != null && statusCode! >= 200 && statusCode! < 300;
+}
+
+String _normalizedBaseUrl(String baseUrl) {
+  return baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+}
+
+_ApiFlavor _detectApiFlavor(String baseUrl, String model) {
+  final probe = '$baseUrl $model'.toLowerCase();
+  if (probe.contains('anthropic') ||
+      probe.contains('claude') ||
+      probe.contains('mimo-')) {
+    return _ApiFlavor.anthropic;
+  }
+  return _ApiFlavor.openAi;
+}
+
+Uri _parseBaseUrl(String baseUrl) {
+  final uri = Uri.parse(_normalizedBaseUrl(baseUrl));
+  if (!uri.hasScheme || uri.host.isEmpty) {
+    throw const FormatException('Invalid URL');
+  }
+  return uri;
+}
+
+Uri _openAiChatUri(String baseUrl) {
+  final normalized = _normalizedBaseUrl(baseUrl);
+  final uri = _parseBaseUrl(normalized);
+  if (normalized.endsWith('/chat/completions')) return uri;
+  return Uri.parse('$normalized/chat/completions');
+}
+
+Uri _anthropicMessagesUri(String baseUrl) {
+  final normalized = _normalizedBaseUrl(baseUrl);
+  final uri = _parseBaseUrl(normalized);
+  if (normalized.endsWith('/v1/messages') || normalized.endsWith('/messages')) {
+    return uri;
+  }
+  if (normalized.endsWith('/v1')) {
+    return Uri.parse('$normalized/messages');
+  }
+  return Uri.parse('$normalized/v1/messages');
+}
+
+String _chatEndpointLabel(String baseUrl, _ApiFlavor flavor) {
+  return switch (flavor) {
+    _ApiFlavor.anthropic => _anthropicMessagesUri(baseUrl).toString(),
+    _ApiFlavor.openAi => _openAiChatUri(baseUrl).toString(),
+  };
 }
 
 /// MobileCode home screen.
@@ -91,9 +141,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    List<Uri> probes;
+    final flavor = _detectApiFlavor(baseUrl, _modelController.text.trim());
     try {
-      probes = _healthUris(baseUrl);
+      _parseBaseUrl(baseUrl);
     } catch (_) {
       _showMessage('Base URL is not valid');
       return;
@@ -101,26 +151,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _healthState = _HealthState.checking;
-      _healthMessage = 'Checking ${probes.first}';
+      _healthMessage = 'Checking ${_chatEndpointLabel(baseUrl, flavor)}';
     });
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
       final apiKey = _apiKeyController.text.trim();
-      _ProbeResult? lastResult;
+      final model = _modelController.text.trim();
+      late final _ProbeResult result;
 
-      for (final probe in probes) {
-        final result = await _probe(client, probe, apiKey);
-        lastResult = result;
-        if (result.isHealthy) break;
+      if (flavor == _ApiFlavor.anthropic) {
+        result = await _probeAnthropic(client, baseUrl, apiKey, model);
+      } else {
+        _ProbeResult? lastResult;
+        for (final probe in _openAiHealthUris(baseUrl)) {
+          final probeResult = await _probeGet(client, probe, apiKey);
+          lastResult = probeResult;
+          if (probeResult.isHealthy) break;
+        }
+        result = lastResult!;
       }
 
       if (!mounted) return;
       setState(() {
-        _healthState = lastResult?.isHealthy ?? false
-            ? _HealthState.healthy
-            : _HealthState.failed;
-        _healthMessage = lastResult?.message ?? 'No health response';
+        _healthState = result.isHealthy ? _HealthState.healthy : _HealthState.failed;
+        _healthMessage = result.message;
       });
     } on Object catch (error) {
       if (!mounted) return;
@@ -133,7 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<_ProbeResult> _probe(HttpClient client, Uri uri, String apiKey) async {
+  Future<_ProbeResult> _probeGet(HttpClient client, Uri uri, String apiKey) async {
     final started = DateTime.now();
     final request = await client.getUrl(uri).timeout(const Duration(seconds: 8));
     if (apiKey.isNotEmpty) {
@@ -150,18 +205,58 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  List<Uri> _healthUris(String baseUrl) {
-    final normalized = baseUrl.endsWith('/')
-        ? baseUrl.substring(0, baseUrl.length - 1)
-        : baseUrl;
-    final uri = Uri.parse(normalized);
-    if (!uri.hasScheme || uri.host.isEmpty) {
-      throw const FormatException('Invalid URL');
+  Future<_ProbeResult> _probeAnthropic(
+    HttpClient client,
+    String baseUrl,
+    String apiKey,
+    String model,
+  ) async {
+    final uri = _anthropicMessagesUri(baseUrl);
+    final started = DateTime.now();
+    final request = await client.postUrl(uri).timeout(const Duration(seconds: 8));
+    request.headers.contentType = ContentType.json;
+    request.headers.set('anthropic-version', '2023-06-01');
+    if (apiKey.isNotEmpty) {
+      request.headers.set('x-api-key', apiKey);
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
     }
-    return [
+    request.write(jsonEncode({
+      'model': model.isEmpty ? 'claude-3-5-haiku-latest' : model,
+      'max_tokens': 1,
+      'messages': [
+        {'role': 'user', 'content': 'ping'},
+      ],
+    }));
+
+    final response = await request.close().timeout(const Duration(seconds: 30));
+    final body = await utf8.decodeStream(response);
+    final ms = DateTime.now().difference(started).inMilliseconds;
+    return _ProbeResult(
+      uri: uri,
+      statusCode: response.statusCode,
+      latencyMs: ms,
+      message: response.statusCode >= 200 && response.statusCode < 300
+          ? '${uri.path} HTTP ${response.statusCode} - ${ms}ms'
+          : '${uri.path} HTTP ${response.statusCode} - ${_compactHealthError(body)}',
+    );
+  }
+
+  String _compactHealthError(String value) {
+    final trimmed = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (trimmed.length <= 140) return trimmed;
+    return '${trimmed.substring(0, 140)}...';
+  }
+
+  List<Uri> _openAiHealthUris(String baseUrl) {
+    final normalized = _normalizedBaseUrl(baseUrl);
+    final probes = [
       Uri.parse('$normalized/health'),
       Uri.parse('$normalized/models'),
     ];
+    if (!normalized.endsWith('/v1')) {
+      probes.add(Uri.parse('$normalized/v1/models'));
+    }
+    return probes;
   }
 
   bool get _hasConfig => _baseUrlController.text.trim().isNotEmpty;
@@ -634,20 +729,26 @@ class _ChatPanelState extends State<_ChatPanel> {
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
     try {
+      final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
       final request = await client
-          .postUrl(_chatUri(widget.baseUrl))
+          .postUrl(flavor == _ApiFlavor.anthropic
+              ? _anthropicMessagesUri(widget.baseUrl)
+              : _openAiChatUri(widget.baseUrl))
           .timeout(const Duration(seconds: 12));
       request.headers.contentType = ContentType.json;
-      if (widget.apiKey.isNotEmpty) {
-        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
+      if (flavor == _ApiFlavor.anthropic) {
+        request.headers.set('anthropic-version', '2023-06-01');
       }
-      request.write(jsonEncode({
-        'model': widget.model.isEmpty ? 'gpt-4o-mini' : widget.model,
-        'messages': [
-          {'role': 'user', 'content': prompt},
-        ],
-        'stream': false,
-      }));
+      if (widget.apiKey.isNotEmpty) {
+        if (flavor == _ApiFlavor.anthropic) {
+          request.headers.set('x-api-key', widget.apiKey);
+        }
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer ${widget.apiKey}',
+        );
+      }
+      request.write(jsonEncode(_requestBody(flavor, prompt)));
 
       final response = await request.close().timeout(const Duration(seconds: 45));
       final body = await utf8.decodeStream(response);
@@ -674,18 +775,26 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
   }
 
-  Uri _chatUri(String baseUrl) {
-    final normalized = baseUrl.endsWith('/')
-        ? baseUrl.substring(0, baseUrl.length - 1)
-        : baseUrl;
-    final uri = Uri.parse(normalized);
-    if (!uri.hasScheme || uri.host.isEmpty) {
-      throw const FormatException('Invalid URL');
+  Map<String, dynamic> _requestBody(_ApiFlavor flavor, String prompt) {
+    final model = widget.model.isEmpty
+        ? (flavor == _ApiFlavor.anthropic ? 'claude-3-5-haiku-latest' : 'gpt-4o-mini')
+        : widget.model;
+    if (flavor == _ApiFlavor.anthropic) {
+      return {
+        'model': model,
+        'max_tokens': 1024,
+        'messages': [
+          {'role': 'user', 'content': prompt},
+        ],
+      };
     }
-    if (normalized.endsWith('/chat/completions')) {
-      return uri;
-    }
-    return Uri.parse('$normalized/chat/completions');
+    return {
+      'model': model,
+      'messages': [
+        {'role': 'user', 'content': prompt},
+      ],
+      'stream': false,
+    };
   }
 
   String _extractAssistantText(String body) {
@@ -709,6 +818,19 @@ class _ChatPanelState extends State<_ChatPanel> {
             }
           }
         }
+        final content = decoded['content'];
+        if (content is List && content.isNotEmpty) {
+          final parts = <String>[];
+          for (final item in content) {
+            if (item is Map<String, dynamic>) {
+              final text = item['text'];
+              if (text is String && text.trim().isNotEmpty) {
+                parts.add(text.trim());
+              }
+            }
+          }
+          if (parts.isNotEmpty) return parts.join('\n\n');
+        }
       }
     } catch (_) {
       // Fall through and show the raw body.
@@ -728,6 +850,7 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -739,7 +862,7 @@ class _ChatPanelState extends State<_ChatPanel> {
             labelText: 'Prompt',
             hintText: 'Ask MobileCode to explain, edit, or generate code...',
             helperText:
-                'Endpoint: ${widget.baseUrl}/chat/completions - Model: ${widget.model.isEmpty ? 'gpt-4o-mini' : widget.model}',
+                'Endpoint: ${_chatEndpointLabel(widget.baseUrl, flavor)} - Model: ${widget.model.isEmpty ? 'default' : widget.model}',
             alignLabelWithHint: true,
           ),
         ),

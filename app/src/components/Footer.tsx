@@ -10,10 +10,10 @@ export default function Footer() {
           <p>AI coding workspace for mobile devices.</p>
         </div>
         <div className="footer-links">
-          <Link to="/features">功能</Link>
-          <Link to="/docs">文档</Link>
+          <Link to="/features">产品特性</Link>
+          <Link to="/docs">文档中心</Link>
           <Link to="/contact">联系</Link>
-          <a href="https://github.com" target="_blank" rel="noreferrer" aria-label="GitHub">
+          <a href="https://github.com/Harzva/mobilecode" target="_blank" rel="noreferrer" aria-label="GitHub">
             <Github size={18} />
           </a>
           <a href="mailto:hello@mobilecode.dev" aria-label="Email">

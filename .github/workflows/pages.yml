@@ -6,6 +6,7 @@ on:
     branches:
       - main
     paths:
+      - 'app/**'
       - 'docs/**'
       - '.github/workflows/pages.yml'
 
@@ -27,12 +28,28 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Build promotional site
+        working-directory: app
+        run: |
+          npm ci
+          npm run build
+      - name: Attach demo pages
+        run: |
+          mkdir -p app/dist/demo app/dist/github-test
+          cp -R docs/demo/2048 app/dist/demo/
+          cp -R docs/github-test/* app/dist/github-test/
       - name: Configure Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: app/dist
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

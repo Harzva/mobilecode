@@ -3,11 +3,44 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+enum _ApiFlavor { openAi, anthropic }
 
 enum _HealthState { unknown, checking, healthy, failed }
 
-enum _ApiFlavor { openAi, anthropic }
+enum _HomeTab { control, ai, ship, guard, insight }
+
+enum _CapabilityStatus { ready, needsConfig, local, preview }
+
+enum _ModuleAction {
+  aiChat,
+  apiConfig,
+  healthCheck,
+  newFile,
+  snippet,
+  project,
+  terminal,
+  deepDive,
+  build,
+  inspect,
+}
+
+const _bg = Color(0xFF05070C);
+const _panel = Color(0xFF101522);
+const _panelSoft = Color(0xFF151A2A);
+const _line = Color(0xFF293049);
+const _text = Color(0xFFF0F3FA);
+const _muted = Color(0xFF9EA6BD);
+const _faint = Color(0xFF667089);
+const _mint = Color(0xFF7AF2C7);
+const _cyan = Color(0xFF62D9FF);
+const _amber = Color(0xFFFFC66B);
+const _rose = Color(0xFFFF6E87);
+const _lime = Color(0xFFB8F26B);
+const _violet = Color(0xFF8B5CF6);
+const _blue = Color(0xFF6EA8FF);
 
 class _ProbeResult {
   const _ProbeResult({
@@ -23,6 +56,92 @@ class _ProbeResult {
   final String message;
 
   bool get isHealthy => statusCode != null && statusCode! >= 200 && statusCode! < 300;
+}
+
+class _CapabilityLayer {
+  const _CapabilityLayer({
+    required this.name,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.capabilities,
+  });
+
+  final String name;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final List<_Capability> capabilities;
+
+  int get serviceCount {
+    final services = <String>{};
+    for (final capability in capabilities) {
+      services.addAll(capability.services);
+    }
+    return services.length;
+  }
+}
+
+class _Capability {
+  const _Capability({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.status,
+    required this.services,
+    required this.actions,
+    required this.primaryAction,
+    this.surface = 'Console panel',
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final _CapabilityStatus status;
+  final List<String> services;
+  final List<String> actions;
+  final _ModuleAction primaryAction;
+  final String surface;
+}
+
+class _ActivityLog {
+  const _ActivityLog({
+    required this.title,
+    required this.detail,
+    required this.icon,
+    required this.color,
+    required this.time,
+  });
+
+  final String title;
+  final String detail;
+  final IconData icon;
+  final Color color;
+  final DateTime time;
+}
+
+class _DraftFile {
+  const _DraftFile({
+    required this.name,
+    required this.language,
+    required this.createdAt,
+  });
+
+  final String name;
+  final String language;
+  final DateTime createdAt;
+}
+
+class _SnippetDraft {
+  const _SnippetDraft({
+    required this.title,
+    required this.language,
+    required this.createdAt,
+  });
+
+  final String title;
+  final String language;
+  final DateTime createdAt;
 }
 
 String _normalizedBaseUrl(String baseUrl) {
@@ -73,10 +192,12 @@ String _chatEndpointLabel(String baseUrl, _ApiFlavor flavor) {
   };
 }
 
-/// MobileCode home screen.
-///
-/// The first screen must be useful on a phone: configure the API endpoint,
-/// verify service health, and then open the core mobile coding actions.
+String _compact(String value, {int limit = 800}) {
+  final trimmed = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (trimmed.length <= limit) return trimmed;
+  return '${trimmed.substring(0, limit)}...';
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -96,6 +217,34 @@ class _HomeScreenState extends State<HomeScreen> {
   _HealthState _healthState = _HealthState.unknown;
   String _healthMessage = 'Not checked';
   bool _saving = false;
+  _HomeTab _tab = _HomeTab.control;
+  int _selectedLayerIndex = 0;
+
+  final List<_ActivityLog> _activity = [
+    _ActivityLog(
+      title: 'Frontend map loaded',
+      detail: 'AI, Agents, Code, Remote, Guard, Analytics, Tools, Performance, Team',
+      icon: Icons.dashboard_customize_outlined,
+      color: _mint,
+      time: DateTime.now(),
+    ),
+  ];
+  final List<_DraftFile> _drafts = [];
+  final List<_SnippetDraft> _snippets = [];
+
+  List<_CapabilityLayer> get _layers => _capabilityLayers;
+
+  int get _safeLayerIndex {
+    if (_selectedLayerIndex < 0) return 0;
+    if (_selectedLayerIndex >= _layers.length) return _layers.length - 1;
+    return _selectedLayerIndex;
+  }
+
+  _CapabilityLayer get _activeLayer => _layers[_safeLayerIndex];
+
+  _ApiFlavor get _flavor {
+    return _detectApiFlavor(_baseUrlController.text.trim(), _modelController.text.trim());
+  }
 
   @override
   void initState() {
@@ -129,9 +278,13 @@ class _HomeScreenState extends State<HomeScreen> {
     await prefs.setString(_modelKey, _modelController.text.trim());
     if (!mounted) return;
     setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('API config saved')),
+    _addLog(
+      'API profile saved',
+      '${_flavorLabel(_flavor)} - ${_modelController.text.trim().isEmpty ? 'default model' : _modelController.text.trim()}',
+      Icons.key_outlined,
+      _mint,
     );
+    _showMessage('API config saved');
   }
 
   Future<void> _checkHealth() async {
@@ -141,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final flavor = _detectApiFlavor(baseUrl, _modelController.text.trim());
+    final flavor = _flavor;
     try {
       _parseBaseUrl(baseUrl);
     } catch (_) {
@@ -177,12 +330,20 @@ class _HomeScreenState extends State<HomeScreen> {
         _healthState = result.isHealthy ? _HealthState.healthy : _HealthState.failed;
         _healthMessage = result.message;
       });
+      _addLog(
+        result.isHealthy ? 'Provider healthy' : 'Provider unhealthy',
+        result.message,
+        result.isHealthy ? Icons.check_circle_outline : Icons.error_outline,
+        result.isHealthy ? _mint : _rose,
+      );
     } on Object catch (error) {
       if (!mounted) return;
+      final message = error.toString().replaceFirst('Exception: ', '');
       setState(() {
         _healthState = _HealthState.failed;
-        _healthMessage = error.toString().replaceFirst('Exception: ', '');
+        _healthMessage = message;
       });
+      _addLog('Health check failed', _compact(message, limit: 140), Icons.error_outline, _rose);
     } finally {
       client.close(force: true);
     }
@@ -237,14 +398,8 @@ class _HomeScreenState extends State<HomeScreen> {
       latencyMs: ms,
       message: response.statusCode >= 200 && response.statusCode < 300
           ? '${uri.path} HTTP ${response.statusCode} - ${ms}ms'
-          : '${uri.path} HTTP ${response.statusCode} - ${_compactHealthError(body)}',
+          : '${uri.path} HTTP ${response.statusCode} - ${_compact(body, limit: 140)}',
     );
-  }
-
-  String _compactHealthError(String value) {
-    final trimmed = value.trim().replaceAll(RegExp(r'\s+'), ' ');
-    if (trimmed.length <= 140) return trimmed;
-    return '${trimmed.substring(0, 140)}...';
   }
 
   List<Uri> _openAiHealthUris(String baseUrl) {
@@ -259,72 +414,391 @@ class _HomeScreenState extends State<HomeScreen> {
     return probes;
   }
 
-  bool get _hasConfig => _baseUrlController.text.trim().isNotEmpty;
+  void _setTab(_HomeTab tab) {
+    setState(() {
+      _tab = tab;
+      _selectedLayerIndex = switch (tab) {
+        _HomeTab.control => 0,
+        _HomeTab.ai => 0,
+        _HomeTab.ship => 3,
+        _HomeTab.guard => 4,
+        _HomeTab.insight => 5,
+      };
+    });
+  }
+
+  void _runAction(_ModuleAction action, [_Capability? capability]) {
+    switch (action) {
+      case _ModuleAction.aiChat:
+        _openChatSheet();
+        break;
+      case _ModuleAction.apiConfig:
+        _showMessage('API configuration is at the top of this screen');
+        break;
+      case _ModuleAction.healthCheck:
+        _checkHealth();
+        break;
+      case _ModuleAction.newFile:
+        _openDraftSheet();
+        break;
+      case _ModuleAction.snippet:
+        _openSnippetSheet();
+        break;
+      case _ModuleAction.project:
+        _openProjectSheet();
+        break;
+      case _ModuleAction.terminal:
+        _openCommandSheet();
+        break;
+      case _ModuleAction.deepDive:
+        _openDeepDiveSheet();
+        break;
+      case _ModuleAction.build:
+        _openBuildSheet();
+        break;
+      case _ModuleAction.inspect:
+        if (capability != null) _openCapabilitySheet(capability);
+        break;
+    }
+  }
+
+  void _openCapabilitySheet(_Capability capability) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _CapabilitySheet(
+        capability: capability,
+        onRun: () {
+          Navigator.pop(context);
+          _runAction(capability.primaryAction, capability);
+        },
+        onCopy: () {
+          Clipboard.setData(ClipboardData(text: capability.services.join('\n')));
+          _showMessage('Service list copied');
+        },
+      ),
+    );
+  }
+
+  void _openChatSheet() {
+    if (_baseUrlController.text.trim().isEmpty) {
+      _showMessage('Configure Base URL first');
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _ChatPanel(
+        baseUrl: _baseUrlController.text.trim(),
+        apiKey: _apiKeyController.text.trim(),
+        model: _modelController.text.trim(),
+        onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
+      ),
+    );
+  }
+
+  void _openDraftSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _DraftSheet(
+        onCreate: (name, language) {
+          setState(() {
+            _drafts.insert(0, _DraftFile(name: name, language: language, createdAt: DateTime.now()));
+          });
+          _addLog('File draft created', '$language - $name', Icons.note_add_outlined, _cyan);
+        },
+      ),
+    );
+  }
+
+  void _openSnippetSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _SnippetSheet(
+        onCreate: (title, language) {
+          setState(() {
+            _snippets.insert(0, _SnippetDraft(title: title, language: language, createdAt: DateTime.now()));
+          });
+          _addLog('Snippet captured', '$language - $title', Icons.data_object_outlined, _lime);
+        },
+      ),
+    );
+  }
+
+  void _openProjectSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _ActionConsoleSheet(
+        icon: Icons.folder_open_outlined,
+        title: 'Project Console',
+        subtitle: 'Project manager, code index, context injector, storage, and learning services are surfaced here.',
+        actions: const [
+          'Create project from template',
+          'Import ZIP or Git repository',
+          'Index source code with SQLite FTS',
+          'Learn project knowledge for AI context',
+        ],
+        buttonLabel: 'Stage project workflow',
+        onRun: () {
+          _addLog('Project workflow staged', 'Project manager and code index are ready', Icons.folder_open_outlined, _amber);
+        },
+      ),
+    );
+  }
+
+  void _openCommandSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _ActionConsoleSheet(
+        icon: Icons.terminal_outlined,
+        title: 'Terminal Console',
+        subtitle: 'Terminal controller, shell service, SSH, and Termux bridges are grouped for mobile command work.',
+        actions: const [
+          'Run local shell command',
+          'Attach SSH host',
+          'Send Termux build command',
+          'Stream command output into task history',
+        ],
+        buttonLabel: 'Prepare terminal session',
+        onRun: () {
+          _addLog('Terminal session prepared', 'Local, SSH, and Termux actions available', Icons.terminal_outlined, _cyan);
+        },
+      ),
+    );
+  }
+
+  void _openDeepDiveSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _ActionConsoleSheet(
+        icon: Icons.psychology_alt_outlined,
+        title: 'Deep Dive Solo',
+        subtitle: 'Supervisor, action loop, task manager, and foreground service are presented as a single run console.',
+        actions: const [
+          'Plan multi-step coding task',
+          'Queue background isolate execution',
+          'Track thought, action, and observation cycle',
+          'Resume or inspect completed runs',
+        ],
+        buttonLabel: 'Queue deep dive task',
+        onRun: () {
+          _addLog('Deep Dive queued', 'Supervisor-worker run prepared', Icons.psychology_alt_outlined, _violet);
+        },
+      ),
+    );
+  }
+
+  void _openBuildSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _ActionConsoleSheet(
+        icon: Icons.rocket_launch_outlined,
+        title: 'Build and Release',
+        subtitle: 'Build orchestrator, preview service, Termux, GitHub Pages, and WeChat publish flows share this surface.',
+        actions: const [
+          'Build Android APK through local or GitHub workflow',
+          'Preview HTML and mobile app surfaces',
+          'Deploy static site to GitHub Pages',
+          'Prepare WeChat mini-program upload',
+        ],
+        buttonLabel: 'Stage release workflow',
+        onRun: () {
+          _addLog('Release workflow staged', 'APK, preview, Pages, and WeChat paths grouped', Icons.rocket_launch_outlined, _amber);
+        },
+      ),
+    );
+  }
+
+  void _addLog(String title, String detail, IconData icon, Color color) {
+    setState(() {
+      _activity.insert(
+        0,
+        _ActivityLog(
+          title: title,
+          detail: detail,
+          icon: icon,
+          color: color,
+          time: DateTime.now(),
+        ),
+      );
+      if (_activity.length > 8) {
+        _activity.removeLast();
+      }
+    });
+  }
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _openAction(_ActionKind kind) {
-    if (kind == _ActionKind.chat && !_hasConfig) {
-      _showMessage('Configure Base URL and API key before using AI Chat');
-      return;
-    }
-
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => _ActionSheet(
-        kind: kind,
-        baseUrl: _baseUrlController.text.trim(),
-        apiKey: _apiKeyController.text.trim(),
-        model: _modelController.text.trim(),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
     return Scaffold(
+      backgroundColor: _bg,
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+        child: Column(
           children: [
-            Text('MobileCode', style: textTheme.displaySmall),
-            const SizedBox(height: 8),
-            Text('Code. Anywhere. With AI.', style: textTheme.bodyMedium),
-            const SizedBox(height: 24),
-            _ApiConfigCard(
-              baseUrlController: _baseUrlController,
-              apiKeyController: _apiKeyController,
-              modelController: _modelController,
-              saving: _saving,
-              onSave: _saveConfig,
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+                children: [
+                  _TopBar(
+                    healthState: _healthState,
+                    flavor: _flavor,
+                    onChat: _openChatSheet,
+                  ),
+                  const SizedBox(height: 14),
+                  _ApiConfigCard(
+                    baseUrlController: _baseUrlController,
+                    apiKeyController: _apiKeyController,
+                    modelController: _modelController,
+                    saving: _saving,
+                    flavor: _flavor,
+                    onSave: _saveConfig,
+                    onHealth: _checkHealth,
+                  ),
+                  const SizedBox(height: 12),
+                  _HealthCard(
+                    state: _healthState,
+                    message: _healthMessage,
+                    flavor: _flavor,
+                    onCheck: _checkHealth,
+                  ),
+                  const SizedBox(height: 16),
+                  _QuickActionGrid(
+                    onAction: (action) => _runAction(action),
+                  ),
+                  const SizedBox(height: 22),
+                  _SectionHeader(
+                    title: 'Backend Capability Map',
+                    subtitle: 'AI core, agents, code intelligence, remote dev, guardrails, analytics, tools, performance, and team surfaces.',
+                  ),
+                  const SizedBox(height: 12),
+                  _LayerSelector(
+                    layers: _layers,
+                    selectedIndex: _safeLayerIndex,
+                    onSelected: (index) => setState(() => _selectedLayerIndex = index),
+                  ),
+                  const SizedBox(height: 12),
+                  _LayerHeader(layer: _activeLayer),
+                  const SizedBox(height: 10),
+                  for (final capability in _activeLayer.capabilities) ...[
+                    _CapabilityCard(
+                      capability: capability,
+                      layerColor: _activeLayer.color,
+                      onRun: () => _runAction(capability.primaryAction, capability),
+                      onInspect: () => _openCapabilitySheet(capability),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  const SizedBox(height: 14),
+                  _OperationsBoard(
+                    activity: _activity,
+                    drafts: _drafts,
+                    snippets: _snippets,
+                    healthState: _healthState,
+                    layerCount: _layers.length,
+                    serviceCount: _layers.fold<int>(0, (sum, layer) => sum + layer.serviceCount),
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 16),
-            _HealthCard(
-              state: _healthState,
-              message: _healthMessage,
-              onCheck: _checkHealth,
-            ),
-            const SizedBox(height: 24),
-            _QuickActionsGrid(onAction: _openAction),
-            const SizedBox(height: 32),
-            const _SectionTitle(title: 'Workspace'),
-            const SizedBox(height: 16),
-            const _WorkspaceSummary(),
-            const SizedBox(height: 32),
-            const _SectionTitle(title: 'Recent Snippets'),
-            const SizedBox(height: 16),
-            const _RecentSnippetsPlaceholder(),
+            _BottomNav(tab: _tab, onChanged: _setTab),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _TopBar extends StatelessWidget {
+  const _TopBar({
+    required this.healthState,
+    required this.flavor,
+    required this.onChat,
+  });
+
+  final _HealthState healthState;
+  final _ApiFlavor flavor;
+  final VoidCallback onChat;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _line),
+          ),
+          child: const Icon(Icons.code_rounded, color: _mint),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'MobileCode',
+                style: TextStyle(color: _text, fontSize: 28, fontWeight: FontWeight.w700),
+              ),
+              SizedBox(height: 2),
+              Text(
+                'Mobile AI development console',
+                style: TextStyle(color: _muted, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+        Tooltip(
+          message: 'Open AI Chat',
+          child: IconButton.filledTonal(
+            onPressed: onChat,
+            icon: const Icon(Icons.forum_outlined),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -335,14 +809,18 @@ class _ApiConfigCard extends StatelessWidget {
     required this.apiKeyController,
     required this.modelController,
     required this.saving,
+    required this.flavor,
     required this.onSave,
+    required this.onHealth,
   });
 
   final TextEditingController baseUrlController;
   final TextEditingController apiKeyController;
   final TextEditingController modelController;
   final bool saving;
+  final _ApiFlavor flavor;
   final VoidCallback onSave;
+  final VoidCallback onHealth;
 
   @override
   Widget build(BuildContext context) {
@@ -352,12 +830,22 @@ class _ApiConfigCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.tune, color: Theme.of(context).colorScheme.secondary),
+              const Icon(Icons.tune_outlined, color: _mint),
               const SizedBox(width: 10),
-              Text('API Configuration', style: Theme.of(context).textTheme.titleMedium),
+              const Expanded(
+                child: Text(
+                  'API Configuration',
+                  style: TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+              ),
+              _Pill(
+                label: _flavorLabel(flavor),
+                icon: flavor == _ApiFlavor.anthropic ? Icons.hub_outlined : Icons.api_outlined,
+                color: flavor == _ApiFlavor.anthropic ? _amber : _cyan,
+              ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           TextField(
             controller: baseUrlController,
             keyboardType: TextInputType.url,
@@ -365,44 +853,55 @@ class _ApiConfigCard extends StatelessWidget {
             decoration: const InputDecoration(
               labelText: 'Base URL',
               hintText: 'https://api.example.com/v1',
-              prefixIcon: Icon(Icons.link),
+              prefixIcon: Icon(Icons.link_outlined),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           TextField(
             controller: apiKeyController,
             obscureText: true,
             textInputAction: TextInputAction.next,
             decoration: const InputDecoration(
               labelText: 'API Key',
-              hintText: 'sk-...',
-              prefixIcon: Icon(Icons.key),
+              hintText: 'sk-... or provider token',
+              prefixIcon: Icon(Icons.key_outlined),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           TextField(
             controller: modelController,
             textInputAction: TextInputAction.done,
             decoration: const InputDecoration(
               labelText: 'Model',
-              hintText: 'gpt-4o-mini',
-              prefixIcon: Icon(Icons.memory),
+              hintText: 'mimo-v2.5-pro, gpt-4o-mini, claude...',
+              prefixIcon: Icon(Icons.memory_outlined),
             ),
           ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: saving ? null : onSave,
-              icon: saving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save_outlined),
-              label: Text(saving ? 'Saving...' : 'Save API Config'),
-            ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: saving ? null : onSave,
+                  icon: saving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(saving ? 'Saving' : 'Save'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onHealth,
+                  icon: const Icon(Icons.monitor_heart_outlined),
+                  label: const Text('Check'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -414,20 +913,22 @@ class _HealthCard extends StatelessWidget {
   const _HealthCard({
     required this.state,
     required this.message,
+    required this.flavor,
     required this.onCheck,
   });
 
   final _HealthState state;
   final String message;
+  final _ApiFlavor flavor;
   final VoidCallback onCheck;
 
   @override
   Widget build(BuildContext context) {
     final color = switch (state) {
-      _HealthState.healthy => Colors.greenAccent,
-      _HealthState.failed => Theme.of(context).colorScheme.error,
-      _HealthState.checking => Theme.of(context).colorScheme.secondary,
-      _HealthState.unknown => Theme.of(context).disabledColor,
+      _HealthState.healthy => _mint,
+      _HealthState.failed => _rose,
+      _HealthState.checking => _amber,
+      _HealthState.unknown => _faint,
     };
     final label = switch (state) {
       _HealthState.healthy => 'Healthy',
@@ -435,36 +936,51 @@ class _HealthCard extends StatelessWidget {
       _HealthState.checking => 'Checking',
       _HealthState.unknown => 'Unknown',
     };
-
     return _Panel(
+      padding: const EdgeInsets.all(14),
       child: Row(
         children: [
           Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color,
+              boxShadow: [BoxShadow(color: color.withOpacity(0.35), blurRadius: 12)],
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Health: $label', style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  'Provider Health - $label',
+                  style: const TextStyle(color: _text, fontWeight: FontWeight.w700, fontSize: 15),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   message,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall,
+                  style: const TextStyle(color: _muted, fontSize: 12),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          OutlinedButton.icon(
-            onPressed: state == _HealthState.checking ? null : onCheck,
-            icon: const Icon(Icons.monitor_heart_outlined),
-            label: const Text('Check'),
+          const SizedBox(width: 10),
+          _Pill(
+            label: _flavorLabel(flavor),
+            icon: Icons.route_outlined,
+            color: flavor == _ApiFlavor.anthropic ? _amber : _cyan,
+          ),
+          const SizedBox(width: 4),
+          Tooltip(
+            message: 'Run health check',
+            child: IconButton(
+              onPressed: state == _HealthState.checking ? null : onCheck,
+              icon: const Icon(Icons.refresh_outlined),
+            ),
           ),
         ],
       ),
@@ -472,82 +988,89 @@ class _HealthCard extends StatelessWidget {
   }
 }
 
-enum _ActionKind { file, projects, chat, snippet }
+class _QuickActionGrid extends StatelessWidget {
+  const _QuickActionGrid({required this.onAction});
 
-class _QuickActionsGrid extends StatelessWidget {
-  const _QuickActionsGrid({required this.onAction});
-
-  final ValueChanged<_ActionKind> onAction;
+  final ValueChanged<_ModuleAction> onAction;
 
   @override
   Widget build(BuildContext context) {
-    final actions = [
-      _ActionItemData(Icons.code, 'New File', _ActionKind.file),
-      _ActionItemData(Icons.folder_outlined, 'Projects', _ActionKind.projects),
-      _ActionItemData(Icons.chat_bubble_outline, 'AI Chat', _ActionKind.chat),
-      _ActionItemData(Icons.add_box_outlined, 'Snippet', _ActionKind.snippet),
+    final actions = const [
+      _QuickAction(Icons.forum_outlined, 'AI Chat', _ModuleAction.aiChat, _mint),
+      _QuickAction(Icons.note_add_outlined, 'New File', _ModuleAction.newFile, _cyan),
+      _QuickAction(Icons.psychology_alt_outlined, 'Deep Dive', _ModuleAction.deepDive, _violet),
+      _QuickAction(Icons.terminal_outlined, 'Terminal', _ModuleAction.terminal, _lime),
+      _QuickAction(Icons.rocket_launch_outlined, 'Build', _ModuleAction.build, _amber),
+      _QuickAction(Icons.data_object_outlined, 'Snippet', _ModuleAction.snippet, _blue),
+      _QuickAction(Icons.folder_open_outlined, 'Projects', _ModuleAction.project, _amber),
+      _QuickAction(Icons.health_and_safety_outlined, 'Guard', _ModuleAction.healthCheck, _rose),
     ];
 
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 4,
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      children: [
-        for (final action in actions)
-          _ActionItem(
-            icon: action.icon,
-            label: action.label,
-            onTap: () => onAction(action.kind),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 680 ? 4 : 2;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: actions.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: columns,
+            childAspectRatio: columns == 2 ? 2.65 : 2.2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
           ),
-      ],
+          itemBuilder: (context, index) {
+            final action = actions[index];
+            return _QuickActionTile(action: action, onTap: () => onAction(action.action));
+          },
+        );
+      },
     );
   }
 }
 
-class _ActionItemData {
-  const _ActionItemData(this.icon, this.label, this.kind);
+class _QuickAction {
+  const _QuickAction(this.icon, this.label, this.action, this.color);
 
   final IconData icon;
   final String label;
-  final _ActionKind kind;
+  final _ModuleAction action;
+  final Color color;
 }
 
-class _ActionItem extends StatelessWidget {
-  const _ActionItem({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
+class _QuickActionTile extends StatelessWidget {
+  const _QuickActionTile({required this.action, required this.onTap});
 
-  final IconData icon;
-  final String label;
+  final _QuickAction action;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(12),
+      color: _panel,
+      borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
         child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Theme.of(context).dividerColor),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _line),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Row(
             children: [
-              Icon(icon, color: Theme.of(context).colorScheme.primary, size: 24),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall,
-                textAlign: TextAlign.center,
+              Icon(action.icon, color: action.color, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  action.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _text, fontWeight: FontWeight.w700),
+                ),
               ),
+              const Icon(Icons.chevron_right_outlined, color: _faint, size: 20),
             ],
           ),
         ),
@@ -556,110 +1079,11 @@ class _ActionItem extends StatelessWidget {
   }
 }
 
-class _ActionSheet extends StatelessWidget {
-  const _ActionSheet({
-    required this.kind,
-    required this.baseUrl,
-    required this.apiKey,
-    required this.model,
-  });
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.title, required this.subtitle});
 
-  final _ActionKind kind;
-  final String baseUrl;
-  final String apiKey;
-  final String model;
-
-  @override
-  Widget build(BuildContext context) {
-    final title = switch (kind) {
-      _ActionKind.file => 'New File',
-      _ActionKind.projects => 'Projects',
-      _ActionKind.chat => 'AI Chat',
-      _ActionKind.snippet => 'New Snippet',
-    };
-    final icon = switch (kind) {
-      _ActionKind.file => Icons.code,
-      _ActionKind.projects => Icons.folder_outlined,
-      _ActionKind.chat => Icons.chat_bubble_outline,
-      _ActionKind.snippet => Icons.add_box_outlined,
-    };
-
-    return SingleChildScrollView(
-      child: Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: Theme.of(context).colorScheme.primary),
-                const SizedBox(width: 10),
-                Text(title, style: Theme.of(context).textTheme.titleLarge),
-              ],
-            ),
-            const SizedBox(height: 16),
-            if (kind == _ActionKind.file) const _NewFileForm(),
-            if (kind == _ActionKind.projects) const _ProjectsPanel(),
-            if (kind == _ActionKind.chat)
-              _ChatPanel(baseUrl: baseUrl, apiKey: apiKey, model: model),
-            if (kind == _ActionKind.snippet) const _SnippetForm(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _NewFileForm extends StatelessWidget {
-  const _NewFileForm();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const TextField(
-          decoration: InputDecoration(
-            labelText: 'File name',
-            hintText: 'lib/screens/example_screen.dart',
-            prefixIcon: Icon(Icons.insert_drive_file_outlined),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const TextField(
-          minLines: 5,
-          maxLines: 8,
-          decoration: InputDecoration(
-            labelText: 'Initial code',
-            hintText: 'Paste or draft code here...',
-            alignLabelWithHint: true,
-          ),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('File draft created locally')),
-              );
-            },
-            child: const Text('Create draft'),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ProjectsPanel extends StatelessWidget {
-  const _ProjectsPanel();
+  final String title;
+  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -667,21 +1091,420 @@ class _ProjectsPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Project actions are ready. Connect a workspace or GitHub repository next.',
-          style: Theme.of(context).textTheme.bodyMedium,
+          title,
+          style: const TextStyle(color: _text, fontSize: 20, fontWeight: FontWeight.w800),
         ),
-        const SizedBox(height: 16),
-        FilledButton.icon(
-          onPressed: () {
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Project picker opened')),
-            );
-          },
-          icon: const Icon(Icons.folder_open_outlined),
-          label: const Text('Open project picker'),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
         ),
       ],
+    );
+  }
+}
+
+class _LayerSelector extends StatelessWidget {
+  const _LayerSelector({
+    required this.layers,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final List<_CapabilityLayer> layers;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 46,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: layers.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final layer = layers[index];
+          final selected = index == selectedIndex;
+          return Tooltip(
+            message: layer.subtitle,
+            child: ChoiceChip(
+              selected: selected,
+              onSelected: (_) => onSelected(index),
+              avatar: Icon(layer.icon, size: 18, color: selected ? _bg : layer.color),
+              label: Text(layer.name),
+              labelStyle: TextStyle(
+                color: selected ? _bg : _text,
+                fontWeight: FontWeight.w700,
+              ),
+              selectedColor: layer.color,
+              backgroundColor: _panel,
+              side: BorderSide(color: selected ? layer.color : _line),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _LayerHeader extends StatelessWidget {
+  const _LayerHeader({required this.layer});
+
+  final _CapabilityLayer layer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _panelSoft,
+        borderRadius: BorderRadius.circular(8),
+        border: Border(left: BorderSide(color: layer.color, width: 4)),
+      ),
+      child: Row(
+        children: [
+          Icon(layer.icon, color: layer.color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  layer.name,
+                  style: const TextStyle(color: _text, fontSize: 17, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  layer.subtitle,
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          _Pill(
+            label: '${layer.serviceCount} services',
+            icon: Icons.storage_outlined,
+            color: layer.color,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CapabilityCard extends StatelessWidget {
+  const _CapabilityCard({
+    required this.capability,
+    required this.layerColor,
+    required this.onRun,
+    required this.onInspect,
+  });
+
+  final _Capability capability;
+  final Color layerColor;
+  final VoidCallback onRun;
+  final VoidCallback onInspect;
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = _statusColor(capability.status);
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: layerColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: layerColor.withOpacity(0.4)),
+                ),
+                child: Icon(capability.icon, color: layerColor),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      capability.title,
+                      style: const TextStyle(color: _text, fontSize: 16, fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      capability.subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+              _StatusPill(status: capability.status, color: statusColor),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final service in capability.services.take(3))
+                _MiniChip(label: service, color: layerColor),
+              if (capability.services.length > 3)
+                _MiniChip(label: '+${capability.services.length - 3}', color: _faint),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onRun,
+                  icon: const Icon(Icons.play_arrow_outlined),
+                  label: const Text('Open'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              IconButton.outlined(
+                tooltip: 'Inspect services',
+                onPressed: onInspect,
+                icon: const Icon(Icons.manage_search_outlined),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OperationsBoard extends StatelessWidget {
+  const _OperationsBoard({
+    required this.activity,
+    required this.drafts,
+    required this.snippets,
+    required this.healthState,
+    required this.layerCount,
+    required this.serviceCount,
+  });
+
+  final List<_ActivityLog> activity;
+  final List<_DraftFile> drafts;
+  final List<_SnippetDraft> snippets;
+  final _HealthState healthState;
+  final int layerCount;
+  final int serviceCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(
+          title: 'Operations Board',
+          subtitle: 'The working surface keeps local drafts, snippets, health, and recent module actions visible.',
+        ),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final columns = constraints.maxWidth >= 680 ? 4 : 2;
+            return GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: columns,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: 1.85,
+              children: [
+                _MetricCard(label: 'Layers', value: '$layerCount', icon: Icons.account_tree_outlined, color: _mint),
+                _MetricCard(label: 'Services', value: '$serviceCount', icon: Icons.storage_outlined, color: _cyan),
+                _MetricCard(label: 'Drafts', value: '${drafts.length}', icon: Icons.note_add_outlined, color: _amber),
+                _MetricCard(label: 'Snippets', value: '${snippets.length}', icon: Icons.data_object_outlined, color: _lime),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        _Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.history_outlined, color: _mint),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Recent Activity',
+                      style: TextStyle(color: _text, fontWeight: FontWeight.w800, fontSize: 16),
+                    ),
+                  ),
+                  _StatusPill(status: _healthToStatus(healthState), color: _healthColor(healthState)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              for (final item in activity.take(6)) _ActivityRow(item: item),
+            ],
+          ),
+        ),
+        if (drafts.isNotEmpty || snippets.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Local Work Items',
+                  style: TextStyle(color: _text, fontWeight: FontWeight.w800, fontSize: 16),
+                ),
+                const SizedBox(height: 10),
+                for (final draft in drafts.take(3))
+                  _WorkItemRow(icon: Icons.description_outlined, title: draft.name, detail: draft.language, color: _cyan),
+                for (final snippet in snippets.take(3))
+                  _WorkItemRow(icon: Icons.data_object_outlined, title: snippet.title, detail: snippet.language, color: _lime),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 22),
+          const Spacer(),
+          Text(value, style: const TextStyle(color: _text, fontSize: 22, fontWeight: FontWeight.w800)),
+          Text(label, style: const TextStyle(color: _muted, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActivityRow extends StatelessWidget {
+  const _ActivityRow({required this.item});
+
+  final _ActivityLog item;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(item.icon, color: item.color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.title, style: const TextStyle(color: _text, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(
+                  item.detail,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Text(_timeLabel(item.time), style: const TextStyle(color: _faint, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkItemRow extends StatelessWidget {
+  const _WorkItemRow({
+    required this.icon,
+    required this.title,
+    required this.detail,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final String detail;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 9),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _text, fontWeight: FontWeight.w700),
+            ),
+          ),
+          Text(detail, style: const TextStyle(color: _muted, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
+class _BottomNav extends StatelessWidget {
+  const _BottomNav({required this.tab, required this.onChanged});
+
+  final _HomeTab tab;
+  final ValueChanged<_HomeTab> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: _panel,
+        border: Border(top: BorderSide(color: _line)),
+      ),
+      child: NavigationBar(
+        selectedIndex: tab.index,
+        onDestinationSelected: (index) => onChanged(_HomeTab.values[index]),
+        backgroundColor: _panel,
+        indicatorColor: _mint.withOpacity(0.16),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Control'),
+          NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome), label: 'AI'),
+          NavigationDestination(icon: Icon(Icons.rocket_launch_outlined), selectedIcon: Icon(Icons.rocket_launch), label: 'Ship'),
+          NavigationDestination(icon: Icon(Icons.security_outlined), selectedIcon: Icon(Icons.security), label: 'Guard'),
+          NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Insight'),
+        ],
+      ),
     );
   }
 }
@@ -691,11 +1514,13 @@ class _ChatPanel extends StatefulWidget {
     required this.baseUrl,
     required this.apiKey,
     required this.model,
+    required this.onLog,
   });
 
   final String baseUrl;
   final String apiKey;
   final String model;
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
 
   @override
   State<_ChatPanel> createState() => _ChatPanelState();
@@ -703,7 +1528,6 @@ class _ChatPanel extends StatefulWidget {
 
 class _ChatPanelState extends State<_ChatPanel> {
   final _promptController = TextEditingController();
-
   bool _sending = false;
   String? _answer;
   String? _error;
@@ -743,10 +1567,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         if (flavor == _ApiFlavor.anthropic) {
           request.headers.set('x-api-key', widget.apiKey);
         }
-        request.headers.set(
-          HttpHeaders.authorizationHeader,
-          'Bearer ${widget.apiKey}',
-        );
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
       }
       request.write(jsonEncode(_requestBody(flavor, prompt)));
 
@@ -755,18 +1576,19 @@ class _ChatPanelState extends State<_ChatPanel> {
       if (!mounted) return;
 
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        setState(() {
-          _error = 'HTTP ${response.statusCode}: ${_compact(body)}';
-        });
+        setState(() => _error = 'HTTP ${response.statusCode}: ${_compact(body)}');
+        widget.onLog('AI request failed', 'HTTP ${response.statusCode}', Icons.error_outline, _rose);
         return;
       }
 
-      setState(() {
-        _answer = _extractAssistantText(body);
-      });
+      final answer = _extractAssistantText(body);
+      setState(() => _answer = answer);
+      widget.onLog('AI response received', '${_flavorLabel(flavor)} - ${widget.model}', Icons.forum_outlined, _mint);
     } on Object catch (error) {
       if (!mounted) return;
-      setState(() => _error = error.toString().replaceFirst('Exception: ', ''));
+      final message = error.toString().replaceFirst('Exception: ', '');
+      setState(() => _error = message);
+      widget.onLog('AI request error', _compact(message, limit: 140), Icons.error_outline, _rose);
     } finally {
       client.close(force: true);
       if (mounted) {
@@ -808,14 +1630,10 @@ class _ChatPanelState extends State<_ChatPanel> {
             final message = first['message'];
             if (message is Map<String, dynamic>) {
               final content = message['content'];
-              if (content is String && content.trim().isNotEmpty) {
-                return content.trim();
-              }
+              if (content is String && content.trim().isNotEmpty) return content.trim();
             }
             final text = first['text'];
-            if (text is String && text.trim().isNotEmpty) {
-              return text.trim();
-            }
+            if (text is String && text.trim().isNotEmpty) return text.trim();
           }
         }
         final content = decoded['content'];
@@ -824,24 +1642,16 @@ class _ChatPanelState extends State<_ChatPanel> {
           for (final item in content) {
             if (item is Map<String, dynamic>) {
               final text = item['text'];
-              if (text is String && text.trim().isNotEmpty) {
-                parts.add(text.trim());
-              }
+              if (text is String && text.trim().isNotEmpty) parts.add(text.trim());
             }
           }
           if (parts.isNotEmpty) return parts.join('\n\n');
         }
       }
     } catch (_) {
-      // Fall through and show the raw body.
+      // Show raw body when the provider returns a non-standard response.
     }
     return _compact(body);
-  }
-
-  String _compact(String value) {
-    final trimmed = value.trim();
-    if (trimmed.length <= 800) return trimmed;
-    return '${trimmed.substring(0, 800)}...';
   }
 
   void _showMessage(String message) {
@@ -851,133 +1661,115 @@ class _ChatPanelState extends State<_ChatPanel> {
   @override
   Widget build(BuildContext context) {
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        TextField(
-          controller: _promptController,
-          minLines: 4,
-          maxLines: 8,
-          decoration: InputDecoration(
-            labelText: 'Prompt',
-            hintText: 'Ask MobileCode to explain, edit, or generate code...',
-            helperText:
-                'Endpoint: ${_chatEndpointLabel(widget.baseUrl, flavor)} - Model: ${widget.model.isEmpty ? 'default' : widget.model}',
-            alignLabelWithHint: true,
-          ),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: _sending ? null : _send,
-            icon: _sending
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.send_outlined),
-            label: Text(_sending ? 'Sending...' : 'Send to AI'),
-          ),
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: 16),
-          Text(
-            _error!,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.error,
-                ),
-          ),
-        ],
-        if (_answer != null) ...[
-          const SizedBox(height: 16),
-          _Panel(
-            child: SelectableText(
-              _answer!,
-              style: Theme.of(context).textTheme.bodyMedium,
+    return _SheetScaffold(
+      icon: Icons.forum_outlined,
+      title: 'AI Chat',
+      subtitle: _chatEndpointLabel(widget.baseUrl, flavor),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _promptController,
+            minLines: 4,
+            maxLines: 8,
+            decoration: InputDecoration(
+              labelText: 'Prompt',
+              hintText: 'Ask MobileCode to explain, edit, or generate code...',
+              helperText: '${_flavorLabel(flavor)} - ${widget.model.isEmpty ? 'default model' : widget.model}',
+              alignLabelWithHint: true,
             ),
           ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _sending ? null : _send,
+              icon: _sending
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.send_outlined),
+              label: Text(_sending ? 'Sending' : 'Send to AI'),
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 14),
+            Text(
+              _error!,
+              style: const TextStyle(color: _rose, fontSize: 12, height: 1.35),
+            ),
+          ],
+          if (_answer != null) ...[
+            const SizedBox(height: 14),
+            _Panel(
+              child: SelectableText(
+                _answer!,
+                style: const TextStyle(color: _text, fontSize: 14, height: 1.45),
+              ),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
 
-class _SnippetForm extends StatelessWidget {
-  const _SnippetForm();
+class _DraftSheet extends StatefulWidget {
+  const _DraftSheet({required this.onCreate});
+
+  final void Function(String name, String language) onCreate;
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        const TextField(
-          decoration: InputDecoration(
-            labelText: 'Snippet title',
-            hintText: 'API client helper',
-            prefixIcon: Icon(Icons.label_outline),
-          ),
-        ),
-        const SizedBox(height: 12),
-        const TextField(
-          minLines: 5,
-          maxLines: 8,
-          decoration: InputDecoration(
-            labelText: 'Code snippet',
-            hintText: 'Save reusable code here...',
-            alignLabelWithHint: true,
-          ),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Snippet saved locally')),
-              );
-            },
-            child: const Text('Save snippet'),
-          ),
-        ),
-      ],
-    );
-  }
+  State<_DraftSheet> createState() => _DraftSheetState();
 }
 
-class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title});
-
-  final String title;
+class _DraftSheetState extends State<_DraftSheet> {
+  final _name = TextEditingController(text: 'lib/screens/new_feature.dart');
+  final _language = TextEditingController(text: 'Dart');
+  final _content = TextEditingController();
 
   @override
-  Widget build(BuildContext context) {
-    return Text(title, style: Theme.of(context).textTheme.titleMedium);
+  void dispose() {
+    _name.dispose();
+    _language.dispose();
+    _content.dispose();
+    super.dispose();
   }
-}
-
-class _WorkspaceSummary extends StatelessWidget {
-  const _WorkspaceSummary();
 
   @override
   Widget build(BuildContext context) {
-    return _Panel(
-      child: Row(
+    return _SheetScaffold(
+      icon: Icons.note_add_outlined,
+      title: 'New File Draft',
+      subtitle: 'Create a local draft from the editor controller surface.',
+      child: Column(
         children: [
-          Icon(Icons.folder_open_outlined, size: 42, color: Theme.of(context).disabledColor),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('No project selected', style: Theme.of(context).textTheme.bodyMedium),
-                const SizedBox(height: 4),
-                Text(
-                  'Use Projects to connect a repository or local workspace.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
+          TextField(
+            controller: _name,
+            decoration: const InputDecoration(labelText: 'File path', prefixIcon: Icon(Icons.description_outlined)),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _language,
+            decoration: const InputDecoration(labelText: 'Language', prefixIcon: Icon(Icons.code_outlined)),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _content,
+            minLines: 5,
+            maxLines: 8,
+            decoration: const InputDecoration(labelText: 'Initial content', alignLabelWithHint: true),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                final name = _name.text.trim().isEmpty ? 'untitled.dart' : _name.text.trim();
+                final language = _language.text.trim().isEmpty ? 'Text' : _language.text.trim();
+                widget.onCreate(name, language);
+                Navigator.pop(context);
+              },
+              icon: const Icon(Icons.add_outlined),
+              label: const Text('Create draft'),
             ),
           ),
         ],
@@ -986,29 +1778,260 @@ class _WorkspaceSummary extends StatelessWidget {
   }
 }
 
-class _RecentSnippetsPlaceholder extends StatelessWidget {
-  const _RecentSnippetsPlaceholder();
+class _SnippetSheet extends StatefulWidget {
+  const _SnippetSheet({required this.onCreate});
+
+  final void Function(String title, String language) onCreate;
+
+  @override
+  State<_SnippetSheet> createState() => _SnippetSheetState();
+}
+
+class _SnippetSheetState extends State<_SnippetSheet> {
+  final _title = TextEditingController(text: 'API client helper');
+  final _language = TextEditingController(text: 'Dart');
+  final _code = TextEditingController();
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _language.dispose();
+    _code.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return _Panel(
-      child: Row(
+    return _SheetScaffold(
+      icon: Icons.data_object_outlined,
+      title: 'Snippet Capture',
+      subtitle: 'Save reusable code into the snippet surface.',
+      child: Column(
         children: [
-          Icon(Icons.code_off_outlined, size: 42, color: Theme.of(context).disabledColor),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('No snippets yet', style: Theme.of(context).textTheme.bodyMedium),
-                const SizedBox(height: 4),
-                Text(
-                  'Tap Snippet to save reusable code.',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ],
+          TextField(
+            controller: _title,
+            decoration: const InputDecoration(labelText: 'Title', prefixIcon: Icon(Icons.label_outline)),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _language,
+            decoration: const InputDecoration(labelText: 'Language', prefixIcon: Icon(Icons.code_outlined)),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _code,
+            minLines: 5,
+            maxLines: 8,
+            decoration: const InputDecoration(labelText: 'Code', alignLabelWithHint: true),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                final title = _title.text.trim().isEmpty ? 'Untitled snippet' : _title.text.trim();
+                final language = _language.text.trim().isEmpty ? 'Text' : _language.text.trim();
+                widget.onCreate(title, language);
+                Navigator.pop(context);
+              },
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('Save snippet'),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionConsoleSheet extends StatelessWidget {
+  const _ActionConsoleSheet({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.actions,
+    required this.buttonLabel,
+    required this.onRun,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final List<String> actions;
+  final String buttonLabel;
+  final VoidCallback onRun;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final action in actions)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.check_circle_outline, color: _mint, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(action, style: const TextStyle(color: _text, height: 1.35)),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () {
+                onRun();
+                Navigator.pop(context);
+              },
+              icon: const Icon(Icons.play_arrow_outlined),
+              label: Text(buttonLabel),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CapabilitySheet extends StatelessWidget {
+  const _CapabilitySheet({
+    required this.capability,
+    required this.onRun,
+    required this.onCopy,
+  });
+
+  final _Capability capability;
+  final VoidCallback onRun;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: capability.icon,
+      title: capability.title,
+      subtitle: capability.surface,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(capability.subtitle, style: const TextStyle(color: _muted, height: 1.4)),
+          const SizedBox(height: 16),
+          const Text('Backend services', style: TextStyle(color: _text, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final service in capability.services) _MiniChip(label: service, color: _cyan),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const Text('Frontend actions', style: TextStyle(color: _text, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          for (final action in capability.actions)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.arrow_right_alt_outlined, color: _mint, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(action, style: const TextStyle(color: _muted))),
+                ],
+              ),
+            ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onRun,
+                  icon: const Icon(Icons.play_arrow_outlined),
+                  label: const Text('Open module'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              IconButton.outlined(
+                tooltip: 'Copy service list',
+                onPressed: onCopy,
+                icon: const Icon(Icons.copy_outlined),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SheetScaffold extends StatelessWidget {
+  const _SheetScaffold({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.only(
+        left: 18,
+        right: 18,
+        top: 16,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 44,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _line,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Icon(icon, color: _mint),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(color: _text, fontSize: 20, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _muted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          child,
         ],
       ),
     );
@@ -1016,21 +2039,479 @@ class _RecentSnippetsPlaceholder extends StatelessWidget {
 }
 
 class _Panel extends StatelessWidget {
-  const _Panel({required this.child});
+  const _Panel({
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+  });
 
   final Widget child;
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(18),
+      padding: padding,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).dividerColor),
+        color: _panel,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _line),
       ),
       child: child,
     );
   }
 }
+
+class _Pill extends StatelessWidget {
+  const _Pill({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 14),
+          const SizedBox(width: 5),
+          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniChip extends StatelessWidget {
+  const _MiniChip({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.26)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.status, required this.color});
+
+  final _CapabilityStatus status;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Pill(label: _statusLabel(status), icon: _statusIcon(status), color: color);
+  }
+}
+
+String _flavorLabel(_ApiFlavor flavor) {
+  return switch (flavor) {
+    _ApiFlavor.anthropic => 'Anthropic',
+    _ApiFlavor.openAi => 'OpenAI',
+  };
+}
+
+String _statusLabel(_CapabilityStatus status) {
+  return switch (status) {
+    _CapabilityStatus.ready => 'Ready',
+    _CapabilityStatus.needsConfig => 'Config',
+    _CapabilityStatus.local => 'Local',
+    _CapabilityStatus.preview => 'Preview',
+  };
+}
+
+IconData _statusIcon(_CapabilityStatus status) {
+  return switch (status) {
+    _CapabilityStatus.ready => Icons.check_circle_outline,
+    _CapabilityStatus.needsConfig => Icons.tune_outlined,
+    _CapabilityStatus.local => Icons.offline_bolt_outlined,
+    _CapabilityStatus.preview => Icons.visibility_outlined,
+  };
+}
+
+Color _statusColor(_CapabilityStatus status) {
+  return switch (status) {
+    _CapabilityStatus.ready => _mint,
+    _CapabilityStatus.needsConfig => _amber,
+    _CapabilityStatus.local => _lime,
+    _CapabilityStatus.preview => _cyan,
+  };
+}
+
+_CapabilityStatus _healthToStatus(_HealthState health) {
+  return switch (health) {
+    _HealthState.healthy => _CapabilityStatus.ready,
+    _HealthState.failed => _CapabilityStatus.needsConfig,
+    _HealthState.checking => _CapabilityStatus.preview,
+    _HealthState.unknown => _CapabilityStatus.preview,
+  };
+}
+
+Color _healthColor(_HealthState health) {
+  return switch (health) {
+    _HealthState.healthy => _mint,
+    _HealthState.failed => _rose,
+    _HealthState.checking => _amber,
+    _HealthState.unknown => _cyan,
+  };
+}
+
+String _timeLabel(DateTime time) {
+  final diff = DateTime.now().difference(time);
+  if (diff.inSeconds < 60) return '${diff.inSeconds}s';
+  if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+  return '${diff.inHours}h';
+}
+
+final List<_CapabilityLayer> _capabilityLayers = [
+  _CapabilityLayer(
+    name: 'AI Core',
+    subtitle: 'Model gateway, multimodal input, local AI, API operations, and prompt templates.',
+    icon: Icons.auto_awesome_outlined,
+    color: _mint,
+    capabilities: [
+      _Capability(
+        title: 'LLM Gateway',
+        subtitle: 'Chat, complete, explain, fix, streaming responses, and context-aware prompts.',
+        icon: Icons.forum_outlined,
+        status: _CapabilityStatus.needsConfig,
+        services: ['llm_service.dart', 'api_service.dart', 'coding_prompts.dart', 'context_injector.dart'],
+        actions: ['Send real chat request', 'Switch OpenAI or Anthropic-compatible routes', 'Use coding prompt modes'],
+        primaryAction: _ModuleAction.aiChat,
+        surface: 'AI Chat sheet and provider health panel',
+      ),
+      _Capability(
+        title: 'Multimodal Studio',
+        subtitle: 'Screenshot, image, voice, and text input grouped for mobile coding tasks.',
+        icon: Icons.image_search_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['multimodal_llm_service.dart', 'screenshot_to_code_service.dart', 'voice_service.dart'],
+        actions: ['Capture screenshot to code', 'Attach voice command', 'Inspect generated Flutter output'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+      _Capability(
+        title: 'API Operations',
+        subtitle: 'Multiple keys, provider priority, usage, quota alerts, and fallback planning.',
+        icon: Icons.route_outlined,
+        status: _CapabilityStatus.ready,
+        services: ['api_manager_service.dart', 'api_usage_service.dart', 'secure_storage_service.dart'],
+        actions: ['Save provider profile', 'Run health probe', 'Track token usage and budgets'],
+        primaryAction: _ModuleAction.apiConfig,
+      ),
+      _Capability(
+        title: 'Local AI',
+        subtitle: 'On-device inference surface for offline or privacy-sensitive coding workflows.',
+        icon: Icons.memory_outlined,
+        status: _CapabilityStatus.local,
+        services: ['local_ai_service.dart', 'offline_manager.dart', 'device_perf_service.dart'],
+        actions: ['Inspect device readiness', 'Prefer local model when offline', 'Monitor memory and heat limits'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+    ],
+  ),
+  _CapabilityLayer(
+    name: 'Agents',
+    subtitle: 'Supervisor-worker orchestration, ReAct actions, Deep Dive Solo, and self-use automation.',
+    icon: Icons.psychology_alt_outlined,
+    color: _violet,
+    capabilities: [
+      _Capability(
+        title: 'Supervisor Agents',
+        subtitle: 'Dynamic expert routing for coding, planning, debugging, review, and release tasks.',
+        icon: Icons.account_tree_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['agent_orchestrator.dart', 'agent_action_system.dart', 'coding_prompts.dart'],
+        actions: ['Plan task decomposition', 'Track action and observation loop', 'Route to expert worker'],
+        primaryAction: _ModuleAction.deepDive,
+      ),
+      _Capability(
+        title: 'Deep Dive Solo',
+        subtitle: 'Background task queue with progress, isolate execution, and resumable task history.',
+        icon: Icons.all_inclusive_outlined,
+        status: _CapabilityStatus.ready,
+        services: ['deep_dive_service.dart', 'deep_dive_task_manager.dart', 'foreground_service.dart'],
+        actions: ['Queue long-running coding task', 'Watch progress', 'Resume task history'],
+        primaryAction: _ModuleAction.deepDive,
+      ),
+      _Capability(
+        title: 'Self-Use Actions',
+        subtitle: 'App-level action registry for navigation, file, editor, terminal, and workflow automation.',
+        icon: Icons.touch_app_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['self_invocation_service.dart', 'self_action_registry.dart', 'navigation_controller.dart'],
+        actions: ['Inspect 52 registered actions', 'Trigger UI-aware workflow', 'Audit action metadata'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+    ],
+  ),
+  _CapabilityLayer(
+    name: 'Code',
+    subtitle: 'Editor, LSP-like controls, code index, context injection, similarity, snippets, and terminal.',
+    icon: Icons.code_outlined,
+    color: _cyan,
+    capabilities: [
+      _Capability(
+        title: 'Mobile Editor',
+        subtitle: 'Tabs, syntax styling, search, replace, AI assists, and file draft entry points.',
+        icon: Icons.edit_note_outlined,
+        status: _CapabilityStatus.ready,
+        services: ['editor_controller.dart', 'storage_service.dart', 'file_item.dart'],
+        actions: ['Create file draft', 'Open code editing surface', 'Prepare AI context for current file'],
+        primaryAction: _ModuleAction.newFile,
+      ),
+      _Capability(
+        title: 'Code Intelligence',
+        subtitle: 'SQLite FTS index, keyword extraction, context injection, and similarity analysis.',
+        icon: Icons.manage_search_outlined,
+        status: _CapabilityStatus.local,
+        services: ['code_index_service.dart', 'context_injector.dart', 'code_similarity_service.dart'],
+        actions: ['Index project files', 'Retrieve relevant context', 'Compare snippets by AST features'],
+        primaryAction: _ModuleAction.project,
+      ),
+      _Capability(
+        title: 'Snippets',
+        subtitle: 'Capture reusable fragments and surface them beside projects, editor, and AI prompts.',
+        icon: Icons.data_object_outlined,
+        status: _CapabilityStatus.ready,
+        services: ['snippet_provider.dart', 'storage_service.dart', 'sync_queue_service.dart'],
+        actions: ['Save snippet', 'Prepare quick paste', 'Queue offline sync'],
+        primaryAction: _ModuleAction.snippet,
+      ),
+      _Capability(
+        title: 'Terminal',
+        subtitle: 'Local shell state, command history, autocomplete, and streaming output surfaces.',
+        icon: Icons.terminal_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['terminal_service.dart', 'terminal_controller.dart', 'terminal_provider.dart'],
+        actions: ['Prepare command session', 'Inspect output stream', 'Bridge to SSH or Termux'],
+        primaryAction: _ModuleAction.terminal,
+      ),
+    ],
+  ),
+  _CapabilityLayer(
+    name: 'Remote',
+    subtitle: 'SSH, Termux, build orchestration, previews, GitHub, Gist, Pages, and WeChat publishing.',
+    icon: Icons.cloud_sync_outlined,
+    color: _amber,
+    capabilities: [
+      _Capability(
+        title: 'Remote Dev',
+        subtitle: 'SSH, SFTP, port forwarding, Termux commands, and mobile Linux workflows.',
+        icon: Icons.dns_outlined,
+        status: _CapabilityStatus.needsConfig,
+        services: ['ssh_service.dart', 'termux_service.dart', 'ssh_provider.dart'],
+        actions: ['Attach host', 'Run remote command', 'Sync files through SFTP'],
+        primaryAction: _ModuleAction.terminal,
+      ),
+      _Capability(
+        title: 'Build Orchestrator',
+        subtitle: 'APK, preview, static deploy, and mobile packaging command center.',
+        icon: Icons.rocket_launch_outlined,
+        status: _CapabilityStatus.ready,
+        services: ['build_orchestrator.dart', 'preview_service.dart', 'termux_service.dart'],
+        actions: ['Stage APK build', 'Inspect preview surface', 'Track release progress'],
+        primaryAction: _ModuleAction.build,
+      ),
+      _Capability(
+        title: 'GitHub Deep Work',
+        subtitle: 'Repository browsing, issue/PR surfaces, Gists, Pages deploy, cache, and analytics.',
+        icon: Icons.account_tree_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['github_service.dart', 'github_deep_service.dart', 'github_gist_service.dart', 'github_pages_service.dart', 'github_cache_service.dart'],
+        actions: ['Browse repo', 'Analyze PR or issue', 'Publish Gist or Pages site'],
+        primaryAction: _ModuleAction.project,
+      ),
+      _Capability(
+        title: 'WeChat Publish',
+        subtitle: 'Mini-program upload and release pipeline surfaced beside GitHub and build flows.',
+        icon: Icons.send_to_mobile_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['wechat_publish_service.dart', 'build_orchestrator.dart', 'logger_service.dart'],
+        actions: ['Prepare upload', 'Validate project metadata', 'Track publish log'],
+        primaryAction: _ModuleAction.build,
+      ),
+    ],
+  ),
+  _CapabilityLayer(
+    name: 'Guard',
+    subtitle: 'Secure storage, biometrics, local database, offline sync, crash recovery, and HTTP policies.',
+    icon: Icons.security_outlined,
+    color: _rose,
+    capabilities: [
+      _Capability(
+        title: 'Credential Vault',
+        subtitle: 'AES storage, Android Keystore or iOS Keychain, biometrics, and key masking.',
+        icon: Icons.lock_outline,
+        status: _CapabilityStatus.ready,
+        services: ['secure_storage_service.dart', 'biometric_service.dart', 'api_manager_service.dart'],
+        actions: ['Protect API keys', 'Enable biometric unlock', 'Audit provider secrets'],
+        primaryAction: _ModuleAction.apiConfig,
+      ),
+      _Capability(
+        title: 'Offline First',
+        subtitle: 'SQLite database, file storage, sync queue, conflict handling, and offline mode.',
+        icon: Icons.offline_bolt_outlined,
+        status: _CapabilityStatus.local,
+        services: ['local_database_service.dart', 'storage_service.dart', 'sync_queue_service.dart', 'offline_manager.dart'],
+        actions: ['Queue offline changes', 'Inspect conflict policy', 'Resume sync when network returns'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+      _Capability(
+        title: 'Recovery and Scan',
+        subtitle: 'Crash recovery, structured logs, binary analysis, and security scan surfaces.',
+        icon: Icons.health_and_safety_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['crash_recovery_service.dart', 'logger_service.dart', 'binary_analysis_service.dart'],
+        actions: ['Inspect crash snapshot', 'Analyze APK or IPA', 'View structured logs'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+    ],
+  ),
+  _CapabilityLayer(
+    name: 'Analytics',
+    subtitle: 'Projects, memory, habits, feedback learning, API usage, and binary analysis.',
+    icon: Icons.insights_outlined,
+    color: _blue,
+    capabilities: [
+      _Capability(
+        title: 'Project Brain',
+        subtitle: 'Project creation, import, export, learning, knowledge generation, and stats.',
+        icon: Icons.folder_special_outlined,
+        status: _CapabilityStatus.ready,
+        services: ['project_manager.dart', 'project_learning_service.dart', 'memory_service.dart'],
+        actions: ['Create or import project', 'Learn project knowledge', 'Feed memory into prompts'],
+        primaryAction: _ModuleAction.project,
+      ),
+      _Capability(
+        title: 'Usage and Cost',
+        subtitle: 'Token usage, quota, costs, projections, and provider alerts.',
+        icon: Icons.query_stats_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['api_usage_service.dart', 'api_manager_service.dart', 'feedback_learning_service.dart'],
+        actions: ['Inspect usage projection', 'Set quota warning', 'Learn from answer feedback'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+      _Capability(
+        title: 'Coding Habits',
+        subtitle: 'Activity tracking, habits, achievements, and personal rhythm analytics.',
+        icon: Icons.timeline_outlined,
+        status: _CapabilityStatus.local,
+        services: ['habit_service.dart', 'vibing_activity_service.dart', 'memory_service.dart'],
+        actions: ['Track coding time', 'View habit summary', 'Generate improvement suggestions'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+    ],
+  ),
+  _CapabilityLayer(
+    name: 'Tools',
+    subtitle: 'Voice, screenshot-to-code, skill manager, remote skills, feature flags, logs, and notifications.',
+    icon: Icons.construction_outlined,
+    color: _lime,
+    capabilities: [
+      _Capability(
+        title: 'Capture Tools',
+        subtitle: 'Voice commands and screenshot-to-code flows for mobile-first AI coding.',
+        icon: Icons.center_focus_strong_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['voice_service.dart', 'screenshot_to_code_service.dart', 'multimodal_llm_service.dart'],
+        actions: ['Capture voice task', 'Convert screenshot to Flutter', 'Send multimodal prompt'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+      _Capability(
+        title: 'MCP and Skills',
+        subtitle: 'Local and remote skill packages with import, metadata, and execution surfaces.',
+        icon: Icons.extension_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['skill_manager_service.dart', 'remote_skill_service.dart', 'self_action_registry.dart'],
+        actions: ['Import skill from GitHub', 'Inspect tool metadata', 'Bind skill to agent action'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+      _Capability(
+        title: 'Runtime Controls',
+        subtitle: 'Feature flags, structured logger, notifications, and navigation state.',
+        icon: Icons.tune_outlined,
+        status: _CapabilityStatus.ready,
+        services: ['feature_flags_service.dart', 'notification_manager.dart', 'navigation_controller.dart', 'logger_service.dart'],
+        actions: ['Toggle rollout flag', 'Inspect notification queue', 'Audit navigation events'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+    ],
+  ),
+  _CapabilityLayer(
+    name: 'Performance',
+    subtitle: 'FPS, haptics, device performance, performance modes, memory, and activity stats.',
+    icon: Icons.speed_outlined,
+    color: _cyan,
+    capabilities: [
+      _Capability(
+        title: 'Device Performance',
+        subtitle: 'FPS tracking, CPU, memory, temperature, and adaptive performance modes.',
+        icon: Icons.speed_outlined,
+        status: _CapabilityStatus.local,
+        services: ['fps_tracker.dart', 'device_perf_service.dart', 'performance_mode_service.dart'],
+        actions: ['Watch frame budget', 'Switch performance mode', 'Inspect device pressure'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+      _Capability(
+        title: 'Interaction Engine',
+        subtitle: 'Haptics, animation timing, and activity feedback for mobile coding flows.',
+        icon: Icons.vibration_outlined,
+        status: _CapabilityStatus.ready,
+        services: ['haptic_feedback_service.dart', 'vibing_activity_service.dart', 'performance_provider.dart'],
+        actions: ['Trigger haptic profile', 'Track activity streak', 'Tune interaction density'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+    ],
+  ),
+  _CapabilityLayer(
+    name: 'Team',
+    subtitle: 'Team members, shared knowledge, collaboration surfaces, and foreground execution.',
+    icon: Icons.groups_outlined,
+    color: _amber,
+    capabilities: [
+      _Capability(
+        title: 'Team Hub',
+        subtitle: 'Members, permissions, shared projects, knowledge, and collaborative task views.',
+        icon: Icons.groups_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['team_service.dart', 'team_provider.dart', 'team_knowledge_screen.dart'],
+        actions: ['Inspect members', 'Share project knowledge', 'Prepare collaboration backend endpoint'],
+        primaryAction: _ModuleAction.inspect,
+      ),
+      _Capability(
+        title: 'Foreground Runs',
+        subtitle: 'Keep Deep Dive and long-running build tasks visible during background execution.',
+        icon: Icons.notifications_active_outlined,
+        status: _CapabilityStatus.preview,
+        services: ['foreground_service.dart', 'notification_manager.dart', 'deep_dive_task_manager.dart'],
+        actions: ['Publish progress notification', 'Keep background task alive', 'Resume from notification tap'],
+        primaryAction: _ModuleAction.deepDive,
+      ),
+    ],
+  ),
+];

@@ -40,6 +40,24 @@ jobs:
           rm -rf android
           flutter create --platforms=android --project-name mobile_agent --org com.mobilecode .
           sed -i 's/android:label="mobile_agent"/android:label="MobileCode"/' android/app/src/main/AndroidManifest.xml
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          text = manifest.read_text()
+          text = text.replace(
+              '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+              '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
+              '    <uses-permission android:name="android.permission.INTERNET" />',
+              1,
+          )
+          text = text.replace(
+              '<application',
+              '<application\n        android:usesCleartextTraffic="true"',
+              1,
+          )
+          manifest.write_text(text)
+          PY
 
       - name: Resolve Flutter dependencies
         working-directory: mobile_agent

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MobileCode GitHub Test</title>
+  <style>
+    :root { color-scheme: dark; --bg:#05070c; --panel:#101522; --line:#293049; --text:#f0f3fa; --muted:#9ea6bd; --mint:#7af2c7; --rose:#ff6e87; --amber:#ffc66b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 18px; }
+    main { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: clamp(32px, 10vw, 58px); margin: 18px 0 8px; letter-spacing: 0; }
+    p { color: var(--muted); line-height: 1.5; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin: 14px 0; }
+    label { display: block; color: var(--muted); font-weight: 800; font-size: 12px; margin: 12px 0 6px; }
+    input { width: 100%; border: 1px solid var(--line); border-radius: 8px; background: #151a2a; color: var(--text); padding: 13px; font-size: 16px; }
+    button, a.button { display:inline-flex; align-items:center; justify-content:center; gap:8px; border: 1px solid var(--line); border-radius: 8px; background: #151a2a; color: var(--text); padding: 12px 14px; font-weight: 900; text-decoration:none; }
+    button.primary { background: #8b5cf6; border-color: transparent; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); line-height: 1.45; }
+    .ok { color: var(--mint); font-weight: 900; }
+    .bad { color: var(--rose); font-weight: 900; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>GitHub Connection Test</h1>
+    <p>Paste a fine-grained or classic GitHub token. The token stays in this browser tab and is only sent to api.github.com.</p>
+    <section class="panel">
+      <label for="token">GitHub token</label>
+      <input id="token" type="password" autocomplete="off" placeholder="ghp_..., github_pat_..., or fine-grained token">
+      <label for="repo">Repository</label>
+      <input id="repo" value="Harzva/mobilecode">
+      <div class="row">
+        <button class="primary" id="test">Run GitHub test</button>
+        <a class="button" href="../demo/2048/">Open 2048</a>
+        <a class="button" href="../">Demo Lab</a>
+      </div>
+    </section>
+    <section class="panel">
+      <strong>Result</strong>
+      <pre id="out">Not tested yet.</pre>
+    </section>
+  </main>
+  <script>
+    const out = document.querySelector("#out");
+    async function gh(path, token) {
+      const res = await fetch("https://api.github.com" + path, {
+        headers: {
+          "Accept": "application/vnd.github+json",
+          "Authorization": token ? "Bearer " + token : undefined,
+          "X-GitHub-Api-Version": "2022-11-28"
+        }
+      });
+      const text = await res.text();
+      let data;
+      try { data = JSON.parse(text); } catch { data = text; }
+      return { status: res.status, data };
+    }
+    document.querySelector("#test").addEventListener("click", async () => {
+      const token = document.querySelector("#token").value.trim();
+      const repo = document.querySelector("#repo").value.trim() || "Harzva/mobilecode";
+      out.textContent = "Testing...";
+      try {
+        const me = await gh("/user", token);
+        const repoRes = await gh("/repos/" + repo, token);
+        const pages = await gh("/repos/" + repo + "/pages", token);
+        const lines = [];
+        lines.push((me.status === 200 ? "OK" : "FAIL") + " /user HTTP " + me.status);
+        if (me.status === 200) lines.push("login: " + me.data.login);
+        lines.push((repoRes.status === 200 ? "OK" : "FAIL") + " repo HTTP " + repoRes.status);
+        if (repoRes.status === 200) lines.push("repo: " + repoRes.data.full_name + " default_branch=" + repoRes.data.default_branch);
+        lines.push((pages.status === 200 ? "OK" : "WARN") + " pages HTTP " + pages.status);
+        if (pages.status === 200) lines.push("pages: " + pages.data.html_url);
+        if (me.status !== 200 || repoRes.status !== 200) lines.push("Hint: token scope or repo access is missing.");
+        out.textContent = lines.join("\\n");
+      } catch (err) {
+        out.textContent = "Network error: " + err.message;
+      }
+    });
+  </script>
+</body>
+</html>

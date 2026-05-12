@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 enum _ApiFlavor { openAi, anthropic }
 
@@ -18,6 +19,11 @@ enum _ModuleAction {
   aiChat,
   apiConfig,
   healthCheck,
+  webDemo,
+  githubTest,
+  diary,
+  toolLab,
+  termuxCheck,
   newFile,
   snippet,
   project,
@@ -41,6 +47,8 @@ const _rose = Color(0xFFFF6E87);
 const _lime = Color(0xFFB8F26B);
 const _violet = Color(0xFF8B5CF6);
 const _blue = Color(0xFF6EA8FF);
+const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
+const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
 
 class _ProbeResult {
   const _ProbeResult({
@@ -144,6 +152,141 @@ class _SnippetDraft {
   final DateTime createdAt;
 }
 
+class _ChatTurn {
+  const _ChatTurn({
+    required this.role,
+    required this.content,
+    required this.time,
+  });
+
+  final String role;
+  final String content;
+  final DateTime time;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'role': role,
+      'content': content,
+      'time': time.toIso8601String(),
+    };
+  }
+
+  factory _ChatTurn.fromJson(Map<String, dynamic> json) {
+    return _ChatTurn(
+      role: json['role'] as String? ?? 'user',
+      content: json['content'] as String? ?? '',
+      time: DateTime.tryParse(json['time'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+}
+
+class _ChatSession {
+  const _ChatSession({
+    required this.id,
+    required this.title,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.turns,
+  });
+
+  final String id;
+  final String title;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final List<_ChatTurn> turns;
+
+  _ChatSession copyWith({
+    String? title,
+    DateTime? updatedAt,
+    List<_ChatTurn>? turns,
+  }) {
+    return _ChatSession(
+      id: id,
+      title: title ?? this.title,
+      createdAt: createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      turns: turns ?? this.turns,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt.toIso8601String(),
+      'turns': turns.map((turn) => turn.toJson()).toList(),
+    };
+  }
+
+  factory _ChatSession.fromJson(Map<String, dynamic> json) {
+    return _ChatSession(
+      id: json['id'] as String? ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      title: json['title'] as String? ?? 'Untitled chat',
+      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+      updatedAt: DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? DateTime.now(),
+      turns: ((json['turns'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((turn) => _ChatTurn.fromJson(Map<String, dynamic>.from(turn)))
+          .toList(),
+    );
+  }
+}
+
+class _DiaryEntry {
+  const _DiaryEntry({
+    required this.title,
+    required this.body,
+    required this.time,
+  });
+
+  final String title;
+  final String body;
+  final DateTime time;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'body': body,
+      'time': time.toIso8601String(),
+    };
+  }
+
+  factory _DiaryEntry.fromJson(Map<String, dynamic> json) {
+    return _DiaryEntry(
+      title: json['title'] as String? ?? 'Untitled',
+      body: json['body'] as String? ?? '',
+      time: DateTime.tryParse(json['time'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+}
+
+class _ToolProbe {
+  const _ToolProbe({
+    required this.name,
+    required this.detail,
+    required this.icon,
+    required this.action,
+  });
+
+  final String name;
+  final String detail;
+  final IconData icon;
+  final String action;
+}
+
+class _ToolProbeResult {
+  const _ToolProbeResult({
+    required this.name,
+    required this.ok,
+    required this.message,
+  });
+
+  final String name;
+  final bool ok;
+  final String message;
+}
+
 String _normalizedBaseUrl(String baseUrl) {
   return baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
 }
@@ -219,6 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _saving = false;
   _HomeTab _tab = _HomeTab.control;
   int _selectedLayerIndex = 0;
+  bool _showCapabilityMap = false;
 
   final List<_ActivityLog> _activity = [
     _ActivityLog(
@@ -438,6 +582,21 @@ class _HomeScreenState extends State<HomeScreen> {
       case _ModuleAction.healthCheck:
         _checkHealth();
         break;
+      case _ModuleAction.webDemo:
+        _openUrl(_demo2048Url, '2048 web demo');
+        break;
+      case _ModuleAction.githubTest:
+        _openGitHubTestSheet();
+        break;
+      case _ModuleAction.diary:
+        _openDiarySheet();
+        break;
+      case _ModuleAction.toolLab:
+        _openToolLabSheet();
+        break;
+      case _ModuleAction.termuxCheck:
+        _openTermuxSheet();
+        break;
       case _ModuleAction.newFile:
         _openDraftSheet();
         break;
@@ -500,6 +659,83 @@ class _HomeScreenState extends State<HomeScreen> {
         baseUrl: _baseUrlController.text.trim(),
         apiKey: _apiKeyController.text.trim(),
         model: _modelController.text.trim(),
+        onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
+      ),
+    );
+  }
+
+  Future<void> _openUrl(String url, String label) async {
+    final uri = Uri.parse(url);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    _addLog(
+      opened ? 'Opened $label' : 'Failed to open $label',
+      url,
+      opened ? Icons.open_in_browser_outlined : Icons.error_outline,
+      opened ? _mint : _rose,
+    );
+    if (!opened) {
+      _showMessage('Could not open $label');
+    }
+  }
+
+  void _openGitHubTestSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _GitHubTestSheet(
+        onOpenWeb: () => _openUrl(_githubTestUrl, 'GitHub test page'),
+        onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
+      ),
+    );
+  }
+
+  void _openDiarySheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _DiarySheet(
+        onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
+      ),
+    );
+  }
+
+  void _openToolLabSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _ToolLabSheet(
+        baseUrl: _baseUrlController.text.trim(),
+        apiKey: _apiKeyController.text.trim(),
+        model: _modelController.text.trim(),
+        onOpen2048: () => _openUrl(_demo2048Url, '2048 web demo'),
+        onOpenGitHubWeb: () => _openUrl(_githubTestUrl, 'GitHub test page'),
+        onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
+      ),
+    );
+  }
+
+  void _openTermuxSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _TermuxSheet(
+        onOpenInstall: () => _openUrl('https://f-droid.org/packages/com.termux/', 'Termux install page'),
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
       ),
     );
@@ -703,31 +939,67 @@ class _HomeScreenState extends State<HomeScreen> {
                     onCheck: _checkHealth,
                   ),
                   const SizedBox(height: 16),
+                  _DemoLabPanel(
+                    onOpen2048: () => _runAction(_ModuleAction.webDemo),
+                    onGitHub: () => _runAction(_ModuleAction.githubTest),
+                    onDiary: () => _runAction(_ModuleAction.diary),
+                    onChat: () => _runAction(_ModuleAction.aiChat),
+                    onTools: () => _runAction(_ModuleAction.toolLab),
+                    onTermux: () => _runAction(_ModuleAction.termuxCheck),
+                  ),
+                  const SizedBox(height: 16),
                   _QuickActionGrid(
                     onAction: (action) => _runAction(action),
                   ),
                   const SizedBox(height: 22),
-                  _SectionHeader(
-                    title: 'Backend Capability Map',
-                    subtitle: 'AI core, agents, code intelligence, remote dev, guardrails, analytics, tools, performance, and team surfaces.',
-                  ),
-                  const SizedBox(height: 12),
-                  _LayerSelector(
-                    layers: _layers,
-                    selectedIndex: _safeLayerIndex,
-                    onSelected: (index) => setState(() => _selectedLayerIndex = index),
-                  ),
-                  const SizedBox(height: 12),
-                  _LayerHeader(layer: _activeLayer),
-                  const SizedBox(height: 10),
-                  for (final capability in _activeLayer.capabilities) ...[
-                    _CapabilityCard(
-                      capability: capability,
-                      layerColor: _activeLayer.color,
-                      onRun: () => _runAction(capability.primaryAction, capability),
-                      onInspect: () => _openCapabilitySheet(capability),
+                  _Panel(
+                    padding: const EdgeInsets.all(14),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.account_tree_outlined, color: _cyan),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Backend capability map', style: TextStyle(color: _text, fontWeight: FontWeight.w800)),
+                              SizedBox(height: 2),
+                              Text('Collapsed by default so Demo Lab stays focused.', style: TextStyle(color: _muted, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () => setState(() => _showCapabilityMap = !_showCapabilityMap),
+                          icon: Icon(_showCapabilityMap ? Icons.expand_less_outlined : Icons.expand_more_outlined),
+                          label: Text(_showCapabilityMap ? 'Hide' : 'Show'),
+                        ),
+                      ],
                     ),
+                  ),
+                  if (_showCapabilityMap) ...[
+                    const SizedBox(height: 14),
+                    _SectionHeader(
+                      title: 'Backend Capability Map',
+                      subtitle: 'AI core, agents, code intelligence, remote dev, guardrails, analytics, tools, performance, and team surfaces.',
+                    ),
+                    const SizedBox(height: 12),
+                    _LayerSelector(
+                      layers: _layers,
+                      selectedIndex: _safeLayerIndex,
+                      onSelected: (index) => setState(() => _selectedLayerIndex = index),
+                    ),
+                    const SizedBox(height: 12),
+                    _LayerHeader(layer: _activeLayer),
                     const SizedBox(height: 10),
+                    for (final capability in _activeLayer.capabilities) ...[
+                      _CapabilityCard(
+                        capability: capability,
+                        layerColor: _activeLayer.color,
+                        onRun: () => _runAction(capability.primaryAction, capability),
+                        onInspect: () => _openCapabilitySheet(capability),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                   ],
                   const SizedBox(height: 14),
                   _OperationsBoard(
@@ -988,6 +1260,220 @@ class _HealthCard extends StatelessWidget {
   }
 }
 
+class _DemoLabPanel extends StatelessWidget {
+  const _DemoLabPanel({
+    required this.onOpen2048,
+    required this.onGitHub,
+    required this.onDiary,
+    required this.onChat,
+    required this.onTools,
+    required this.onTermux,
+  });
+
+  final VoidCallback onOpen2048;
+  final VoidCallback onGitHub;
+  final VoidCallback onDiary;
+  final VoidCallback onChat;
+  final VoidCallback onTools;
+  final VoidCallback onTermux;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.science_outlined, color: _mint),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Demo Lab', style: TextStyle(color: _text, fontSize: 20, fontWeight: FontWeight.w900)),
+                    SizedBox(height: 2),
+                    Text('The focused path: play, connect GitHub, build diary, chat with memory, test tools, check Termux.', style: TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+                  ],
+                ),
+              ),
+              _Pill(label: 'Priority', icon: Icons.flag_outlined, color: _amber),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _HeroDemoTile(
+            title: '2048 Web demo',
+            subtitle: 'A phone-first game hosted on GitHub Pages. Use it to prove MobileCode can create and publish a playable web experience.',
+            icon: Icons.grid_4x4_outlined,
+            color: _mint,
+            primaryLabel: 'Open online',
+            secondaryLabel: 'GitHub test',
+            onPrimary: onOpen2048,
+            onSecondary: onGitHub,
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 680 ? 4 : 2;
+              final items = [
+                _DemoAction(Icons.edit_note_outlined, 'Diary APK', 'Local diary demo inside this APK', _ModuleAction.diary, _amber),
+                _DemoAction(Icons.forum_outlined, 'Chat Memory', 'Conversation list and context', _ModuleAction.aiChat, _mint),
+                _DemoAction(Icons.handyman_outlined, 'Tool Tests', 'Run mobile tool probes', _ModuleAction.toolLab, _cyan),
+                _DemoAction(Icons.terminal_outlined, 'Termux', 'Check install and setup path', _ModuleAction.termuxCheck, _lime),
+              ];
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: items.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                  childAspectRatio: columns == 2 ? 1.55 : 1.25,
+                ),
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  return _DemoActionTile(
+                    item: item,
+                    onTap: switch (item.action) {
+                      _ModuleAction.diary => onDiary,
+                      _ModuleAction.aiChat => onChat,
+                      _ModuleAction.toolLab => onTools,
+                      _ModuleAction.termuxCheck => onTermux,
+                      _ => onOpen2048,
+                    },
+                  );
+                },
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroDemoTile extends StatelessWidget {
+  const _HeroDemoTile({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.primaryLabel,
+    required this.secondaryLabel,
+    required this.onPrimary,
+    required this.onSecondary,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final String primaryLabel;
+  final String secondaryLabel;
+  final VoidCallback onPrimary;
+  final VoidCallback onSecondary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.40)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 28),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(title, style: const TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w900)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(subtitle, style: const TextStyle(color: _muted, fontSize: 12, height: 1.4)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onPrimary,
+                  icon: const Icon(Icons.open_in_browser_outlined),
+                  label: Text(primaryLabel),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onSecondary,
+                  icon: const Icon(Icons.hub_outlined),
+                  label: Text(secondaryLabel),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DemoAction {
+  const _DemoAction(this.icon, this.title, this.subtitle, this.action, this.color);
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final _ModuleAction action;
+  final Color color;
+}
+
+class _DemoActionTile extends StatelessWidget {
+  const _DemoActionTile({required this.item, required this.onTap});
+
+  final _DemoAction item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _panelSoft,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _line),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(item.icon, color: item.color, size: 24),
+              const Spacer(),
+              Text(item.title, style: const TextStyle(color: _text, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 3),
+              Text(
+                item.subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _muted, fontSize: 11, height: 1.25),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _QuickActionGrid extends StatelessWidget {
   const _QuickActionGrid({required this.onAction});
 
@@ -997,12 +1483,13 @@ class _QuickActionGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = const [
       _QuickAction(Icons.forum_outlined, 'AI Chat', _ModuleAction.aiChat, _mint),
-      _QuickAction(Icons.note_add_outlined, 'New File', _ModuleAction.newFile, _cyan),
+      _QuickAction(Icons.hub_outlined, 'GitHub', _ModuleAction.githubTest, _cyan),
+      _QuickAction(Icons.handyman_outlined, 'Tools', _ModuleAction.toolLab, _amber),
+      _QuickAction(Icons.terminal_outlined, 'Termux', _ModuleAction.termuxCheck, _lime),
       _QuickAction(Icons.psychology_alt_outlined, 'Deep Dive', _ModuleAction.deepDive, _violet),
-      _QuickAction(Icons.terminal_outlined, 'Terminal', _ModuleAction.terminal, _lime),
       _QuickAction(Icons.rocket_launch_outlined, 'Build', _ModuleAction.build, _amber),
-      _QuickAction(Icons.data_object_outlined, 'Snippet', _ModuleAction.snippet, _blue),
-      _QuickAction(Icons.folder_open_outlined, 'Projects', _ModuleAction.project, _amber),
+      _QuickAction(Icons.note_add_outlined, 'New File', _ModuleAction.newFile, _cyan),
+      _QuickAction(Icons.edit_note_outlined, 'Diary', _ModuleAction.diary, _blue),
       _QuickAction(Icons.health_and_safety_outlined, 'Guard', _ModuleAction.healthCheck, _rose),
     ];
 
@@ -1509,6 +1996,531 @@ class _BottomNav extends StatelessWidget {
   }
 }
 
+class _GitHubTestSheet extends StatefulWidget {
+  const _GitHubTestSheet({
+    required this.onOpenWeb,
+    required this.onLog,
+  });
+
+  final VoidCallback onOpenWeb;
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
+
+  @override
+  State<_GitHubTestSheet> createState() => _GitHubTestSheetState();
+}
+
+class _GitHubTestSheetState extends State<_GitHubTestSheet> {
+  final _token = TextEditingController();
+  final _repo = TextEditingController(text: 'Harzva/mobilecode');
+  bool _testing = false;
+  final List<String> _lines = ['Not tested yet.'];
+
+  @override
+  void dispose() {
+    _token.dispose();
+    _repo.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run() async {
+    setState(() {
+      _testing = true;
+      _lines
+        ..clear()
+        ..add('Testing GitHub...');
+    });
+    final token = _token.text.trim();
+    final repo = _repo.text.trim().isEmpty ? 'Harzva/mobilecode' : _repo.text.trim();
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    try {
+      final user = await _get(client, 'https://api.github.com/user', token);
+      final repoRes = await _get(client, 'https://api.github.com/repos/$repo', token);
+      final pages = await _get(client, 'https://api.github.com/repos/$repo/pages', token);
+      if (!mounted) return;
+      setState(() {
+        _lines
+          ..clear()
+          ..add('${user.statusCode == 200 ? 'OK' : 'FAIL'} /user HTTP ${user.statusCode}')
+          ..add('${repoRes.statusCode == 200 ? 'OK' : 'FAIL'} repo HTTP ${repoRes.statusCode}')
+          ..add('${pages.statusCode == 200 ? 'OK' : 'WARN'} pages HTTP ${pages.statusCode}');
+        if (user.body.contains('"login"')) _lines.add('Identity response received.');
+        if (repoRes.statusCode != 200) _lines.add('Repo test failed: missing token scope or repo access.');
+        if (pages.statusCode == 404) _lines.add('Pages not enabled yet or token cannot read Pages settings.');
+      });
+      widget.onLog(
+        repoRes.statusCode == 200 ? 'GitHub connected' : 'GitHub test failed',
+        'repo HTTP ${repoRes.statusCode}',
+        repoRes.statusCode == 200 ? Icons.hub_outlined : Icons.error_outline,
+        repoRes.statusCode == 200 ? _mint : _rose,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _lines
+          ..clear()
+          ..add('Network error: ${_compact(error.toString(), limit: 180)}');
+      });
+      widget.onLog('GitHub network error', _compact(error.toString(), limit: 120), Icons.error_outline, _rose);
+    } finally {
+      client.close(force: true);
+      if (mounted) setState(() => _testing = false);
+    }
+  }
+
+  Future<({int statusCode, String body})> _get(HttpClient client, String url, String token) async {
+    final request = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 10));
+    request.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+    request.headers.set('X-GitHub-Api-Version', '2022-11-28');
+    if (token.isNotEmpty) {
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+    }
+    final response = await request.close().timeout(const Duration(seconds: 20));
+    final body = await utf8.decodeStream(response);
+    return (statusCode: response.statusCode, body: body);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.hub_outlined,
+      title: 'GitHub Connectivity',
+      subtitle: 'Test token identity, repository access, and Pages readiness.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _token,
+            obscureText: true,
+            decoration: const InputDecoration(labelText: 'GitHub token', prefixIcon: Icon(Icons.key_outlined)),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _repo,
+            decoration: const InputDecoration(labelText: 'Owner/repo', prefixIcon: Icon(Icons.account_tree_outlined)),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _testing ? null : _run,
+                  icon: _testing
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.network_check_outlined),
+                  label: Text(_testing ? 'Testing' : 'Test in APK'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              IconButton.outlined(
+                tooltip: 'Open web test page',
+                onPressed: widget.onOpenWeb,
+                icon: const Icon(Icons.open_in_browser_outlined),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _Panel(
+            child: Text(
+              _lines.join('\n'),
+              style: const TextStyle(color: _muted, height: 1.45),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DiarySheet extends StatefulWidget {
+  const _DiarySheet({required this.onLog});
+
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
+
+  @override
+  State<_DiarySheet> createState() => _DiarySheetState();
+}
+
+class _DiarySheetState extends State<_DiarySheet> {
+  static const _key = 'mobilecode.diary.entries';
+  final _title = TextEditingController();
+  final _body = TextEditingController();
+  final List<_DiaryEntry> _entries = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _body.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_key);
+    if (raw == null || raw.isEmpty) return;
+    final decoded = jsonDecode(raw);
+    if (decoded is List && mounted) {
+      setState(() {
+        _entries
+          ..clear()
+          ..addAll(decoded.whereType<Map>().map((item) => _DiaryEntry.fromJson(Map<String, dynamic>.from(item))));
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    final title = _title.text.trim().isEmpty ? 'Daily note' : _title.text.trim();
+    final body = _body.text.trim();
+    if (body.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Write diary content first')));
+      return;
+    }
+    setState(() {
+      _entries.insert(0, _DiaryEntry(title: title, body: body, time: DateTime.now()));
+      _title.clear();
+      _body.clear();
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_key, jsonEncode(_entries.map((entry) => entry.toJson()).toList()));
+    widget.onLog('Diary entry saved', title, Icons.edit_note_outlined, _amber);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.edit_note_outlined,
+      title: 'Diary APK Demo',
+      subtitle: 'A tiny local app inside MobileCode. It proves forms, storage, list rendering, and APK runtime.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _title,
+            decoration: const InputDecoration(labelText: 'Title', prefixIcon: Icon(Icons.title_outlined)),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _body,
+            minLines: 4,
+            maxLines: 8,
+            decoration: const InputDecoration(labelText: 'Today I...', alignLabelWithHint: true),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _save,
+              icon: const Icon(Icons.save_outlined),
+              label: const Text('Save diary entry'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('Entries (${_entries.length})', style: const TextStyle(color: _text, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          if (_entries.isEmpty)
+            const Text('No entries yet.', style: TextStyle(color: _muted))
+          else
+            for (final entry in _entries.take(5))
+              _Panel(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(entry.title, style: const TextStyle(color: _text, fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 4),
+                    Text(_timeLabel(entry.time), style: const TextStyle(color: _faint, fontSize: 11)),
+                    const SizedBox(height: 6),
+                    Text(entry.body, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, height: 1.35)),
+                  ],
+                ),
+              ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ToolLabSheet extends StatefulWidget {
+  const _ToolLabSheet({
+    required this.baseUrl,
+    required this.apiKey,
+    required this.model,
+    required this.onOpen2048,
+    required this.onOpenGitHubWeb,
+    required this.onLog,
+  });
+
+  final String baseUrl;
+  final String apiKey;
+  final String model;
+  final VoidCallback onOpen2048;
+  final VoidCallback onOpenGitHubWeb;
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
+
+  @override
+  State<_ToolLabSheet> createState() => _ToolLabSheetState();
+}
+
+class _ToolLabSheetState extends State<_ToolLabSheet> {
+  final List<_ToolProbeResult> _results = [];
+  bool _running = false;
+
+  static const _tools = [
+    _ToolProbe(name: 'AI provider health', detail: 'Uses configured Base URL and model.', icon: Icons.monitor_heart_outlined, action: 'health'),
+    _ToolProbe(name: 'GitHub web tester', detail: 'Opens a Pages test page for token and repo checks.', icon: Icons.hub_outlined, action: 'github_web'),
+    _ToolProbe(name: '2048 web demo', detail: 'Opens the published game in the phone browser.', icon: Icons.grid_4x4_outlined, action: 'demo_2048'),
+    _ToolProbe(name: 'Local storage', detail: 'Writes and reads SharedPreferences.', icon: Icons.save_outlined, action: 'storage'),
+    _ToolProbe(name: 'Termux handler', detail: 'Checks whether a termux:// URI can be launched.', icon: Icons.terminal_outlined, action: 'termux'),
+  ];
+
+  Future<void> _runAll() async {
+    setState(() {
+      _running = true;
+      _results.clear();
+    });
+    await _run('storage');
+    await _run('termux');
+    await _run('health');
+    if (mounted) setState(() => _running = false);
+  }
+
+  Future<void> _run(String action) async {
+    if (action == 'github_web') {
+      widget.onOpenGitHubWeb();
+      _addResult('GitHub web tester', true, 'Opened external browser page.');
+      return;
+    }
+    if (action == 'demo_2048') {
+      widget.onOpen2048();
+      _addResult('2048 web demo', true, 'Opened external browser page.');
+      return;
+    }
+    if (action == 'storage') {
+      final prefs = await SharedPreferences.getInstance();
+      final stamp = DateTime.now().toIso8601String();
+      await prefs.setString('mobilecode.tool.storageProbe', stamp);
+      final ok = prefs.getString('mobilecode.tool.storageProbe') == stamp;
+      _addResult('Local storage', ok, ok ? 'Write/read succeeded.' : 'Readback mismatch.');
+      return;
+    }
+    if (action == 'termux') {
+      final ok = await canLaunchUrl(Uri.parse('termux://'));
+      _addResult('Termux handler', ok, ok ? 'termux:// handler is visible.' : 'No termux:// handler. Termux may be missing or not exposed.');
+      return;
+    }
+    if (action == 'health') {
+      if (widget.baseUrl.isEmpty) {
+        _addResult('AI provider health', false, 'Base URL is empty.');
+        return;
+      }
+      final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
+      final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+      try {
+        final uri = flavor == _ApiFlavor.anthropic ? _anthropicMessagesUri(widget.baseUrl) : _openAiChatUri(widget.baseUrl);
+        _parseBaseUrl(widget.baseUrl);
+        final request = flavor == _ApiFlavor.anthropic
+            ? await client.postUrl(uri).timeout(const Duration(seconds: 8))
+            : await client.getUrl(Uri.parse('${_normalizedBaseUrl(widget.baseUrl)}/models')).timeout(const Duration(seconds: 8));
+        if (widget.apiKey.isNotEmpty) {
+          request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
+          if (flavor == _ApiFlavor.anthropic) request.headers.set('x-api-key', widget.apiKey);
+        }
+        if (flavor == _ApiFlavor.anthropic) {
+          request.headers.contentType = ContentType.json;
+          request.headers.set('anthropic-version', '2023-06-01');
+          request.write(jsonEncode({
+            'model': widget.model.isEmpty ? 'claude-3-5-haiku-latest' : widget.model,
+            'max_tokens': 1,
+            'messages': [
+              {'role': 'user', 'content': 'ping'},
+            ],
+          }));
+        }
+        final response = await request.close().timeout(const Duration(seconds: 30));
+        await response.drain();
+        _addResult('AI provider health', response.statusCode >= 200 && response.statusCode < 300, 'HTTP ${response.statusCode} via ${_flavorLabel(flavor)}');
+      } on Object catch (error) {
+        _addResult('AI provider health', false, _compact(error.toString(), limit: 120));
+      } finally {
+        client.close(force: true);
+      }
+    }
+  }
+
+  void _addResult(String name, bool ok, String message) {
+    if (!mounted) return;
+    setState(() {
+      _results.insert(0, _ToolProbeResult(name: name, ok: ok, message: message));
+    });
+    widget.onLog(ok ? '$name OK' : '$name failed', message, ok ? Icons.check_circle_outline : Icons.error_outline, ok ? _mint : _rose);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.handyman_outlined,
+      title: 'Mobile Tool Tests',
+      subtitle: 'Run small probes for phone-optimized tools and see what fails.',
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _running ? null : _runAll,
+              icon: _running
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.play_arrow_outlined),
+              label: Text(_running ? 'Running probes' : 'Run core probes'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final tool in _tools)
+            _Panel(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(tool.icon, color: _cyan),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(tool.name, style: const TextStyle(color: _text, fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 2),
+                        Text(tool.detail, style: const TextStyle(color: _muted, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  IconButton.outlined(
+                    onPressed: _running ? null : () => _run(tool.action),
+                    icon: const Icon(Icons.play_arrow_outlined),
+                  ),
+                ],
+              ),
+            ),
+          if (_results.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Results', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  for (final result in _results)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(result.ok ? Icons.check_circle_outline : Icons.error_outline, color: result.ok ? _mint : _rose, size: 18),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text('${result.name}: ${result.message}', style: const TextStyle(color: _muted, height: 1.35)),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TermuxSheet extends StatefulWidget {
+  const _TermuxSheet({
+    required this.onOpenInstall,
+    required this.onLog,
+  });
+
+  final VoidCallback onOpenInstall;
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
+
+  @override
+  State<_TermuxSheet> createState() => _TermuxSheetState();
+}
+
+class _TermuxSheetState extends State<_TermuxSheet> {
+  bool _checking = false;
+  String _status = 'Not checked yet.';
+
+  Future<void> _check() async {
+    setState(() {
+      _checking = true;
+      _status = 'Checking termux:// handler...';
+    });
+    try {
+      final canOpen = await canLaunchUrl(Uri.parse('termux://'));
+      if (!mounted) return;
+      setState(() {
+        _status = canOpen
+            ? 'Termux handler is visible. Next production step: bind a robust Android package check and command bridge.'
+            : 'Termux handler was not found. Termux may not be installed, or this Android build does not expose a termux:// handler.';
+      });
+      widget.onLog(
+        canOpen ? 'Termux reachable' : 'Termux not detected',
+        _status,
+        canOpen ? Icons.terminal_outlined : Icons.error_outline,
+        canOpen ? _mint : _amber,
+      );
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.terminal_outlined,
+      title: 'Termux Check',
+      subtitle: 'MobileCode needs Termux for real phone-side build commands.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Panel(
+            child: Text(_status, style: const TextStyle(color: _muted, height: 1.4)),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: _checking ? null : _check,
+                  icon: _checking
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.search_outlined),
+                  label: Text(_checking ? 'Checking' : 'Check Termux'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: widget.onOpenInstall,
+                  icon: const Icon(Icons.download_outlined),
+                  label: const Text('Install guide'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Production requirement: add Android package visibility queries for com.termux and com.termux.api, then connect the existing TermuxService setup wizard.',
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ChatPanel extends StatefulWidget {
   const _ChatPanel({
     required this.baseUrl,
@@ -1527,15 +2539,134 @@ class _ChatPanel extends StatefulWidget {
 }
 
 class _ChatPanelState extends State<_ChatPanel> {
+  static const _sessionsKey = 'mobilecode.chat.sessions.v1';
+  static const _activeSessionKey = 'mobilecode.chat.activeSession.v1';
+
   final _promptController = TextEditingController();
+  final List<_ChatSession> _sessions = [];
+  String? _activeSessionId;
+  bool _loading = true;
   bool _sending = false;
-  String? _answer;
   String? _error;
+
+  _ChatSession? get _activeSession {
+    if (_sessions.isEmpty) return null;
+    final index = _sessions.indexWhere((session) => session.id == _activeSessionId);
+    return index == -1 ? _sessions.first : _sessions[index];
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSessions();
+  }
 
   @override
   void dispose() {
     _promptController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadSessions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_sessionsKey);
+    final loaded = <_ChatSession>[];
+
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          loaded.addAll(
+            decoded
+                .whereType<Map>()
+                .map((item) => _ChatSession.fromJson(Map<String, dynamic>.from(item)))
+                .where((session) => session.turns.isNotEmpty || session.title.trim().isNotEmpty),
+          );
+        }
+      } catch (_) {
+        // Corrupt chat storage should not block the chat surface.
+      }
+    }
+
+    if (loaded.isEmpty) loaded.add(_newSessionObject());
+    loaded.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+
+    if (!mounted) return;
+    setState(() {
+      _sessions
+        ..clear()
+        ..addAll(loaded.take(20));
+      _activeSessionId = prefs.getString(_activeSessionKey);
+      if (_sessions.every((session) => session.id != _activeSessionId)) {
+        _activeSessionId = _sessions.first.id;
+      }
+      _loading = false;
+    });
+  }
+
+  Future<void> _persist() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_sessionsKey, jsonEncode(_sessions.map((session) => session.toJson()).toList()));
+    final activeId = _activeSessionId;
+    if (activeId != null) {
+      await prefs.setString(_activeSessionKey, activeId);
+    }
+  }
+
+  _ChatSession _newSessionObject() {
+    final now = DateTime.now();
+    return _ChatSession(
+      id: now.microsecondsSinceEpoch.toString(),
+      title: 'New chat',
+      createdAt: now,
+      updatedAt: now,
+      turns: const [],
+    );
+  }
+
+  void _storeSession(_ChatSession session) {
+    final index = _sessions.indexWhere((item) => item.id == session.id);
+    if (index == -1) {
+      _sessions.insert(0, session);
+    } else {
+      _sessions[index] = session;
+      _sessions.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    }
+  }
+
+  Future<void> _createSession() async {
+    final session = _newSessionObject();
+    setState(() {
+      _sessions.insert(0, session);
+      _activeSessionId = session.id;
+      _error = null;
+    });
+    await _persist();
+  }
+
+  Future<void> _selectSession(String id) async {
+    setState(() {
+      _activeSessionId = id;
+      _error = null;
+    });
+    await _persist();
+  }
+
+  Future<void> _deleteActiveSession() async {
+    final active = _activeSession;
+    if (active == null) return;
+    setState(() {
+      _sessions.removeWhere((session) => session.id == active.id);
+      if (_sessions.isEmpty) {
+        final replacement = _newSessionObject();
+        _sessions.add(replacement);
+        _activeSessionId = replacement.id;
+      } else {
+        _activeSessionId = _sessions.first.id;
+      }
+      _error = null;
+    });
+    await _persist();
   }
 
   Future<void> _send() async {
@@ -1544,12 +2675,28 @@ class _ChatPanelState extends State<_ChatPanel> {
       _showMessage('Enter a prompt first');
       return;
     }
+    final active = _activeSession;
+    if (active == null) {
+      _showMessage('Chat is still loading');
+      return;
+    }
+
+    final now = DateTime.now();
+    final userTurn = _ChatTurn(role: 'user', content: prompt, time: now);
+    final history = [...active.turns, userTurn];
+    final pending = active.copyWith(
+      title: active.title == 'New chat' ? _chatTitle(prompt) : active.title,
+      updatedAt: now,
+      turns: history,
+    );
 
     setState(() {
       _sending = true;
-      _answer = null;
       _error = null;
+      _promptController.clear();
+      _storeSession(pending);
     });
+    await _persist();
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
     try {
@@ -1569,7 +2716,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         }
         request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
       }
-      request.write(jsonEncode(_requestBody(flavor, prompt)));
+      request.write(jsonEncode(_requestBody(flavor, history)));
 
       final response = await request.close().timeout(const Duration(seconds: 45));
       final body = await utf8.decodeStream(response);
@@ -1582,7 +2729,16 @@ class _ChatPanelState extends State<_ChatPanel> {
       }
 
       final answer = _extractAssistantText(body);
-      setState(() => _answer = answer);
+      final current = _sessions.firstWhere((session) => session.id == pending.id, orElse: () => pending);
+      final next = current.copyWith(
+        updatedAt: DateTime.now(),
+        turns: [
+          ...current.turns,
+          _ChatTurn(role: 'assistant', content: answer, time: DateTime.now()),
+        ],
+      );
+      setState(() => _storeSession(next));
+      await _persist();
       widget.onLog('AI response received', '${_flavorLabel(flavor)} - ${widget.model}', Icons.forum_outlined, _mint);
     } on Object catch (error) {
       if (!mounted) return;
@@ -1597,26 +2753,53 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
   }
 
-  Map<String, dynamic> _requestBody(_ApiFlavor flavor, String prompt) {
+  Map<String, dynamic> _requestBody(_ApiFlavor flavor, List<_ChatTurn> turns) {
     final model = widget.model.isEmpty
         ? (flavor == _ApiFlavor.anthropic ? 'claude-3-5-haiku-latest' : 'gpt-4o-mini')
         : widget.model;
+    final systemPrompt =
+        'You are MobileCode, a mobile AI development assistant. Use the saved multi-turn chat context, answer concisely, and prefer executable mobile development steps.';
+    final messages = _providerMessages(turns);
     if (flavor == _ApiFlavor.anthropic) {
       return {
         'model': model,
+        'system': systemPrompt,
         'max_tokens': 1024,
-        'messages': [
-          {'role': 'user', 'content': prompt},
-        ],
+        'messages': messages,
       };
     }
     return {
       'model': model,
       'messages': [
-        {'role': 'user', 'content': prompt},
+        {'role': 'system', 'content': systemPrompt},
+        ...messages,
       ],
       'stream': false,
     };
+  }
+
+  List<Map<String, dynamic>> _providerMessages(List<_ChatTurn> turns) {
+    final usable = turns
+        .where((turn) => (turn.role == 'user' || turn.role == 'assistant') && turn.content.trim().isNotEmpty)
+        .toList();
+    final recent = usable.length > 16 ? usable.sublist(usable.length - 16) : usable;
+    final messages = <Map<String, dynamic>>[];
+
+    for (final turn in recent) {
+      var role = turn.role;
+      if (messages.isEmpty && role == 'assistant') role = 'user';
+      if (messages.isNotEmpty && messages.last['role'] == role) {
+        messages.last['content'] = '${messages.last['content']}\n\n${turn.content.trim()}';
+      } else {
+        messages.add({'role': role, 'content': turn.content.trim()});
+      }
+    }
+
+    return messages.isEmpty
+        ? [
+            {'role': 'user', 'content': 'Hello'},
+          ]
+        : messages;
   }
 
   String _extractAssistantText(String body) {
@@ -1654,6 +2837,11 @@ class _ChatPanelState extends State<_ChatPanel> {
     return _compact(body);
   }
 
+  String _chatTitle(String prompt) {
+    final compact = _compact(prompt, limit: 36);
+    return compact.isEmpty ? 'New chat' : compact;
+  }
+
   void _showMessage(String message) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
@@ -1661,52 +2849,229 @@ class _ChatPanelState extends State<_ChatPanel> {
   @override
   Widget build(BuildContext context) {
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
+    final active = _activeSession;
     return _SheetScaffold(
       icon: Icons.forum_outlined,
       title: 'AI Chat',
       subtitle: _chatEndpointLabel(widget.baseUrl, flavor),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextField(
-            controller: _promptController,
-            minLines: 4,
-            maxLines: 8,
-            decoration: InputDecoration(
-              labelText: 'Prompt',
-              hintText: 'Ask MobileCode to explain, edit, or generate code...',
-              helperText: '${_flavorLabel(flavor)} - ${widget.model.isEmpty ? 'default model' : widget.model}',
-              alignLabelWithHint: true,
+      child: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _Panel(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.memory_outlined, color: _mint, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${active?.turns.length ?? 0} saved turns - context is sent with each request',
+                                style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    IconButton.filledTonal(
+                      tooltip: 'New chat',
+                      onPressed: _sending ? null : _createSession,
+                      icon: const Icon(Icons.add_comment_outlined),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      for (final session in _sessions)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: _ChatSessionChip(
+                            session: session,
+                            selected: session.id == active?.id,
+                            onTap: _sending ? null : () => _selectSession(session.id),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _Panel(
+                  padding: const EdgeInsets.all(12),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 360),
+                    child: active == null || active.turns.isEmpty
+                        ? const _EmptyChatState()
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: active.turns.length,
+                            separatorBuilder: (context, index) => const SizedBox(height: 10),
+                            itemBuilder: (context, index) => _ChatBubble(turn: active.turns[index]),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _promptController,
+                  minLines: 2,
+                  maxLines: 6,
+                  textInputAction: TextInputAction.newline,
+                  decoration: InputDecoration(
+                    labelText: 'Message',
+                    hintText: 'Ask a follow-up. MobileCode will include this chat history.',
+                    helperText: '${_flavorLabel(flavor)} - ${widget.model.isEmpty ? 'default model' : widget.model}',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _sending ? null : _send,
+                        icon: _sending
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.send_outlined),
+                        label: Text(_sending ? 'Sending' : 'Send with memory'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    IconButton.outlined(
+                      tooltip: 'Delete chat',
+                      onPressed: _sending ? null : _deleteActiveSession,
+                      icon: const Icon(Icons.delete_outline),
+                    ),
+                  ],
+                ),
+                if (_error != null) ...[
+                  const SizedBox(height: 14),
+                  Text(
+                    _error!,
+                    style: const TextStyle(color: _rose, fontSize: 12, height: 1.35),
+                  ),
+                ],
+              ],
             ),
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: _sending ? null : _send,
-              icon: _sending
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.send_outlined),
-              label: Text(_sending ? 'Sending' : 'Send to AI'),
-            ),
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 14),
+    );
+  }
+}
+
+class _ChatSessionChip extends StatelessWidget {
+  const _ChatSessionChip({
+    required this.session,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _ChatSession session;
+  final bool selected;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? _mint : _line;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 150,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: selected ? _mint.withOpacity(0.12) : _panelSoft,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(selected ? 0.70 : 1)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
             Text(
-              _error!,
-              style: const TextStyle(color: _rose, fontSize: 12, height: 1.35),
+              session.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: selected ? _text : _muted, fontWeight: FontWeight.w800, fontSize: 12),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${session.turns.length} turns',
+              style: TextStyle(color: selected ? _mint : _faint, fontSize: 11),
             ),
           ],
-          if (_answer != null) ...[
-            const SizedBox(height: 14),
-            _Panel(
-              child: SelectableText(
-                _answer!,
-                style: const TextStyle(color: _text, fontSize: 14, height: 1.45),
-              ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChatBubble extends StatelessWidget {
+  const _ChatBubble({required this.turn});
+
+  final _ChatTurn turn;
+
+  @override
+  Widget build(BuildContext context) {
+    final isUser = turn.role == 'user';
+    final color = isUser ? _cyan : _mint;
+    return Align(
+      alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.76),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isUser ? _blue.withOpacity(0.11) : _mint.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.30)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isUser ? 'You' : 'MobileCode',
+              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 6),
+            SelectableText(
+              turn.content,
+              style: const TextStyle(color: _text, height: 1.42, fontSize: 13),
             ),
           ],
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptyChatState extends StatelessWidget {
+  const _EmptyChatState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 26),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.forum_outlined, color: _faint, size: 36),
+            SizedBox(height: 10),
+            Text('No messages yet', style: TextStyle(color: _text, fontWeight: FontWeight.w800)),
+            SizedBox(height: 4),
+            Text(
+              'Start a chat. It will stay in the conversation list after closing.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _muted, fontSize: 12),
+            ),
+          ],
+        ),
       ),
     );
   }

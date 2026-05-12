@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>MobileCode 2048</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #05070c;
+      --panel: #101522;
+      --cell: #1a2133;
+      --line: #293049;
+      --text: #f0f3fa;
+      --muted: #9ea6bd;
+      --mint: #7af2c7;
+      --amber: #ffc66b;
+      --violet: #8b5cf6;
+      --rose: #ff6e87;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      min-height: 100svh;
+      display: grid;
+      place-items: center;
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      padding: 18px;
+      touch-action: none;
+    }
+    .app { width: min(100%, 430px); }
+    header { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+    h1 { margin: 0; font-size: 54px; line-height: .9; letter-spacing: 0; }
+    .sub { color: var(--muted); margin: 6px 0 0; font-size: 13px; }
+    .scores { display: flex; gap: 8px; }
+    .score {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 12px;
+      min-width: 78px;
+      text-align: center;
+    }
+    .score span { display: block; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+    .score strong { font-size: 21px; }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      width: 100%;
+      aspect-ratio: 1;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 30px 80px rgba(0,0,0,.35);
+    }
+    .tile {
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+      background: var(--cell);
+      color: var(--text);
+      font-weight: 900;
+      font-size: clamp(22px, 8vw, 42px);
+      transition: transform .1s ease, background .15s ease;
+      user-select: none;
+    }
+    .tile.new { animation: pop .16s ease both; }
+    @keyframes pop { from { transform: scale(.82); } to { transform: scale(1); } }
+    .v2 { background: #1e2d3d; color: var(--mint); }
+    .v4 { background: #223940; color: #9ff7d8; }
+    .v8 { background: #4f3a25; color: var(--amber); }
+    .v16 { background: #5b2d31; color: #ffb1bf; }
+    .v32 { background: #522d64; color: #d4b9ff; }
+    .v64 { background: #253b67; color: #b9d7ff; }
+    .v128,.v256,.v512 { background: linear-gradient(135deg, #8b5cf6, #62d9ff); color: #05070c; }
+    .v1024,.v2048 { background: linear-gradient(135deg, #7af2c7, #ffc66b); color: #05070c; }
+    .controls { display: flex; gap: 10px; margin-top: 16px; }
+    button, a.button {
+      flex: 1;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 12px;
+      background: var(--panel);
+      color: var(--text);
+      text-decoration: none;
+      font-weight: 800;
+      text-align: center;
+      cursor: pointer;
+    }
+    button.primary { background: var(--violet); border-color: transparent; }
+    .hint { margin-top: 14px; color: var(--muted); text-align: center; font-size: 13px; line-height: 1.45; }
+    .status { color: var(--rose); font-weight: 900; }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>2048</h1>
+        <p class="sub">MobileCode touch demo</p>
+      </div>
+      <div class="scores">
+        <div class="score"><span>Score</span><strong id="score">0</strong></div>
+        <div class="score"><span>Best</span><strong id="best">0</strong></div>
+      </div>
+    </header>
+    <section class="board" id="board" aria-label="2048 board"></section>
+    <div class="controls">
+      <button class="primary" id="restart">Restart</button>
+      <a class="button" href="../../">Demo Lab</a>
+    </div>
+    <p class="hint" id="hint">Swipe on the board or use arrow keys. The page saves your best score locally.</p>
+  </main>
+  <script>
+    const boardEl = document.querySelector("#board");
+    const scoreEl = document.querySelector("#score");
+    const bestEl = document.querySelector("#best");
+    const hintEl = document.querySelector("#hint");
+    const size = 4;
+    let board, score, best = Number(localStorage.mc2048Best || 0), lastAdded = -1;
+    bestEl.textContent = best;
+
+    function emptyBoard() { return Array.from({ length: size * size }, () => 0); }
+    function start() { board = emptyBoard(); score = 0; addTile(); addTile(); render(); }
+    function emptyCells() { return board.map((v, i) => v ? -1 : i).filter(i => i >= 0); }
+    function addTile() {
+      const cells = emptyCells();
+      if (!cells.length) return;
+      const idx = cells[Math.floor(Math.random() * cells.length)];
+      board[idx] = Math.random() < .9 ? 2 : 4;
+      lastAdded = idx;
+    }
+    function render() {
+      boardEl.innerHTML = "";
+      board.forEach((v, i) => {
+        const tile = document.createElement("div");
+        tile.className = "tile" + (v ? " v" + v : "") + (i === lastAdded ? " new" : "");
+        tile.textContent = v || "";
+        boardEl.appendChild(tile);
+      });
+      scoreEl.textContent = score;
+      if (score > best) { best = score; localStorage.mc2048Best = best; bestEl.textContent = best; }
+      hintEl.innerHTML = canMove() ? "Swipe on the board or use arrow keys. The page saves your best score locally." : "<span class='status'>Game over.</span> Tap Restart to play again.";
+    }
+    function slide(row) {
+      const nums = row.filter(Boolean);
+      for (let i = 0; i < nums.length - 1; i++) {
+        if (nums[i] === nums[i + 1]) { nums[i] *= 2; score += nums[i]; nums.splice(i + 1, 1); }
+      }
+      while (nums.length < size) nums.push(0);
+      return nums;
+    }
+    function getRow(r) { return board.slice(r * size, r * size + size); }
+    function setRow(r, values) { values.forEach((v, c) => board[r * size + c] = v); }
+    function getCol(c) { return [0,1,2,3].map(r => board[r * size + c]); }
+    function setCol(c, values) { values.forEach((v, r) => board[r * size + c] = v); }
+    function move(dir) {
+      const before = board.join(",");
+      for (let i = 0; i < size; i++) {
+        if (dir === "left") setRow(i, slide(getRow(i)));
+        if (dir === "right") setRow(i, slide(getRow(i).reverse()).reverse());
+        if (dir === "up") setCol(i, slide(getCol(i)));
+        if (dir === "down") setCol(i, slide(getCol(i).reverse()).reverse());
+      }
+      if (board.join(",") !== before) { addTile(); render(); }
+    }
+    function canMove() {
+      if (emptyCells().length) return true;
+      for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) {
+        const v = board[r * size + c];
+        if (c < 3 && board[r * size + c + 1] === v) return true;
+        if (r < 3 && board[(r + 1) * size + c] === v) return true;
+      }
+      return false;
+    }
+    window.addEventListener("keydown", e => {
+      const map = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
+      if (map[e.key]) { e.preventDefault(); move(map[e.key]); }
+    });
+    let sx = 0, sy = 0;
+    boardEl.addEventListener("touchstart", e => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; }, { passive: true });
+    boardEl.addEventListener("touchend", e => {
+      const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+      move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "down" : "up"));
+    }, { passive: true });
+    document.querySelector("#restart").addEventListener("click", start);
+    start();
+  </script>
+</body>
+</html>

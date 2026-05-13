@@ -17,6 +17,8 @@ enum _HomeTab { control, ai, ship, guard, insight }
 
 enum _CapabilityStatus { ready, needsConfig, local, preview }
 
+enum _AgentStepState { queued, running, done, failed }
+
 enum _ModuleAction {
   aiChat,
   apiConfig,
@@ -49,6 +51,8 @@ const _rose = Color(0xFFFF6E87);
 const _lime = Color(0xFFB8F26B);
 const _violet = Color(0xFF8B5CF6);
 const _blue = Color(0xFF6EA8FF);
+const _defaultBaseUrl = 'https://token-plan-cn.xiaomimimo.com/anthropic';
+const _defaultModel = 'mimo-v2.5-pro';
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
@@ -290,8 +294,45 @@ class _ToolProbeResult {
   final String message;
 }
 
+class _AgentTraceStep {
+  const _AgentTraceStep({
+    required this.title,
+    required this.detail,
+    required this.icon,
+    this.state = _AgentStepState.queued,
+    this.finishedAt,
+  });
+
+  final String title;
+  final String detail;
+  final IconData icon;
+  final _AgentStepState state;
+  final DateTime? finishedAt;
+
+  _AgentTraceStep copyWith({
+    String? title,
+    String? detail,
+    IconData? icon,
+    _AgentStepState? state,
+    DateTime? finishedAt,
+  }) {
+    return _AgentTraceStep(
+      title: title ?? this.title,
+      detail: detail ?? this.detail,
+      icon: icon ?? this.icon,
+      state: state ?? this.state,
+      finishedAt: finishedAt ?? this.finishedAt,
+    );
+  }
+}
+
 String _normalizedBaseUrl(String baseUrl) {
   return baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+}
+
+String _savedOrDefault(String? value, String fallback) {
+  final trimmed = value?.trim();
+  return trimmed == null || trimmed.isEmpty ? fallback : trimmed;
 }
 
 _ApiFlavor _detectApiFlavor(String baseUrl, String model) {
@@ -342,6 +383,83 @@ String _compact(String value, {int limit = 800}) {
   final trimmed = value.trim().replaceAll(RegExp(r'\s+'), ' ');
   if (trimmed.length <= limit) return trimmed;
   return '${trimmed.substring(0, limit)}...';
+}
+
+bool _promptTargets2048(String prompt) {
+  final lower = prompt.toLowerCase();
+  return lower.contains('2048') ||
+      lower.contains('game') ||
+      lower.contains('web') ||
+      lower.contains('html') ||
+      lower.contains('preview');
+}
+
+String _agentToolNameForPrompt(String prompt) {
+  final lower = prompt.toLowerCase();
+  if (_promptTargets2048(prompt)) return 'mobile_coding.generate_2048_preview';
+  if (lower.contains('termux') || lower.contains('terminal') || lower.contains('shell')) {
+    return 'mobile_tools.termux_probe';
+  }
+  if (lower.contains('github') || lower.contains('repo')) {
+    return 'github.connectivity_test';
+  }
+  return 'mobile_tools.core_probe';
+}
+
+List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
+  final tool = _agentToolNameForPrompt(prompt);
+  return [
+    const _AgentTraceStep(
+      title: 'Parse instruction',
+      detail: 'Read the user request and decide whether this is chat, coding, preview, GitHub, or device tooling.',
+      icon: Icons.manage_search_outlined,
+    ),
+    _AgentTraceStep(
+      title: 'Select tool',
+      detail: tool,
+      icon: Icons.psychology_alt_outlined,
+    ),
+    const _AgentTraceStep(
+      title: 'Plan executable steps',
+      detail: 'Prepare a phone-safe action plan with local files, WebView preview, and failure handling.',
+      icon: Icons.account_tree_outlined,
+    ),
+    const _AgentTraceStep(
+      title: 'Execute tool surface',
+      detail: 'Open the matching MobileCode workspace so generated files and test results are visible.',
+      icon: Icons.play_arrow_outlined,
+    ),
+  ];
+}
+
+List<_AgentTraceStep> _codingTraceTemplate() {
+  return const [
+    _AgentTraceStep(
+      title: 'Analyze build request',
+      detail: 'Target: create a phone-first 2048 game as real HTML/CSS/JS code.',
+      icon: Icons.manage_search_outlined,
+    ),
+    _AgentTraceStep(
+      title: 'Prepare workspace',
+      detail: 'Create app-owned mobilecode_projects/agent_2048 directory.',
+      icon: Icons.folder_open_outlined,
+    ),
+    _AgentTraceStep(
+      title: 'Write game code',
+      detail: 'Generate complete index.html with layout, swipe controls, score, best score, and undo.',
+      icon: Icons.code_outlined,
+    ),
+    _AgentTraceStep(
+      title: 'Save atomically',
+      detail: 'Write a temporary file, flush it, then rename to index.html to avoid broken partial files.',
+      icon: Icons.save_outlined,
+    ),
+    _AgentTraceStep(
+      title: 'Prepare preview',
+      detail: 'Load generated HTML into the in-app Android WebView preview surface.',
+      icon: Icons.preview_outlined,
+    ),
+  ];
 }
 
 Future<bool?> _isAndroidPackageInstalled(String packageName) async {
@@ -521,9 +639,9 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _apiKeyKey = 'mobilecode.apiKey';
   static const _modelKey = 'mobilecode.model';
 
-  final _baseUrlController = TextEditingController();
+  final _baseUrlController = TextEditingController(text: _defaultBaseUrl);
   final _apiKeyController = TextEditingController();
-  final _modelController = TextEditingController(text: 'gpt-4o-mini');
+  final _modelController = TextEditingController(text: _defaultModel);
 
   _HealthState _healthState = _HealthState.unknown;
   String _healthMessage = 'Not checked';
@@ -577,13 +695,21 @@ class _HomeScreenState extends State<HomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
       setState(() {
-        _baseUrlController.text = prefs.getString(_baseUrlKey) ?? '';
+        _baseUrlController.text = _savedOrDefault(prefs.getString(_baseUrlKey), _defaultBaseUrl);
         _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
-        _modelController.text = prefs.getString(_modelKey) ?? 'gpt-4o-mini';
+        _modelController.text = _savedOrDefault(prefs.getString(_modelKey), _defaultModel);
       });
     } on Object catch (error) {
       _addLog('Config load failed', _compact(error.toString(), limit: 120), Icons.error_outline, _rose);
     }
+  }
+
+  void _applyDefaultProvider() {
+    setState(() {
+      _baseUrlController.text = _defaultBaseUrl;
+      _modelController.text = _defaultModel;
+    });
+    _addLog('Mimo provider applied', 'Default Base URL and model filled. API key stays private.', Icons.tune_outlined, _mint);
   }
 
   Future<void> _saveConfig() async {
@@ -845,21 +971,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _handleAgentPrompt(String prompt) async {
-    final lower = prompt.toLowerCase();
-    if (lower.contains('2048') ||
-        lower.contains('game') ||
-        lower.contains('网页') ||
-        lower.contains('游戏') ||
-        lower.contains('preview') ||
-        lower.contains('预览')) {
+    final toolName = _agentToolNameForPrompt(prompt);
+    if (toolName == 'mobile_coding.generate_2048_preview') {
       _openMobileCodingLabSheet(autoGenerate: true);
       return;
     }
-    if (lower.contains('termux') || lower.contains('终端')) {
+    if (toolName == 'mobile_tools.termux_probe') {
       _openTermuxSheet();
       return;
     }
-    if (lower.contains('github') || lower.contains('仓库')) {
+    if (toolName == 'github.connectivity_test') {
       _openGitHubTestSheet();
       return;
     }
@@ -1152,6 +1273,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     modelController: _modelController,
                     saving: _saving,
                     flavor: _flavor,
+                    onPreset: _applyDefaultProvider,
                     onSave: _saveConfig,
                     onHealth: _checkHealth,
                   ),
@@ -1306,6 +1428,7 @@ class _ApiConfigCard extends StatelessWidget {
     required this.modelController,
     required this.saving,
     required this.flavor,
+    required this.onPreset,
     required this.onSave,
     required this.onHealth,
   });
@@ -1315,6 +1438,7 @@ class _ApiConfigCard extends StatelessWidget {
   final TextEditingController modelController;
   final bool saving;
   final _ApiFlavor flavor;
+  final VoidCallback onPreset;
   final VoidCallback onSave;
   final VoidCallback onHealth;
 
@@ -1334,6 +1458,14 @@ class _ApiConfigCard extends StatelessWidget {
                   style: TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w700),
                 ),
               ),
+              Tooltip(
+                message: 'Use Mimo Anthropic preset',
+                child: IconButton.filledTonal(
+                  onPressed: onPreset,
+                  icon: const Icon(Icons.auto_fix_high_outlined, size: 18),
+                ),
+              ),
+              const SizedBox(width: 8),
               _Pill(
                 label: _flavorLabel(flavor),
                 icon: flavor == _ApiFlavor.anthropic ? Icons.hub_outlined : Icons.api_outlined,
@@ -1348,7 +1480,7 @@ class _ApiConfigCard extends StatelessWidget {
             textInputAction: TextInputAction.next,
             decoration: const InputDecoration(
               labelText: 'Base URL',
-              hintText: 'https://api.example.com/v1',
+              hintText: _defaultBaseUrl,
               prefixIcon: Icon(Icons.link_outlined),
             ),
           ),
@@ -1369,9 +1501,14 @@ class _ApiConfigCard extends StatelessWidget {
             textInputAction: TextInputAction.done,
             decoration: const InputDecoration(
               labelText: 'Model',
-              hintText: 'mimo-v2.5-pro, gpt-4o-mini, claude...',
+              hintText: _defaultModel,
               prefixIcon: Icon(Icons.memory_outlined),
             ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Default provider fills Base URL and model only. Paste your API key locally; it is never shipped inside the APK.',
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
           ),
           const SizedBox(height: 14),
           Row(
@@ -1722,6 +1859,7 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
   int? _lastGenerateMs;
   bool _generating = false;
   bool _autoStarted = false;
+  final List<_AgentTraceStep> _traceSteps = [];
 
   @override
   void didChangeDependencies() {
@@ -1736,15 +1874,23 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
     final started = DateTime.now();
     setState(() {
       _generating = true;
-      _stage = 'Preparing project directory';
+      _stage = 'Analyzing request';
+      _traceSteps
+        ..clear()
+        ..addAll(_codingTraceTemplate());
     });
     try {
+      await _finishTraceStep(0, 'Confirmed local 2048 web app target');
       final directory = await getApplicationDocumentsDirectory();
       final projectDirectory = Directory('${directory.path}/mobilecode_projects/agent_2048');
+      _startTraceStep(1, 'Creating ${projectDirectory.path}');
       await projectDirectory.create(recursive: true);
+      _finishTraceStepNow(1, 'Workspace ready');
       if (!mounted) return;
-      setState(() => _stage = 'Generating HTML/CSS/JS');
+      _startTraceStep(2, 'Synthesizing a complete offline index.html');
       final html = _agent2048Html();
+      _finishTraceStepNow(2, '${html.length} characters generated');
+      _startTraceStep(3, 'Writing index.html.tmp, then renaming');
       final tempFile = File('${projectDirectory.path}/index.html.tmp');
       final file = File('${projectDirectory.path}/index.html');
       await tempFile.writeAsString(html, flush: true);
@@ -1752,6 +1898,7 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
         await file.delete();
       }
       await tempFile.rename(file.path);
+      _finishTraceStepNow(3, file.path);
       if (!mounted) return;
       setState(() {
         _projectPath = file.path;
@@ -1759,15 +1906,60 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
         _stage = 'Generated and saved';
         _lastGenerateMs = DateTime.now().difference(started).inMilliseconds;
       });
+      _finishTraceStepNow(4, 'Preview button is ready - ${_lastGenerateMs}ms');
       widget.onLog('Agent generated 2048', '${file.path} - ${_lastGenerateMs}ms', Icons.grid_4x4_outlined, _mint);
     } on Object catch (error) {
       if (!mounted) return;
+      _failRunningTraceStep(_compact(error.toString(), limit: 120));
       setState(() => _stage = 'Generation failed');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Generate failed: $error')));
       widget.onLog('2048 generation failed', _compact(error.toString(), limit: 120), Icons.error_outline, _rose);
     } finally {
       if (mounted) setState(() => _generating = false);
     }
+  }
+
+  Future<void> _finishTraceStep(int index, String detail) async {
+    _startTraceStep(index, detail);
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    _finishTraceStepNow(index, detail);
+  }
+
+  void _startTraceStep(int index, String detail) {
+    if (!mounted || index < 0 || index >= _traceSteps.length) return;
+    setState(() {
+      _stage = _traceSteps[index].title;
+      _traceSteps[index] = _traceSteps[index].copyWith(
+        detail: detail,
+        state: _AgentStepState.running,
+      );
+    });
+  }
+
+  void _finishTraceStepNow(int index, String detail) {
+    if (!mounted || index < 0 || index >= _traceSteps.length) return;
+    setState(() {
+      _stage = _traceSteps[index].title;
+      _traceSteps[index] = _traceSteps[index].copyWith(
+        detail: detail,
+        state: _AgentStepState.done,
+        finishedAt: DateTime.now(),
+      );
+    });
+  }
+
+  void _failRunningTraceStep(String detail) {
+    if (!mounted || _traceSteps.isEmpty) return;
+    final runningIndex = _traceSteps.indexWhere((step) => step.state == _AgentStepState.running);
+    final index = runningIndex == -1 ? _traceSteps.indexWhere((step) => step.state == _AgentStepState.queued) : runningIndex;
+    if (index == -1) return;
+    setState(() {
+      _traceSteps[index] = _traceSteps[index].copyWith(
+        detail: detail,
+        state: _AgentStepState.failed,
+        finishedAt: DateTime.now(),
+      );
+    });
   }
 
   void _preview() {
@@ -1837,6 +2029,13 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
               ],
             ),
           ),
+          if (_traceSteps.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _AgentTracePanel(
+              title: _generating ? 'Live code-writing process' : 'Last code-writing run',
+              steps: _traceSteps,
+            ),
+          ],
           const SizedBox(height: 12),
           Row(
             children: [
@@ -3192,7 +3391,9 @@ class _ChatPanelState extends State<_ChatPanel> {
   String? _activeSessionId;
   bool _loading = true;
   bool _sending = false;
+  bool _agentRunning = false;
   String? _error;
+  final List<_AgentTraceStep> _agentTrace = [];
 
   _ChatSession? get _activeSession {
     if (_sessions.isEmpty) return null;
@@ -3398,7 +3599,11 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
   }
 
-  Future<void> _runAgent() async {
+  Future<void> _runAgentWithTrace() async {
+    if (_agentRunning) {
+      _showMessage('Agent is still running');
+      return;
+    }
     final prompt = _promptController.text.trim();
     if (prompt.isEmpty) {
       _showMessage('Describe what the agent should build or test');
@@ -3410,40 +3615,114 @@ class _ChatPanelState extends State<_ChatPanel> {
       return;
     }
 
-    final lower = prompt.toLowerCase();
-    final toolName = lower.contains('2048') || lower.contains('game') || lower.contains('网页') || lower.contains('游戏')
-        ? 'mobile_coding.generate_2048_preview'
-        : lower.contains('termux') || lower.contains('终端')
-            ? 'mobile_tools.termux_probe'
-            : lower.contains('github') || lower.contains('仓库')
-                ? 'github.connectivity_test'
-                : 'mobile_tools.core_probe';
-    final assistantText =
-        'Agent selected tool: `$toolName`\n\nI am opening the matching mobile tool surface now. This is local tool execution, not just chat text.';
+    final toolName = _agentToolNameForPrompt(prompt);
     final now = DateTime.now();
-    final next = active.copyWith(
+    final pending = active.copyWith(
       title: active.title == 'New chat' ? _chatTitle(prompt) : active.title,
       updatedAt: now,
       turns: [
         ...active.turns,
         _ChatTurn(role: 'user', content: prompt, time: now),
+      ],
+    );
+
+    setState(() {
+      _agentRunning = true;
+      _error = null;
+      _promptController.clear();
+      _agentTrace
+        ..clear()
+        ..addAll(_agentRunTraceTemplate(prompt));
+      _storeSession(pending);
+    });
+    await _persist();
+
+    String? failure;
+    try {
+      for (var index = 0; index < _agentTrace.length; index++) {
+        await _completeAgentRunStep(index);
+      }
+    } on Object catch (error) {
+      failure = error.toString();
+      _failAgentRunStep(_compact(failure, limit: 140));
+    }
+
+    if (!mounted) return;
+    final current = _sessions.firstWhere((session) => session.id == pending.id, orElse: () => pending);
+    final assistantText = failure == null
+        ? _agentCompletionMessage(toolName)
+        : 'Agent run failed while using `$toolName`.\n\n${_compact(failure, limit: 300)}';
+    final next = current.copyWith(
+      updatedAt: DateTime.now(),
+      turns: [
+        ...current.turns,
         _ChatTurn(role: 'assistant', content: assistantText, time: DateTime.now()),
       ],
     );
 
     setState(() {
-      _error = null;
-      _promptController.clear();
+      _agentRunning = false;
       _storeSession(next);
+      if (failure != null) _error = failure;
     });
     await _persist();
-    widget.onLog('Agent tool selected', toolName, Icons.psychology_alt_outlined, _violet);
-    await widget.onAgentPrompt(prompt);
+
+    if (failure == null) {
+      widget.onLog('Agent run completed', toolName, Icons.psychology_alt_outlined, _violet);
+      await widget.onAgentPrompt(prompt);
+    } else {
+      widget.onLog('Agent run failed', _compact(failure, limit: 140), Icons.error_outline, _rose);
+    }
   }
+
+  Future<void> _completeAgentRunStep(int index) async {
+    if (!mounted || index < 0 || index >= _agentTrace.length) return;
+    setState(() {
+      _agentTrace[index] = _agentTrace[index].copyWith(state: _AgentStepState.running);
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 240));
+    if (!mounted || index < 0 || index >= _agentTrace.length) return;
+    setState(() {
+      _agentTrace[index] = _agentTrace[index].copyWith(
+        state: _AgentStepState.done,
+        finishedAt: DateTime.now(),
+      );
+    });
+  }
+
+  void _failAgentRunStep(String detail) {
+    if (!mounted || _agentTrace.isEmpty) return;
+    final runningIndex = _agentTrace.indexWhere((step) => step.state == _AgentStepState.running);
+    final index = runningIndex == -1 ? _agentTrace.indexWhere((step) => step.state == _AgentStepState.queued) : runningIndex;
+    if (index == -1) return;
+    setState(() {
+      _agentTrace[index] = _agentTrace[index].copyWith(
+        detail: detail,
+        state: _AgentStepState.failed,
+        finishedAt: DateTime.now(),
+      );
+    });
+  }
+
+  String _agentCompletionMessage(String toolName) {
+    return [
+      'Agent run completed: `$toolName`',
+      '',
+      '- Parsed the instruction.',
+      '- Selected the matching mobile tool.',
+      '- Built an executable plan instead of returning only chat text.',
+      '- Opened the tool surface where generated files, preview, and test state are visible.',
+    ].join('\n');
+  }
+
+  Future<void> _runAgent() async {
+    await _runAgentWithTrace();
+  }
+
 
   Map<String, dynamic> _requestBody(_ApiFlavor flavor, List<_ChatTurn> turns) {
     final model = widget.model.isEmpty
-        ? (flavor == _ApiFlavor.anthropic ? 'claude-3-5-haiku-latest' : 'gpt-4o-mini')
+        ? (flavor == _ApiFlavor.anthropic ? _defaultModel : 'gpt-4o-mini')
         : widget.model;
     final systemPrompt =
         'You are MobileCode, a mobile AI development assistant. Use the saved multi-turn chat context, answer concisely, and prefer executable mobile development steps.';
@@ -3569,7 +3848,7 @@ class _ChatPanelState extends State<_ChatPanel> {
                     const SizedBox(width: 10),
                     IconButton.filledTonal(
                       tooltip: 'New chat',
-                      onPressed: _sending ? null : _createSession,
+                      onPressed: _sending || _agentRunning ? null : _createSession,
                       icon: const Icon(Icons.add_comment_outlined),
                     ),
                   ],
@@ -3585,7 +3864,7 @@ class _ChatPanelState extends State<_ChatPanel> {
                           child: _ChatSessionChip(
                             session: session,
                             selected: session.id == active?.id,
-                            onTap: _sending ? null : () => _selectSession(session.id),
+                            onTap: _sending || _agentRunning ? null : () => _selectSession(session.id),
                           ),
                         ),
                     ],
@@ -3606,6 +3885,13 @@ class _ChatPanelState extends State<_ChatPanel> {
                           ),
                   ),
                 ),
+                if (_agentTrace.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _AgentTracePanel(
+                    title: _agentRunning ? 'Agent is writing code' : 'Last agent process',
+                    steps: _agentTrace,
+                  ),
+                ],
                 const SizedBox(height: 14),
                 TextField(
                   controller: _promptController,
@@ -3614,7 +3900,7 @@ class _ChatPanelState extends State<_ChatPanel> {
                   textInputAction: TextInputAction.newline,
                   decoration: InputDecoration(
                     labelText: 'Message',
-                    hintText: 'Ask a follow-up. MobileCode will include this chat history.',
+                    hintText: 'Ask a follow-up, or describe a tool task and tap Run Agent to see every step.',
                     helperText: '${_flavorLabel(flavor)} - ${widget.model.isEmpty ? 'default model' : widget.model}',
                     alignLabelWithHint: true,
                   ),
@@ -3624,25 +3910,27 @@ class _ChatPanelState extends State<_ChatPanel> {
                   children: [
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: _sending ? null : _send,
+                        onPressed: _sending || _agentRunning ? null : _send,
                         icon: _sending
                             ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Icon(Icons.send_outlined),
-                        label: Text(_sending ? 'Sending' : 'Send'),
+                        label: Text(_sending ? 'Sending' : 'Send Chat'),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _sending ? null : _runAgent,
-                        icon: const Icon(Icons.psychology_alt_outlined),
-                        label: const Text('Agent'),
+                        onPressed: _sending || _agentRunning ? null : _runAgent,
+                        icon: _agentRunning
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.psychology_alt_outlined),
+                        label: Text(_agentRunning ? 'Running' : 'Run Agent'),
                       ),
                     ),
                     const SizedBox(width: 10),
                     IconButton.outlined(
                       tooltip: 'Delete chat',
-                      onPressed: _sending ? null : _deleteActiveSession,
+                      onPressed: _sending || _agentRunning ? null : _deleteActiveSession,
                       icon: const Icon(Icons.delete_outline),
                     ),
                   ],
@@ -3762,7 +4050,7 @@ class _EmptyChatState extends StatelessWidget {
             Text('No messages yet', style: TextStyle(color: _text, fontWeight: FontWeight.w800)),
             SizedBox(height: 4),
             Text(
-              'Start a chat. It will stay in the conversation list after closing.',
+              'Use Send Chat for normal memory, or Run Agent to show the live coding/tool process.',
               textAlign: TextAlign.center,
               style: TextStyle(color: _muted, fontSize: 12),
             ),
@@ -4215,6 +4503,123 @@ class _InlineStatus extends StatelessWidget {
   }
 }
 
+class _AgentTracePanel extends StatelessWidget {
+  const _AgentTracePanel({
+    required this.title,
+    required this.steps,
+  });
+
+  final String title;
+  final List<_AgentTraceStep> steps;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.timeline_outlined, color: _violet, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(color: _text, fontSize: 15, fontWeight: FontWeight.w900),
+                ),
+              ),
+              _Pill(
+                label: '${steps.where((step) => step.state == _AgentStepState.done).length}/${steps.length}',
+                icon: Icons.task_alt_outlined,
+                color: _violet,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (var index = 0; index < steps.length; index++) ...[
+            _AgentTraceRow(step: steps[index], isLast: index == steps.length - 1),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AgentTraceRow extends StatelessWidget {
+  const _AgentTraceRow({
+    required this.step,
+    required this.isLast,
+  });
+
+  final _AgentTraceStep step;
+  final bool isLast;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _agentStepColor(step.state);
+    final icon = _agentStepStatusIcon(step.state);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: color.withOpacity(0.42)),
+              ),
+              child: Icon(icon, color: color, size: 16),
+            ),
+            if (!isLast)
+              Container(
+                width: 1,
+                height: 42,
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                color: _line,
+              ),
+          ],
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(step.icon, color: color, size: 15),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        step.title,
+                        style: const TextStyle(color: _text, fontWeight: FontWeight.w800, fontSize: 13),
+                      ),
+                    ),
+                    Text(
+                      _agentStepLabel(step.state),
+                      style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 11),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  step.detail,
+                  style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _StatusPill extends StatelessWidget {
   const _StatusPill({required this.status, required this.color});
 
@@ -4225,6 +4630,33 @@ class _StatusPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return _Pill(label: _statusLabel(status), icon: _statusIcon(status), color: color);
   }
+}
+
+String _agentStepLabel(_AgentStepState state) {
+  return switch (state) {
+    _AgentStepState.queued => 'Queued',
+    _AgentStepState.running => 'Running',
+    _AgentStepState.done => 'Done',
+    _AgentStepState.failed => 'Failed',
+  };
+}
+
+IconData _agentStepStatusIcon(_AgentStepState state) {
+  return switch (state) {
+    _AgentStepState.queued => Icons.radio_button_unchecked_outlined,
+    _AgentStepState.running => Icons.sync_outlined,
+    _AgentStepState.done => Icons.check_circle_outline,
+    _AgentStepState.failed => Icons.error_outline,
+  };
+}
+
+Color _agentStepColor(_AgentStepState state) {
+  return switch (state) {
+    _AgentStepState.queued => _faint,
+    _AgentStepState.running => _amber,
+    _AgentStepState.done => _mint,
+    _AgentStepState.failed => _rose,
+  };
 }
 
 String _flavorLabel(_ApiFlavor flavor) {

@@ -53,6 +53,16 @@ const _violet = Color(0xFF8B5CF6);
 const _blue = Color(0xFF6EA8FF);
 const _defaultBaseUrl = 'https://token-plan-cn.xiaomimimo.com/anthropic';
 const _defaultModel = 'mimo-v2.5-pro';
+const _managedProviderEnabled = bool.fromEnvironment('MOBILECODE_MANAGED_PROVIDER');
+const _managedBaseUrl = String.fromEnvironment(
+  'MOBILECODE_MANAGED_BASE_URL',
+  defaultValue: _defaultBaseUrl,
+);
+const _managedModel = String.fromEnvironment(
+  'MOBILECODE_MANAGED_MODEL',
+  defaultValue: _defaultModel,
+);
+const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
@@ -672,8 +682,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   _CapabilityLayer get _activeLayer => _layers[_safeLayerIndex];
 
+  bool get _managedProviderActive => _managedProviderEnabled && _managedApiKey.trim().isNotEmpty;
+
+  String get _effectiveBaseUrl => _managedProviderActive ? _managedBaseUrl : _baseUrlController.text.trim();
+
+  String get _effectiveApiKey => _managedProviderActive ? _managedApiKey : _apiKeyController.text.trim();
+
+  String get _effectiveModel => _managedProviderActive ? _managedModel : _modelController.text.trim();
+
   _ApiFlavor get _flavor {
-    return _detectApiFlavor(_baseUrlController.text.trim(), _modelController.text.trim());
+    return _detectApiFlavor(_effectiveBaseUrl, _effectiveModel);
   }
 
   @override
@@ -695,9 +713,15 @@ class _HomeScreenState extends State<HomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
       setState(() {
-        _baseUrlController.text = _savedOrDefault(prefs.getString(_baseUrlKey), _defaultBaseUrl);
-        _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
-        _modelController.text = _savedOrDefault(prefs.getString(_modelKey), _defaultModel);
+        if (_managedProviderActive) {
+          _baseUrlController.text = '';
+          _apiKeyController.text = '';
+          _modelController.text = '';
+        } else {
+          _baseUrlController.text = _savedOrDefault(prefs.getString(_baseUrlKey), _defaultBaseUrl);
+          _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
+          _modelController.text = _savedOrDefault(prefs.getString(_modelKey), _defaultModel);
+        }
       });
     } on Object catch (error) {
       _addLog('Config load failed', _compact(error.toString(), limit: 120), Icons.error_outline, _rose);
@@ -705,6 +729,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _applyDefaultProvider() {
+    if (_managedProviderActive) {
+      _showMessage('Managed provider is already active');
+      return;
+    }
     setState(() {
       _baseUrlController.text = _defaultBaseUrl;
       _modelController.text = _defaultModel;
@@ -713,6 +741,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _saveConfig() async {
+    if (_managedProviderActive) {
+      _showMessage('Managed provider uses hidden debug credentials');
+      return;
+    }
     setState(() => _saving = true);
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -722,7 +754,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       _addLog(
         'API profile saved',
-        '${_flavorLabel(_flavor)} - ${_modelController.text.trim().isEmpty ? 'default model' : _modelController.text.trim()}',
+        '${_flavorLabel(_flavor)} - ${_effectiveModel.isEmpty ? 'default model' : _effectiveModel}',
         Icons.key_outlined,
         _mint,
       );
@@ -737,7 +769,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _checkHealth() async {
-    final baseUrl = _baseUrlController.text.trim();
+    final baseUrl = _effectiveBaseUrl;
     if (baseUrl.isEmpty) {
       _showMessage('Set Base URL first');
       return;
@@ -758,8 +790,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final apiKey = _apiKeyController.text.trim();
-      final model = _modelController.text.trim();
+      final apiKey = _effectiveApiKey;
+      final model = _effectiveModel;
       late final _ProbeResult result;
 
       if (flavor == _ApiFlavor.anthropic) {
@@ -949,7 +981,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openChatSheet() {
-    if (_baseUrlController.text.trim().isEmpty) {
+    if (_effectiveBaseUrl.isEmpty) {
       _showMessage('Configure Base URL first');
       return;
     }
@@ -961,9 +993,9 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
       ),
       builder: (context) => _ChatPanel(
-        baseUrl: _baseUrlController.text.trim(),
-        apiKey: _apiKeyController.text.trim(),
-        model: _modelController.text.trim(),
+        baseUrl: _effectiveBaseUrl,
+        apiKey: _effectiveApiKey,
+        model: _effectiveModel,
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
         onAgentPrompt: _handleAgentPrompt,
       ),
@@ -1061,9 +1093,9 @@ class _HomeScreenState extends State<HomeScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
       ),
       builder: (context) => _ToolLabSheet(
-        baseUrl: _baseUrlController.text.trim(),
-        apiKey: _apiKeyController.text.trim(),
-        model: _modelController.text.trim(),
+        baseUrl: _effectiveBaseUrl,
+        apiKey: _effectiveApiKey,
+        model: _effectiveModel,
         onOpen2048: () => _openMobileCodingLabSheet(autoGenerate: true),
         onOpenGitHubWeb: () => _openUrl(_githubTestUrl, 'GitHub test page'),
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
@@ -1273,6 +1305,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     modelController: _modelController,
                     saving: _saving,
                     flavor: _flavor,
+                    managedProviderActive: _managedProviderActive,
                     onPreset: _applyDefaultProvider,
                     onSave: _saveConfig,
                     onHealth: _checkHealth,
@@ -1428,6 +1461,7 @@ class _ApiConfigCard extends StatelessWidget {
     required this.modelController,
     required this.saving,
     required this.flavor,
+    required this.managedProviderActive,
     required this.onPreset,
     required this.onSave,
     required this.onHealth,
@@ -1438,6 +1472,7 @@ class _ApiConfigCard extends StatelessWidget {
   final TextEditingController modelController;
   final bool saving;
   final _ApiFlavor flavor;
+  final bool managedProviderActive;
   final VoidCallback onPreset;
   final VoidCallback onSave;
   final VoidCallback onHealth;
@@ -1458,14 +1493,16 @@ class _ApiConfigCard extends StatelessWidget {
                   style: TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w700),
                 ),
               ),
-              Tooltip(
-                message: 'Use Mimo Anthropic preset',
-                child: IconButton.filledTonal(
-                  onPressed: onPreset,
-                  icon: const Icon(Icons.auto_fix_high_outlined, size: 18),
+              if (!managedProviderActive) ...[
+                Tooltip(
+                  message: 'Use Mimo Anthropic preset',
+                  child: IconButton.filledTonal(
+                    onPressed: onPreset,
+                    icon: const Icon(Icons.auto_fix_high_outlined, size: 18),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
+                const SizedBox(width: 8),
+              ],
               _Pill(
                 label: _flavorLabel(flavor),
                 icon: flavor == _ApiFlavor.anthropic ? Icons.hub_outlined : Icons.api_outlined,
@@ -1474,6 +1511,24 @@ class _ApiConfigCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
+          if (managedProviderActive) ...[
+            const _InlineStatus(
+              icon: Icons.admin_panel_settings_outlined,
+              label: 'Managed debug provider active - credentials are hidden in the UI.',
+              color: _mint,
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'MobileCode will call the configured provider with bundled debug credentials. Base URL, API key, and model are intentionally not shown on this screen.',
+              style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: onHealth,
+              icon: const Icon(Icons.monitor_heart_outlined),
+              label: const Text('Check Managed Provider'),
+            ),
+          ] else ...[
           TextField(
             controller: baseUrlController,
             keyboardType: TextInputType.url,
@@ -1536,6 +1591,7 @@ class _ApiConfigCard extends StatelessWidget {
               ),
             ],
           ),
+          ],
         ],
       ),
     );

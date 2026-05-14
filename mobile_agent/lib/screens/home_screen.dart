@@ -19,6 +19,18 @@ enum _CapabilityStatus { ready, needsConfig, local, preview }
 
 enum _AgentStepState { queued, running, done, failed }
 
+enum _MiniAgentEventKind {
+  system,
+  thought,
+  toolCall,
+  observation,
+  fileWrite,
+  diff,
+  preview,
+  finalAnswer,
+  error,
+}
+
 enum _ModuleAction {
   aiChat,
   apiConfig,
@@ -336,6 +348,110 @@ class _AgentTraceStep {
   }
 }
 
+class _MiniAgentEvent {
+  const _MiniAgentEvent({
+    required this.kind,
+    required this.title,
+    required this.detail,
+    required this.time,
+    this.toolName,
+    this.path,
+    this.durationMs,
+    this.ok = true,
+  });
+
+  final _MiniAgentEventKind kind;
+  final String title;
+  final String detail;
+  final DateTime time;
+  final String? toolName;
+  final String? path;
+  final int? durationMs;
+  final bool ok;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'kind': kind.name,
+      'title': title,
+      'detail': detail,
+      'toolName': toolName,
+      'path': path,
+      'durationMs': durationMs,
+      'ok': ok,
+      'time': time.toIso8601String(),
+    };
+  }
+}
+
+class _MiniAgentToolSpec {
+  const _MiniAgentToolSpec({
+    required this.name,
+    required this.description,
+    required this.surface,
+    required this.icon,
+    required this.color,
+    required this.risk,
+  });
+
+  final String name;
+  final String description;
+  final String surface;
+  final IconData icon;
+  final Color color;
+  final String risk;
+}
+
+const _miniAgentTools = [
+  _MiniAgentToolSpec(
+    name: 'list_files',
+    description: 'Inspect app-owned project folders before writing.',
+    surface: 'Android app documents',
+    icon: Icons.folder_open_outlined,
+    color: _mint,
+    risk: 'read-only',
+  ),
+  _MiniAgentToolSpec(
+    name: 'write_file',
+    description: 'Write generated code with a temp-file rename.',
+    surface: 'Android app documents',
+    icon: Icons.edit_note_outlined,
+    color: _cyan,
+    risk: 'guarded',
+  ),
+  _MiniAgentToolSpec(
+    name: 'read_file',
+    description: 'Read generated files back for preview and copy.',
+    surface: 'Android app documents',
+    icon: Icons.description_outlined,
+    color: _blue,
+    risk: 'read-only',
+  ),
+  _MiniAgentToolSpec(
+    name: 'preview_webview',
+    description: 'Load HTML/CSS/JS into the in-app Android WebView.',
+    surface: 'Android WebView',
+    icon: Icons.preview_outlined,
+    color: _violet,
+    risk: 'local',
+  ),
+  _MiniAgentToolSpec(
+    name: 'termux_probe',
+    description: 'Check Termux availability for shell-like mobile builds.',
+    surface: 'Android package bridge',
+    icon: Icons.terminal_outlined,
+    color: _lime,
+    risk: 'external app',
+  ),
+  _MiniAgentToolSpec(
+    name: 'github_connect',
+    description: 'Open the GitHub Pages token/repo connectivity tester.',
+    surface: 'GitHub API',
+    icon: Icons.hub_outlined,
+    color: _amber,
+    risk: 'network',
+  ),
+];
+
 String _normalizedBaseUrl(String baseUrl) {
   return baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
 }
@@ -395,6 +511,22 @@ String _compact(String value, {int limit = 800}) {
   return '${trimmed.substring(0, limit)}...';
 }
 
+List<String> _chunkText(String value, int chunkSize) {
+  final chunks = <String>[];
+  for (var offset = 0; offset < value.length; offset += chunkSize) {
+    final end = offset + chunkSize > value.length ? value.length : offset + chunkSize;
+    chunks.add(value.substring(offset, end));
+  }
+  return chunks;
+}
+
+String _clockLabel(DateTime time) {
+  final hour = time.hour.toString().padLeft(2, '0');
+  final minute = time.minute.toString().padLeft(2, '0');
+  final second = time.second.toString().padLeft(2, '0');
+  return '$hour:$minute:$second';
+}
+
 bool _promptTargets2048(String prompt) {
   final lower = prompt.toLowerCase();
   return lower.contains('2048') ||
@@ -438,36 +570,6 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       title: 'Execute tool surface',
       detail: 'Open the matching MobileCode workspace so generated files and test results are visible.',
       icon: Icons.play_arrow_outlined,
-    ),
-  ];
-}
-
-List<_AgentTraceStep> _codingTraceTemplate() {
-  return const [
-    _AgentTraceStep(
-      title: 'Analyze build request',
-      detail: 'Target: create a phone-first 2048 game as real HTML/CSS/JS code.',
-      icon: Icons.manage_search_outlined,
-    ),
-    _AgentTraceStep(
-      title: 'Prepare workspace',
-      detail: 'Create app-owned mobilecode_projects/agent_2048 directory.',
-      icon: Icons.folder_open_outlined,
-    ),
-    _AgentTraceStep(
-      title: 'Write game code',
-      detail: 'Generate complete index.html with layout, swipe controls, score, best score, and undo.',
-      icon: Icons.code_outlined,
-    ),
-    _AgentTraceStep(
-      title: 'Save atomically',
-      detail: 'Write a temporary file, flush it, then rename to index.html to avoid broken partial files.',
-      icon: Icons.save_outlined,
-    ),
-    _AgentTraceStep(
-      title: 'Prepare preview',
-      detail: 'Load generated HTML into the in-app Android WebView preview surface.',
-      icon: Icons.preview_outlined,
     ),
   ];
 }
@@ -1910,12 +2012,20 @@ class _MobileCodingLabSheet extends StatefulWidget {
 
 class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
   String? _projectPath;
+  String? _transcriptPath;
   String? _html;
   String _stage = 'Idle';
   int? _lastGenerateMs;
   bool _generating = false;
   bool _autoStarted = false;
-  final List<_AgentTraceStep> _traceSteps = [];
+  final List<_MiniAgentEvent> _agentEvents = [];
+  final _agentEventController = ScrollController();
+
+  @override
+  void dispose() {
+    _agentEventController.dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -1930,23 +2040,137 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
     final started = DateTime.now();
     setState(() {
       _generating = true;
-      _stage = 'Analyzing request';
-      _traceSteps
-        ..clear()
-        ..addAll(_codingTraceTemplate());
+      _stage = 'Starting mini agent';
+      _agentEvents.clear();
+      _transcriptPath = null;
     });
     try {
-      await _finishTraceStep(0, 'Confirmed local 2048 web app target');
       final directory = await getApplicationDocumentsDirectory();
-      final projectDirectory = Directory('${directory.path}/mobilecode_projects/agent_2048');
-      _startTraceStep(1, 'Creating ${projectDirectory.path}');
+      final rootDirectory = Directory('${directory.path}/mobilecode_projects');
+      final projectDirectory = Directory('${rootDirectory.path}/agent_2048');
+
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.system,
+          title: 'Mini harness booted',
+          detail:
+              'Loaded phone-safe tools: list_files, write_file, read_file, preview_webview, termux_probe, github_connect.',
+          time: DateTime.now(),
+        ),
+      );
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.thought,
+          title: 'Reasoning',
+          detail:
+              'Goal is a real local 2048 project. The agent will create an app-owned workspace, generate a complete single-file web app, save it atomically, read it back, then make WebView preview available.',
+          time: DateTime.now(),
+        ),
+      );
+
+      final listStarted = DateTime.now();
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.toolCall,
+          title: 'tool_call: list_files',
+          toolName: 'list_files',
+          path: rootDirectory.path,
+          detail: jsonEncode({
+            'path': 'mobilecode_projects',
+            'maxDepth': 1,
+          }),
+          time: DateTime.now(),
+        ),
+      );
+      await rootDirectory.create(recursive: true);
+      final existingProjects = rootDirectory
+          .listSync()
+          .map((entity) => entity.path.split(Platform.pathSeparator).last)
+          .where((name) => name.trim().isNotEmpty)
+          .take(8)
+          .toList();
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.observation,
+          title: 'tool_result: list_files',
+          toolName: 'list_files',
+          path: rootDirectory.path,
+          durationMs: DateTime.now().difference(listStarted).inMilliseconds,
+          detail: existingProjects.isEmpty
+              ? 'No local MobileCode projects yet.'
+              : 'Found: ${existingProjects.join(', ')}',
+          time: DateTime.now(),
+        ),
+      );
+
+      final prepareStarted = DateTime.now();
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.toolCall,
+          title: 'tool_call: mkdir',
+          toolName: 'write_file',
+          path: projectDirectory.path,
+          detail: jsonEncode({
+            'path': 'mobilecode_projects/agent_2048',
+            'recursive': true,
+          }),
+          time: DateTime.now(),
+        ),
+      );
       await projectDirectory.create(recursive: true);
-      _finishTraceStepNow(1, 'Workspace ready');
-      if (!mounted) return;
-      _startTraceStep(2, 'Synthesizing a complete offline index.html');
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.observation,
+          title: 'tool_result: mkdir',
+          toolName: 'write_file',
+          path: projectDirectory.path,
+          durationMs: DateTime.now().difference(prepareStarted).inMilliseconds,
+          detail: 'Workspace ready inside Android app documents.',
+          time: DateTime.now(),
+        ),
+      );
+
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.thought,
+          title: 'Plan code structure',
+          detail:
+              'Single index.html keeps the demo portable: responsive board, swipe/keyboard input, score, best score, undo, game-over detection, and localStorage persistence.',
+          time: DateTime.now(),
+        ),
+      );
+
       final html = _agent2048Html();
-      _finishTraceStepNow(2, '${html.length} characters generated');
-      _startTraceStep(3, 'Writing index.html.tmp, then renaming');
+      final chunks = _chunkText(html, 1500);
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.toolCall,
+          title: 'tool_call: write_file',
+          toolName: 'write_file',
+          path: '${projectDirectory.path}/index.html',
+          detail: jsonEncode({
+            'path': 'mobilecode_projects/agent_2048/index.html',
+            'bytes': utf8.encode(html).length,
+            'atomic': true,
+          }),
+          time: DateTime.now(),
+        ),
+      );
+      for (var index = 0; index < chunks.length; index++) {
+        await _emitAgentEvent(
+          _MiniAgentEvent(
+            kind: _MiniAgentEventKind.fileWrite,
+            title: 'Writing code chunk ${index + 1}/${chunks.length}',
+            toolName: 'write_file',
+            path: '${projectDirectory.path}/index.html',
+            detail: _compact(chunks[index], limit: 360),
+            time: DateTime.now(),
+          ),
+          delay: const Duration(milliseconds: 90),
+        );
+      }
+
+      final writeStarted = DateTime.now();
       final tempFile = File('${projectDirectory.path}/index.html.tmp');
       final file = File('${projectDirectory.path}/index.html');
       await tempFile.writeAsString(html, flush: true);
@@ -1954,19 +2178,108 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
         await file.delete();
       }
       await tempFile.rename(file.path);
-      _finishTraceStepNow(3, file.path);
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.observation,
+          title: 'tool_result: write_file',
+          toolName: 'write_file',
+          path: file.path,
+          durationMs: DateTime.now().difference(writeStarted).inMilliseconds,
+          detail: 'Wrote ${html.length} characters to index.html through temp-file rename.',
+          time: DateTime.now(),
+        ),
+      );
+
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.diff,
+          title: 'Generated diff',
+          toolName: 'write_file',
+          path: file.path,
+          detail: [
+            '+ mobilecode_projects/agent_2048/index.html',
+            '+ responsive 4x4 2048 board',
+            '+ swipe and keyboard controls',
+            '+ score, best score, undo, game-over state',
+            '+ offline WebView-ready JavaScript',
+          ].join('\n'),
+          time: DateTime.now(),
+        ),
+      );
+
+      final readStarted = DateTime.now();
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.toolCall,
+          title: 'tool_call: read_file',
+          toolName: 'read_file',
+          path: file.path,
+          detail: jsonEncode({
+            'path': 'mobilecode_projects/agent_2048/index.html',
+            'purpose': 'verify saved file and prepare preview',
+          }),
+          time: DateTime.now(),
+        ),
+      );
+      final savedHtml = await file.readAsString();
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.observation,
+          title: 'tool_result: read_file',
+          toolName: 'read_file',
+          path: file.path,
+          durationMs: DateTime.now().difference(readStarted).inMilliseconds,
+          detail: 'Read back ${savedHtml.length} characters. Preview input is ready.',
+          time: DateTime.now(),
+        ),
+      );
       if (!mounted) return;
       setState(() {
         _projectPath = file.path;
-        _html = html;
+        _html = savedHtml;
         _stage = 'Generated and saved';
         _lastGenerateMs = DateTime.now().difference(started).inMilliseconds;
       });
-      _finishTraceStepNow(4, 'Preview button is ready - ${_lastGenerateMs}ms');
+
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.preview,
+          title: 'tool_call: preview_webview',
+          toolName: 'preview_webview',
+          path: file.path,
+          detail:
+              'WebView preview is armed. Tap Preview to run the generated game inside MobileCode without leaving the app.',
+          durationMs: _lastGenerateMs,
+          time: DateTime.now(),
+        ),
+      );
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.finalAnswer,
+          title: 'Agent final',
+          detail:
+              '2048 project is complete. The generated code is visible below, stored on-device, and ready for WebView preview or GitHub publishing.',
+          durationMs: _lastGenerateMs,
+          time: DateTime.now(),
+        ),
+      );
+
+      final transcript = await _persistRunTranscript(projectDirectory, started);
+      if (!mounted) return;
+      setState(() => _transcriptPath = transcript.path);
       widget.onLog('Agent generated 2048', '${file.path} - ${_lastGenerateMs}ms', Icons.grid_4x4_outlined, _mint);
     } on Object catch (error) {
       if (!mounted) return;
-      _failRunningTraceStep(_compact(error.toString(), limit: 120));
+      await _emitAgentEvent(
+        _MiniAgentEvent(
+          kind: _MiniAgentEventKind.error,
+          title: 'Agent failed',
+          detail: _compact(error.toString(), limit: 260),
+          ok: false,
+          time: DateTime.now(),
+        ),
+        delay: Duration.zero,
+      );
       setState(() => _stage = 'Generation failed');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Generate failed: $error')));
       widget.onLog('2048 generation failed', _compact(error.toString(), limit: 120), Icons.error_outline, _rose);
@@ -1975,47 +2288,53 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
     }
   }
 
-  Future<void> _finishTraceStep(int index, String detail) async {
-    _startTraceStep(index, detail);
-    await Future<void>.delayed(const Duration(milliseconds: 180));
-    _finishTraceStepNow(index, detail);
-  }
-
-  void _startTraceStep(int index, String detail) {
-    if (!mounted || index < 0 || index >= _traceSteps.length) return;
+  Future<void> _emitAgentEvent(
+    _MiniAgentEvent event, {
+    Duration delay = const Duration(milliseconds: 150),
+  }) async {
+    if (!mounted) return;
     setState(() {
-      _stage = _traceSteps[index].title;
-      _traceSteps[index] = _traceSteps[index].copyWith(
-        detail: detail,
-        state: _AgentStepState.running,
+      _stage = event.title;
+      _agentEvents.add(event);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_agentEventController.hasClients) return;
+      _agentEventController.animateTo(
+        _agentEventController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
       );
     });
+    if (delay > Duration.zero) {
+      await Future<void>.delayed(delay);
+    }
   }
 
-  void _finishTraceStepNow(int index, String detail) {
-    if (!mounted || index < 0 || index >= _traceSteps.length) return;
-    setState(() {
-      _stage = _traceSteps[index].title;
-      _traceSteps[index] = _traceSteps[index].copyWith(
-        detail: detail,
-        state: _AgentStepState.done,
-        finishedAt: DateTime.now(),
-      );
-    });
-  }
-
-  void _failRunningTraceStep(String detail) {
-    if (!mounted || _traceSteps.isEmpty) return;
-    final runningIndex = _traceSteps.indexWhere((step) => step.state == _AgentStepState.running);
-    final index = runningIndex == -1 ? _traceSteps.indexWhere((step) => step.state == _AgentStepState.queued) : runningIndex;
-    if (index == -1) return;
-    setState(() {
-      _traceSteps[index] = _traceSteps[index].copyWith(
-        detail: detail,
-        state: _AgentStepState.failed,
-        finishedAt: DateTime.now(),
-      );
-    });
+  Future<File> _persistRunTranscript(Directory projectDirectory, DateTime started) async {
+    final file = File('${projectDirectory.path}/agent_run.json');
+    final payload = {
+      'agent': 'MobileCode Android Mini Agent',
+      'inspiredBy': [
+        'mini-harness: model/tool/result loop',
+        'mini-codex: workspace-scoped actions and shell-style tool output',
+        'mini-claude-code: persistent session and tool transcript',
+        'MiniClaude: visible tool-use lifecycle and file diff surfaces',
+      ],
+      'startedAt': started.toIso8601String(),
+      'finishedAt': DateTime.now().toIso8601String(),
+      'projectPath': _projectPath,
+      'tools': _miniAgentTools
+          .map((tool) => {
+                'name': tool.name,
+                'description': tool.description,
+                'surface': tool.surface,
+                'risk': tool.risk,
+              })
+          .toList(),
+      'events': _agentEvents.map((event) => event.toJson()).toList(),
+    };
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(payload), flush: true);
+    return file;
   }
 
   void _preview() {
@@ -2052,8 +2371,8 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
   Widget build(BuildContext context) {
     return _SheetScaffold(
       icon: Icons.code_outlined,
-      title: 'Mobile Coding Lab',
-      subtitle: 'Agent writes a real local 2048 project, saves index.html, and previews it in WebView.',
+      title: 'Mobile Mini Agent',
+      subtitle: 'A phone-first coding loop with visible tool calls, file writes, diff, and WebView preview.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2062,7 +2381,7 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Agent tool plan',
+                  'Mini agent harness',
                   style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 16),
                 ),
                 const SizedBox(height: 10),
@@ -2073,10 +2392,10 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
                 ),
                 const SizedBox(height: 10),
                 for (final item in const [
-                  '1. Generate a complete HTML/CSS/JS 2048 game.',
-                  '2. Save it to app documents as mobilecode_projects/agent_2048/index.html.',
-                  '3. Load the generated file content into an in-app WebView preview.',
-                  '4. Keep the code visible so the user can copy, inspect, or publish it.',
+                  '1. Think: decide the phone-safe workspace and target artifact.',
+                  '2. Act: call list_files, write_file, read_file, and preview_webview.',
+                  '3. Observe: show tool results, latency, generated diff, and saved paths.',
+                  '4. Finish: leave code, transcript, and preview entry visible for inspection.',
                 ])
                   Padding(
                     padding: const EdgeInsets.only(bottom: 7),
@@ -2085,13 +2404,14 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
               ],
             ),
           ),
-          if (_traceSteps.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _AgentTracePanel(
-              title: _generating ? 'Live code-writing process' : 'Last code-writing run',
-              steps: _traceSteps,
-            ),
-          ],
+          const SizedBox(height: 12),
+          const _MiniAgentToolRegistry(tools: _miniAgentTools),
+          const SizedBox(height: 12),
+          _MiniAgentConsole(
+            events: _agentEvents,
+            running: _generating,
+            controller: _agentEventController,
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -2101,7 +2421,7 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
                   icon: _generating
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.auto_fix_high_outlined),
-                  label: Text(_generating ? 'Coding' : 'Agent code 2048'),
+                  label: Text(_generating ? 'Agent running' : 'Run mini agent'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -2135,19 +2455,40 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
             ],
           ),
           const SizedBox(height: 12),
-          if (_projectPath != null)
+          if (_projectPath != null || _transcriptPath != null)
             _Panel(
               padding: const EdgeInsets.all(12),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.description_outlined, color: _mint, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _projectPath!,
-                      style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                  if (_projectPath != null)
+                    Row(
+                      children: [
+                        const Icon(Icons.description_outlined, color: _mint, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _projectPath!,
+                            style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
+                  if (_transcriptPath != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.receipt_long_outlined, color: _cyan, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _transcriptPath!,
+                            style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -2156,7 +2497,7 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
             padding: const EdgeInsets.all(12),
             child: SelectableText(
               _html == null
-                  ? 'No generated code yet. Tap "Agent code 2048" to create a real local project.'
+                  ? 'No generated code yet. Tap "Run mini agent" to create a real local project.'
                   : _compact(_html!, limit: 2600),
               style: const TextStyle(color: _muted, fontSize: 12, height: 1.4, fontFamily: 'monospace'),
             ),
@@ -4559,6 +4900,270 @@ class _InlineStatus extends StatelessWidget {
   }
 }
 
+class _MiniAgentToolRegistry extends StatelessWidget {
+  const _MiniAgentToolRegistry({required this.tools});
+
+  final List<_MiniAgentToolSpec> tools;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.handyman_outlined, color: _cyan, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Phone tool registry',
+                  style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15),
+                ),
+              ),
+              _Pill(label: '${tools.length} tools', icon: Icons.schema_outlined, color: _cyan),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final columns = constraints.maxWidth >= 620 ? 3 : 2;
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: tools.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  childAspectRatio: columns == 2 ? 1.12 : 1.34,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemBuilder: (context, index) => _MiniAgentToolTile(tool: tools[index]),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniAgentToolTile extends StatelessWidget {
+  const _MiniAgentToolTile({required this.tool});
+
+  final _MiniAgentToolSpec tool;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _panelSoft,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: tool.color.withOpacity(0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(tool.icon, color: tool.color, size: 18),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  tool.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Expanded(
+            child: Text(
+              tool.description,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted, fontSize: 11, height: 1.25),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 5,
+            runSpacing: 5,
+            children: [
+              _MiniChip(label: tool.surface, color: tool.color),
+              _MiniChip(label: tool.risk, color: _faint),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniAgentConsole extends StatelessWidget {
+  const _MiniAgentConsole({
+    required this.events,
+    required this.running,
+    required this.controller,
+  });
+
+  final List<_MiniAgentEvent> events;
+  final bool running;
+  final ScrollController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final toolCalls = events.where((event) => event.kind == _MiniAgentEventKind.toolCall).length;
+    final observations = events.where((event) => event.kind == _MiniAgentEventKind.observation).length;
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(running ? Icons.sync_outlined : Icons.timeline_outlined, color: running ? _amber : _violet, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Live code-writing transcript',
+                  style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15),
+                ),
+              ),
+              _Pill(
+                label: running ? 'Live' : '${events.length} events',
+                icon: running ? Icons.bolt_outlined : Icons.receipt_long_outlined,
+                color: running ? _amber : _violet,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MiniChip(label: '$toolCalls tool calls', color: _cyan),
+              _MiniChip(label: '$observations results', color: _mint),
+              _MiniChip(label: 'workspace-scoped', color: _amber),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: events.isEmpty ? 178 : 390,
+            child: events.isEmpty
+                ? const _MiniAgentEmptyConsole()
+                : ListView.separated(
+                    controller: controller,
+                    itemCount: events.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) => _MiniAgentEventCard(event: events[index]),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniAgentEmptyConsole extends StatelessWidget {
+  const _MiniAgentEmptyConsole();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _panelSoft,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _line),
+      ),
+      child: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.play_circle_outline, color: _faint, size: 34),
+          SizedBox(height: 10),
+          Text(
+            'Run the mini agent to watch thinking, tool calls, file writes, diff, and preview setup appear here.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniAgentEventCard extends StatelessWidget {
+  const _MiniAgentEventCard({required this.event});
+
+  final _MiniAgentEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _miniAgentEventColor(event);
+    final isCodeLike = event.kind == _MiniAgentEventKind.fileWrite ||
+        event.kind == _MiniAgentEventKind.diff ||
+        event.kind == _MiniAgentEventKind.toolCall;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.30)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(_miniAgentEventIcon(event), color: color, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  event.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _text, fontSize: 13, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text(
+                event.durationMs == null ? _clockLabel(event.time) : '${event.durationMs}ms',
+                style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+          if (event.toolName != null || event.path != null) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                if (event.toolName != null) _MiniChip(label: event.toolName!, color: color),
+                if (event.path != null) _MiniChip(label: _compact(event.path!, limit: 46), color: _faint),
+              ],
+            ),
+          ],
+          const SizedBox(height: 8),
+          SelectableText(
+            event.detail,
+            style: TextStyle(
+              color: event.ok ? _muted : _rose,
+              fontSize: 12,
+              height: 1.38,
+              fontFamily: isCodeLike ? 'monospace' : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AgentTracePanel extends StatelessWidget {
   const _AgentTracePanel({
     required this.title,
@@ -4712,6 +5317,36 @@ Color _agentStepColor(_AgentStepState state) {
     _AgentStepState.running => _amber,
     _AgentStepState.done => _mint,
     _AgentStepState.failed => _rose,
+  };
+}
+
+Color _miniAgentEventColor(_MiniAgentEvent event) {
+  if (!event.ok || event.kind == _MiniAgentEventKind.error) return _rose;
+  return switch (event.kind) {
+    _MiniAgentEventKind.system => _cyan,
+    _MiniAgentEventKind.thought => _violet,
+    _MiniAgentEventKind.toolCall => _amber,
+    _MiniAgentEventKind.observation => _mint,
+    _MiniAgentEventKind.fileWrite => _blue,
+    _MiniAgentEventKind.diff => _lime,
+    _MiniAgentEventKind.preview => _violet,
+    _MiniAgentEventKind.finalAnswer => _mint,
+    _MiniAgentEventKind.error => _rose,
+  };
+}
+
+IconData _miniAgentEventIcon(_MiniAgentEvent event) {
+  if (!event.ok || event.kind == _MiniAgentEventKind.error) return Icons.error_outline;
+  return switch (event.kind) {
+    _MiniAgentEventKind.system => Icons.memory_outlined,
+    _MiniAgentEventKind.thought => Icons.psychology_alt_outlined,
+    _MiniAgentEventKind.toolCall => Icons.play_circle_outline,
+    _MiniAgentEventKind.observation => Icons.check_circle_outline,
+    _MiniAgentEventKind.fileWrite => Icons.edit_note_outlined,
+    _MiniAgentEventKind.diff => Icons.compare_arrows_outlined,
+    _MiniAgentEventKind.preview => Icons.preview_outlined,
+    _MiniAgentEventKind.finalAnswer => Icons.task_alt_outlined,
+    _MiniAgentEventKind.error => Icons.error_outline,
   };
 }
 

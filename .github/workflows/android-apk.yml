@@ -86,7 +86,18 @@ jobs:
 
       - name: Build release APK
         working-directory: mobile_agent
-        run: flutter build apk --release --target lib/main.dart
+        env:
+          MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
+        run: |
+          if [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
+            flutter build apk --release --target lib/main.dart \
+              --dart-define=MOBILECODE_MANAGED_PROVIDER=true \
+              --dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic \
+              --dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro \
+              --dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY"
+          else
+            flutter build apk --release --target lib/main.dart
+          fi
 
       - name: Stage APK
         run: |

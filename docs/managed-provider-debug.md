@@ -19,6 +19,8 @@ flutter build apk --release \
 
 When `MOBILECODE_MANAGED_PROVIDER=true` and `MOBILECODE_MANAGED_API_KEY` is non-empty, the APK uses the managed provider internally. The API configuration panel shows only a managed-provider status and a health-check button.
 
+The GitHub Actions APK workflow can inject this mode from repository secret `MOBILECODE_MANAGED_API_KEY`. This keeps the key out of source control and build logs, but the resulting APK should still be treated as a private/debug artifact because compiled client secrets are extractable.
+
 ## Production Direction
 
 For a public APK, prefer a server-side proxy:

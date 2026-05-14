@@ -56,13 +56,13 @@ jobs:
       - name: Run APK on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 29
           arch: x86_64
           profile: pixel_6
           target: google_apis
           disable-animations: true
           script: |
-            set -euxo pipefail
+            set -eux
             mkdir -p artifacts
             adb install -r mobile_agent/build/app/outputs/flutter-apk/app-debug.apk
             adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1

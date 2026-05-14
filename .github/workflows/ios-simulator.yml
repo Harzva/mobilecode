@@ -1,0 +1,99 @@
+name: Build iOS Simulator App
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub Release tag to upload the iOS simulator build to
+        required: false
+        default: v0.1.0
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios-simulator:
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Recreate iOS platform project
+        working-directory: mobile_agent
+        run: |
+          rm -rf ios
+          flutter create --platforms=ios --project-name mobile_agent --org com.mobilecode .
+
+      - name: Resolve Flutter dependencies
+        working-directory: mobile_agent
+        run: flutter pub get
+
+      - name: Analyze Flutter entry surfaces
+        working-directory: mobile_agent
+        run: flutter analyze lib/main.dart lib/screens/home_screen.dart --no-fatal-infos --no-fatal-warnings
+
+      - name: Build iOS simulator app
+        working-directory: mobile_agent
+        env:
+          MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
+        run: |
+          if [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
+            flutter build ios --simulator --debug --target lib/main.dart \
+              --dart-define=MOBILECODE_MANAGED_PROVIDER=true \
+              --dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic \
+              --dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro \
+              --dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY"
+          else
+            flutter build ios --simulator --debug --target lib/main.dart
+          fi
+
+      - name: Install and launch on iOS simulator
+        working-directory: mobile_agent
+        run: |
+          set -euxo pipefail
+          mkdir -p ../artifacts
+          SIM_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ && /Shutdown/ {print $2; exit}')"
+          if [ -z "$SIM_ID" ]; then
+            xcrun simctl list devices
+            exit 1
+          fi
+          xcrun simctl boot "$SIM_ID" || true
+          xcrun simctl bootstatus "$SIM_ID" -b
+          APP_PATH="build/ios/iphonesimulator/Runner.app"
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          xcrun simctl install "$SIM_ID" "$APP_PATH"
+          xcrun simctl launch "$SIM_ID" "$BUNDLE_ID"
+          sleep 15
+          xcrun simctl io "$SIM_ID" screenshot ../artifacts/mobilecode-ios-smoke.png
+          xcrun simctl spawn "$SIM_ID" log show --style compact --last 3m --predicate 'process == "Runner"' > ../artifacts/ios-runner.log || true
+          if grep -E "Terminating app due to uncaught exception|Fatal error|EXC_CRASH|SIGABRT" ../artifacts/ios-runner.log; then
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" ../artifacts/mobilecode-ios-simulator-v0.1.0.zip
+
+      - name: Upload iOS simulator artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobilecode-ios-simulator
+          path: artifacts/
+
+      - name: Upload iOS simulator app to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.0' }}
+        run: |
+          gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-simulator-v0.1.0.zip --clobber --repo "$GITHUB_REPOSITORY"

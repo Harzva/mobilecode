@@ -1,0 +1,83 @@
+name: Android App Smoke Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'mobile_agent/**'
+      - '.github/workflows/android-app-test.yml'
+      - '.github/workflows/android-apk.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  emulator-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Recreate Android platform project
+        working-directory: mobile_agent
+        run: |
+          rm -rf android
+          flutter create --platforms=android --project-name mobile_agent --org com.mobilecode .
+          python3 tooling/prepare_android_project.py
+
+      - name: Resolve Flutter dependencies
+        working-directory: mobile_agent
+        run: flutter pub get
+
+      - name: Analyze Flutter entry surfaces
+        working-directory: mobile_agent
+        run: flutter analyze lib/main.dart lib/screens/home_screen.dart --no-fatal-infos --no-fatal-warnings
+
+      - name: Build debug APK for emulator
+        working-directory: mobile_agent
+        run: flutter build apk --debug --target lib/main.dart
+
+      - name: Run APK on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          target: google_apis
+          disable-animations: true
+          script: |
+            set -euxo pipefail
+            mkdir -p artifacts
+            adb install -r mobile_agent/build/app/outputs/flutter-apk/app-debug.apk
+            adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
+            sleep 15
+            adb shell pidof com.mobilecode.mobile_agent
+            adb shell screencap -p /sdcard/mobilecode-android-smoke.png
+            adb pull /sdcard/mobilecode-android-smoke.png artifacts/mobilecode-android-smoke.png
+            adb logcat -d -t 1200 > artifacts/android-logcat.txt
+            if grep -E "FATAL EXCEPTION|AndroidRuntime|NoSuchMethodError|MissingPluginException" artifacts/android-logcat.txt; then
+              exit 1
+            fi
+
+      - name: Upload Android smoke artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobilecode-android-smoke
+          path: artifacts/

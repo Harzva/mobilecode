@@ -68,12 +68,9 @@ jobs:
             adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
             sleep 15
             adb shell pidof com.mobilecode.mobile_agent
-            adb shell screencap -p /sdcard/mobilecode-android-smoke.png
-            adb pull /sdcard/mobilecode-android-smoke.png artifacts/mobilecode-android-smoke.png
+            adb exec-out screencap -p > artifacts/mobilecode-android-smoke.png
             adb logcat -d -t 1200 > artifacts/android-logcat.txt
-            if grep -E "FATAL EXCEPTION|AndroidRuntime|NoSuchMethodError|MissingPluginException" artifacts/android-logcat.txt; then
-              exit 1
-            fi
+            grep -E "FATAL EXCEPTION|AndroidRuntime|NoSuchMethodError|MissingPluginException" artifacts/android-logcat.txt && exit 1 || true
 
       - name: Upload Android smoke artifacts
         uses: actions/upload-artifact@v4

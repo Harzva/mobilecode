@@ -77,6 +77,10 @@ const _managedModel = String.fromEnvironment(
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.0';
+const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
+const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
+const _releaseBuildLabel = 'v0.1.0+11';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 
 class _ProbeResult {
@@ -1394,11 +1398,27 @@ class _HomeScreenState extends State<HomeScreen> {
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+                cacheExtent: 900,
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
                   _TopBar(
                     healthState: _healthState,
                     flavor: _flavor,
                     onChat: _openChatSheet,
+                  ),
+                  const SizedBox(height: 12),
+                  _SideloadStatusPanel(
+                    managedProviderActive: _managedProviderActive,
+                    onOpenRelease: () => _openUrl(_releaseUrl, 'GitHub Release'),
+                    onOpenAndroidReport: () => _openUrl(_androidSmokeRunUrl, 'Android smoke report'),
+                    onOpenIosReport: () => _openUrl(_iosSimulatorRunUrl, 'iOS simulator report'),
+                  ),
+                  const SizedBox(height: 12),
+                  _FocusPanel(
+                    tab: _tab,
+                    healthState: _healthState,
+                    onPrimary: () => _runAction(_focusPrimaryAction(_tab)),
+                    onSecondary: () => _runAction(_focusSecondaryAction(_tab)),
                   ),
                   const SizedBox(height: 14),
                   _ApiConfigCard(
@@ -1552,6 +1572,205 @@ class _TopBar extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SideloadStatusPanel extends StatelessWidget {
+  const _SideloadStatusPanel({
+    required this.managedProviderActive,
+    required this.onOpenRelease,
+    required this.onOpenAndroidReport,
+    required this.onOpenIosReport,
+  });
+
+  final bool managedProviderActive;
+  final VoidCallback onOpenRelease;
+  final VoidCallback onOpenAndroidReport;
+  final VoidCallback onOpenIosReport;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: _mint.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: _mint.withOpacity(0.34)),
+                ),
+                child: const Icon(Icons.verified_outlined, color: _mint, size: 19),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('GitHub install build', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15)),
+                    SizedBox(height: 2),
+                    Text(_releaseBuildLabel, style: TextStyle(color: _muted, fontSize: 12)),
+                  ],
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: onOpenRelease,
+                icon: const Icon(Icons.download_outlined, size: 18),
+                label: const Text('Release'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _StatusActionChip(
+                label: 'Android smoke passed',
+                icon: Icons.android_outlined,
+                color: _mint,
+                onTap: onOpenAndroidReport,
+              ),
+              _StatusActionChip(
+                label: 'iOS simulator passed',
+                icon: Icons.phone_iphone_outlined,
+                color: _cyan,
+                onTap: onOpenIosReport,
+              ),
+              _StatusActionChip(
+                label: managedProviderActive ? 'Managed model active' : 'Bring your key',
+                icon: managedProviderActive ? Icons.lock_outline : Icons.key_outlined,
+                color: managedProviderActive ? _amber : _faint,
+                onTap: onOpenRelease,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusActionChip extends StatelessWidget {
+  const _StatusActionChip({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: color.withOpacity(0.09),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withOpacity(0.28)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 15),
+              const SizedBox(width: 6),
+              Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FocusPanel extends StatelessWidget {
+  const _FocusPanel({
+    required this.tab,
+    required this.healthState,
+    required this.onPrimary,
+    required this.onSecondary,
+  });
+
+  final _HomeTab tab;
+  final _HealthState healthState;
+  final VoidCallback onPrimary;
+  final VoidCallback onSecondary;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _focusColor(tab);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: accent.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: accent.withOpacity(0.30)),
+      ),
+      child: Row(
+        children: [
+          Icon(_focusIcon(tab), color: accent, size: 26),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _focusTitle(tab),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: _text, fontSize: 16, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    _MiniChip(label: _focusHealthLabel(healthState), color: _healthColor(healthState)),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _focusSubtitle(tab),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _muted, fontSize: 12, height: 1.32),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton.filledTonal(
+                tooltip: _focusPrimaryLabel(tab),
+                onPressed: onPrimary,
+                icon: Icon(_focusPrimaryIcon(tab), size: 18),
+              ),
+              const SizedBox(height: 6),
+              IconButton.outlined(
+                tooltip: _focusSecondaryLabel(tab),
+                onPressed: onSecondary,
+                icon: Icon(_focusSecondaryIcon(tab), size: 18),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -4734,6 +4953,7 @@ class _SheetScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: EdgeInsets.only(
         left: 18,
         right: 18,
@@ -5381,6 +5601,115 @@ Color _statusColor(_CapabilityStatus status) {
     _CapabilityStatus.needsConfig => _amber,
     _CapabilityStatus.local => _lime,
     _CapabilityStatus.preview => _cyan,
+  };
+}
+
+String _focusTitle(_HomeTab tab) {
+  return switch (tab) {
+    _HomeTab.control => 'Ready workspace',
+    _HomeTab.ai => 'Agent conversation',
+    _HomeTab.ship => 'Build and release',
+    _HomeTab.guard => 'Runtime checks',
+    _HomeTab.insight => 'Usage signal',
+  };
+}
+
+String _focusSubtitle(_HomeTab tab) {
+  return switch (tab) {
+    _HomeTab.control => 'Provider, mini agent, GitHub, Termux, and local demo surfaces stay one tap away.',
+    _HomeTab.ai => 'Persistent chat plus visible tool traces for phone-first coding.',
+    _HomeTab.ship => 'GitHub Release, Android APK, iOS simulator build, Pages, and preview paths.',
+    _HomeTab.guard => 'Provider health, tool probes, install checks, and local storage checks.',
+    _HomeTab.insight => 'Recent activity, saved drafts, snippets, and build confidence signals.',
+  };
+}
+
+IconData _focusIcon(_HomeTab tab) {
+  return switch (tab) {
+    _HomeTab.control => Icons.dashboard_customize_outlined,
+    _HomeTab.ai => Icons.psychology_alt_outlined,
+    _HomeTab.ship => Icons.rocket_launch_outlined,
+    _HomeTab.guard => Icons.health_and_safety_outlined,
+    _HomeTab.insight => Icons.insights_outlined,
+  };
+}
+
+Color _focusColor(_HomeTab tab) {
+  return switch (tab) {
+    _HomeTab.control => _mint,
+    _HomeTab.ai => _violet,
+    _HomeTab.ship => _amber,
+    _HomeTab.guard => _rose,
+    _HomeTab.insight => _cyan,
+  };
+}
+
+_ModuleAction _focusPrimaryAction(_HomeTab tab) {
+  return switch (tab) {
+    _HomeTab.control => _ModuleAction.webDemo,
+    _HomeTab.ai => _ModuleAction.aiChat,
+    _HomeTab.ship => _ModuleAction.build,
+    _HomeTab.guard => _ModuleAction.healthCheck,
+    _HomeTab.insight => _ModuleAction.toolLab,
+  };
+}
+
+_ModuleAction _focusSecondaryAction(_HomeTab tab) {
+  return switch (tab) {
+    _HomeTab.control => _ModuleAction.githubTest,
+    _HomeTab.ai => _ModuleAction.toolLab,
+    _HomeTab.ship => _ModuleAction.githubTest,
+    _HomeTab.guard => _ModuleAction.termuxCheck,
+    _HomeTab.insight => _ModuleAction.project,
+  };
+}
+
+String _focusPrimaryLabel(_HomeTab tab) {
+  return switch (tab) {
+    _HomeTab.control => 'Run mini agent',
+    _HomeTab.ai => 'Open AI chat',
+    _HomeTab.ship => 'Open release tools',
+    _HomeTab.guard => 'Check provider health',
+    _HomeTab.insight => 'Open tool lab',
+  };
+}
+
+String _focusSecondaryLabel(_HomeTab tab) {
+  return switch (tab) {
+    _HomeTab.control => 'Open GitHub test',
+    _HomeTab.ai => 'Open tool probes',
+    _HomeTab.ship => 'Open GitHub test',
+    _HomeTab.guard => 'Check Termux',
+    _HomeTab.insight => 'Open project console',
+  };
+}
+
+IconData _focusPrimaryIcon(_HomeTab tab) {
+  return switch (tab) {
+    _HomeTab.control => Icons.play_arrow_outlined,
+    _HomeTab.ai => Icons.forum_outlined,
+    _HomeTab.ship => Icons.rocket_launch_outlined,
+    _HomeTab.guard => Icons.monitor_heart_outlined,
+    _HomeTab.insight => Icons.handyman_outlined,
+  };
+}
+
+IconData _focusSecondaryIcon(_HomeTab tab) {
+  return switch (tab) {
+    _HomeTab.control => Icons.hub_outlined,
+    _HomeTab.ai => Icons.schema_outlined,
+    _HomeTab.ship => Icons.hub_outlined,
+    _HomeTab.guard => Icons.terminal_outlined,
+    _HomeTab.insight => Icons.folder_open_outlined,
+  };
+}
+
+String _focusHealthLabel(_HealthState health) {
+  return switch (health) {
+    _HealthState.healthy => 'healthy',
+    _HealthState.failed => 'needs check',
+    _HealthState.checking => 'checking',
+    _HealthState.unknown => 'not checked',
   };
 }
 

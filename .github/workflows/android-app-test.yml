@@ -64,7 +64,8 @@ jobs:
           script: |
             set -eux
             mkdir -p artifacts
-            adb install -r mobile_agent/build/app/outputs/flutter-apk/app-debug.apk
+            adb wait-for-device
+            installed=0; for attempt in 1 2 3; do if adb install -r mobile_agent/build/app/outputs/flutter-apk/app-debug.apk; then installed=1; break; fi; adb kill-server; adb start-server; adb wait-for-device; sleep 20; done; test "$installed" = 1
             adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
             sleep 15
             adb shell pidof com.mobilecode.mobile_agent

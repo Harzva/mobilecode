@@ -5082,12 +5082,12 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _ActionChipButton(icon: Icons.inventory_2_outlined, label: 'Install', disabled: _running, onTap: () => _run(RuntimeActionType.installDependencies)),
-              _ActionChipButton(icon: Icons.fact_check_outlined, label: 'Test', disabled: _running, onTap: () => _run(RuntimeActionType.runTests)),
-              _ActionChipButton(icon: Icons.web_asset_outlined, label: 'Preview', disabled: _running, onTap: () => _run(RuntimeActionType.buildPreview)),
-              _ActionChipButton(icon: Icons.account_tree_outlined, label: 'Commit', disabled: _running, onTap: () => _run(RuntimeActionType.gitCommit)),
-              _ActionChipButton(icon: Icons.publish_outlined, label: 'Publish', disabled: _running, onTap: () => _run(RuntimeActionType.publishPages)),
-              _ActionChipButton(icon: Icons.history_outlined, label: 'Recover', disabled: _running, onTap: _inspectTask),
+              _RuntimeActionButton(icon: Icons.inventory_2_outlined, label: 'Install', disabled: _running, onTap: () => _run(RuntimeActionType.installDependencies)),
+              _RuntimeActionButton(icon: Icons.fact_check_outlined, label: 'Test', disabled: _running, onTap: () => _run(RuntimeActionType.runTests)),
+              _RuntimeActionButton(icon: Icons.web_asset_outlined, label: 'Preview', disabled: _running, onTap: () => _run(RuntimeActionType.buildPreview)),
+              _RuntimeActionButton(icon: Icons.account_tree_outlined, label: 'Commit', disabled: _running, onTap: () => _run(RuntimeActionType.gitCommit)),
+              _RuntimeActionButton(icon: Icons.publish_outlined, label: 'Publish', disabled: _running, onTap: () => _run(RuntimeActionType.publishPages)),
+              _RuntimeActionButton(icon: Icons.history_outlined, label: 'Recover', disabled: _running, onTap: _inspectTask),
             ],
           ),
           const SizedBox(height: 12),
@@ -5219,8 +5219,8 @@ class _TaskSnapshotPanel extends StatelessWidget {
   }
 }
 
-class _ActionChipButton extends StatelessWidget {
-  const _ActionChipButton({
+class _RuntimeActionButton extends StatelessWidget {
+  const _RuntimeActionButton({
     required this.icon,
     required this.label,
     required this.disabled,

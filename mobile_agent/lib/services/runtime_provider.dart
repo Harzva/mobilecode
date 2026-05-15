@@ -116,6 +116,20 @@ enum RuntimeTaskStatus {
   unknown,
 }
 
+/// Coarse failure categories that can drive user recovery suggestions.
+enum RuntimeTaskFailureKind {
+  none,
+  timeout,
+  cancelled,
+  dependencyMissing,
+  commandBlocked,
+  cwdOutsideWorkspace,
+  authFailed,
+  processFailed,
+  runtimeLost,
+  unknown,
+}
+
 /// A task snapshot is intentionally compact so the UI can restore context after
 /// reconnecting without needing to understand each runtime's internal process model.
 class RuntimeTaskSnapshot {
@@ -130,6 +144,7 @@ class RuntimeTaskSnapshot {
   final List<String> logs;
   final RuntimeProviderType providerType;
   final String? error;
+  final RuntimeTaskFailureKind failureKind;
 
   const RuntimeTaskSnapshot({
     required this.taskId,
@@ -143,6 +158,7 @@ class RuntimeTaskSnapshot {
     this.duration,
     this.logs = const [],
     this.error,
+    this.failureKind = RuntimeTaskFailureKind.none,
   });
 
   bool get running => status == RuntimeTaskStatus.running || status == RuntimeTaskStatus.queued;
@@ -203,4 +219,6 @@ abstract class RuntimeProvider {
 /// Optional extension implemented by providers that can recover task state.
 abstract class RuntimeTaskMonitor {
   Future<RuntimeTaskSnapshot?> currentTask();
+  Future<List<RuntimeTaskSnapshot>> listTasks({int limit = 20});
+  Future<List<String>> taskLogs(String taskId, {int limit = 200});
 }

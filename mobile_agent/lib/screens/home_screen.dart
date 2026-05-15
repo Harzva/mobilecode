@@ -5042,9 +5042,62 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
     }
   }
 
+  Future<void> _useLastTaskPath() async {
+    setState(() => _running = true);
+    try {
+      final tasks = await widget.runtimeManager.taskHistory(limit: 5);
+      final task = tasks.firstWhere(
+        (item) => (item.workingDir ?? '').isNotEmpty,
+        orElse: () => const RuntimeTaskSnapshot(
+          taskId: '',
+          status: RuntimeTaskStatus.unknown,
+          command: '',
+          providerType: RuntimeProviderType.webViewOnly,
+        ),
+      );
+      final path = task.workingDir;
+      if (!mounted) return;
+      setState(() {
+        if (path == null || path.isEmpty) {
+          _lines.insert(0, 'No recent runtime task with a project path.');
+        } else {
+          _projectPath.text = path;
+          _lines.insert(0, 'Project path set from ${task.taskId}: $path');
+        }
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _lines.insert(0, 'Project path recovery failed: ${_compact(error.toString(), limit: 160)}'));
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  Future<void> _inspectHistory() async {
+    setState(() => _running = true);
+    try {
+      final tasks = await widget.runtimeManager.taskHistory(limit: 5);
+      if (!mounted) return;
+      setState(() {
+        _lines.insert(
+          0,
+          tasks.isEmpty
+              ? 'No recoverable runtime task history.'
+              : tasks.map((task) => _taskSummary(task)).join('\n\n'),
+        );
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _lines.insert(0, 'Task history failed: ${_compact(error.toString(), limit: 160)}'));
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
   String _taskSummary(RuntimeTaskSnapshot task) {
     final logs = task.logs.take(4).join('\n');
-    return 'Task ${task.taskId} is ${task.status.name}: ${task.command}${logs.isEmpty ? '' : '\n$logs'}';
+    final failure = task.failureKind == RuntimeTaskFailureKind.none ? '' : ' (${task.failureKind.name})';
+    return 'Task ${task.taskId} is ${task.status.name}$failure: ${task.command}${logs.isEmpty ? '' : '\n$logs'}';
   }
 
   @override
@@ -5059,6 +5112,28 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
           TextField(
             controller: _projectPath,
             decoration: const InputDecoration(labelText: 'Runtime project path', prefixIcon: Icon(Icons.folder_outlined)),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _RuntimeActionButton(
+                icon: Icons.home_work_outlined,
+                label: 'Default path',
+                disabled: _running,
+                onTap: () {
+                  _projectPath.text = '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime';
+                  setState(() => _lines.insert(0, 'Project path reset to helper workspace default.'));
+                },
+              ),
+              _RuntimeActionButton(
+                icon: Icons.restore_outlined,
+                label: 'Last cwd',
+                disabled: _running,
+                onTap: _useLastTaskPath,
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
@@ -5088,6 +5163,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
               _RuntimeActionButton(icon: Icons.account_tree_outlined, label: 'Commit', disabled: _running, onTap: () => _run(RuntimeActionType.gitCommit)),
               _RuntimeActionButton(icon: Icons.publish_outlined, label: 'Publish', disabled: _running, onTap: () => _run(RuntimeActionType.publishPages)),
               _RuntimeActionButton(icon: Icons.history_outlined, label: 'Recover', disabled: _running, onTap: _inspectTask),
+              _RuntimeActionButton(icon: Icons.manage_history_outlined, label: 'History', disabled: _running, onTap: _inspectHistory),
             ],
           ),
           const SizedBox(height: 12),

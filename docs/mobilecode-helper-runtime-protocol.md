@@ -38,10 +38,22 @@ Equivalent direct command:
 python3 tooling/mobilecode_helper_daemon.py \
   --host 127.0.0.1 \
   --port 8765 \
-  --workspace-root "$HOME/mobilecode_projects"
+  --workspace-root "$HOME/mobilecode_projects" \
+  --auth-token "$MOBILECODE_HELPER_TOKEN"
 ```
 
-Both prototypes implement `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/tasks/current`, and `/v1/task/stop`. Both prototypes intentionally run allowlisted commands without shell expansion and reject working directories outside the configured workspace boundary.
+Both prototypes implement `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/tasks/current`, `/v1/tasks`, `/v1/tasks/:id/logs`, and `/v1/task/stop`. Both prototypes intentionally run allowlisted commands without shell expansion and reject working directories outside the configured workspace boundary.
+
+## Localhost Auth
+
+The Python daemon supports an optional shared token:
+
+```http
+X-MobileCode-Token: <token>
+Authorization: Bearer <token>
+```
+
+If `--auth-token` or `MOBILECODE_HELPER_TOKEN` is set, every endpoint requires one of those headers and returns HTTP 401 with `failureKind: authFailed` when the token is missing or invalid. The Android foreground-service prototype currently reports `authRequired: false`; the next APK iteration should pass an app-generated token to the Flutter provider before enabling enforcement.
 
 ## Health
 
@@ -57,6 +69,8 @@ Response:
   "available": true,
   "ready": true,
   "status": "Helper foreground service is running.",
+  "protocolVersion": 1,
+  "authRequired": true,
   "capabilities": {
     "shell": true,
     "git": true,
@@ -145,7 +159,8 @@ Response:
     "finishedAtMs": 1715780001200,
     "exitCode": 0,
     "durationMs": 1200,
-    "logs": ["stdout: test ok"]
+    "logs": ["stdout: test ok"],
+    "failureKind": "none"
   }
 }
 ```
@@ -156,7 +171,51 @@ Task status values are:
 queued, running, succeeded, failed, cancelled, timedOut, lost, unknown
 ```
 
-The Android service persists the latest task snapshot under its app-private runtime directory. The Termux/Python prototype persists the same shape as `.mobilecode-helper-task.json` in the configured workspace root. If the helper restarts while a task is marked `running`, it must return `lost` with a recovery error instead of pretending the process is still alive.
+Task failure kinds are:
+
+```text
+none, timeout, cancelled, dependencyMissing, commandBlocked, cwdOutsideWorkspace, authFailed, processFailed, runtimeLost, unknown
+```
+
+Task history:
+
+```http
+GET /v1/tasks?limit=20
+```
+
+Response:
+
+```json
+{
+  "tasks": [
+    {
+      "id": "task-1715780000000",
+      "status": "succeeded",
+      "command": "npm test",
+      "failureKind": "none",
+      "logs": ["stdout: test ok"]
+    }
+  ],
+  "count": 1
+}
+```
+
+Task logs:
+
+```http
+GET /v1/tasks/task-1715780000000/logs?limit=200
+```
+
+Response:
+
+```json
+{
+  "taskId": "task-1715780000000",
+  "logs": ["stdout: test ok"]
+}
+```
+
+The Android service persists task history under its app-private runtime directory. The Termux/Python prototype persists the latest task as `.mobilecode-helper-task.json` and the recoverable task database as `.mobilecode-helper-tasks.json` in the configured workspace root. If the helper restarts while a task is marked `running`, it must return `lost`/`runtimeLost` with a recovery error instead of pretending the process is still alive.
 
 ## Workspace Sync
 

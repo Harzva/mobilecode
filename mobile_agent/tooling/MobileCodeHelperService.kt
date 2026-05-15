@@ -37,6 +37,9 @@ class MobileCodeHelperService : Service() {
     private val taskStateFile: File
         get() = File(defaultWorkspaceRoot, "helper_task_state.json")
 
+    private val taskDatabaseFile: File
+        get() = File(defaultWorkspaceRoot, "helper_tasks.json")
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
@@ -112,7 +115,9 @@ class MobileCodeHelperService : Service() {
         }
 
         val method = parts[0]
-        val path = parts[1].substringBefore("?")
+        val rawPath = parts[1]
+        val path = rawPath.substringBefore("?")
+        val query = rawPath.substringAfter("?", "")
         val headers = mutableMapOf<String, String>()
         while (true) {
             val line = reader.readLine() ?: return
@@ -128,6 +133,11 @@ class MobileCodeHelperService : Service() {
             when {
                 method == "GET" && path == "/v1/health" -> writeJson(socket, 200, healthJson())
                 method == "GET" && path == "/v1/tasks/current" -> writeJson(socket, 200, taskJson())
+                method == "GET" && path == "/v1/tasks" -> writeJson(socket, 200, taskHistoryJson(queryLimit(query, 20)))
+                method == "GET" && path.startsWith("/v1/tasks/") && path.endsWith("/logs") -> {
+                    val taskId = path.removePrefix("/v1/tasks/").removeSuffix("/logs").trim('/')
+                    writeJson(socket, 200, taskLogsJson(taskId, queryLimit(query, 200)))
+                }
                 method == "POST" && path == "/v1/execute" -> handleExecute(socket, body)
                 method == "POST" && path == "/v1/execute/stream" -> handleExecuteStream(socket, body)
                 method == "POST" && path == "/v1/task/stop" -> {
@@ -267,6 +277,8 @@ class MobileCodeHelperService : Service() {
             .put("available", true)
             .put("ready", running)
             .put("status", if (lastError.isBlank()) "Android foreground service is running." else lastError)
+            .put("protocolVersion", 1)
+            .put("authRequired", false)
             .put(
                 "capabilities",
                 JSONObject()
@@ -295,6 +307,31 @@ class MobileCodeHelperService : Service() {
             .put("task", snapshot)
     }
 
+    private fun taskHistoryJson(limit: Int): JSONObject {
+        val tasks = JSONArray()
+        synchronized(taskLock) {
+            taskHistory.take(limit.coerceAtLeast(1)).forEach { tasks.put(JSONObject(it.toString())) }
+        }
+        return JSONObject()
+            .put("tasks", tasks)
+            .put("count", tasks.length())
+    }
+
+    private fun taskLogsJson(taskId: String, limit: Int): JSONObject {
+        val logs = JSONArray()
+        synchronized(taskLock) {
+            val task = taskHistory.firstOrNull { it.optString("id") == taskId || it.optString("taskId") == taskId }
+            val source = task?.optJSONArray("logs") ?: JSONArray()
+            val start = (source.length() - limit.coerceAtLeast(1)).coerceAtLeast(0)
+            for (index in start until source.length()) {
+                logs.put(source.optString(index))
+            }
+        }
+        return JSONObject()
+            .put("taskId", taskId)
+            .put("logs", logs)
+    }
+
     private fun beginTask(taskId: String, command: String, cwd: File) {
         synchronized(taskLock) {
             currentTaskId = taskId
@@ -306,6 +343,7 @@ class MobileCodeHelperService : Service() {
             currentTaskExitCode = null
             currentTaskDurationMs = 0L
             currentTaskError = ""
+            currentTaskFailureKind = "none"
             synchronized(recentLogs) {
                 recentLogs.clear()
             }
@@ -320,6 +358,7 @@ class MobileCodeHelperService : Service() {
             currentTaskExitCode = exitCode
             currentTaskDurationMs = durationMs
             currentTaskError = error ?: ""
+            currentTaskFailureKind = classifyFailure(status, exitCode, error)
             persistTaskStateLocked()
         }
     }
@@ -333,30 +372,25 @@ class MobileCodeHelperService : Service() {
 
     private fun loadPersistedTask() {
         synchronized(taskLock) {
-            val file = taskStateFile
-            if (!file.exists()) return
             try {
-                val json = JSONObject(file.readText())
-                currentTaskId = json.optString("id", "")
-                currentCommand = json.optString("command", "")
-                currentTaskCwd = json.optString("cwd", "")
-                currentTaskStatus = json.optString("status", "unknown")
-                currentTaskStartedAtMs = json.optLong("startedAtMs", 0L)
-                currentTaskFinishedAtMs = json.optLong("finishedAtMs", 0L)
-                currentTaskExitCode = if (json.has("exitCode") && !json.isNull("exitCode")) json.optInt("exitCode") else null
-                currentTaskDurationMs = json.optLong("durationMs", 0L)
-                currentTaskError = json.optString("error", "")
-                synchronized(recentLogs) {
-                    recentLogs.clear()
-                    val logs = json.optJSONArray("logs") ?: JSONArray()
-                    for (index in 0 until logs.length()) {
-                        recentLogs.add(logs.optString(index))
+                taskHistory.clear()
+                val database = taskDatabaseFile
+                if (database.exists()) {
+                    val decoded = JSONObject(database.readText()).optJSONArray("tasks") ?: JSONArray()
+                    for (index in 0 until decoded.length()) {
+                        val task = decoded.optJSONObject(index) ?: continue
+                        taskHistory.add(task)
                     }
                 }
+                val currentJson = taskHistory.firstOrNull()
+                    ?: if (taskStateFile.exists()) JSONObject(taskStateFile.readText()) else null
+                    ?: return
+                applyTaskJsonLocked(currentJson)
                 if (currentTaskStatus == "running" && currentProcess == null) {
                     currentTaskStatus = "lost"
                     currentTaskFinishedAtMs = System.currentTimeMillis()
                     currentTaskError = "Helper service restarted before this task completed."
+                    currentTaskFailureKind = "runtimeLost"
                     appendLog("task lost after helper restart")
                     persistTaskStateLocked()
                 }
@@ -369,11 +403,48 @@ class MobileCodeHelperService : Service() {
     private fun persistTaskStateLocked() {
         if (currentTaskId.isBlank() && currentCommand.isBlank()) return
         try {
+            upsertTaskHistoryLocked()
             val file = taskStateFile
             file.parentFile?.mkdirs()
             file.writeText(taskSnapshotJson().toString())
+            val tasks = JSONArray()
+            taskHistory.take(MAX_TASKS).forEach { tasks.put(it) }
+            taskDatabaseFile.writeText(JSONObject().put("tasks", tasks).toString())
         } catch (error: Throwable) {
             lastError = "failed to persist task state: ${error.message ?: error.javaClass.simpleName}"
+        }
+    }
+
+    private fun applyTaskJsonLocked(json: JSONObject) {
+        currentTaskId = json.optString("id", "")
+        currentCommand = json.optString("command", "")
+        currentTaskCwd = json.optString("cwd", "")
+        currentTaskStatus = json.optString("status", "unknown")
+        currentTaskStartedAtMs = json.optLong("startedAtMs", 0L)
+        currentTaskFinishedAtMs = json.optLong("finishedAtMs", 0L)
+        currentTaskExitCode = if (json.has("exitCode") && !json.isNull("exitCode")) json.optInt("exitCode") else null
+        currentTaskDurationMs = json.optLong("durationMs", 0L)
+        currentTaskError = json.optString("error", "")
+        currentTaskFailureKind = json.optString("failureKind", classifyFailure(currentTaskStatus, currentTaskExitCode, currentTaskError))
+        synchronized(recentLogs) {
+            recentLogs.clear()
+            val logs = json.optJSONArray("logs") ?: JSONArray()
+            for (index in 0 until logs.length()) {
+                recentLogs.add(logs.optString(index))
+            }
+        }
+    }
+
+    private fun upsertTaskHistoryLocked() {
+        val snapshot = taskSnapshotJson()
+        val existing = taskHistory.indexOfFirst { it.optString("id") == currentTaskId || it.optString("taskId") == currentTaskId }
+        if (existing >= 0) {
+            taskHistory[existing] = snapshot
+        } else {
+            taskHistory.add(0, snapshot)
+        }
+        while (taskHistory.size > MAX_TASKS) {
+            taskHistory.removeAt(taskHistory.size - 1)
         }
     }
 
@@ -393,6 +464,7 @@ class MobileCodeHelperService : Service() {
             .put("durationMs", currentTaskDurationMs)
             .put("logs", logs)
             .put("provider", "mobileCodeHelper")
+            .put("failureKind", currentTaskFailureKind)
         if (currentTaskExitCode != null) json.put("exitCode", currentTaskExitCode)
         if (currentTaskError.isNotBlank()) json.put("error", currentTaskError)
         return json
@@ -482,11 +554,21 @@ class MobileCodeHelperService : Service() {
             currentTaskStatus = "cancelled"
             currentTaskFinishedAtMs = System.currentTimeMillis()
             currentTaskError = "Task cancelled by MobileCode."
+            currentTaskFailureKind = "cancelled"
             recordLog("task stopped")
             true
         } catch (_: Throwable) {
             false
         }
+    }
+
+    private fun queryLimit(query: String, fallback: Int): Int {
+        return query.split("&")
+            .firstOrNull { it.substringBefore("=") == "limit" }
+            ?.substringAfter("=", "")
+            ?.toIntOrNull()
+            ?.coerceIn(1, MAX_TASKS)
+            ?: fallback
     }
 
     private fun readBody(reader: BufferedReader, contentLength: Int): String {
@@ -570,6 +652,7 @@ class MobileCodeHelperService : Service() {
         private const val NOTIFICATION_ID = 8765
         private const val PORT = 8765
         private const val MAX_LOG_LINES = 200
+        private const val MAX_TASKS = 50
 
         @Volatile private var running = false
         @Volatile private var lastError = ""
@@ -583,8 +666,10 @@ class MobileCodeHelperService : Service() {
         @Volatile private var currentTaskExitCode: Int? = null
         @Volatile private var currentTaskDurationMs = 0L
         @Volatile private var currentTaskError = ""
+        @Volatile private var currentTaskFailureKind = "none"
         private val taskLock = Any()
         private val recentLogs = Collections.synchronizedList(mutableListOf<String>())
+        private val taskHistory = Collections.synchronizedList(mutableListOf<JSONObject>())
 
         fun status(): Map<String, Any> {
             return mapOf(
@@ -596,7 +681,9 @@ class MobileCodeHelperService : Service() {
                 "taskRunning" to (currentProcess != null),
                 "taskStatus" to currentTaskStatus,
                 "taskStartedAtMs" to currentTaskStartedAtMs,
-                "taskFinishedAtMs" to currentTaskFinishedAtMs
+                "taskFinishedAtMs" to currentTaskFinishedAtMs,
+                "taskFailureKind" to currentTaskFailureKind,
+                "taskHistoryCount" to taskHistory.size
             )
         }
 
@@ -630,5 +717,20 @@ class MobileCodeHelperService : Service() {
             "poweroff",
             "su "
         )
+
+        private fun classifyFailure(status: String, exitCode: Int?, error: String?): String {
+            val message = (error ?: "").lowercase(Locale.US)
+            return when {
+                status == "succeeded" -> "none"
+                status == "cancelled" -> "cancelled"
+                status == "timedOut" -> "timeout"
+                status == "lost" -> "runtimeLost"
+                message.contains("outside mobilecode app data") -> "cwdOutsideWorkspace"
+                message.contains("not allowed") || message.contains("dangerous command") -> "commandBlocked"
+                listOf("command not found", "no such file or directory", "not found", "cannot find", "is not recognized").any { message.contains(it) } -> "dependencyMissing"
+                exitCode != null && exitCode != 0 -> "processFailed"
+                else -> "unknown"
+            }
+        }
     }
 }

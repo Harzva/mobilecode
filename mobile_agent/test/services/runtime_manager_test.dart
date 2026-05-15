@@ -148,6 +148,39 @@ void main() {
 
       await manager.dispose();
     });
+
+    test('routes task history and logs through monitor-capable provider', () async {
+      const snapshot = RuntimeTaskSnapshot(
+        taskId: 'task-2',
+        status: RuntimeTaskStatus.failed,
+        command: 'npm test',
+        providerType: RuntimeProviderType.mobileCodeHelper,
+        logs: ['stderr: failed'],
+        failureKind: RuntimeTaskFailureKind.processFailed,
+      );
+      final provider = _FakeRuntimeProviderWithTask(
+        type: RuntimeProviderType.mobileCodeHelper,
+        name: 'Helper',
+        health: const RuntimeHealth(
+          type: RuntimeProviderType.mobileCodeHelper,
+          name: 'Helper',
+          available: true,
+          ready: true,
+          status: 'ready',
+          capabilities: RuntimeCapabilities(shell: true),
+        ),
+        task: snapshot,
+      );
+      final manager = RuntimeManager(providers: [provider]);
+
+      final history = await manager.taskHistory(limit: 5);
+      final logs = await manager.taskLogs('task-2', limit: 20);
+
+      expect(history, [snapshot]);
+      expect(logs, ['stderr: failed']);
+
+      await manager.dispose();
+    });
   });
 }
 
@@ -258,4 +291,10 @@ class _FakeRuntimeProviderWithTask extends _FakeRuntimeProvider implements Runti
 
   @override
   Future<RuntimeTaskSnapshot?> currentTask() async => task;
+
+  @override
+  Future<List<RuntimeTaskSnapshot>> listTasks({int limit = 20}) async => [task];
+
+  @override
+  Future<List<String>> taskLogs(String taskId, {int limit = 200}) async => task.logs;
 }

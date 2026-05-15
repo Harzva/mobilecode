@@ -23,6 +23,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, unquote, urlparse
 
 
 DEFAULT_ALLOWED_COMMANDS = {
@@ -84,14 +85,24 @@ DANGEROUS_FRAGMENTS = (
 
 
 class HelperState:
-    def __init__(self, workspace_root: Path, allow_unsafe: bool = False) -> None:
+    def __init__(
+        self,
+        workspace_root: Path,
+        allow_unsafe: bool = False,
+        auth_token: str | None = None,
+        max_tasks: int = 50,
+    ) -> None:
         self.workspace_root = workspace_root.resolve()
         self.allow_unsafe = allow_unsafe
+        self.auth_token = (auth_token or "").strip()
+        self.max_tasks = max_tasks
         self.current_process: subprocess.Popen[str] | None = None
         self.current_lock = threading.Lock()
         self.task_file = self.workspace_root / ".mobilecode-helper-task.json"
+        self.task_database_file = self.workspace_root / ".mobilecode-helper-tasks.json"
         self.current_task: dict[str, Any] | None = None
-        self._load_task()
+        self.tasks: list[dict[str, Any]] = []
+        self._load_tasks()
 
     def capabilities(self) -> dict[str, bool]:
         return {
@@ -146,11 +157,14 @@ class HelperState:
             "durationMs": 0,
             "logs": [],
             "provider": "mobileCodeHelper",
+            "failureKind": "none",
         }
         task["taskId"] = task["id"]
         with self.current_lock:
             self.current_task = task
-            self._persist_task_locked()
+            self.tasks.insert(0, task)
+            del self.tasks[self.max_tasks :]
+            self._persist_tasks_locked()
         return task
 
     def append_log(self, line: str) -> None:
@@ -161,7 +175,7 @@ class HelperState:
             if isinstance(logs, list):
                 logs.append(line)
                 del logs[:-200]
-            self._persist_task_locked()
+            self._persist_tasks_locked()
 
     def finish_task(self, status: str, exit_code: int | None, duration_ms: int, error: str | None = None) -> None:
         with self.current_lock:
@@ -174,7 +188,8 @@ class HelperState:
                 self.current_task["exitCode"] = exit_code
             if error:
                 self.current_task["error"] = error
-            self._persist_task_locked()
+            self.current_task["failureKind"] = classify_failure(status, exit_code, error)
+            self._persist_tasks_locked()
 
     def task_snapshot(self) -> dict[str, Any]:
         with self.current_lock:
@@ -184,29 +199,64 @@ class HelperState:
                 task["logs"] = list(logs)
             return task
 
-    def _load_task(self) -> None:
-        if not self.task_file.exists():
-            return
+    def task_list(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self.current_lock:
+            tasks = self.tasks[: max(1, min(limit, self.max_tasks))]
+            return [clone_task(task) for task in tasks]
+
+    def task_logs(self, task_id: str, limit: int = 200) -> list[str]:
+        with self.current_lock:
+            for task in self.tasks:
+                if task.get("id") == task_id or task.get("taskId") == task_id:
+                    logs = task.get("logs", [])
+                    if not isinstance(logs, list):
+                        return []
+                    return [str(line) for line in logs[-max(1, limit) :]]
+        return []
+
+    def _load_tasks(self) -> None:
         try:
-            loaded = json.loads(self.task_file.read_text(encoding="utf-8"))
-            if not isinstance(loaded, dict):
-                return
-            self.current_task = loaded
-            if loaded.get("status") == "running":
-                loaded["status"] = "lost"
-                loaded["finishedAtMs"] = int(time.time() * 1000)
-                loaded["error"] = "Helper daemon restarted before this task completed."
-                logs = loaded.setdefault("logs", [])
-                if isinstance(logs, list):
-                    logs.append("task lost after helper restart")
-                self._persist_task_locked()
+            loaded_tasks: list[dict[str, Any]] = []
+            if self.task_database_file.exists():
+                decoded = json.loads(self.task_database_file.read_text(encoding="utf-8"))
+                if isinstance(decoded, dict):
+                    decoded = decoded.get("tasks", [])
+                if isinstance(decoded, list):
+                    loaded_tasks = [item for item in decoded if isinstance(item, dict)]
+            elif self.task_file.exists():
+                decoded = json.loads(self.task_file.read_text(encoding="utf-8"))
+                if isinstance(decoded, dict):
+                    loaded_tasks = [decoded]
+
+            for task in loaded_tasks:
+                if task.get("status") == "running":
+                    task["status"] = "lost"
+                    task["finishedAtMs"] = int(time.time() * 1000)
+                    task["failureKind"] = "runtimeLost"
+                    task["error"] = "Helper daemon restarted before this task completed."
+                    logs = task.setdefault("logs", [])
+                    if isinstance(logs, list):
+                        logs.append("task lost after helper restart")
+                else:
+                    task["failureKind"] = task.get("failureKind") or classify_failure(
+                        str(task.get("status") or "unknown"),
+                        int(task["exitCode"]) if isinstance(task.get("exitCode"), int) else None,
+                        str(task.get("error") or "") or None,
+                    )
+            loaded_tasks.sort(key=lambda item: int(item.get("startedAtMs") or 0), reverse=True)
+            self.tasks = loaded_tasks[: self.max_tasks]
+            self.current_task = self.tasks[0] if self.tasks else None
+            self._persist_tasks_locked()
         except Exception:
             self.current_task = None
+            self.tasks = []
 
-    def _persist_task_locked(self) -> None:
+    def _persist_tasks_locked(self) -> None:
         if not self.current_task:
             return
         self.task_file.write_text(json.dumps(self.current_task, ensure_ascii=False), encoding="utf-8")
+        payload = {"tasks": self.tasks[: self.max_tasks]}
+        self.task_database_file.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
 
 
 def has_binary(name: str) -> bool:
@@ -216,6 +266,43 @@ def has_binary(name: str) -> bool:
         if candidate.exists() and os.access(candidate, os.X_OK):
             return True
     return False
+
+
+def clone_task(task: dict[str, Any]) -> dict[str, Any]:
+    copied = dict(task)
+    logs = copied.get("logs", [])
+    if isinstance(logs, list):
+        copied["logs"] = [str(line) for line in logs]
+    return copied
+
+
+def classify_failure(status: str, exit_code: int | None, error: str | None) -> str:
+    normalized_status = status.strip()
+    message = (error or "").lower()
+    if normalized_status == "succeeded":
+        return "none"
+    if normalized_status == "cancelled":
+        return "cancelled"
+    if normalized_status == "timedOut":
+        return "timeout"
+    if normalized_status == "lost":
+        return "runtimeLost"
+    if "outside workspace" in message:
+        return "cwdOutsideWorkspace"
+    if "not allowed" in message or "dangerous command" in message:
+        return "commandBlocked"
+    dependency_markers = (
+        "command not found",
+        "no such file or directory",
+        "not found",
+        "cannot find",
+        "is not recognized",
+    )
+    if any(marker in message for marker in dependency_markers):
+        return "dependencyMissing"
+    if exit_code is not None and exit_code != 0:
+        return "processFailed"
+    return "unknown"
 
 
 def json_bytes(payload: dict[str, Any]) -> bytes:
@@ -271,20 +358,29 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         try:
-            if self.path == "/v1/health":
+            if not self.authorized():
+                self.send_error_json(HTTPStatus.UNAUTHORIZED, "Missing or invalid MobileCode Helper token", "authFailed")
+                return
+
+            parsed = urlparse(self.path)
+            path = parsed.path
+            query = parse_qs(parsed.query)
+            if path == "/v1/health":
                 self.send_json(
                     {
                         "name": "MobileCode Helper Prototype",
                         "available": True,
                         "ready": True,
                         "status": f"Helper daemon running at {self.server.server_address}",
+                        "protocolVersion": 1,
+                        "authRequired": bool(self.state.auth_token),
                         "capabilities": self.state.capabilities(),
                         "missingDependencies": [],
                         "recoveryActions": [],
                     }
                 )
                 return
-            if self.path == "/v1/tasks/current":
+            if path == "/v1/tasks/current":
                 task = self.state.task_snapshot()
                 self.send_json(
                     {
@@ -296,24 +392,47 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                     }
                 )
                 return
+            if path == "/v1/tasks":
+                limit = int((query.get("limit") or ["20"])[0])
+                tasks = self.state.task_list(limit)
+                self.send_json({"tasks": tasks, "count": len(tasks)})
+                return
+            if path.startswith("/v1/tasks/") and path.endswith("/logs"):
+                task_id = unquote(path.removeprefix("/v1/tasks/").removesuffix("/logs").strip("/"))
+                limit = int((query.get("limit") or ["200"])[0])
+                self.send_json({"taskId": task_id, "logs": self.state.task_logs(task_id, limit)})
+                return
             self.send_error_json(HTTPStatus.NOT_FOUND, "Unknown endpoint")
         except Exception as exc:  # pragma: no cover - defensive server boundary
             self.send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
 
     def do_POST(self) -> None:  # noqa: N802
         try:
-            if self.path == "/v1/execute":
+            if not self.authorized():
+                self.send_error_json(HTTPStatus.UNAUTHORIZED, "Missing or invalid MobileCode Helper token", "authFailed")
+                return
+
+            path = urlparse(self.path).path
+            if path == "/v1/execute":
                 self.handle_execute()
                 return
-            if self.path == "/v1/execute/stream":
+            if path == "/v1/execute/stream":
                 self.handle_execute_stream()
                 return
-            if self.path == "/v1/task/stop":
+            if path == "/v1/task/stop":
                 self.handle_stop()
                 return
             self.send_error_json(HTTPStatus.NOT_FOUND, "Endpoint is not implemented in prototype")
         except Exception as exc:
             self.send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
+
+    def authorized(self) -> bool:
+        token = self.state.auth_token
+        if not token:
+            return True
+        header_token = self.headers.get("X-MobileCode-Token", "")
+        bearer = self.headers.get("Authorization", "")
+        return header_token == token or bearer == f"Bearer {token}"
 
     def handle_execute(self) -> None:
         payload = read_json(self)
@@ -458,8 +577,11 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def send_error_json(self, status: HTTPStatus, message: str) -> None:
-        self.send_json({"error": message, "success": False}, status=status)
+    def send_error_json(self, status: HTTPStatus, message: str, failure_kind: str | None = None) -> None:
+        payload: dict[str, Any] = {"error": message, "success": False}
+        if failure_kind:
+            payload["failureKind"] = failure_kind
+        self.send_json(payload, status=status)
 
     def write_ndjson(self, payload: dict[str, Any]) -> None:
         self.wfile.write(json_bytes(payload) + b"\n")
@@ -489,6 +611,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable command allowlist. Only use for trusted local debugging.",
     )
+    parser.add_argument(
+        "--auth-token",
+        default=os.environ.get("MOBILECODE_HELPER_TOKEN", ""),
+        help="Optional localhost token required through X-MobileCode-Token or Authorization: Bearer.",
+    )
+    parser.add_argument(
+        "--max-tasks",
+        default=50,
+        type=int,
+        help="Maximum recoverable task snapshots to keep, default: 50.",
+    )
     return parser.parse_args()
 
 
@@ -496,11 +629,17 @@ def main() -> int:
     args = parse_args()
     workspace_root = Path(args.workspace_root).expanduser()
     workspace_root.mkdir(parents=True, exist_ok=True)
-    state = HelperState(workspace_root=workspace_root, allow_unsafe=args.allow_unsafe)
+    state = HelperState(
+        workspace_root=workspace_root,
+        allow_unsafe=args.allow_unsafe,
+        auth_token=args.auth_token,
+        max_tasks=max(1, args.max_tasks),
+    )
     server = MobileCodeServer((args.host, args.port), state)
+    auth_label = "auth: required" if state.auth_token else "auth: disabled"
     print(
         f"MobileCode Helper daemon listening on http://{args.host}:{args.port} "
-        f"(workspace: {state.workspace_root})",
+        f"(workspace: {state.workspace_root}, {auth_label})",
         flush=True,
     )
     try:

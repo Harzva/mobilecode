@@ -97,38 +97,49 @@ jobs:
           python3 mobile_agent/tooling/mobilecode_helper_daemon.py \
             --port 18765 \
             --workspace-root /tmp/mobilecode-workspace \
+            --auth-token ci-token \
             > artifacts/mobilecode-helper.log 2>&1 &
           helper_pid=$!
+          auth_header='X-MobileCode-Token: ci-token'
           trap 'kill "$helper_pid" || true' EXIT
 
           for attempt in $(seq 1 20); do
-            if curl -fsS http://127.0.0.1:18765/v1/health > artifacts/helper-health.json; then
+            if curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health > artifacts/helper-health.json; then
               break
             fi
             sleep 0.5
           done
 
-          curl -fsS http://127.0.0.1:18765/v1/health | tee artifacts/helper-health.json
+          curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health | tee artifacts/helper-health.json
           curl -fsS \
+            -H "$auth_header" \
             -H 'Content-Type: application/json' \
             -X POST http://127.0.0.1:18765/v1/execute \
             -d '{"command":"python3 -c \"print(42)\"","cwd":"/tmp/mobilecode-workspace","timeoutMs":10000}' \
             | tee artifacts/helper-execute.json
           curl -fsS -N \
+            -H "$auth_header" \
             -H 'Content-Type: application/json' \
             -H 'Accept: application/x-ndjson' \
             -X POST http://127.0.0.1:18765/v1/execute/stream \
             -d '{"command":"python3 -c \"print(43)\"","cwd":"/tmp/mobilecode-workspace","timeoutMs":10000}' \
             | tee artifacts/helper-stream.ndjson
-          curl -fsS http://127.0.0.1:18765/v1/tasks/current | tee artifacts/helper-task.json
+          curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/tasks/current | tee artifacts/helper-task.json
+          curl -fsS -H "$auth_header" 'http://127.0.0.1:18765/v1/tasks?limit=5' | tee artifacts/helper-tasks.json
+          task_id=$(python3 -c "import json; print(json.load(open('artifacts/helper-task.json'))['task']['id'])")
+          curl -fsS -H "$auth_header" "http://127.0.0.1:18765/v1/tasks/${task_id}/logs?limit=20" | tee artifacts/helper-task-logs.json
 
           grep '"ready":true' artifacts/helper-health.json
+          grep '"authRequired":true' artifacts/helper-health.json
           grep '"exitCode":0' artifacts/helper-execute.json
           grep '"stdout":"42' artifacts/helper-execute.json
           grep '"type":"stdout"' artifacts/helper-stream.ndjson
           grep '"type":"exit"' artifacts/helper-stream.ndjson
           grep '"status":"succeeded"' artifacts/helper-task.json
+          grep '"failureKind":"none"' artifacts/helper-task.json
           grep '"logs":' artifacts/helper-task.json
+          grep '"count":' artifacts/helper-tasks.json
+          grep '"logs":' artifacts/helper-task-logs.json
 
       - name: Upload helper smoke artifacts
         uses: actions/upload-artifact@v4

@@ -46,6 +46,27 @@ void main() {
       expect(health.capabilities.pty, isTrue);
     });
 
+    test('sends helper auth token header when configured', () async {
+      _serve((request) async {
+        expect(request.uri.path, '/v1/health');
+        expect(request.headers.value('X-MobileCode-Token'), 'test-token');
+        await _json(request.response, {
+          'name': 'Token Helper',
+          'available': true,
+          'ready': true,
+          'status': 'ready',
+          'authRequired': true,
+          'capabilities': {'shell': true},
+        });
+      }, server);
+
+      final provider = MobileCodeHelperProvider(baseUri: baseUri, authToken: 'test-token');
+      final health = await provider.healthCheck();
+
+      expect(health.ready, isTrue);
+      expect(health.capabilities.shell, isTrue);
+    });
+
     test('executes commands through helper protocol', () async {
       _serve((request) async {
         expect(request.uri.path, '/v1/execute');
@@ -117,6 +138,49 @@ void main() {
       expect(task.workingDir, '/workspace/app');
       expect(task.duration, const Duration(seconds: 1));
       expect(task.logs, ['stdout: ok']);
+    });
+
+    test('lists helper task history and recovers task logs', () async {
+      var requestCount = 0;
+      _serve((request) async {
+        requestCount += 1;
+        if (requestCount == 1) {
+          expect(request.uri.path, '/v1/tasks');
+          expect(request.uri.queryParameters['limit'], '5');
+          await _json(request.response, {
+            'tasks': [
+              {
+                'id': 'task-failed',
+                'command': 'npm test',
+                'cwd': '/workspace/app',
+                'status': 'failed',
+                'exitCode': 1,
+                'durationMs': 25,
+                'failureKind': 'processFailed',
+                'logs': ['stderr: failed'],
+              },
+            ],
+            'count': 1,
+          });
+          return;
+        }
+
+        expect(request.uri.path, '/v1/tasks/task-failed/logs');
+        expect(request.uri.queryParameters['limit'], '10');
+        await _json(request.response, {
+          'taskId': 'task-failed',
+          'logs': ['stdout: start', 'stderr: failed'],
+        });
+      }, server);
+
+      final provider = MobileCodeHelperProvider(baseUri: baseUri);
+      final tasks = await provider.listTasks(limit: 5);
+      final logs = await provider.taskLogs('task-failed', limit: 10);
+
+      expect(tasks, hasLength(1));
+      expect(tasks.first.taskId, 'task-failed');
+      expect(tasks.first.failureKind, RuntimeTaskFailureKind.processFailed);
+      expect(logs, ['stdout: start', 'stderr: failed']);
     });
   });
 }

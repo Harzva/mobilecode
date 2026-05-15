@@ -12,7 +12,7 @@ Required GitHub Actions before publishing:
   - Runs RuntimeProvider tests for `RuntimeManager` and `MobileCodeHelperProvider`.
   - Compiles `mobile_agent/tooling/mobilecode_helper_daemon.py`.
   - Compiles `mobile_agent/tooling/prepare_android_project.py`, which injects the native Helper foreground service into generated Android projects.
-  - Starts the helper daemon and smoke tests `/v1/health`, `/v1/execute`, `/v1/execute/stream`, and `/v1/tasks/current`.
+  - Starts the helper daemon with a localhost token and smoke tests `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/tasks/current`, `/v1/tasks`, and `/v1/tasks/:id/logs`.
 - `.github/workflows/android-app-test.yml`
   - Builds a debug APK.
   - Installs and launches it on an Android emulator.
@@ -56,21 +56,25 @@ mkdir -p "$HOME/mobilecode_projects"
 python3 tooling/mobilecode_helper_daemon.py \
   --host 127.0.0.1 \
   --port 8765 \
-  --workspace-root "$HOME/mobilecode_projects"
+  --workspace-root "$HOME/mobilecode_projects" \
+  --auth-token "$MOBILECODE_HELPER_TOKEN"
 ```
 
 Probe from another shell:
 
 ```bash
-curl -fsS http://127.0.0.1:8765/v1/health
-curl -fsS -H 'Content-Type: application/json' \
+AUTH_HEADER="X-MobileCode-Token: $MOBILECODE_HELPER_TOKEN"
+curl -fsS -H "$AUTH_HEADER" http://127.0.0.1:8765/v1/health
+curl -fsS -H "$AUTH_HEADER" -H 'Content-Type: application/json' \
   -X POST http://127.0.0.1:8765/v1/execute \
   -d '{"command":"python3 -c \"print(42)\"","cwd":"'$HOME'/mobilecode_projects","timeoutMs":10000}'
-curl -fsS -N -H 'Content-Type: application/json' \
+curl -fsS -N -H "$AUTH_HEADER" -H 'Content-Type: application/json' \
   -H 'Accept: application/x-ndjson' \
   -X POST http://127.0.0.1:8765/v1/execute/stream \
   -d '{"command":"python3 -c \"print(43)\"","cwd":"'$HOME'/mobilecode_projects","timeoutMs":10000}'
-curl -fsS http://127.0.0.1:8765/v1/tasks/current
+curl -fsS -H "$AUTH_HEADER" http://127.0.0.1:8765/v1/tasks/current
+curl -fsS -H "$AUTH_HEADER" 'http://127.0.0.1:8765/v1/tasks?limit=5'
+curl -fsS -H "$AUTH_HEADER" 'http://127.0.0.1:8765/v1/tasks/<taskId>/logs?limit=50'
 ```
 
 Expected result:
@@ -78,7 +82,9 @@ Expected result:
 - `/v1/health` returns `ready: true`.
 - `/v1/execute` returns `exitCode: 0`.
 - `/v1/execute/stream` emits at least one `stdout` event and one `exit` event.
-- `/v1/tasks/current` returns a task object with `taskId`, `status`, and recent `logs`.
+- `/v1/tasks/current` returns a task object with `taskId`, `status`, `failureKind`, and recent `logs`.
+- `/v1/tasks` returns persisted task history after daemon restart; interrupted running tasks are marked `lost`/`runtimeLost`.
+- `/v1/tasks/:id/logs` returns recent logs for the selected task.
 - MobileCode Home/Tools shows a Runtime-ready banner when the Helper provider is reachable.
 
 ## Manual APK Validation

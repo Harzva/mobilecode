@@ -168,6 +168,20 @@ class RuntimeManager {
     return (provider as RuntimeTaskMonitor).currentTask();
   }
 
+  Future<List<RuntimeTaskSnapshot>> taskHistory({int limit = 20}) async {
+    await _ensureReady();
+    final provider = _activeProvider;
+    if (provider == null || provider is! RuntimeTaskMonitor) return const [];
+    return (provider as RuntimeTaskMonitor).listTasks(limit: limit);
+  }
+
+  Future<List<String>> taskLogs(String taskId, {int limit = 200}) async {
+    await _ensureReady();
+    final provider = _activeProvider;
+    if (provider == null || provider is! RuntimeTaskMonitor) return const [];
+    return (provider as RuntimeTaskMonitor).taskLogs(taskId, limit: limit);
+  }
+
   Future<RuntimeActionResult> runAction(RuntimeActionRequest request) async {
     await _ensureReady();
     final provider = _activeProvider!;

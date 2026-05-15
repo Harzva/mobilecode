@@ -21,9 +21,13 @@ import 'termux_service.dart';
 /// - POST /v1/app/launch
 /// - POST /v1/app/uninstall
 /// - POST /v1/task/stop
+/// - GET  /v1/tasks/current
+/// - GET  /v1/tasks
+/// - GET  /v1/tasks/:id/logs
 class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor {
   final Uri baseUri;
   final Duration probeTimeout;
+  final String? authToken;
   final HttpClient _client;
   final StreamController<String> _logController = StreamController<String>.broadcast();
 
@@ -32,6 +36,7 @@ class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor {
   MobileCodeHelperProvider({
     Uri? baseUri,
     this.probeTimeout = const Duration(milliseconds: 700),
+    this.authToken,
     HttpClient? client,
   })  : baseUri = baseUri ?? Uri.parse('http://127.0.0.1:8765'),
         _client = client ?? HttpClient();
@@ -145,6 +150,24 @@ class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor {
   }
 
   @override
+  Future<List<RuntimeTaskSnapshot>> listTasks({int limit = 20}) async {
+    final payload = await _getJson('/v1/tasks?limit=$limit', timeout: const Duration(seconds: 3));
+    final tasks = payload['tasks'];
+    if (tasks is! List) return const [];
+    return tasks
+        .whereType<Map>()
+        .map((task) => _taskSnapshotFromJson(Map<String, dynamic>.from(task)))
+        .toList();
+  }
+
+  @override
+  Future<List<String>> taskLogs(String taskId, {int limit = 200}) async {
+    final safeTaskId = Uri.encodeComponent(taskId);
+    final payload = await _getJson('/v1/tasks/$safeTaskId/logs?limit=$limit', timeout: const Duration(seconds: 3));
+    return _stringList(payload['logs']);
+  }
+
+  @override
   Stream<String> executeStream(
     String command, {
     String? workingDir,
@@ -249,6 +272,7 @@ class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor {
   Future<Map<String, dynamic>> _getJson(String path, {Duration? timeout}) async {
     final request = await _client.getUrl(_resolve(path)).timeout(timeout ?? probeTimeout);
     request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    _attachAuth(request);
     return _decodeJsonResponse(await request.close().timeout(timeout ?? probeTimeout));
   }
 
@@ -269,8 +293,15 @@ class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor {
     final request = await _client.postUrl(_resolve(path));
     request.headers.set(HttpHeaders.acceptHeader, accept);
     request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+    _attachAuth(request);
     request.write(jsonEncode(body));
     return request;
+  }
+
+  void _attachAuth(HttpClientRequest request) {
+    final token = authToken?.trim();
+    if (token == null || token.isEmpty) return;
+    request.headers.set('X-MobileCode-Token', token);
   }
 
   Future<Map<String, dynamic>> _decodeJsonResponse(HttpClientResponse response) async {
@@ -323,6 +354,7 @@ class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor {
       logs: _stringList(json['logs']),
       providerType: type,
       error: json['error']?.toString(),
+      failureKind: _taskFailureKindFromString(json['failureKind']?.toString()),
     );
   }
 
@@ -336,6 +368,21 @@ class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor {
       'timedOut' || 'timed_out' || 'timeout' => RuntimeTaskStatus.timedOut,
       'lost' => RuntimeTaskStatus.lost,
       _ => RuntimeTaskStatus.unknown,
+    };
+  }
+
+  RuntimeTaskFailureKind _taskFailureKindFromString(String? value) {
+    if (value == null || value == 'none') return RuntimeTaskFailureKind.none;
+    return switch (value) {
+      'timeout' || 'timedOut' || 'timed_out' => RuntimeTaskFailureKind.timeout,
+      'cancelled' => RuntimeTaskFailureKind.cancelled,
+      'dependencyMissing' || 'dependency_missing' => RuntimeTaskFailureKind.dependencyMissing,
+      'commandBlocked' || 'command_blocked' => RuntimeTaskFailureKind.commandBlocked,
+      'cwdOutsideWorkspace' || 'cwd_outside_workspace' => RuntimeTaskFailureKind.cwdOutsideWorkspace,
+      'authFailed' || 'auth_failed' => RuntimeTaskFailureKind.authFailed,
+      'processFailed' || 'process_failed' => RuntimeTaskFailureKind.processFailed,
+      'runtimeLost' || 'runtime_lost' || 'lost' => RuntimeTaskFailureKind.runtimeLost,
+      _ => RuntimeTaskFailureKind.unknown,
     };
   }
 

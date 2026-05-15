@@ -80,7 +80,7 @@ const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
 const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.0';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.0+12';
+const _releaseBuildLabel = 'v0.1.0+13';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 
 class _ProbeResult {

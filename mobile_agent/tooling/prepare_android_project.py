@@ -33,6 +33,18 @@ def main() -> None:
         gradle_text = gradle_text.replace('minSdk = flutter.minSdkVersion', 'minSdk = 24')
         gradle.write_text(gradle_text)
 
+    launch_background = '''<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/black" />
+</layer-list>
+'''
+    for launch in (
+        Path('android/app/src/main/res/drawable/launch_background.xml'),
+        Path('android/app/src/main/res/drawable-v21/launch_background.xml'),
+    ):
+        launch.parent.mkdir(parents=True, exist_ok=True)
+        launch.write_text(launch_background)
+
     activity = Path('android/app/src/main/kotlin/com/mobilecode/mobile_agent/MainActivity.kt')
     activity.parent.mkdir(parents=True, exist_ok=True)
     activity.write_text(Path('tooling/MainActivity.kt').read_text())

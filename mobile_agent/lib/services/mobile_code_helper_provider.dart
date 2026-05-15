@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'runtime_actions.dart';
 import 'runtime_provider.dart';
 import 'termux_service.dart';
 
@@ -24,7 +25,8 @@ import 'termux_service.dart';
 /// - GET  /v1/tasks/current
 /// - GET  /v1/tasks
 /// - GET  /v1/tasks/:id/logs
-class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor {
+/// - POST /v1/project/preflight
+class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor, RuntimeProjectInspector {
   final Uri baseUri;
   final Duration probeTimeout;
   final String? authToken;
@@ -166,6 +168,25 @@ class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor {
     final safeTaskId = Uri.encodeComponent(taskId);
     final payload = await _getJson('/v1/tasks/$safeTaskId/logs?limit=$limit', timeout: const Duration(seconds: 3));
     return _stringList(payload['logs']);
+  }
+
+  @override
+  Future<RuntimeProjectProfile> preflightProject(
+    String projectPath, {
+    String? packageManager,
+  }) async {
+    final payload = await _postJson('/v1/project/preflight', {
+      'cwd': projectPath,
+      if (packageManager != null) 'packageManager': packageManager,
+    }, timeout: const Duration(seconds: 8));
+    final detectedFiles = _stringList(payload['detectedFiles']);
+    final caps = await capabilities();
+    return profileRuntimeProject(
+      projectPath: payload['cwd']?.toString() ?? projectPath,
+      probeOutput: detectedFiles.join('\n'),
+      capabilities: caps,
+      packageManagerOverride: packageManager,
+    );
   }
 
   @override

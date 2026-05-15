@@ -182,6 +182,45 @@ void main() {
       expect(tasks.first.failureKind, RuntimeTaskFailureKind.processFailed);
       expect(logs, ['stdout: start', 'stderr: failed']);
     });
+
+    test('preflights project markers through helper protocol', () async {
+      var requestCount = 0;
+      _serve((request) async {
+        requestCount += 1;
+        if (requestCount == 1) {
+          expect(request.uri.path, '/v1/project/preflight');
+          final body = await utf8.decoder.bind(request).join();
+          final payload = jsonDecode(body) as Map<String, dynamic>;
+          expect(payload['cwd'], '/workspace/app');
+          await _json(request.response, {
+            'success': true,
+            'cwd': '/workspace/app',
+            'detectedFiles': ['./package.json', './.git'],
+          });
+          return;
+        }
+
+        expect(request.uri.path, '/v1/health');
+        await _json(request.response, {
+          'name': 'Test Helper',
+          'available': true,
+          'ready': true,
+          'status': 'ready',
+          'capabilities': {
+            'shell': true,
+            'node': true,
+            'git': true,
+          },
+        });
+      }, server);
+
+      final provider = MobileCodeHelperProvider(baseUri: baseUri);
+      final profile = await provider.preflightProject('/workspace/app');
+
+      expect(profile.packageManager, 'npm');
+      expect(profile.hasGit, isTrue);
+      expect(profile.detectedFiles, ['./.git', './package.json']);
+    });
   });
 }
 

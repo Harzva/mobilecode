@@ -11,6 +11,16 @@ enum RuntimeActionType {
   publishPages,
 }
 
+enum RuntimeProjectKind {
+  flutter,
+  node,
+  python,
+  unknown,
+}
+
+const runtimeProjectProbeCommand =
+    'find . -maxdepth 2 -name package.json -o -name pubspec.yaml -o -name requirements.txt -o -name pyproject.toml -o -name .git';
+
 class RuntimeActionRequest {
   const RuntimeActionRequest({
     required this.type,
@@ -65,12 +75,14 @@ class RuntimeActionPipelineResult {
     required this.summary,
     required this.steps,
     this.recoveryHint,
+    this.profile,
   });
 
   final bool success;
   final String summary;
   final List<RuntimeActionResult> steps;
   final String? recoveryHint;
+  final RuntimeProjectProfile? profile;
 
   RuntimeActionResult? get failedStep {
     for (final step in steps) {
@@ -78,6 +90,49 @@ class RuntimeActionPipelineResult {
     }
     return null;
   }
+}
+
+class RuntimeProjectProfile {
+  const RuntimeProjectProfile({
+    required this.projectPath,
+    required this.kind,
+    required this.detectedFiles,
+    required this.packageManager,
+    required this.summary,
+    this.recoveryHint,
+    this.inspected = true,
+    this.hasGit = false,
+  });
+
+  final String projectPath;
+  final RuntimeProjectKind kind;
+  final List<String> detectedFiles;
+  final String? packageManager;
+  final String summary;
+  final String? recoveryHint;
+  final bool inspected;
+  final bool hasGit;
+
+  bool get recognized => packageManager != null;
+  bool get canInstall => recognized;
+  bool get canRunTests => recognized;
+  bool get canBuildPreview => packageManager == 'flutter' || packageManager == 'npm';
+
+  List<RuntimeActionType> get validationActions {
+    if (!recognized) return const [];
+    return [
+      RuntimeActionType.installDependencies,
+      RuntimeActionType.runTests,
+      if (canBuildPreview) RuntimeActionType.buildPreview,
+    ];
+  }
+}
+
+abstract class RuntimeProjectInspector {
+  Future<RuntimeProjectProfile> preflightProject(
+    String projectPath, {
+    String? packageManager,
+  });
 }
 
 RuntimeActionPlan? planRuntimeAction(
@@ -172,6 +227,119 @@ RuntimeActionPlan? planRuntimeAction(
   }
 }
 
+bool runtimeActionNeedsProjectProfile(RuntimeActionType type) {
+  return switch (type) {
+    RuntimeActionType.installDependencies ||
+    RuntimeActionType.runTests ||
+    RuntimeActionType.buildPreview =>
+      true,
+    RuntimeActionType.gitCommit || RuntimeActionType.publishPages => false,
+  };
+}
+
+String? normalizeRuntimePackageManager(String? value) {
+  final normalized = value?.trim().toLowerCase();
+  if (normalized == null || normalized.isEmpty || normalized == 'auto') return null;
+  return normalized;
+}
+
+RuntimeProjectProfile profileRuntimeProject({
+  required String projectPath,
+  required String probeOutput,
+  required RuntimeCapabilities capabilities,
+  String? packageManagerOverride,
+}) {
+  final files = runtimeProjectFilesFromProbe(probeOutput);
+  final hasFlutter = _containsProjectMarker(files, 'pubspec.yaml');
+  final hasNode = _containsProjectMarker(files, 'package.json');
+  final hasPython = _containsProjectMarker(files, 'requirements.txt') || _containsProjectMarker(files, 'pyproject.toml');
+  final hasGit = _containsProjectMarker(files, '.git');
+  final override = normalizeRuntimePackageManager(packageManagerOverride);
+
+  String? inferredPackageManager = override;
+  if (inferredPackageManager == null) {
+    if (hasFlutter && capabilities.flutter) {
+      inferredPackageManager = 'flutter';
+    } else if (hasNode && capabilities.node) {
+      inferredPackageManager = 'npm';
+    } else if (hasPython && capabilities.python) {
+      inferredPackageManager = 'python';
+    } else if (hasFlutter) {
+      inferredPackageManager = 'flutter';
+    } else if (hasNode) {
+      inferredPackageManager = 'npm';
+    } else if (hasPython) {
+      inferredPackageManager = 'python';
+    }
+  }
+
+  final kind = switch (inferredPackageManager) {
+    'flutter' => RuntimeProjectKind.flutter,
+    'npm' => RuntimeProjectKind.node,
+    'python' => RuntimeProjectKind.python,
+    _ => RuntimeProjectKind.unknown,
+  };
+
+  final markers = files.isEmpty ? 'no project markers' : files.join(', ');
+  final summary = inferredPackageManager == null
+      ? 'Project preflight did not find a supported project marker in $projectPath.'
+      : 'Project preflight selected $inferredPackageManager from $markers.';
+  final recoveryHint = inferredPackageManager == null
+      ? 'Choose a folder containing package.json, pubspec.yaml, requirements.txt, or pyproject.toml, or select a manual action profile.'
+      : _toolchainRecoveryHint(inferredPackageManager, capabilities);
+
+  return RuntimeProjectProfile(
+    projectPath: projectPath,
+    kind: kind,
+    detectedFiles: files,
+    packageManager: inferredPackageManager,
+    summary: summary,
+    recoveryHint: recoveryHint,
+    hasGit: hasGit,
+  );
+}
+
+RuntimeProjectProfile runtimeProjectPreflightFailure({
+  required String projectPath,
+  required String summary,
+  String? recoveryHint,
+}) {
+  return RuntimeProjectProfile(
+    projectPath: projectPath,
+    kind: RuntimeProjectKind.unknown,
+    detectedFiles: const [],
+    packageManager: null,
+    summary: summary,
+    recoveryHint: recoveryHint ??
+        'Verify the project path is inside the active runtime workspace, then retry Preflight.',
+    inspected: false,
+  );
+}
+
+List<String> runtimeProjectFilesFromProbe(String output) {
+  final files = output
+      .split(RegExp(r'\r?\n'))
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty)
+      .toSet()
+      .toList()
+    ..sort();
+  return files;
+}
+
+bool runtimeProjectToolchainAvailable(
+  RuntimeProjectProfile profile,
+  RuntimeCapabilities capabilities,
+) {
+  return switch (profile.packageManager) {
+    'flutter' => capabilities.flutter,
+    'npm' => capabilities.node,
+    'python' => capabilities.python,
+    null => false,
+    _ => true,
+  };
+}
+
 String quoteRuntimeArg(String value) {
   final escaped = value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
   return '"$escaped"';
@@ -236,5 +404,24 @@ String _processFailureHint(RuntimeActionType action) {
       'Git commit failed. Check whether there are staged changes, identity config, or repository initialization issues.',
     RuntimeActionType.publishPages =>
       'Publish failed. Check git remote/auth/branch permissions, then retry or switch to GitHub API publishing.',
+  };
+}
+
+bool _containsProjectMarker(List<String> files, String marker) {
+  return files.any((file) {
+    final normalized = file.replaceAll('\\', '/');
+    return normalized == marker || normalized == './$marker' || normalized.endsWith('/$marker');
+  });
+}
+
+String? _toolchainRecoveryHint(String packageManager, RuntimeCapabilities capabilities) {
+  return switch (packageManager) {
+    'flutter' when !capabilities.flutter =>
+      'This looks like a Flutter project, but the active runtime does not expose Flutter. Switch to Termux/Cloud or install Flutter in Helper.',
+    'npm' when !capabilities.node =>
+      'This looks like a Node project, but the active runtime does not expose Node/npm. Install Node or switch runtime.',
+    'python' when !capabilities.python =>
+      'This looks like a Python project, but the active runtime does not expose Python. Install Python or switch runtime.',
+    _ => null,
   };
 }

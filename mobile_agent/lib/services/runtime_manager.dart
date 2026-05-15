@@ -182,21 +182,111 @@ class RuntimeManager {
     return (provider as RuntimeTaskMonitor).taskLogs(taskId, limit: limit);
   }
 
+  Future<RuntimeProjectProfile> preflightProject(
+    String projectPath, {
+    String? packageManager,
+  }) async {
+    await _ensureReady();
+    final provider = _activeProvider!;
+    final caps = await provider.capabilities();
+    if (!caps.shell) {
+      return runtimeProjectPreflightFailure(
+        projectPath: projectPath,
+        summary: 'Active runtime cannot inspect project files because shell execution is unavailable.',
+        recoveryHint: 'Start MobileCode Helper, External Termux, or Cloud Runtime before running project actions.',
+      );
+    }
+
+    try {
+      if (provider is RuntimeProjectInspector) {
+        return await (provider as RuntimeProjectInspector).preflightProject(
+          projectPath,
+          packageManager: packageManager,
+        );
+      }
+
+      final probe = await provider.execute(
+        runtimeProjectProbeCommand,
+        workingDir: projectPath,
+        timeout: const Duration(seconds: 8),
+      );
+      if (!probe.success) {
+        return runtimeProjectPreflightFailure(
+          projectPath: projectPath,
+          summary: 'Project preflight failed: ${probe.stderr.trim().isEmpty ? probe.stdout.trim() : probe.stderr.trim()}',
+          recoveryHint: runtimeActionRecoveryHint(
+            action: RuntimeActionType.installDependencies,
+            capabilities: caps,
+            result: probe,
+          ),
+        );
+      }
+
+      return profileRuntimeProject(
+        projectPath: projectPath,
+        probeOutput: probe.stdout,
+        capabilities: caps,
+        packageManagerOverride: packageManager,
+      );
+    } on Object catch (error) {
+      return runtimeProjectPreflightFailure(
+        projectPath: projectPath,
+        summary: 'Project preflight failed: $error',
+      );
+    }
+  }
+
   Future<RuntimeActionResult> runAction(RuntimeActionRequest request) async {
     await _ensureReady();
     final provider = _activeProvider!;
     final caps = await provider.capabilities();
-    final plan = planRuntimeAction(request, caps);
+    RuntimeActionRequest effectiveRequest = request;
+    RuntimeProjectProfile? profile;
+    if (runtimeActionNeedsProjectProfile(request.type) &&
+        normalizeRuntimePackageManager(request.packageManager) == null) {
+      profile = await preflightProject(request.projectPath);
+      if (!profile.recognized) {
+        const skippedReason = 'Project preflight could not identify a supported project.';
+        return RuntimeActionResult(
+          action: request.type,
+          success: false,
+          summary: profile.summary,
+          results: const [],
+          skippedReason: skippedReason,
+          recoveryHint: profile.recoveryHint,
+        );
+      }
+      if (!runtimeProjectToolchainAvailable(profile, caps)) {
+        const skippedReason = 'Project toolchain is not available in the active runtime.';
+        return RuntimeActionResult(
+          action: request.type,
+          success: false,
+          summary: profile.summary,
+          results: const [],
+          skippedReason: skippedReason,
+          recoveryHint: profile.recoveryHint,
+        );
+      }
+      effectiveRequest = RuntimeActionRequest(
+        type: request.type,
+        projectPath: request.projectPath,
+        message: request.message,
+        packageManager: profile.packageManager,
+        timeout: request.timeout,
+      );
+    }
+
+    final plan = planRuntimeAction(effectiveRequest, caps);
     if (plan == null) {
       const skippedReason = 'Missing capability or required action input.';
       return RuntimeActionResult(
-        action: request.type,
+        action: effectiveRequest.type,
         success: false,
-        summary: 'Runtime cannot plan ${request.type.name} with current capabilities.',
+        summary: 'Runtime cannot plan ${effectiveRequest.type.name} with current capabilities.',
         results: const [],
         skippedReason: skippedReason,
         recoveryHint: runtimeActionRecoveryHint(
-          action: request.type,
+          action: effectiveRequest.type,
           capabilities: caps,
           skippedReason: skippedReason,
         ),
@@ -207,18 +297,18 @@ class RuntimeManager {
     for (final command in plan.commands) {
       final result = await provider.execute(
         command,
-        workingDir: request.projectPath,
-        timeout: request.timeout,
+        workingDir: effectiveRequest.projectPath,
+        timeout: effectiveRequest.timeout,
       );
       results.add(result);
       if (!result.success) {
         return RuntimeActionResult(
-          action: request.type,
+          action: effectiveRequest.type,
           success: false,
           summary: '${plan.summary} Failed at: $command',
           results: List.unmodifiable(results),
           recoveryHint: runtimeActionRecoveryHint(
-            action: request.type,
+            action: effectiveRequest.type,
             capabilities: caps,
             result: result,
           ),
@@ -227,10 +317,57 @@ class RuntimeManager {
     }
 
     return RuntimeActionResult(
-      action: request.type,
+      action: effectiveRequest.type,
       success: true,
-      summary: plan.summary,
+      summary: profile == null ? plan.summary : '${plan.summary} ${profile.summary}',
       results: List.unmodifiable(results),
+    );
+  }
+
+  Future<RuntimeActionPipelineResult> validateProject({
+    required String projectPath,
+    String? packageManager,
+    String? message,
+  }) async {
+    await _ensureReady();
+    final caps = await _activeProvider!.capabilities();
+    final profile = await preflightProject(projectPath, packageManager: packageManager);
+    if (!profile.recognized) {
+      return RuntimeActionPipelineResult(
+        success: false,
+        summary: profile.summary,
+        steps: const [],
+        recoveryHint: profile.recoveryHint,
+        profile: profile,
+      );
+    }
+    if (!runtimeProjectToolchainAvailable(profile, caps)) {
+      return RuntimeActionPipelineResult(
+        success: false,
+        summary: profile.summary,
+        steps: const [],
+        recoveryHint: profile.recoveryHint,
+        profile: profile,
+      );
+    }
+
+    final requests = profile.validationActions
+        .map(
+          (action) => RuntimeActionRequest(
+            type: action,
+            projectPath: projectPath,
+            packageManager: profile.packageManager,
+            message: message,
+          ),
+        )
+        .toList();
+    final result = await runActionPipeline(requests);
+    return RuntimeActionPipelineResult(
+      success: result.success,
+      summary: '${profile.summary} ${result.summary}',
+      steps: result.steps,
+      recoveryHint: result.recoveryHint,
+      profile: profile,
     );
   }
 

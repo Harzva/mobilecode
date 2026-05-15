@@ -4967,6 +4967,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
   bool _running = false;
   late String _packageManager;
   RuntimeActionType? _lastFailedAction;
+  RuntimeProjectProfile? _lastProjectProfile;
 
   @override
   void initState() {
@@ -5029,9 +5030,53 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
     return RuntimeActionRequest(
       type: type,
       projectPath: projectPath,
-      packageManager: _packageManager == 'auto' ? null : _packageManager,
+      packageManager: _selectedPackageManager,
       message: _message.text.trim(),
     );
+  }
+
+  String? get _selectedPackageManager => _packageManager == 'auto' ? null : _packageManager;
+
+  Future<void> _preflightProject() async {
+    final projectPath = _projectPath.text.trim();
+    if (projectPath.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Project path is required')));
+      return;
+    }
+    setState(() {
+      _running = true;
+      _lines.insert(0, 'Running project preflight...');
+    });
+    try {
+      final profile = await widget.runtimeManager.preflightProject(
+        projectPath,
+        packageManager: _selectedPackageManager,
+      );
+      if (!mounted) return;
+      setState(() {
+        _lastProjectProfile = profile;
+        _lines.insert(
+          0,
+          [
+            'PREFLIGHT: ${profile.summary}',
+            if (profile.recoveryHint != null) 'Recovery: ${profile.recoveryHint!}',
+          ].join('\n'),
+        );
+      });
+      widget.onLog(
+        profile.recognized ? 'Runtime project detected' : 'Runtime project needs setup',
+        profile.summary,
+        profile.recognized ? Icons.search_outlined : Icons.warning_amber_outlined,
+        profile.recognized ? _mint : _amber,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 180);
+      setState(() => _lines.insert(0, 'PREFLIGHT ERROR: $message'));
+      widget.onLog('Runtime project preflight error', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
   }
 
   Future<void> _runValidationLoop() async {
@@ -5045,15 +5090,16 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
       _lines.insert(0, 'Running validate loop...');
     });
     try {
-      final result = await widget.runtimeManager.runActionPipeline([
-        _requestFor(RuntimeActionType.installDependencies, projectPath),
-        _requestFor(RuntimeActionType.runTests, projectPath),
-        _requestFor(RuntimeActionType.buildPreview, projectPath),
-      ]);
+      final result = await widget.runtimeManager.validateProject(
+        projectPath: projectPath,
+        packageManager: _selectedPackageManager,
+        message: _message.text.trim(),
+      );
       if (!mounted) return;
       final failed = result.failedStep;
       final stepLines = result.steps.map((step) => '${step.success ? 'OK' : 'FAILED'} ${step.action.name}: ${step.summary}');
       setState(() {
+        _lastProjectProfile = result.profile;
         _lastFailedAction = failed?.action;
         _lines.insert(
           0,
@@ -5224,6 +5270,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
               _RuntimeActionButton(icon: Icons.inventory_2_outlined, label: 'Install', disabled: _running, onTap: () => _run(RuntimeActionType.installDependencies)),
               _RuntimeActionButton(icon: Icons.fact_check_outlined, label: 'Test', disabled: _running, onTap: () => _run(RuntimeActionType.runTests)),
               _RuntimeActionButton(icon: Icons.web_asset_outlined, label: 'Preview', disabled: _running, onTap: () => _run(RuntimeActionType.buildPreview)),
+              _RuntimeActionButton(icon: Icons.search_outlined, label: 'Preflight', disabled: _running, onTap: _preflightProject),
               _RuntimeActionButton(icon: Icons.verified_outlined, label: 'Validate', disabled: _running, onTap: _runValidationLoop),
               _RuntimeActionButton(icon: Icons.replay_outlined, label: 'Retry', disabled: _running || _lastFailedAction == null, onTap: _retryLastFailure),
               _RuntimeActionButton(icon: Icons.account_tree_outlined, label: 'Commit', disabled: _running, onTap: () => _run(RuntimeActionType.gitCommit)),
@@ -5233,12 +5280,58 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
             ],
           ),
           const SizedBox(height: 12),
+          if (_lastProjectProfile != null) ...[
+            _RuntimeProjectProfilePanel(profile: _lastProjectProfile!),
+            const SizedBox(height: 12),
+          ],
           _Panel(
             child: Text(
               _lines.take(8).join('\n\n'),
               style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RuntimeProjectProfilePanel extends StatelessWidget {
+  const _RuntimeProjectProfilePanel({required this.profile});
+
+  final RuntimeProjectProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = profile.recognized ? _mint : _amber;
+    final markers = profile.detectedFiles.take(6).join(', ');
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(profile.recognized ? Icons.folder_open_outlined : Icons.folder_outlined, color: color, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  profile.packageManager ?? 'No project profile',
+                  style: const TextStyle(color: _text, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text(profile.kind.name, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(profile.summary, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+          if (markers.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(markers, style: const TextStyle(color: _muted, fontSize: 11, height: 1.25)),
+          ],
+          if (profile.recoveryHint != null) ...[
+            const SizedBox(height: 6),
+            Text(profile.recoveryHint!, style: TextStyle(color: color, fontSize: 11, height: 1.25)),
+          ],
         ],
       ),
     );

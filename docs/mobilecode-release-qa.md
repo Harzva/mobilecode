@@ -12,7 +12,7 @@ Required GitHub Actions before publishing:
   - Runs RuntimeProvider tests for `RuntimeManager` and `MobileCodeHelperProvider`.
   - Compiles `mobile_agent/tooling/mobilecode_helper_daemon.py`.
   - Compiles `mobile_agent/tooling/prepare_android_project.py`, which injects the native Helper foreground service into generated Android projects.
-  - Starts the helper daemon with a localhost token and smoke tests `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/tasks/current`, `/v1/tasks`, and `/v1/tasks/:id/logs`.
+  - Starts the helper daemon with a localhost token and smoke tests `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/project/preflight`, `/v1/tasks/current`, `/v1/tasks`, and `/v1/tasks/:id/logs`.
 - `.github/workflows/android-app-test.yml`
   - Builds a debug APK.
   - Installs and launches it on an Android emulator.
@@ -75,6 +75,9 @@ curl -fsS -N -H "$AUTH_HEADER" -H 'Content-Type: application/json' \
 curl -fsS -H "$AUTH_HEADER" http://127.0.0.1:8765/v1/tasks/current
 curl -fsS -H "$AUTH_HEADER" 'http://127.0.0.1:8765/v1/tasks?limit=5'
 curl -fsS -H "$AUTH_HEADER" 'http://127.0.0.1:8765/v1/tasks/<taskId>/logs?limit=50'
+curl -fsS -H "$AUTH_HEADER" -H 'Content-Type: application/json' \
+  -X POST http://127.0.0.1:8765/v1/project/preflight \
+  -d '{"cwd":"'$HOME'/mobilecode_projects"}'
 ```
 
 Expected result:
@@ -85,6 +88,7 @@ Expected result:
 - `/v1/tasks/current` returns a task object with `taskId`, `status`, `failureKind`, and recent `logs`.
 - `/v1/tasks` returns persisted task history after daemon restart; interrupted running tasks are marked `lost`/`runtimeLost`.
 - `/v1/tasks/:id/logs` returns recent logs for the selected task.
+- `/v1/project/preflight` returns project markers without requiring shell-specific `find` behavior.
 - MobileCode Home/Tools shows a Runtime-ready banner when the Helper provider is reachable.
 
 ## Manual APK Validation
@@ -105,7 +109,8 @@ Pass criteria:
 - Tools -> Runtime providers can detect Helper or External Termux fallback.
 - Runtime Diagnostics can refresh without starting a crashing foreground service.
 - Build / release page exposes structured runtime actions without missing plugin errors.
-- Runtime Actions can run the Validate loop, stop at the first failed step, show a recovery hint, and retry the failed step after runtime refresh.
+- Runtime Actions can run Project Preflight, detect `package.json` / `pubspec.yaml` / `requirements.txt` / `pyproject.toml`, then run the Validate loop with the selected profile.
+- Validate stops at the first failed step, shows a recovery hint, and can retry the failed step after runtime refresh.
 - Logcat has no `FATAL EXCEPTION`, `AndroidRuntime`, `MissingPluginException`, or `ANR in com.mobilecode.mobile_agent`.
 
 ## Release Readiness

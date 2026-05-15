@@ -140,6 +140,7 @@ class MobileCodeHelperService : Service() {
                 }
                 method == "POST" && path == "/v1/execute" -> handleExecute(socket, body)
                 method == "POST" && path == "/v1/execute/stream" -> handleExecuteStream(socket, body)
+                method == "POST" && path == "/v1/project/preflight" -> handleProjectPreflight(socket, body)
                 method == "POST" && path == "/v1/task/stop" -> {
                     val stopped = stopCurrentProcess()
                     writeJson(socket, 200, JSONObject().put("success", true).put("stopped", stopped))
@@ -270,6 +271,19 @@ class MobileCodeHelperService : Service() {
             JSONObject().put("type", "exit").put("exitCode", exitCode).put("durationMs", durationMs).put("taskId", taskId)
         )
         if (currentProcess == process) currentProcess = null
+    }
+
+    private fun handleProjectPreflight(socket: Socket, body: String) {
+        val payload = if (body.isBlank()) JSONObject() else JSONObject(body)
+        val cwd = validateCwd(payload.optString("cwd", ""))
+        writeJson(
+            socket,
+            200,
+            JSONObject()
+                .put("success", true)
+                .put("cwd", cwd.path)
+                .put("detectedFiles", inspectProjectFiles(cwd))
+        )
     }
 
     private fun healthJson(): JSONObject {
@@ -536,6 +550,21 @@ class MobileCodeHelperService : Service() {
         return result
     }
 
+    private fun inspectProjectFiles(cwd: File): JSONArray {
+        val files = JSONArray()
+        cwd.walkTopDown()
+            .maxDepth(2)
+            .filter { projectMarkers.contains(it.name) }
+            .map { file ->
+                val relative = cwd.toPath().relativize(file.toPath()).toString().replace(File.separatorChar, '/')
+                "./$relative"
+            }
+            .distinct()
+            .sorted()
+            .forEach { files.put(it) }
+        return files
+    }
+
     private fun hasBinary(name: String): Boolean {
         val path = System.getenv("PATH") ?: return false
         return path.split(File.pathSeparator).any { directory ->
@@ -717,6 +746,14 @@ class MobileCodeHelperService : Service() {
             "shutdown",
             "poweroff",
             "su "
+        )
+
+        private val projectMarkers = setOf(
+            "package.json",
+            "pubspec.yaml",
+            "requirements.txt",
+            "pyproject.toml",
+            ".git"
         )
 
         private fun classifyFailure(status: String, exitCode: Int?, error: String?): String {

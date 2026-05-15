@@ -42,7 +42,7 @@ python3 tooling/mobilecode_helper_daemon.py \
   --auth-token "$MOBILECODE_HELPER_TOKEN"
 ```
 
-Both prototypes implement `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/tasks/current`, `/v1/tasks`, `/v1/tasks/:id/logs`, and `/v1/task/stop`. Both prototypes intentionally run allowlisted commands without shell expansion and reject working directories outside the configured workspace boundary.
+Both prototypes implement `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/project/preflight`, `/v1/tasks/current`, `/v1/tasks`, `/v1/tasks/:id/logs`, and `/v1/task/stop`. Both prototypes intentionally run allowlisted commands without shell expansion and reject working directories outside the configured workspace boundary.
 
 ## Localhost Auth
 
@@ -119,6 +119,35 @@ Response:
   "failureKind": "none"
 }
 ```
+
+## Project Preflight
+
+Project preflight is a structured file inspection endpoint. The app should prefer it over arbitrary shell probes when the active runtime is MobileCode Helper.
+
+```http
+POST /v1/project/preflight
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "cwd": "/helper/workspace/project"
+}
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "cwd": "/helper/workspace/project",
+  "detectedFiles": ["./package.json", "./.git"]
+}
+```
+
+The helper currently detects `package.json`, `pubspec.yaml`, `requirements.txt`, `pyproject.toml`, and `.git` within depth 2. MobileCode maps those markers to Node/npm, Flutter, Python, and Git-aware action flows before running Install/Test/Preview.
 
 ## Streaming Execution
 

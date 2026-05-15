@@ -225,6 +225,100 @@ void main() {
 
       await manager.dispose();
     });
+
+    test('preflights node project before auto validation', () async {
+      final provider = _FakeRuntimeProvider(
+        type: RuntimeProviderType.mobileCodeHelper,
+        name: 'Helper',
+        health: const RuntimeHealth(
+          type: RuntimeProviderType.mobileCodeHelper,
+          name: 'Helper',
+          available: true,
+          ready: true,
+          status: 'ready',
+          capabilities: RuntimeCapabilities(shell: true, node: true),
+        ),
+        stdoutByCommand: const {
+          runtimeProjectProbeCommand: './package.json\n./.git\n',
+        },
+      );
+      final manager = RuntimeManager(providers: [provider]);
+
+      final result = await manager.validateProject(projectPath: '/workspace/app');
+
+      expect(result.success, isTrue);
+      expect(result.profile?.packageManager, 'npm');
+      expect(provider.commands, [
+        runtimeProjectProbeCommand,
+        'npm install',
+        'npm test',
+        'npm run build',
+      ]);
+
+      await manager.dispose();
+    });
+
+    test('preflight avoids preview for python project', () async {
+      final provider = _FakeRuntimeProvider(
+        type: RuntimeProviderType.mobileCodeHelper,
+        name: 'Helper',
+        health: const RuntimeHealth(
+          type: RuntimeProviderType.mobileCodeHelper,
+          name: 'Helper',
+          available: true,
+          ready: true,
+          status: 'ready',
+          capabilities: RuntimeCapabilities(shell: true, python: true),
+        ),
+        stdoutByCommand: const {
+          runtimeProjectProbeCommand: './requirements.txt\n',
+        },
+      );
+      final manager = RuntimeManager(providers: [provider]);
+
+      final result = await manager.validateProject(projectPath: '/workspace/app');
+
+      expect(result.success, isTrue);
+      expect(result.profile?.packageManager, 'python');
+      expect(provider.commands, [
+        runtimeProjectProbeCommand,
+        'python3 -m pip install -r requirements.txt',
+        'python3 -m pytest',
+      ]);
+
+      await manager.dispose();
+    });
+
+    test('auto action skips when preflight cannot identify project', () async {
+      final provider = _FakeRuntimeProvider(
+        type: RuntimeProviderType.mobileCodeHelper,
+        name: 'Helper',
+        health: const RuntimeHealth(
+          type: RuntimeProviderType.mobileCodeHelper,
+          name: 'Helper',
+          available: true,
+          ready: true,
+          status: 'ready',
+          capabilities: RuntimeCapabilities(shell: true, node: true, flutter: true),
+        ),
+        stdoutByCommand: const {
+          runtimeProjectProbeCommand: '',
+        },
+      );
+      final manager = RuntimeManager(providers: [provider]);
+
+      final result = await manager.runAction(const RuntimeActionRequest(
+        type: RuntimeActionType.installDependencies,
+        projectPath: '/workspace/empty',
+      ));
+
+      expect(result.success, isFalse);
+      expect(result.skippedReason, contains('preflight'));
+      expect(result.recoveryHint, contains('package.json'));
+      expect(provider.commands, [runtimeProjectProbeCommand]);
+
+      await manager.dispose();
+    });
   });
 }
 
@@ -233,6 +327,7 @@ class _FakeRuntimeProvider implements RuntimeProvider {
   final String _name;
   final RuntimeHealth _health;
   final Map<String, int> _exitCodes;
+  final Map<String, String> _stdoutByCommand;
   final StreamController<String> _logs = StreamController<String>.broadcast();
   final List<String> commands = [];
 
@@ -241,10 +336,12 @@ class _FakeRuntimeProvider implements RuntimeProvider {
     required String name,
     required RuntimeHealth health,
     Map<String, int> exitCodes = const {},
+    Map<String, String> stdoutByCommand = const {},
   })  : _type = type,
         _name = name,
         _health = health,
-        _exitCodes = exitCodes;
+        _exitCodes = exitCodes,
+        _stdoutByCommand = stdoutByCommand;
 
   @override
   RuntimeProviderType get type => _type;
@@ -275,7 +372,7 @@ class _FakeRuntimeProvider implements RuntimeProvider {
     final exitCode = _exitCodes[command] ?? 0;
     return RuntimeCommandResult(
       command: command,
-      stdout: exitCode == 0 ? '' : 'ok before failure',
+      stdout: _stdoutByCommand[command] ?? (exitCode == 0 ? '' : 'ok before failure'),
       stderr: exitCode == 0 ? '' : 'test failed',
       exitCode: exitCode,
       duration: Duration.zero,

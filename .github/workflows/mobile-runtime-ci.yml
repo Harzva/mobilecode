@@ -94,6 +94,7 @@ jobs:
         run: |
           set -eux
           mkdir -p artifacts /tmp/mobilecode-workspace
+          printf '{"scripts":{"test":"echo ok","build":"echo build"}}\n' > /tmp/mobilecode-workspace/package.json
           python3 mobile_agent/tooling/mobilecode_helper_daemon.py \
             --port 18765 \
             --workspace-root /tmp/mobilecode-workspace \
@@ -128,6 +129,12 @@ jobs:
           curl -fsS -H "$auth_header" 'http://127.0.0.1:18765/v1/tasks?limit=5' | tee artifacts/helper-tasks.json
           task_id=$(python3 -c "import json; print(json.load(open('artifacts/helper-task.json'))['task']['id'])")
           curl -fsS -H "$auth_header" "http://127.0.0.1:18765/v1/tasks/${task_id}/logs?limit=20" | tee artifacts/helper-task-logs.json
+          curl -fsS \
+            -H "$auth_header" \
+            -H 'Content-Type: application/json' \
+            -X POST http://127.0.0.1:18765/v1/project/preflight \
+            -d '{"cwd":"/tmp/mobilecode-workspace"}' \
+            | tee artifacts/helper-project-preflight.json
 
           grep '"ready":true' artifacts/helper-health.json
           grep '"authRequired":true' artifacts/helper-health.json
@@ -141,6 +148,7 @@ jobs:
           grep '"logs":' artifacts/helper-task.json
           grep '"count":' artifacts/helper-tasks.json
           grep '"logs":' artifacts/helper-task-logs.json
+          grep 'package.json' artifacts/helper-project-preflight.json
 
       - name: Upload helper smoke artifacts
         uses: actions/upload-artifact@v4

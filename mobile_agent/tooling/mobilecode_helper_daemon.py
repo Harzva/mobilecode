@@ -83,6 +83,8 @@ DANGEROUS_FRAGMENTS = (
     "su ",
 )
 
+PROJECT_MARKERS = {"package.json", "pubspec.yaml", "requirements.txt", "pyproject.toml", ".git"}
+
 
 class HelperState:
     def __init__(
@@ -213,6 +215,23 @@ class HelperState:
                         return []
                     return [str(line) for line in logs[-max(1, limit) :]]
         return []
+
+    def inspect_project(self, cwd: Path, max_depth: int = 2) -> list[str]:
+        detected: set[str] = set()
+        for root, dirs, files in os.walk(cwd):
+            root_path = Path(root)
+            depth = len(root_path.relative_to(cwd).parts)
+            if depth >= max_depth:
+                dirs[:] = []
+            for directory in list(dirs):
+                if directory in PROJECT_MARKERS:
+                    detected.add(f"./{(root_path / directory).relative_to(cwd).as_posix()}")
+                if directory == ".git":
+                    dirs.remove(directory)
+            for filename in files:
+                if filename in PROJECT_MARKERS:
+                    detected.add(f"./{(root_path / filename).relative_to(cwd).as_posix()}")
+        return sorted(detected)
 
     def _load_tasks(self) -> None:
         try:
@@ -419,6 +438,9 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
             if path == "/v1/execute/stream":
                 self.handle_execute_stream()
                 return
+            if path == "/v1/project/preflight":
+                self.handle_project_preflight()
+                return
             if path == "/v1/task/stop":
                 self.handle_stop()
                 return
@@ -555,6 +577,18 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         status = "cancelled" if cancelled else "succeeded" if exit_code == 0 else "failed"
         self.state.finish_task(status, exit_code, duration_ms)
         self.write_ndjson({"type": "exit", "exitCode": exit_code, "durationMs": duration_ms, "taskId": task["id"]})
+
+    def handle_project_preflight(self) -> None:
+        payload = read_json(self)
+        cwd = self.state.validate_cwd(payload.get("cwd"))
+        detected_files = self.state.inspect_project(cwd)
+        self.send_json(
+            {
+                "success": True,
+                "cwd": str(cwd),
+                "detectedFiles": detected_files,
+            }
+        )
 
     def handle_stop(self) -> None:
         with self.state.current_lock:

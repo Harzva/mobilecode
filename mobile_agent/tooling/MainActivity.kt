@@ -1,5 +1,6 @@
 package com.mobilecode.mobile_agent
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
@@ -37,6 +38,16 @@ class MainActivity : FlutterActivity() {
                 }
                 "rootProbe" -> {
                     result.success(rootProbe())
+                }
+                "startHelperService" -> {
+                    result.success(startHelperService())
+                }
+                "stopHelperService" -> {
+                    stopService(Intent(this, MobileCodeHelperService::class.java).setAction(MobileCodeHelperService.ACTION_STOP))
+                    result.success(true)
+                }
+                "helperServiceStatus" -> {
+                    result.success(MobileCodeHelperService.status())
                 }
                 else -> result.notImplemented()
             }
@@ -89,6 +100,20 @@ class MainActivity : FlutterActivity() {
                 "available" to false,
                 "detail" to "Root probe failed; the app process cannot see su."
             )
+        }
+    }
+
+    private fun startHelperService(): Boolean {
+        return try {
+            val intent = Intent(this, MobileCodeHelperService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(intent)
+            } else {
+                startService(intent)
+            }
+            true
+        } catch (_: Throwable) {
+            false
         }
     }
 }

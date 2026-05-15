@@ -1,17 +1,39 @@
 from pathlib import Path
 
 
+def ensure_manifest_line(text: str, line: str) -> str:
+    if line in text:
+        return text
+    return text.replace(
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+        '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n' + line,
+        1,
+    )
+
+
+def ensure_application_child(text: str, block: str, marker: str) -> str:
+    if marker in text:
+        return text
+    return text.replace('    </application>', block + '\n    </application>', 1)
+
+
 def main() -> None:
     manifest = Path('android/app/src/main/AndroidManifest.xml')
     text = manifest.read_text()
     text = text.replace('android:label="mobile_agent"', 'android:label="MobileCode"')
+    for permission in (
+        '    <uses-permission android:name="android.permission.INTERNET" />',
+        '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
+        '    <uses-permission android:name="android.permission.VIBRATE" />',
+        '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />',
+        '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />',
+        '    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+    ):
+        text = ensure_manifest_line(text, permission)
     if '<queries>' not in text:
         text = text.replace(
             '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
             '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
-            '    <uses-permission android:name="android.permission.INTERNET" />\n'
-            '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n'
-            '    <uses-permission android:name="android.permission.VIBRATE" />\n'
             '    <queries>\n'
             '        <package android:name="com.termux" />\n'
             '        <package android:name="com.termux.api" />\n'
@@ -30,6 +52,13 @@ def main() -> None:
             '<application\n        android:hardwareAccelerated="true"\n        android:usesCleartextTraffic="true"',
             1,
         )
+    helper_service = (
+        '        <service\n'
+        '            android:name=".MobileCodeHelperService"\n'
+        '            android:foregroundServiceType="dataSync"\n'
+        '            android:exported="false" />'
+    )
+    text = ensure_application_child(text, helper_service, 'android:name=".MobileCodeHelperService"')
     manifest.write_text(text)
 
     gradle = Path('android/app/build.gradle.kts')
@@ -87,6 +116,8 @@ def main() -> None:
     activity = Path('android/app/src/main/kotlin/com/mobilecode/mobile_agent/MainActivity.kt')
     activity.parent.mkdir(parents=True, exist_ok=True)
     activity.write_text(Path('tooling/MainActivity.kt').read_text())
+    helper_service = Path('android/app/src/main/kotlin/com/mobilecode/mobile_agent/MobileCodeHelperService.kt')
+    helper_service.write_text(Path('tooling/MobileCodeHelperService.kt').read_text())
 
 
 if __name__ == '__main__':

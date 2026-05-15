@@ -269,6 +269,30 @@ class TermuxService {
     }
   }
 
+  /// Generate the user-facing setup script for manual Termux bootstrap.
+  ///
+  /// MobileCode can show or copy this script when direct command automation is
+  /// unavailable. The script intentionally installs only the minimum packages
+  /// needed for the current External Termux provider path.
+  String generateSetupScript() {
+    return r'''#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+pkg update -y
+pkg install -y git curl unzip
+
+if [ ! -d "$HOME/termux-flutter" ]; then
+  git clone https://github.com/termux/termux-flutter.git "$HOME/termux-flutter"
+fi
+
+cd "$HOME/termux-flutter"
+bash install.sh
+
+flutter doctor || true
+echo "MobileCode Termux setup complete."
+''';
+  }
+
   // ═════════════════════════════════════════════════════════════════
   // Build Orchestration
   // ═════════════════════════════════════════════════════════════════
@@ -709,7 +733,11 @@ class TermuxService {
   /// Execute a command in Termux environment.
   ///
   /// Returns the complete result including stdout, stderr, and exit code.
-  Future<TermuxResult> execute(String command, {String? workingDir}) async {
+  Future<TermuxResult> execute(
+    String command, {
+    String? workingDir,
+    int timeoutSeconds = 120,
+  }) async {
     _ensureInitialized();
 
     // SECURITY FIX: Validate inputs and redact from logs.
@@ -722,6 +750,7 @@ class TermuxService {
       final result = await _terminalService!.execute(
         command,
         workingDirectory: workingDir,
+        timeoutSeconds: timeoutSeconds,
       );
 
       return TermuxResult(

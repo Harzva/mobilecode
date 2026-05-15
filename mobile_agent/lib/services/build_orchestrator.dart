@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
+import 'runtime_manager.dart';
 import 'termux_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -39,6 +40,7 @@ import 'termux_service.dart';
 /// ```
 class BuildOrchestrator {
   final TermuxService _termux;
+  final RuntimeManager _runtimeManager;
 
   /// Active preview sessions keyed by project path.
   final Map<String, PreviewSession> _activeSessions = {};
@@ -73,8 +75,9 @@ class BuildOrchestrator {
   // Initialization
   // ═════════════════════════════════════════════════════════════════
 
-  /// Create a BuildOrchestrator with a TermuxService instance.
-  BuildOrchestrator(this._termux);
+  /// Create a BuildOrchestrator with a runtime manager.
+  BuildOrchestrator(this._termux, {RuntimeManager? runtimeManager})
+      : _runtimeManager = runtimeManager ?? RuntimeManager.withExternalTermux(_termux);
 
   /// Initialize the orchestrator.
   Future<void> initialize() async {
@@ -83,6 +86,7 @@ class BuildOrchestrator {
     try {
       debugPrint('[BuildOrchestrator] Initializing...');
       await _termux.initialize();
+      await _runtimeManager.initialize();
       _initialized = true;
       debugPrint('[BuildOrchestrator] Initialized successfully');
     } catch (e) {
@@ -241,16 +245,19 @@ class BuildOrchestrator {
     switch (projectType) {
       case ProjectType.flutter:
       case ProjectType.dart:
-        // Flutter Web preview: always available for Flutter projects.
-        methods.add(PreviewMethod.flutterWeb);
+        final caps = await _runtimeManager.capabilities();
 
-        // Flutter APK build: requires Termux with Flutter SDK.
-        if (await _termux.isSetupComplete()) {
+        if (caps.flutter) {
+          methods.add(PreviewMethod.flutterWeb);
+        }
+
+        if (caps.flutter && caps.androidBuild) {
           methods.add(PreviewMethod.flutterApk);
         }
 
-        // Terminal: always available as fallback.
-        methods.add(PreviewMethod.terminal);
+        if (caps.shell) {
+          methods.add(PreviewMethod.terminal);
+        }
         break;
 
       case ProjectType.react:
@@ -258,17 +265,22 @@ class BuildOrchestrator {
       case ProjectType.html:
         // WebView preview: available for web projects.
         methods.add(PreviewMethod.webview);
-        methods.add(PreviewMethod.terminal);
+        if ((await _runtimeManager.capabilities()).shell) {
+          methods.add(PreviewMethod.terminal);
+        }
         break;
 
       case ProjectType.python:
       case ProjectType.node:
-        // Terminal: for interpreted languages.
-        methods.add(PreviewMethod.terminal);
+        if ((await _runtimeManager.capabilities()).shell) {
+          methods.add(PreviewMethod.terminal);
+        }
         break;
 
       case ProjectType.unknown:
-        methods.add(PreviewMethod.terminal);
+        if ((await _runtimeManager.capabilities()).shell) {
+          methods.add(PreviewMethod.terminal);
+        }
         break;
     }
 
@@ -423,11 +435,13 @@ class BuildOrchestrator {
     switch (projectType) {
       case ProjectType.flutter:
         // For Flutter, build APK in release mode.
-        final termuxReady = await _termux.isSetupComplete();
-        if (!termuxReady) {
+        final caps = await _runtimeManager.capabilities();
+        if (!caps.flutter || !caps.androidBuild) {
+          final health = _runtimeManager.activeHealth;
           return BuildResult(
             success: false,
-            error: 'Termux setup incomplete. Run setup wizard first.',
+            error: health?.status ??
+                'No runtime with Flutter Android build capability is available.',
             buildTime: Duration.zero,
           );
         }
@@ -439,7 +453,7 @@ class BuildOrchestrator {
           message: 'Starting release APK build...',
         ));
 
-        final result = await _termux.buildApk(
+        final result = await _runtimeManager.buildApk(
           projectPath,
           mode: BuildMode.release,
         );
@@ -460,7 +474,7 @@ class BuildOrchestrator {
       case ProjectType.react:
       case ProjectType.vue:
       case ProjectType.node:
-        return await _termux.execute('npm run build', workingDir: projectPath).then(
+        return await _runtimeManager.execute('npm run build', workingDir: projectPath).then(
           (r) => BuildResult(
             success: r.success,
             outputPath: p.join(projectPath, 'build'),
@@ -470,7 +484,7 @@ class BuildOrchestrator {
         );
 
       case ProjectType.dart:
-        return await _termux.execute('dart compile exe bin/main.dart', workingDir: projectPath).then(
+        return await _runtimeManager.execute('dart compile exe bin/main.dart', workingDir: projectPath).then(
           (r) => BuildResult(
             success: r.success,
             error: r.stderr.isNotEmpty ? r.stderr : null,
@@ -498,14 +512,14 @@ class BuildOrchestrator {
     final logController = StreamController<String>.broadcast();
     final stopController = StreamController<void>.broadcast();
 
-    // Subscribe to Termux build logs.
-    final logSubscription = _termux.buildLogStream.listen(
+    // Subscribe to selected runtime build logs.
+    final logSubscription = _runtimeManager.logStream.listen(
       (line) => logController.add(line),
       onError: (e) => logController.add('[error] $e'),
     );
 
     // Build the web output.
-    final buildResult = await _termux.buildWeb(projectPath);
+    final buildResult = await _runtimeManager.buildWeb(projectPath);
 
     if (!buildResult.success) {
       await logSubscription.cancel();
@@ -550,14 +564,14 @@ class BuildOrchestrator {
 
     final logController = StreamController<String>.broadcast();
 
-    // Subscribe to Termux build logs.
-    final logSubscription = _termux.buildLogStream.listen(
+    // Subscribe to selected runtime build logs.
+    final logSubscription = _runtimeManager.logStream.listen(
       (line) => logController.add(line),
       onError: (e) => logController.add('[error] $e'),
     );
 
     // Build debug APK.
-    final buildResult = await _termux.buildApk(
+    final buildResult = await _runtimeManager.buildApk(
       projectPath,
       mode: BuildMode.debug,
     );
@@ -572,7 +586,7 @@ class BuildOrchestrator {
 
     // Install the APK.
     logController.add('[install] Installing APK...');
-    final installResult = await _termux.installApk(buildResult.outputPath!);
+    final installResult = await _runtimeManager.installApk(buildResult.outputPath!);
 
     if (!installResult.success) {
       await logSubscription.cancel();
@@ -583,7 +597,7 @@ class BuildOrchestrator {
     }
 
     // Launch the app.
-    await _termux.launchApp(installResult.packageName);
+    await _runtimeManager.launchApp(installResult.packageName);
 
     final session = PreviewSession(
       method: PreviewMethod.flutterApk,
@@ -592,7 +606,7 @@ class BuildOrchestrator {
       logStream: logController.stream,
       stop: () async {
         debugPrint('[BuildOrchestrator] Stopping APK preview');
-        await _termux.uninstallApp(installResult.packageName);
+        await _runtimeManager.uninstallApp(installResult.packageName);
         await logSubscription.cancel();
         await logController.close();
         _activeSessions.remove(projectPath);
@@ -749,6 +763,7 @@ class BuildOrchestrator {
   /// Dispose all resources.
   void dispose() {
     stopAllPreviews();
+    unawaited(_runtimeManager.dispose());
     if (!_eventController.isClosed) {
       _eventController.close();
     }

@@ -14,8 +14,9 @@ import 'package:path/path.dart' as p;
 
 import '../core/theme.dart';
 import '../services/build_orchestrator.dart';
+import '../services/runtime_manager.dart';
+import '../services/runtime_provider.dart';
 import '../services/termux_service.dart';
-import '../widgets/flutter_web_preview.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Build & Preview Screen
@@ -51,6 +52,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
   // ── Services ────────────────────────────────────────────────────
 
   late final TermuxService _termux;
+  late final RuntimeManager _runtimeManager;
   late final BuildOrchestrator _orchestrator;
 
   // ── State ───────────────────────────────────────────────────────
@@ -64,14 +66,17 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
   /// Whether a build/preview is currently running.
   bool _isBuilding = false;
 
-  /// Whether the setup wizard is being shown.
-  bool _showingSetup = false;
-
   /// Whether Termux is installed.
   bool _termuxInstalled = false;
 
   /// Whether the setup is complete.
   bool _setupComplete = false;
+
+  /// Runtime health checks in priority order.
+  List<RuntimeHealth> _runtimeHealth = [];
+
+  /// Current active runtime capabilities.
+  RuntimeCapabilities _runtimeCapabilities = RuntimeCapabilities.none;
 
   /// Detected project type string.
   String _projectType = 'Unknown';
@@ -119,7 +124,8 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
     });
 
     _termux = TermuxService();
-    _orchestrator = BuildOrchestrator(_termux);
+    _runtimeManager = RuntimeManager.withExternalTermux(_termux);
+    _orchestrator = BuildOrchestrator(_termux, runtimeManager: _runtimeManager);
 
     _initialize();
   }
@@ -131,6 +137,8 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
 
       _termuxInstalled = await _termux.isTermuxInstalled();
       _setupComplete = await _termux.isSetupComplete();
+      _runtimeHealth = await _runtimeManager.refresh();
+      _runtimeCapabilities = await _runtimeManager.capabilities();
 
       // Detect available methods.
       _availableMethods = await _orchestrator.getAvailableMethods(widget.projectPath);
@@ -139,6 +147,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
       await _detectProjectType();
 
       // Subscribe to orchestrator events.
+      await _eventSubscription?.cancel();
       _eventSubscription = _orchestrator.events.listen(_handleOrchestratorEvent);
 
       setState(() => _isLoading = false);
@@ -222,7 +231,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
     try {
       // Subscribe to build logs.
       _logSubscription?.cancel();
-      _logSubscription = _termux.buildLogStream.listen((line) {
+      _logSubscription = _runtimeManager.logStream.listen((line) {
         setState(() {
           _buildLogs.add(line);
           _scrollLogToBottom();
@@ -270,7 +279,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
 
     // Subscribe to build logs.
     _logSubscription?.cancel();
-    _logSubscription = _termux.buildLogStream.listen((line) {
+    _logSubscription = _runtimeManager.logStream.listen((line) {
       setState(() {
         _buildLogs.add(line);
         _scrollLogToBottom();
@@ -278,7 +287,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
     });
 
     try {
-      final result = await _termux.buildApk(widget.projectPath, mode: mode);
+      final result = await _runtimeManager.buildApk(widget.projectPath, mode: mode);
 
       setState(() {
         _lastBuildResult = result;
@@ -353,7 +362,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
     });
 
     try {
-      final result = await _termux.installApk(apkPath);
+      final result = await _runtimeManager.installApk(apkPath);
       setState(() {
         _isBuilding = false;
         if (result.success) {
@@ -474,7 +483,10 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
 
   /// Status banner at the top.
   Widget _buildStatusBanner() {
-    final bool ready = _termuxInstalled && _setupComplete;
+    final active = _runtimeManager.activeHealth;
+    final bool ready = active?.ready == true;
+    final bool needsBuildSetup =
+        !_runtimeCapabilities.flutter || !_runtimeCapabilities.androidBuild;
 
     return Container(
       width: double.infinity,
@@ -499,7 +511,9 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  ready ? 'Build Environment Ready' : 'Setup Required',
+                  ready
+                      ? 'Runtime Ready: ${active?.name ?? 'Provider'}'
+                      : 'Runtime Setup Required',
                   style: const TextStyle(
                     fontFamily: AppTheme.fontBody,
                     fontSize: 15,
@@ -508,9 +522,10 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
                   ),
                 ),
                 Text(
-                  ready
-                      ? 'Termux and Flutter SDK are configured'
-                      : 'Install Termux and run setup wizard to enable builds',
+                  active?.status ??
+                      (ready
+                          ? 'Runtime provider is configured'
+                          : 'Install or configure a runtime provider to enable builds'),
                   style: const TextStyle(
                     fontFamily: AppTheme.fontBody,
                     fontSize: 12,
@@ -520,7 +535,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
               ],
             ),
           ),
-          if (!ready)
+          if (needsBuildSetup)
             TextButton(
               onPressed: _runSetupWizard,
               child: const Text('Setup'),
@@ -556,7 +571,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
   /// Card for a single preview method.
   Widget _buildMethodCard(PreviewMethod method) {
     final bool isActive = _activeMethod == method && _activeSession != null;
-    final bool canUse = _setupComplete || method == PreviewMethod.terminal || method == PreviewMethod.webview;
+    final bool canUse = _canUseMethod(method);
 
     final Map<PreviewMethod, _MethodConfig> configs = {
       PreviewMethod.webview: _MethodConfig(
@@ -696,6 +711,21 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
     );
   }
 
+  bool _canUseMethod(PreviewMethod method) {
+    switch (method) {
+      case PreviewMethod.webview:
+        return true;
+      case PreviewMethod.flutterWeb:
+        return _runtimeCapabilities.flutter;
+      case PreviewMethod.flutterApk:
+        return _runtimeCapabilities.flutter && _runtimeCapabilities.androidBuild;
+      case PreviewMethod.terminal:
+        return _runtimeCapabilities.shell;
+      case PreviewMethod.remote:
+        return _runtimeCapabilities.cloudBuild;
+    }
+  }
+
   /// Card shown when no preview methods are available.
   Widget _buildNoMethodsCard() {
     return Container(
@@ -754,7 +784,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
                 icon: Icons.web,
                 label: 'Web',
                 color: AppTheme.accent,
-                onPressed: _setupComplete && !_isBuilding
+                onPressed: _runtimeCapabilities.flutter && !_isBuilding
                     ? () => _startPreview(PreviewMethod.flutterWeb)
                     : null,
               ),
@@ -765,7 +795,9 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
                 icon: Icons.android,
                 label: 'Debug APK',
                 color: AppTheme.info,
-                onPressed: _setupComplete && !_isBuilding
+                onPressed: _runtimeCapabilities.flutter &&
+                        _runtimeCapabilities.androidBuild &&
+                        !_isBuilding
                     ? () => _buildApk(BuildMode.debug)
                     : null,
               ),
@@ -776,7 +808,9 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
                 icon: Icons.rocket_launch,
                 label: 'Release APK',
                 color: AppTheme.success,
-                onPressed: _setupComplete && !_isBuilding
+                onPressed: _runtimeCapabilities.flutter &&
+                        _runtimeCapabilities.androidBuild &&
+                        !_isBuilding
                     ? () => _buildApk(BuildMode.release)
                     : null,
               ),
@@ -1132,13 +1166,46 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
           ),
           const SizedBox(height: 16),
 
-          // Termux section.
+          // Runtime section.
           _buildSettingsCard(
-            title: 'Termux',
+            title: 'Runtime Providers',
             children: [
               _buildSettingsRow(
+                icon: Icons.hub_outlined,
+                label: 'Active Runtime',
+                value: _runtimeManager.activeHealth?.name ?? 'Unknown',
+                valueColor: _runtimeManager.activeHealth?.ready == true
+                    ? AppTheme.success
+                    : AppTheme.warning,
+              ),
+              _buildSettingsRow(
+                icon: Icons.extension_outlined,
+                label: 'Capabilities',
+                value: _formatCapabilities(_runtimeCapabilities),
+              ),
+              const SizedBox(height: 8),
+              ..._runtimeHealth.map((health) => _buildSettingsRow(
+                    icon: health.ready
+                        ? Icons.check_circle_outline
+                        : health.available
+                            ? Icons.info_outline
+                            : Icons.radio_button_unchecked,
+                    label: health.name,
+                    value: health.ready
+                        ? 'Ready'
+                        : health.available
+                            ? 'Available'
+                            : 'Missing',
+                    valueColor: health.ready
+                        ? AppTheme.success
+                        : health.available
+                            ? AppTheme.warning
+                            : AppTheme.textTertiary,
+                  )),
+              const SizedBox(height: 12),
+              _buildSettingsRow(
                 icon: Icons.terminal,
-                label: 'Installed',
+                label: 'External Termux',
                 value: _termuxInstalled ? 'Yes' : 'No',
                 valueColor: _termuxInstalled ? AppTheme.success : AppTheme.error,
               ),
@@ -1157,6 +1224,15 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
                     child: const Text('Run Setup Wizard'),
                   ),
                 ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _copyTermuxSetupScript,
+                  icon: const Icon(Icons.copy, size: 16),
+                  label: const Text('Copy Termux Setup Script'),
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -1212,7 +1288,10 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
                 onTap: () async {
                   setState(() => _isBuilding = true);
                   try {
-                    await _termux.execute('flutter clean', workingDir: widget.projectPath);
+                    await _runtimeManager.execute(
+                      'flutter clean',
+                      workingDir: widget.projectPath,
+                    );
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Build cache cleaned')),
                     );
@@ -1307,14 +1386,13 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
 
   Future<void> _runSetupWizard() async {
     setState(() {
-      _showingSetup = true;
       _isBuilding = true;
       _buildLogs.clear();
       _activeMethod = null;
     });
 
     _logSubscription?.cancel();
-    _logSubscription = _termux.buildLogStream.listen((line) {
+    _logSubscription = _runtimeManager.logStream.listen((line) {
       setState(() {
         _buildLogs.add(line);
         _scrollLogToBottom();
@@ -1323,11 +1401,16 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
 
     try {
       final result = await _termux.runSetupWizard();
+      final runtimeHealth = await _runtimeManager.refresh();
+      final runtimeCapabilities = await _runtimeManager.capabilities();
+      final availableMethods = await _orchestrator.getAvailableMethods(widget.projectPath);
 
       setState(() {
         _setupComplete = result.success;
+        _runtimeHealth = runtimeHealth;
+        _runtimeCapabilities = runtimeCapabilities;
+        _availableMethods = availableMethods;
         _isBuilding = false;
-        _showingSetup = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1339,7 +1422,6 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
     } catch (e) {
       setState(() {
         _isBuilding = false;
-        _showingSetup = false;
       });
     }
   }
@@ -1354,6 +1436,13 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
     }
   }
 
+  void _copyTermuxSetupScript() {
+    Clipboard.setData(ClipboardData(text: _termux.generateSetupScript()));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Termux setup script copied')),
+    );
+  }
+
   Future<void> _enableSplitScreen() async {
     try {
       await _termux.execute(
@@ -1364,6 +1453,22 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
         SnackBar(content: Text('Split screen: $e')),
       );
     }
+  }
+
+  String _formatCapabilities(RuntimeCapabilities caps) {
+    final labels = <String>[
+      if (caps.shell) 'shell',
+      if (caps.git) 'git',
+      if (caps.node) 'node',
+      if (caps.python) 'python',
+      if (caps.flutter) 'flutter',
+      if (caps.androidBuild) 'apk',
+      if (caps.pty) 'pty',
+      if (caps.backgroundService) 'bg',
+      if (caps.cloudBuild) 'cloud',
+      if (caps.webViewPreview) 'webview',
+    ];
+    return labels.isEmpty ? 'none' : labels.join(', ');
   }
 
   String _formatTimestamp(DateTime dt) {

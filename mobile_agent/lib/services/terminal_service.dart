@@ -351,6 +351,14 @@ class TerminalService {
     'date ',
     'tee ',
     'xargs ',
+    'pkg ',
+    'bash ',
+    'aapt ',
+    'ping ',
+    'pm ',
+    'am ',
+    'monkey ',
+    'dumpsys ',
   ];
 
   /// Standalone commands that require no arguments.
@@ -367,6 +375,8 @@ class TerminalService {
     'node',
     'python',
     'python3',
+    'true',
+    'termux-storage-setup',
   ];
 
   /// Dangerous command patterns that are always rejected.

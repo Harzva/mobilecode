@@ -9,6 +9,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../services/runtime_manager.dart';
+import '../services/runtime_provider.dart';
+import '../services/termux_service.dart';
 import '../services/voice_service.dart';
 
 enum _ApiFlavor { openAi, anthropic }
@@ -339,6 +342,16 @@ class _RootProbeResult {
   }
 }
 
+class _HelperDaemonProbeResult {
+  const _HelperDaemonProbeResult({
+    required this.ready,
+    required this.detail,
+  });
+
+  final bool ready;
+  final String detail;
+}
+
 class _AgentTraceStep {
   const _AgentTraceStep({
     required this.title,
@@ -459,11 +472,11 @@ const _miniAgentTools = [
   ),
   _MiniAgentToolSpec(
     name: 'termux_probe',
-    description: 'Check Termux availability for shell-like mobile builds.',
-    surface: 'Android package bridge',
+    description: 'Check local runtime providers for shell-like mobile builds.',
+    surface: 'Runtime provider bridge',
     icon: Icons.terminal_outlined,
     color: _lime,
-    risk: 'external app',
+    risk: 'controlled shell',
   ),
   _MiniAgentToolSpec(
     name: 'github_connect',
@@ -661,6 +674,16 @@ Future<_RootProbeResult?> _probeRootAvailability() async {
   }
 }
 
+Future<bool?> _startMobileCodeHelperService() async {
+  try {
+    return await _systemToolsChannel.invokeMethod<bool>('startHelperService');
+  } on MissingPluginException {
+    return null;
+  } on PlatformException {
+    return false;
+  }
+}
+
 String _agent2048Html() {
   return r'''<!doctype html>
 <html lang="en">
@@ -829,9 +852,13 @@ class _HomeScreenState extends State<HomeScreen> {
   bool? _termuxInstalled;
   bool? _termuxApiInstalled;
   bool? _rootAvailable;
-  String _runtimeMessage = 'Checking Termux and root status...';
+  String _runtimeMessage = 'Checking runtime providers...';
+  List<RuntimeHealth> _runtimeHealth = const [];
+  RuntimeCapabilities _runtimeCapabilities = RuntimeCapabilities.none;
   List<_ChatSession> _drawerSessions = const [];
   String? _drawerActiveSessionId;
+
+  late final RuntimeManager _runtimeManager = RuntimeManager.withExternalTermux(TermuxService());
 
   final List<_ActivityLog> _activity = [
     _ActivityLog(
@@ -867,6 +894,32 @@ class _HomeScreenState extends State<HomeScreen> {
     return _detectApiFlavor(_effectiveBaseUrl, _effectiveModel);
   }
 
+  RuntimeHealth? get _bestRuntimeHealth {
+    final active = _runtimeManager.activeHealth;
+    if (active != null) return active;
+    for (final health in _runtimeHealth) {
+      if (health.ready) return health;
+    }
+    return _runtimeHealth.isNotEmpty ? _runtimeHealth.first : null;
+  }
+
+  String get _activeRuntimeName => _bestRuntimeHealth?.name ?? 'WebView Only';
+
+  bool get _runtimeReady => _bestRuntimeHealth?.ready == true;
+
+  String get _runtimeDrawerLabel {
+    final runtime = _bestRuntimeHealth;
+    final capabilityLabel = _runtimeCapabilityLabel(_runtimeCapabilities);
+    final fallback = <String>[
+      if (_termuxInstalled == true) _termuxApiInstalled == true ? 'Termux API fallback' : 'Termux fallback',
+      if (_rootAvailable == true) 'root keepalive',
+    ];
+    if (runtime == null) {
+      return fallback.isEmpty ? 'Runtime discovery pending' : fallback.join(' · ');
+    }
+    return fallback.isEmpty ? '${runtime.name} · $capabilityLabel' : '${runtime.name} · $capabilityLabel · ${fallback.join(' · ')}';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -876,6 +929,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    unawaited(_runtimeManager.dispose());
     _baseUrlController.dispose();
     _apiKeyController.dispose();
     _modelController.dispose();
@@ -1081,33 +1135,35 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_runtimeChecking) return;
     setState(() {
       _runtimeChecking = true;
-      if (!silent) _runtimeMessage = 'Checking Termux package, Termux:API, and root...';
+      if (!silent) _runtimeMessage = 'Checking MobileCode runtime providers...';
     });
     try {
+      await _startMobileCodeHelperService();
+      await _runtimeManager.initialize();
+      final runtimeHealth = await _runtimeManager.refresh();
+      final runtimeCapabilities = await _runtimeManager.capabilities();
+      final activeRuntime = _runtimeManager.activeHealth;
       final termux = await _isAndroidPackageInstalled('com.termux');
       final termuxApi = await _isAndroidPackageInstalled('com.termux.api');
       final rootProbe = await _probeRootAvailability();
       final root = rootProbe?.available;
-      final message = switch ((termux, root)) {
-        (true, true) => 'Ready for local Codex-style backend: Termux detected and root appears available.',
-        (true, false) => 'Termux is installed, but root is missing or not granted. Real backend keepalive and auto-start will fail.',
-        (true, null) => 'Termux is installed. Root probe is unavailable in this build.',
-        (false, _) => 'Termux is not visible to Android package manager. Install Termux from F-Droid first.',
-        (null, _) => 'Package visibility channel is unavailable. Check Android queries or generated MainActivity.',
-      };
+      final message = _runtimeStatusMessage(activeRuntime, runtimeCapabilities, rootProbe);
       if (!mounted) return;
       setState(() {
         _termuxInstalled = termux;
         _termuxApiInstalled = termuxApi;
         _rootAvailable = root;
-        _runtimeMessage = rootProbe?.detail.isNotEmpty == true && root != true ? '$message ${rootProbe!.detail}' : message;
+        _runtimeHealth = runtimeHealth;
+        _runtimeCapabilities = runtimeCapabilities;
+        _runtimeMessage = message;
       });
       if (!silent) {
+        final ready = activeRuntime?.ready == true;
         _addLog(
-          root == true && termux == true ? 'Runtime ready' : 'Runtime needs permission',
+          ready ? 'Runtime ready' : 'Runtime needs setup',
           _runtimeMessage,
-          root == true && termux == true ? Icons.verified_outlined : Icons.warning_amber_outlined,
-          root == true && termux == true ? _mint : _amber,
+          ready ? Icons.verified_outlined : Icons.warning_amber_outlined,
+          ready ? _mint : _amber,
         );
       }
     } on Object catch (error) {
@@ -1118,6 +1174,35 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       if (mounted) setState(() => _runtimeChecking = false);
     }
+  }
+
+  String _runtimeStatusMessage(
+    RuntimeHealth? activeRuntime,
+    RuntimeCapabilities capabilities,
+    _RootProbeResult? rootProbe,
+  ) {
+    final active = activeRuntime?.name ?? 'No runtime';
+    final status = activeRuntime?.status ?? 'No runtime provider responded.';
+    final caps = _runtimeCapabilityLabel(capabilities);
+    final rootDetail = rootProbe?.detail;
+    final rootSuffix = rootDetail != null && rootProbe?.available != true ? ' $rootDetail' : '';
+    return '$active: $status Capabilities: $caps.$rootSuffix';
+  }
+
+  String _runtimeCapabilityLabel(RuntimeCapabilities capabilities) {
+    final labels = <String>[
+      if (capabilities.shell) 'shell',
+      if (capabilities.git) 'git',
+      if (capabilities.node) 'node',
+      if (capabilities.python) 'python',
+      if (capabilities.flutter) 'flutter',
+      if (capabilities.androidBuild) 'apk',
+      if (capabilities.pty) 'pty',
+      if (capabilities.backgroundService) 'bg',
+      if (capabilities.cloudBuild) 'cloud',
+      if (capabilities.webViewPreview) 'webview',
+    ];
+    return labels.isEmpty ? 'webview-only' : labels.join(', ');
   }
 
   void _setTab(_HomeTab tab) {
@@ -1567,13 +1652,13 @@ class _HomeScreenState extends State<HomeScreen> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
           child: _RuntimePermissionBanner(
-            termuxInstalled: _termuxInstalled,
-            termuxApiInstalled: _termuxApiInstalled,
-            rootAvailable: _rootAvailable,
+            activeRuntimeName: _activeRuntimeName,
+            ready: _runtimeReady,
+            capabilitiesLabel: _runtimeCapabilityLabel(_runtimeCapabilities),
             checking: _runtimeChecking,
             message: _runtimeMessage,
             onCheck: () => _checkRuntime(),
-            onOpenTermux: _openTermuxSheet,
+            onOpenRuntime: _openTermuxSheet,
           ),
         ),
         Expanded(
@@ -1679,14 +1764,14 @@ class _HomeScreenState extends State<HomeScreen> {
       _CommandShortcut(
         icon: Icons.handyman_outlined,
         title: 'Tool tests',
-        subtitle: '测试 provider、GitHub、WebView、storage、Termux、root。',
+        subtitle: '测试 provider、GitHub、WebView、storage、runtime、root。',
         color: _cyan,
         action: _ModuleAction.toolLab,
       ),
       _CommandShortcut(
         icon: Icons.terminal_outlined,
-        title: 'Termux / root',
-        subtitle: '检查 Termux 是否安装、root 是否授权、后端为何未启动。',
+        title: 'Runtime providers',
+        subtitle: '检查 Helper、Termux fallback、root keepalive 和后端状态。',
         color: _amber,
         action: _ModuleAction.termuxCheck,
       ),
@@ -1722,13 +1807,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 12),
         _RuntimePermissionBanner(
-          termuxInstalled: _termuxInstalled,
-          termuxApiInstalled: _termuxApiInstalled,
-          rootAvailable: _rootAvailable,
+          activeRuntimeName: _activeRuntimeName,
+          ready: _runtimeReady,
+          capabilitiesLabel: _runtimeCapabilityLabel(_runtimeCapabilities),
           checking: _runtimeChecking,
           message: _runtimeMessage,
           onCheck: () => _checkRuntime(),
-          onOpenTermux: _openTermuxSheet,
+          onOpenRuntime: _openTermuxSheet,
         ),
         const SizedBox(height: 12),
         for (final tool in tools) ...[
@@ -1851,8 +1936,8 @@ class _HomeScreenState extends State<HomeScreen> {
       drawer: _MobileCodeDrawer(
         sessions: _drawerSessions,
         activeSessionId: _drawerActiveSessionId,
-        termuxInstalled: _termuxInstalled,
-        rootAvailable: _rootAvailable,
+        runtimeReady: _runtimeReady,
+        runtimeLabel: _runtimeDrawerLabel,
         onNewChat: _newChatFromDrawer,
         onSelectSession: _selectChatFromDrawer,
         onPrompt: _usePromptShortcut,
@@ -1992,8 +2077,8 @@ class _MobileCodeDrawer extends StatelessWidget {
   const _MobileCodeDrawer({
     required this.sessions,
     required this.activeSessionId,
-    required this.termuxInstalled,
-    required this.rootAvailable,
+    required this.runtimeReady,
+    required this.runtimeLabel,
     required this.onNewChat,
     required this.onSelectSession,
     required this.onPrompt,
@@ -2003,8 +2088,8 @@ class _MobileCodeDrawer extends StatelessWidget {
 
   final List<_ChatSession> sessions;
   final String? activeSessionId;
-  final bool? termuxInstalled;
-  final bool? rootAvailable;
+  final bool runtimeReady;
+  final String runtimeLabel;
   final VoidCallback onNewChat;
   final ValueChanged<String> onSelectSession;
   final Future<void> Function(String prompt, {bool runAgent}) onPrompt;
@@ -2013,16 +2098,7 @@ class _MobileCodeDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final runtimeColor = termuxInstalled == true && rootAvailable == true
-        ? _mint
-        : termuxInstalled == true
-            ? _amber
-            : _rose;
-    final runtimeLabel = termuxInstalled == true && rootAvailable == true
-        ? 'Termux + root ready'
-        : termuxInstalled == true
-            ? 'Termux detected, root missing'
-            : 'Termux/root not ready';
+    final runtimeColor = runtimeReady ? _mint : _amber;
 
     return Drawer(
       width: MediaQuery.of(context).size.width.clamp(280, 360).toDouble(),
@@ -2196,59 +2272,33 @@ class _DrawerSessionTile extends StatelessWidget {
 
 class _RuntimePermissionBanner extends StatelessWidget {
   const _RuntimePermissionBanner({
-    required this.termuxInstalled,
-    required this.termuxApiInstalled,
-    required this.rootAvailable,
+    required this.activeRuntimeName,
+    required this.ready,
+    required this.capabilitiesLabel,
     required this.checking,
     required this.message,
     required this.onCheck,
-    required this.onOpenTermux,
+    required this.onOpenRuntime,
   });
 
-  final bool? termuxInstalled;
-  final bool? termuxApiInstalled;
-  final bool? rootAvailable;
+  final String activeRuntimeName;
+  final bool ready;
+  final String capabilitiesLabel;
   final bool checking;
   final String message;
   final VoidCallback onCheck;
-  final VoidCallback onOpenTermux;
+  final VoidCallback onOpenRuntime;
 
   @override
   Widget build(BuildContext context) {
-    final ready = termuxInstalled == true && rootAvailable == true;
-    final missingRoot = termuxInstalled == true && rootAvailable == false;
-    final missingTermux = termuxInstalled == false;
-    final color = ready
-        ? _mint
-        : missingRoot
-            ? _amber
-            : missingTermux
-                ? _rose
-                : _cyan;
-    final title = ready
-        ? 'Local runtime ready'
-        : missingRoot
-            ? '缺少 root 授权'
-            : missingTermux
-                ? '未检测到 Termux'
-                : 'Runtime permission check';
-    final rootLabel = rootAvailable == true
-        ? 'root on'
-        : rootAvailable == false
-            ? 'root off'
-            : 'root ?';
-    final termuxLabel = termuxInstalled == true
-        ? (termuxApiInstalled == true ? 'Termux + API' : 'Termux')
-        : termuxInstalled == false
-            ? 'No Termux'
-            : 'Termux ?';
-
-    final statusLine = '$title · $termuxLabel · $rootLabel';
+    final color = ready ? _mint : _amber;
+    final title = ready ? 'Runtime ready' : 'Runtime setup needed';
+    final statusLine = '$title · $activeRuntimeName · $capabilitiesLabel';
     return _Panel(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       child: Row(
         children: [
-          Icon(ready ? Icons.verified_outlined : Icons.warning_amber_outlined, color: color, size: 20),
+          Icon(ready ? Icons.verified_outlined : Icons.hub_outlined, color: color, size: 20),
           const SizedBox(width: 8),
           Expanded(
             child: Column(
@@ -2273,9 +2323,9 @@ class _RuntimePermissionBanner extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           IconButton(
-            tooltip: 'Open Termux',
+            tooltip: 'Open runtime setup',
             visualDensity: VisualDensity.compact,
-            onPressed: onOpenTermux,
+            onPressed: onOpenRuntime,
             icon: Icon(Icons.terminal_outlined, color: _violet, size: 18),
           ),
           IconButton(
@@ -2747,7 +2797,7 @@ class _DemoLabPanel extends StatelessWidget {
                   children: [
                     Text('Demo Lab', style: TextStyle(color: _text, fontSize: 20, fontWeight: FontWeight.w900)),
                     SizedBox(height: 2),
-                    Text('The focused path: play, connect GitHub, build diary, chat with memory, test tools, check Termux.', style: TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+                    Text('The focused path: play, connect GitHub, build diary, chat with memory, test tools, check runtime.', style: TextStyle(color: _muted, fontSize: 12, height: 1.35)),
                   ],
                 ),
               ),
@@ -2773,7 +2823,7 @@ class _DemoLabPanel extends StatelessWidget {
                 _DemoAction(Icons.edit_note_outlined, 'Diary APK', 'Local diary demo inside this APK', _ModuleAction.diary, _amber),
                 _DemoAction(Icons.forum_outlined, 'Chat Memory', 'Conversation list and context', _ModuleAction.aiChat, _mint),
                 _DemoAction(Icons.handyman_outlined, 'Tool Tests', 'Run mobile tool probes', _ModuleAction.toolLab, _cyan),
-                _DemoAction(Icons.terminal_outlined, 'Termux', 'Check install and setup path', _ModuleAction.termuxCheck, _lime),
+                _DemoAction(Icons.terminal_outlined, 'Runtime', 'Check Helper and fallback setup', _ModuleAction.termuxCheck, _lime),
               ];
               return GridView.builder(
                 shrinkWrap: true,
@@ -3622,7 +3672,7 @@ class _QuickActionGrid extends StatelessWidget {
       _QuickAction(Icons.forum_outlined, 'AI Chat', _ModuleAction.aiChat, _mint),
       _QuickAction(Icons.hub_outlined, 'GitHub', _ModuleAction.githubTest, _cyan),
       _QuickAction(Icons.handyman_outlined, 'Tools', _ModuleAction.toolLab, _amber),
-      _QuickAction(Icons.terminal_outlined, 'Termux', _ModuleAction.termuxCheck, _lime),
+      _QuickAction(Icons.terminal_outlined, 'Runtime', _ModuleAction.termuxCheck, _lime),
       _QuickAction(Icons.psychology_alt_outlined, 'Deep Dive', _ModuleAction.deepDive, _violet),
       _QuickAction(Icons.rocket_launch_outlined, 'Build', _ModuleAction.build, _amber),
       _QuickAction(Icons.note_add_outlined, 'New File', _ModuleAction.newFile, _cyan),
@@ -4421,7 +4471,7 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
     _ToolProbe(name: 'GitHub web tester', detail: 'Opens a Pages test page for token and repo checks.', icon: Icons.hub_outlined, action: 'github_web'),
     _ToolProbe(name: 'Code 2048 project', detail: 'Runs the local coding lab and WebView preview flow.', icon: Icons.grid_4x4_outlined, action: 'demo_2048'),
     _ToolProbe(name: 'Local storage', detail: 'Writes and reads SharedPreferences.', icon: Icons.save_outlined, action: 'storage'),
-    _ToolProbe(name: 'Termux package', detail: 'Checks com.termux through Android package manager.', icon: Icons.terminal_outlined, action: 'termux'),
+    _ToolProbe(name: 'Runtime providers', detail: 'Checks MobileCode Helper and External Termux fallback.', icon: Icons.terminal_outlined, action: 'runtime'),
     _ToolProbe(name: 'Root permission', detail: 'Detects whether a su binary is visible for backend keepalive.', icon: Icons.admin_panel_settings_outlined, action: 'root'),
   ];
 
@@ -4431,7 +4481,7 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
       _results.clear();
     });
     await _run('storage');
-    await _run('termux');
+    await _run('runtime');
     await _run('root');
     await _run('health');
     if (mounted) setState(() => _running = false);
@@ -4456,21 +4506,25 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
       _addResult('Local storage', ok, ok ? 'Write/read succeeded.' : 'Readback mismatch.');
       return;
     }
-    if (action == 'termux') {
+    if (action == 'runtime') {
+      final helper = await _probeHelperDaemon();
       final installed = await _isAndroidPackageInstalled('com.termux');
       final apiInstalled = await _isAndroidPackageInstalled('com.termux.api');
-      if (installed == true) {
-        _addResult('Termux package', true, apiInstalled == true ? 'com.termux and com.termux.api detected.' : 'com.termux detected. Termux:API not detected.');
+      if (helper.ready) {
+        _addResult('Runtime providers', true, helper.detail);
+      } else if (installed == true) {
+        final termuxDetail = apiInstalled == true ? 'External Termux + Termux:API fallback detected.' : 'External Termux fallback detected; Termux:API not detected.';
+        _addResult('Runtime providers', true, '${helper.detail} $termuxDetail');
       } else if (installed == false) {
-        _addResult('Termux package', false, 'com.termux is not installed or not visible to package manager.');
+        _addResult('Runtime providers', false, '${helper.detail} External Termux is not installed or not visible.');
       } else {
         final urlVisible = await canLaunchUrl(Uri.parse('termux://'));
         _addResult(
-          'Termux package',
+          'Runtime providers',
           urlVisible,
           urlVisible
-              ? 'termux:// handler is visible. Package channel unavailable.'
-              : 'Package channel unavailable; termux:// is not reliable for installed Termux detection.',
+              ? '${helper.detail} termux:// handler is visible; package channel unavailable.'
+              : '${helper.detail} No Helper daemon and package channel is unavailable.',
         );
       }
       return;
@@ -4523,6 +4577,46 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
     }
   }
 
+  Future<_HelperDaemonProbeResult> _probeHelperDaemon() async {
+    final first = await _probeHelperDaemonOnce();
+    if (first.ready) return first;
+
+    final started = await _startMobileCodeHelperService();
+    if (started != true) return first;
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    final second = await _probeHelperDaemonOnce();
+    if (second.ready) return second;
+    return _HelperDaemonProbeResult(
+      ready: false,
+      detail: '${first.detail} Native Helper service start was requested, but localhost is still not ready.',
+    );
+  }
+
+  Future<_HelperDaemonProbeResult> _probeHelperDaemonOnce() async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 2);
+    try {
+      final uri = Uri.parse('http://127.0.0.1:8765/v1/health');
+      final request = await client.getUrl(uri).timeout(const Duration(seconds: 2));
+      final response = await request.close().timeout(const Duration(seconds: 3));
+      final body = await utf8.decodeStream(response);
+      final decoded = jsonDecode(body);
+      final name = decoded is Map ? decoded['name'] as String? ?? 'MobileCode Helper' : 'MobileCode Helper';
+      final status = decoded is Map ? decoded['status'] as String? ?? 'responded' : 'responded';
+      final ready = response.statusCode >= 200 && response.statusCode < 300 && decoded is Map && decoded['ready'] == true;
+      return _HelperDaemonProbeResult(
+        ready: ready,
+        detail: ready ? '$name daemon ready: $status.' : '$name daemon responded but is not ready: $status.',
+      );
+    } on Object catch (error) {
+      return _HelperDaemonProbeResult(
+        ready: false,
+        detail: 'MobileCode Helper daemon not reachable on 127.0.0.1:8765 (${_compact(error.toString(), limit: 80)}).',
+      );
+    } finally {
+      client.close(force: true);
+    }
+  }
+
   void _addResult(String name, bool ok, String message) {
     if (!mounted) return;
     setState(() {
@@ -4548,7 +4642,7 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
                 Text('Tool capability map', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
                 SizedBox(height: 8),
                 _ToolScopeLine(icon: Icons.phone_android_outlined, color: _mint, title: 'Direct Android/Flutter', detail: 'storage, network, WebView preview, clipboard, sensors, camera, microphone, notifications, secure storage, GitHub HTTP APIs'),
-                _ToolScopeLine(icon: Icons.terminal_outlined, color: _amber, title: 'Needs Termux', detail: 'Linux shell, git/ssh binaries, npm/python package managers, local build scripts, long-running command sessions'),
+                _ToolScopeLine(icon: Icons.terminal_outlined, color: _amber, title: 'Needs runtime', detail: 'Helper daemon, External Termux fallback, git/ssh binaries, npm/python package managers, local build scripts, long-running command sessions'),
                 _ToolScopeLine(icon: Icons.cloud_outlined, color: _cyan, title: 'Better remote', detail: 'heavy builds, concurrent agent runs, private repo automation, CI release signing, team sync'),
               ],
             ),
@@ -4727,8 +4821,8 @@ class _TermuxSheetState extends State<_TermuxSheet> {
   Widget build(BuildContext context) {
     return _SheetScaffold(
       icon: Icons.terminal_outlined,
-      title: 'Termux Check',
-      subtitle: 'MobileCode needs Termux for real phone-side build commands.',
+      title: 'Runtime Fallback Check',
+      subtitle: 'Use this when Helper is missing and MobileCode falls back to External Termux.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -4744,7 +4838,7 @@ class _TermuxSheetState extends State<_TermuxSheet> {
                   icon: _checking
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.search_outlined),
-                  label: Text(_checking ? 'Checking' : 'Check Termux'),
+                  label: Text(_checking ? 'Checking' : 'Check fallback'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -4771,7 +4865,7 @@ class _TermuxSheetState extends State<_TermuxSheet> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Termux is not mandatory for every tool. Pure Flutter tools can use storage, network, WebView, camera, microphone, and GitHub APIs directly. Termux is needed for Linux-like shell commands, local build tools, package managers, git/ssh binaries, and long-running developer scripts.',
+            'External Termux is a fallback runtime, not the product boundary. Pure Flutter tools can use storage, network, WebView, camera, microphone, and GitHub APIs directly. Helper or Termux is needed for Linux-like shell commands, local build tools, package managers, git/ssh binaries, and long-running developer scripts.',
             style: TextStyle(color: _muted, fontSize: 12, height: 1.4),
           ),
         ],
@@ -6988,7 +7082,7 @@ String _focusSecondaryLabel(_HomeTab tab) {
     _HomeTab.control => 'Open GitHub test',
     _HomeTab.ai => 'Open tool probes',
     _HomeTab.ship => 'Open GitHub test',
-    _HomeTab.guard => 'Check Termux',
+    _HomeTab.guard => 'Check runtime',
     _HomeTab.insight => 'Open project console',
   };
 }

@@ -12,6 +12,7 @@ import 'package:path/path.dart' as p;
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../core/theme.dart';
+import '../services/runtime_manager.dart';
 import '../services/termux_service.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -38,15 +39,15 @@ import '../services/termux_service.dart';
 /// ```dart
 /// FlutterWebPreview(
 ///   projectPath: '/path/to/project',
-///   termuxService: termuxService,
+///   runtimeManager: runtimeManager,
 /// )
 /// ```
 class FlutterWebPreview extends StatefulWidget {
   /// Absolute path to the Flutter project to preview.
   final String projectPath;
 
-  /// TermuxService instance for running build commands.
-  final TermuxService termuxService;
+  /// Runtime manager for running build commands.
+  final RuntimeManager runtimeManager;
 
   /// Callback when the build completes successfully.
   final VoidCallback? onBuildSuccess;
@@ -66,7 +67,7 @@ class FlutterWebPreview extends StatefulWidget {
   const FlutterWebPreview({
     super.key,
     required this.projectPath,
-    required this.termuxService,
+    required this.runtimeManager,
     this.onBuildSuccess,
     this.onBuildError,
     this.onPreviewReady,
@@ -147,7 +148,7 @@ class _FlutterWebPreviewState extends State<FlutterWebPreview>
 
     // Subscribe to build log stream.
     _logSubscription?.cancel();
-    _logSubscription = widget.termuxService.buildLogStream.listen(
+    _logSubscription = widget.runtimeManager.logStream.listen(
       (line) {
         if (mounted) {
           setState(() {
@@ -164,7 +165,7 @@ class _FlutterWebPreviewState extends State<FlutterWebPreview>
     );
 
     try {
-      final result = await widget.termuxService.buildWeb(widget.projectPath);
+      final result = await widget.runtimeManager.buildWeb(widget.projectPath);
 
       if (!mounted) return;
 
@@ -469,7 +470,7 @@ class _FlutterWebPreviewState extends State<FlutterWebPreview>
             children: [
               OutlinedButton.icon(
                 onPressed: () async {
-                  await widget.termuxService.stopCurrentBuild();
+                  await widget.runtimeManager.stopCurrentTask();
                   setState(() => _phase = _BuildPhase.idle);
                 },
                 icon: const Icon(Icons.stop, size: 16, color: AppTheme.error),

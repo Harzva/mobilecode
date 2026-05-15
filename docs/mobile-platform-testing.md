@@ -4,6 +4,14 @@ This project is tested through GitHub Actions because the local Windows workstat
 
 ## Android
 
+Runtime CI workflow: `.github/workflows/mobile-runtime-ci.yml`
+
+- Runs full Flutter analyze/test coverage for runtime provider code.
+- Compiles the MobileCode Helper daemon prototype.
+- Compiles the Android project preparation script that injects `MobileCodeHelperService.kt`.
+- Smoke tests `/v1/health`, `/v1/execute`, and `/v1/execute/stream`.
+- Uploads helper smoke logs and protocol responses as artifacts.
+
 Workflow: `.github/workflows/android-app-test.yml`
 
 Checks:

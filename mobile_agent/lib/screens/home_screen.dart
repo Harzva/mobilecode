@@ -1472,20 +1472,10 @@ class _HomeScreenState extends State<HomeScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
       ),
-      builder: (context) => _ActionConsoleSheet(
-        icon: Icons.folder_open_outlined,
-        title: 'Project Console',
-        subtitle: 'Project manager, code index, context injector, storage, and learning services are surfaced here.',
-        actions: const [
-          'Create project from template',
-          'Import ZIP or Git repository',
-          'Index source code with SQLite FTS',
-          'Learn project knowledge for AI context',
-        ],
-        buttonLabel: 'Stage project workflow',
-        onRun: () {
-          _addLog('Project workflow staged', 'Project manager and code index are ready', Icons.folder_open_outlined, _amber);
-        },
+      builder: (context) => _ProjectConsoleSheet(
+        runtimeManager: _runtimeManager,
+        defaultProjectPath: '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime',
+        onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
       ),
     );
   }
@@ -1517,19 +1507,13 @@ class _HomeScreenState extends State<HomeScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
       ),
-      builder: (context) => _ActionConsoleSheet(
-        icon: Icons.psychology_alt_outlined,
-        title: 'Deep Dive Solo',
-        subtitle: 'Supervisor, action loop, task manager, and foreground service are presented as a single run console.',
-        actions: const [
-          'Plan multi-step coding task',
-          'Queue background isolate execution',
-          'Track thought, action, and observation cycle',
-          'Resume or inspect completed runs',
-        ],
-        buttonLabel: 'Queue deep dive task',
-        onRun: () {
-          _addLog('Deep Dive queued', 'Supervisor-worker run prepared', Icons.psychology_alt_outlined, _violet);
+      builder: (_) => _DeepDiveConsoleSheet(
+        runtimeManager: _runtimeManager,
+        defaultProjectPath: '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime',
+        onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
+        onStartInChat: (prompt) {
+          _addLog('Deep Dive started', 'Prompt sent to Chat Agent with RuntimeManager context', Icons.psychology_alt_outlined, _violet);
+          unawaited(_usePromptShortcut(prompt, runAgent: true));
         },
       ),
     );
@@ -5454,6 +5438,193 @@ class _TaskSnapshotPanel extends StatelessWidget {
   }
 }
 
+class _ProjectConsoleSheet extends StatefulWidget {
+  const _ProjectConsoleSheet({
+    required this.runtimeManager,
+    required this.defaultProjectPath,
+    required this.onLog,
+  });
+
+  final RuntimeManager runtimeManager;
+  final String defaultProjectPath;
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
+
+  @override
+  State<_ProjectConsoleSheet> createState() => _ProjectConsoleSheetState();
+}
+
+class _ProjectConsoleSheetState extends State<_ProjectConsoleSheet> {
+  final _projectName = TextEditingController();
+  final _projectPath = TextEditingController();
+  final List<String> _lines = ['No project action has run yet.'];
+  bool _running = false;
+  RuntimeProjectProfile? _profile;
+
+  @override
+  void initState() {
+    super.initState();
+    _promptController.text =
+        'Inspect the selected project, run runtime preflight and validation, identify the next highest-value fix, implement it, and explain verification.';
+    _projectPath.text = widget.defaultProjectPath;
+  }
+
+  @override
+  void dispose() {
+    _projectName.dispose();
+    _projectPath.dispose();
+    super.dispose();
+  }
+
+  Future<void> _runPreflight() async {
+    final path = _projectPath.text.trim();
+    if (path.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Project path is required')));
+      return;
+    }
+    setState(() {
+      _running = true;
+      _lines.insert(0, 'Running project preflight...');
+    });
+    try {
+      final profile = await widget.runtimeManager.preflightProject(path);
+      if (!mounted) return;
+      setState(() {
+        _profile = profile;
+        _lines.insert(
+          0,
+          [
+            'PREFLIGHT: ${profile.summary}',
+            if (profile.recoveryHint != null) 'Recovery: ${profile.recoveryHint!}',
+          ].join('\n'),
+        );
+      });
+      widget.onLog(
+        profile.recognized ? 'Project detected' : 'Project needs setup',
+        profile.summary,
+        profile.recognized ? Icons.search_outlined : Icons.warning_amber_outlined,
+        profile.recognized ? _mint : _amber,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 180);
+      setState(() => _lines.insert(0, 'PREFLIGHT ERROR: $message'));
+      widget.onLog('Project preflight error', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  Future<void> _runValidation() async {
+    final path = _projectPath.text.trim();
+    if (path.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Project path is required')));
+      return;
+    }
+    setState(() {
+      _running = true;
+      _lines.insert(0, 'Running project validation...');
+    });
+    try {
+      final result = await widget.runtimeManager.validateProject(
+        projectPath: path,
+        message: _projectName.text.trim().isEmpty ? null : _projectName.text.trim(),
+      );
+      if (!mounted) return;
+      final stepLines = result.steps.map((s) => '${s.success ? 'OK' : 'FAILED'} ${s.action.name}: ${s.summary}');
+      setState(() {
+        _profile = result.profile;
+        _lines.insert(
+          0,
+          [
+            result.success ? 'VALIDATED: ${result.summary}' : 'VALIDATION STOPPED: ${result.summary}',
+            ...stepLines,
+            if (result.recoveryHint != null) 'Recovery: ${result.recoveryHint!}',
+          ].join('\n'),
+        );
+      });
+      widget.onLog(
+        result.success ? 'Project validated' : 'Project validation stopped',
+        result.summary,
+        result.success ? Icons.verified_outlined : Icons.error_outline,
+        result.success ? _mint : _rose,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 180);
+      setState(() => _lines.insert(0, 'VALIDATION ERROR: $message'));
+      widget.onLog('Project validation error', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  void _fillDefaultPath() {
+    setState(() {
+      _projectPath.text = widget.defaultProjectPath;
+      _lines.insert(0, 'Project path set to runtime workspace default.');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.folder_open_outlined,
+      title: 'Project Console',
+      subtitle: 'Configure project name and path, then run preflight or validation through the active runtime.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _projectName,
+            decoration: const InputDecoration(labelText: 'Project name (optional)', prefixIcon: Icon(Icons.badge_outlined)),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _projectPath,
+            decoration: const InputDecoration(labelText: 'Project path / cwd', prefixIcon: Icon(Icons.folder_outlined)),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _RuntimeActionButton(
+                icon: Icons.home_work_outlined,
+                label: 'Default cwd',
+                disabled: _running,
+                onTap: _fillDefaultPath,
+              ),
+              _RuntimeActionButton(
+                icon: Icons.search_outlined,
+                label: 'Preflight',
+                disabled: _running,
+                onTap: _runPreflight,
+              ),
+              _RuntimeActionButton(
+                icon: Icons.verified_outlined,
+                label: 'Validate',
+                disabled: _running,
+                onTap: _runValidation,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_profile != null) ...[
+            _RuntimeProjectProfilePanel(profile: _profile!),
+            const SizedBox(height: 12),
+          ],
+          _Panel(
+            child: Text(
+              _lines.take(8).join('\n\n'),
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _RuntimeActionButton extends StatelessWidget {
   const _RuntimeActionButton({
     required this.icon,
@@ -6880,6 +7051,237 @@ class _ActionConsoleSheet extends StatelessWidget {
               },
               icon: const Icon(Icons.play_arrow_outlined),
               label: Text(buttonLabel),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DeepDiveConsoleSheet extends StatefulWidget {
+  const _DeepDiveConsoleSheet({
+    required this.runtimeManager,
+    required this.defaultProjectPath,
+    required this.onLog,
+    required this.onStartInChat,
+  });
+
+  final RuntimeManager runtimeManager;
+  final String defaultProjectPath;
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
+  final void Function(String prompt) onStartInChat;
+
+  @override
+  State<_DeepDiveConsoleSheet> createState() => _DeepDiveConsoleSheetState();
+}
+
+class _DeepDiveConsoleSheetState extends State<_DeepDiveConsoleSheet> {
+  final _promptController = TextEditingController();
+  final _projectPath = TextEditingController();
+  final List<String> _lines = ['No deep dive action has run yet.'];
+  bool _running = false;
+  List<RuntimeTaskSnapshot> _recentTasks = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _projectPath.text = widget.defaultProjectPath;
+  }
+
+  @override
+  void dispose() {
+    _promptController.dispose();
+    _projectPath.dispose();
+    super.dispose();
+  }
+
+  void _startInChat() {
+    final taskPrompt = _promptController.text.trim();
+    if (taskPrompt.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a task prompt first.')),
+      );
+      return;
+    }
+    final projectPath = _projectPath.text.trim();
+    final prompt = [
+      'Deep Dive task:',
+      taskPrompt,
+      if (projectPath.isNotEmpty) 'Project path / cwd: $projectPath',
+      'Use RuntimeManager actions for preflight, validation, build, and recovery before making risky changes.',
+    ].join('\n');
+    Navigator.pop(context);
+    widget.onStartInChat(prompt);
+  }
+
+  Future<void> _validateProject() async {
+    final projectPath = _projectPath.text.trim();
+    if (projectPath.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Project path is required.')),
+      );
+      return;
+    }
+    setState(() {
+      _running = true;
+      _lines.insert(0, 'Validating project...');
+    });
+    try {
+      final result = await widget.runtimeManager.validateProject(
+        projectPath: projectPath,
+      );
+      if (!mounted) return;
+      final stepLines = result.steps.map((s) => '${s.success ? 'OK' : 'FAILED'} ${s.action.name}: ${s.summary}');
+      setState(() {
+        _lines.insert(
+          0,
+          [
+            result.success ? 'VALIDATED: ${result.summary}' : 'VALIDATION STOPPED: ${result.summary}',
+            ...stepLines,
+            if (result.recoveryHint != null) 'Recovery: ${result.recoveryHint!}',
+          ].join('\n'),
+        );
+      });
+      widget.onLog(
+        result.success ? 'Deep Dive validate completed' : 'Deep Dive validate stopped',
+        result.summary,
+        result.success ? Icons.verified_outlined : Icons.error_outline,
+        result.success ? _mint : _rose,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 180);
+      setState(() => _lines.insert(0, 'VALIDATION ERROR: $message'));
+      widget.onLog('Deep Dive validate error', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  Future<void> _recoverHistory() async {
+    setState(() {
+      _running = true;
+      _lines.insert(0, 'Loading task history...');
+    });
+    try {
+      final tasks = await widget.runtimeManager.taskHistory(limit: 5);
+      if (!mounted) return;
+      setState(() {
+        _recentTasks = tasks;
+        _lines.insert(
+          0,
+          tasks.isEmpty
+              ? 'No recoverable runtime task history.'
+              : tasks.map(_taskSummary).join('\n\n'),
+        );
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 180);
+      setState(() => _lines.insert(0, 'Task history failed: $message'));
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  String _taskSummary(RuntimeTaskSnapshot task) {
+    final logs = task.logs.take(4).join('\n');
+    final failure = task.failureKind == RuntimeTaskFailureKind.none ? '' : ' (${task.failureKind.name})';
+    return 'Task ${task.taskId} is ${task.status.name}$failure: ${task.command}${logs.isEmpty ? '' : '\n$logs'}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.psychology_alt_outlined,
+      title: 'Deep Dive',
+      subtitle: 'Launch a multi-step coding session using the existing Chat Agent and RuntimeManager loop.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _promptController,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Task prompt',
+              hintText: 'Describe the coding task for the agent...',
+              prefixIcon: Icon(Icons.edit_note_outlined),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _projectPath,
+            decoration: const InputDecoration(labelText: 'Project path / cwd', prefixIcon: Icon(Icons.folder_outlined)),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _RuntimeActionButton(
+                icon: Icons.home_work_outlined,
+                label: 'Default path',
+                disabled: _running,
+                onTap: () {
+                  _projectPath.text = widget.defaultProjectPath;
+                  setState(() => _lines.insert(0, 'Project path reset to default.'));
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline, color: _faint, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Uses the existing Chat Agent and RuntimeManager. No background task queue.',
+                    style: const TextStyle(color: _faint, fontSize: 11, height: 1.3),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _RuntimeActionButton(
+                icon: Icons.chat_outlined,
+                label: 'Start in Chat Agent',
+                disabled: _running,
+                onTap: _startInChat,
+              ),
+              _RuntimeActionButton(
+                icon: Icons.verified_outlined,
+                label: 'Validate project',
+                disabled: _running,
+                onTap: _validateProject,
+              ),
+              _RuntimeActionButton(
+                icon: Icons.history_outlined,
+                label: 'Recover history',
+                disabled: _running,
+                onTap: _recoverHistory,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_recentTasks.isNotEmpty) ...[
+            for (final task in _recentTasks.take(3)) ...[
+              _TaskSnapshotPanel(task: task),
+              const SizedBox(height: 8),
+            ],
+          ],
+          _Panel(
+            child: Text(
+              _lines.take(8).join('\n\n'),
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
             ),
           ),
         ],

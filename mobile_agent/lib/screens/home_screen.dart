@@ -5517,20 +5517,28 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   Widget _buildComposer(_ApiFlavor flavor) {
+    final status = _voiceHelperText(flavor, widget.model, _voiceState);
     return Container(
       decoration: const BoxDecoration(
         color: _bg,
         border: Border(top: BorderSide(color: _line)),
       ),
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       child: _Panel(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
             _ChatModeStrip(onPrompt: (prompt, {runAgent = false}) => setPromptFromShell(prompt, runAgent: runAgent)),
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
+            Text(
+              status,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted, fontSize: 11),
+            ),
+            const SizedBox(height: 6),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -5538,52 +5546,37 @@ class _ChatPanelState extends State<_ChatPanel> {
                   child: TextField(
                     controller: _promptController,
                     minLines: 1,
-                    maxLines: 4,
+                    maxLines: 3,
                     textInputAction: TextInputAction.newline,
                     decoration: InputDecoration(
                       labelText: _voiceService.isListening ? 'Listening...' : 'Message',
                       hintText: 'Ask MobileCode, or tap a task shortcut.',
-                      helperText: _voiceHelperText(flavor, widget.model, _voiceState),
                       alignLabelWithHint: true,
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 _VoiceInputButton(
                   enabled: !_sending && !_agentRunning,
                   available: _voiceAvailable,
                   state: _voiceState,
                   onTap: _toggleVoiceInput,
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _sending || _agentRunning ? null : _send,
-                    icon: _sending
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.send_outlined),
-                    label: Text(_sending ? 'Sending' : 'Send'),
-                  ),
+                const SizedBox(width: 6),
+                IconButton.filled(
+                  tooltip: _sending ? 'Sending' : 'Send chat',
+                  onPressed: _sending || _agentRunning ? null : _send,
+                  icon: _sending
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.send_outlined),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _sending || _agentRunning ? null : _runAgent,
-                    icon: _agentRunning
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.psychology_alt_outlined),
-                    label: Text(_agentRunning ? 'Running' : 'Run Agent'),
-                  ),
-                ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 6),
                 IconButton.outlined(
-                  tooltip: 'Delete chat',
-                  onPressed: _sending || _agentRunning ? null : _deleteActiveSession,
-                  icon: const Icon(Icons.delete_outline),
+                  tooltip: _agentRunning ? 'Agent running' : 'Run agent',
+                  onPressed: _sending || _agentRunning ? null : _runAgent,
+                  icon: _agentRunning
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.psychology_alt_outlined),
                 ),
               ],
             ),
@@ -5610,13 +5603,21 @@ class _ChatPanelState extends State<_ChatPanel> {
     if (widget.embedded) {
       return Column(
         children: [
-          _buildChatHeader(active),
           Expanded(
             child: SingleChildScrollView(
               controller: _chatScrollController,
               keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-              child: _buildConversationBody(active),
+              padding: const EdgeInsets.fromLTRB(0, 2, 0, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildChatHeader(active),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _buildConversationBody(active),
+                  ),
+                ],
+              ),
             ),
           ),
           _buildComposer(flavor),

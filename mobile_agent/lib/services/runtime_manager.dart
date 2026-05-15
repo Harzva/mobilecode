@@ -164,10 +164,8 @@ class RuntimeManager {
   Future<RuntimeTaskSnapshot?> currentTaskSnapshot() async {
     await _ensureReady();
     final provider = _activeProvider;
-    if (provider is RuntimeTaskMonitor) {
-      return provider.currentTask();
-    }
-    return null;
+    if (provider == null || provider is! RuntimeTaskMonitor) return null;
+    return (provider as RuntimeTaskMonitor).currentTask();
   }
 
   Future<RuntimeActionResult> runAction(RuntimeActionRequest request) async {

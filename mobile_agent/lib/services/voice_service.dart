@@ -565,8 +565,8 @@ class VoiceService {
 
     // Try to extract descriptive names (e.g. "登录页面" -> "login_page").
     final namePatterns = [
-      RegExp(r'(?:叫做?|名为?|叫|名字是?)\s*["\']?([\w\u4e00-\u9fff]+)["\']?'),
-      RegExp(r'(?:文件|页面|类|组件)\s*["\']?([\w\u4e00-\u9fff]+)["\']?'),
+      RegExp(r"""(?:叫做?|名为?|叫|名字是?)\s*["']?([\w\u4e00-\u9fff]+)["']?"""),
+      RegExp(r"""(?:文件|页面|类|组件)\s*["']?([\w\u4e00-\u9fff]+)["']?"""),
     ];
 
     for (final pattern in namePatterns) {
@@ -579,7 +579,7 @@ class VoiceService {
     // Fallback: extract the noun phrase after the action verb.
     final actionPattern = RegExp(
       r'(?:创建|新建|生成|写一个|修改|更新|删除|查找|解释|写个|实现)'
-      r'\s*["\']?([\w\u4e00-\u9fff\s]+?)["\']?'
+      r"""\s*["']?([\w\u4e00-\u9fff\s]+?)["']?"""
       r'(?:\s*(?:文件|页面|类|组件|函数|方法|\.|,|，|。|$))',
     );
     final actionMatch = actionPattern.firstMatch(originalTranscript);

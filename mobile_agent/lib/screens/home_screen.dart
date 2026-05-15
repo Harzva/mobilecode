@@ -596,13 +596,18 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       icon: Icons.psychology_alt_outlined,
     ),
     const _AgentTraceStep(
-      title: 'Plan executable steps',
-      detail: 'Prepare a phone-safe action plan with local files, WebView preview, and failure handling.',
+      title: 'Call model provider',
+      detail: 'Send the prompt and chat context to the configured provider. If this fails, the agent must stop.',
+      icon: Icons.cloud_sync_outlined,
+    ),
+    const _AgentTraceStep(
+      title: 'Write generated artifact',
+      detail: 'Persist model-generated code only after the provider returns real output.',
       icon: Icons.account_tree_outlined,
     ),
     const _AgentTraceStep(
-      title: 'Execute tool surface',
-      detail: 'Run the selected phone-safe tool and keep progress inside this chat instead of opening a temporary sheet.',
+      title: 'Report in chat',
+      detail: 'Keep the process, generated content, paths, and failure state in this conversation.',
       icon: Icons.play_arrow_outlined,
     ),
   ];
@@ -4992,37 +4997,14 @@ class _ChatPanelState extends State<_ChatPanel> {
     _scrollConversationToEnd();
     await _persist();
 
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
     try {
       final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
-      final request = await client
-          .postUrl(flavor == _ApiFlavor.anthropic
-              ? _anthropicMessagesUri(widget.baseUrl)
-              : _openAiChatUri(widget.baseUrl))
-          .timeout(const Duration(seconds: 12));
-      request.headers.contentType = ContentType.json;
-      if (flavor == _ApiFlavor.anthropic) {
-        request.headers.set('anthropic-version', '2023-06-01');
-      }
-      if (widget.apiKey.isNotEmpty) {
-        if (flavor == _ApiFlavor.anthropic) {
-          request.headers.set('x-api-key', widget.apiKey);
-        }
-        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
-      }
-      request.write(jsonEncode(_requestBody(flavor, history)));
-
-      final response = await request.close().timeout(const Duration(seconds: 45));
-      final body = await utf8.decodeStream(response);
+      final answer = await _callProvider(
+        history,
+        systemPrompt:
+            'You are MobileCode, a mobile AI development assistant. Use the saved multi-turn chat context, answer concisely, and prefer executable mobile development steps.',
+      );
       if (!mounted) return;
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        setState(() => _error = 'HTTP ${response.statusCode}: ${_compact(body)}');
-        widget.onLog('AI request failed', 'HTTP ${response.statusCode}', Icons.error_outline, _rose);
-        return;
-      }
-
-      final answer = _extractAssistantText(body);
       final current = _sessions.firstWhere((session) => session.id == pending.id, orElse: () => pending);
       final next = current.copyWith(
         updatedAt: DateTime.now(),
@@ -5041,7 +5023,6 @@ class _ChatPanelState extends State<_ChatPanel> {
       setState(() => _error = message);
       widget.onLog('AI request error', _compact(message, limit: 140), Icons.error_outline, _rose);
     } finally {
-      client.close(force: true);
       if (mounted) {
         setState(() => _sending = false);
       }
@@ -5077,6 +5058,60 @@ class _ChatPanelState extends State<_ChatPanel> {
       if (!mounted) return;
       _showMessage(_compact(error.toString(), limit: 120));
       setState(() => _voiceState = VoiceState.error);
+    }
+  }
+
+  Future<String> _callProvider(
+    List<_ChatTurn> history, {
+    required String systemPrompt,
+    int maxTokens = 1024,
+  }) async {
+    if (widget.baseUrl.trim().isEmpty) {
+      throw Exception('Provider is not configured: Base URL is empty.');
+    }
+    if (widget.apiKey.trim().isEmpty) {
+      throw Exception('Provider is not configured: API key is empty.');
+    }
+
+    final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
+    try {
+      final request = await client
+          .postUrl(flavor == _ApiFlavor.anthropic
+              ? _anthropicMessagesUri(widget.baseUrl)
+              : _openAiChatUri(widget.baseUrl))
+          .timeout(const Duration(seconds: 12));
+      request.headers.contentType = ContentType.json;
+      if (flavor == _ApiFlavor.anthropic) {
+        request.headers.set('anthropic-version', '2023-06-01');
+      }
+      if (flavor == _ApiFlavor.anthropic) {
+        request.headers.set('x-api-key', widget.apiKey);
+      }
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
+      request.write(jsonEncode(_requestBody(
+        flavor,
+        history,
+        systemPrompt: systemPrompt,
+        maxTokens: maxTokens,
+      )));
+
+      final response = await request.close().timeout(const Duration(seconds: 60));
+      final body = await utf8.decodeStream(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Provider HTTP ${response.statusCode}: ${_compact(body)}');
+      }
+      final answer = _extractAssistantText(body);
+      if (answer.trim().isEmpty) {
+        throw Exception('Provider returned an empty response.');
+      }
+      return answer;
+    } on SocketException catch (error) {
+      throw Exception('Provider network error: ${error.message}');
+    } on TimeoutException {
+      throw Exception('Provider timed out while waiting for a model response.');
+    } finally {
+      client.close(force: true);
     }
   }
 
@@ -5120,10 +5155,24 @@ class _ChatPanelState extends State<_ChatPanel> {
     await _persist();
 
     String? failure;
+    String? modelAnswer;
+    String? generatedPath;
     try {
-      for (var index = 0; index < _agentTrace.length; index++) {
-        await _completeAgentRunStep(index);
-      }
+      await _completeAgentRunStep(0);
+      await _completeAgentRunStep(1);
+      _setAgentRunStep(2, _AgentStepState.running, detail: 'Calling ${_flavorLabel(_detectApiFlavor(widget.baseUrl, widget.model))} provider...');
+      modelAnswer = await _callProvider(
+        pending.turns,
+        systemPrompt: _agentSystemPrompt(toolName),
+        maxTokens: 4096,
+      );
+      _setAgentRunStep(2, _AgentStepState.done, detail: 'Model response received from ${_flavorLabel(_detectApiFlavor(widget.baseUrl, widget.model))}.');
+      generatedPath = await _persistAgentGeneratedArtifact(toolName, modelAnswer);
+      await _completeAgentRunStep(
+        3,
+        detail: generatedPath == null ? 'No file artifact required for this tool.' : 'Saved generated artifact to $generatedPath',
+      );
+      await _completeAgentRunStep(4);
     } on Object catch (error) {
       failure = error.toString();
       _failAgentRunStep(_compact(failure, limit: 140));
@@ -5132,7 +5181,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     if (!mounted) return;
     final current = _sessions.firstWhere((session) => session.id == pending.id, orElse: () => pending);
     final assistantText = failure == null
-        ? _agentCompletionMessage(toolName)
+        ? _agentProviderCompletionMessage(toolName, modelAnswer ?? '', generatedPath)
         : 'Agent run failed while using `$toolName`.\n\n${_compact(failure, limit: 300)}';
     final next = current.copyWith(
       updatedAt: DateTime.now(),
@@ -5158,21 +5207,24 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
   }
 
-  Future<void> _completeAgentRunStep(int index) async {
-    if (!mounted || index < 0 || index >= _agentTrace.length) return;
-    setState(() {
-      _agentTrace[index] = _agentTrace[index].copyWith(state: _AgentStepState.running);
-    });
-    _scrollConversationToEnd();
-    await Future<void>.delayed(const Duration(milliseconds: 240));
+  void _setAgentRunStep(int index, _AgentStepState state, {String? detail}) {
     if (!mounted || index < 0 || index >= _agentTrace.length) return;
     setState(() {
       _agentTrace[index] = _agentTrace[index].copyWith(
-        state: _AgentStepState.done,
-        finishedAt: DateTime.now(),
+        state: state,
+        detail: detail ?? _agentTrace[index].detail,
+        finishedAt: state == _AgentStepState.done || state == _AgentStepState.failed ? DateTime.now() : null,
       );
     });
     _scrollConversationToEnd();
+  }
+
+  Future<void> _completeAgentRunStep(int index, {String? detail}) async {
+    if (!mounted || index < 0 || index >= _agentTrace.length) return;
+    _setAgentRunStep(index, _AgentStepState.running);
+    await Future<void>.delayed(const Duration(milliseconds: 240));
+    if (!mounted || index < 0 || index >= _agentTrace.length) return;
+    _setAgentRunStep(index, _AgentStepState.done, detail: detail);
   }
 
   void _failAgentRunStep(String detail) {
@@ -5190,46 +5242,80 @@ class _ChatPanelState extends State<_ChatPanel> {
     _scrollConversationToEnd();
   }
 
-  String _agentCompletionMessage(String toolName) {
-    final detail = switch (toolName) {
-      'mobile_coding.generate_snake_preview' => [
-          '- Target: create a phone-first Snake web game.',
-          '- Tools: list_files -> write_file(index.html) -> read_file -> preview_webview.',
-          '- Next visible step: keep generated code, diff, and WebView preview controls in this chat thread.',
-        ],
-      'mobile_coding.generate_2048_preview' => [
-          '- Target: create a local 2048 web game.',
-          '- Tools: list_files -> write_file(index.html) -> read_file -> preview_webview.',
-          '- Next visible step: keep generated code, diff, and WebView preview controls in this chat thread.',
-        ],
-      'mobile_coding.build_diary_demo' => [
-          '- Target: create the smallest useful diary app surface.',
-          '- Tools: write_file(local model + UI) -> read_file -> local storage probe.',
-          '- Next visible step: show file writes, storage checks, and APK readiness in this chat thread.',
-        ],
-      'mobile_tools.termux_probe' => [
-          '- Target: diagnose Termux, Termux:API, root, and backend bridge readiness.',
-          '- Tools: package probe -> root probe -> permission summary.',
-          '- Next visible step: explain exactly which mobile permission or bridge is missing here.',
-        ],
-      'github.connectivity_test' => [
-          '- Target: verify GitHub token and repo connectivity.',
-          '- Tools: GitHub API probe -> repo access check -> Pages/release route check.',
-          '- Next visible step: show success/failure reasons in this chat thread.',
-        ],
-      _ => [
-          '- Parsed the instruction.',
-          '- Selected the matching mobile-safe tool.',
-          '- Built an executable plan instead of returning only chat text.',
-        ],
-    };
+  String _agentSystemPrompt(String toolName) {
     return [
-      'Agent run completed: `$toolName`',
-      '',
-      ...detail,
-      '',
-      'No temporary module window was opened; progress and result are kept in the current conversation.',
+      'You are MobileCode Android Mini Agent.',
+      'You are running inside a mobile app, so be honest about what has actually happened.',
+      'The selected tool is `$toolName`.',
+      'You must generate original code from the user request. Do not use or mention a built-in demo fallback.',
+      'Do not claim a file was written, previewed, pushed, or executed unless the app reports that after your response.',
+      if (toolName.startsWith('mobile_coding.generate_'))
+        'For web game requests, return one complete self-contained HTML document inside a single ```html fenced block. It must be mobile-first, playable by touch, and not depend on network assets.',
+      if (toolName == 'mobile_coding.build_diary_demo')
+        'For the diary app request, return the minimal implementable UI/data model plan and code snippets needed for a local APK diary experience.',
+      if (toolName == 'mobile_tools.termux_probe')
+        'For Termux/root requests, explain the Android permission/runtime boundary and list concrete checks without pretending shell execution happened.',
+      if (toolName == 'github.connectivity_test')
+        'For GitHub requests, describe the exact token/repo API checks and failure modes without inventing successful connectivity.',
+      'Keep the answer concise but include enough code for the next local tool step.',
     ].join('\n');
+  }
+
+  String _agentProviderCompletionMessage(String toolName, String modelAnswer, String? generatedPath) {
+    return [
+      'Agent run completed via provider: `$toolName`',
+      if (generatedPath != null) 'Saved generated artifact: `$generatedPath`',
+      '',
+      modelAnswer.trim(),
+    ].join('\n');
+  }
+
+  Future<String?> _persistAgentGeneratedArtifact(String toolName, String modelAnswer) async {
+    final isWebArtifact = toolName == 'mobile_coding.generate_snake_preview' ||
+        toolName == 'mobile_coding.generate_2048_preview' ||
+        toolName == 'mobile_coding.generate_web_preview';
+    final directory = await getApplicationDocumentsDirectory();
+    final slug = switch (toolName) {
+      'mobile_coding.generate_snake_preview' => 'agent_snake',
+      'mobile_coding.generate_2048_preview' => 'agent_2048_from_model',
+      'mobile_coding.build_diary_demo' => 'agent_diary',
+      _ => 'agent_run',
+    };
+    final projectDirectory = Directory('${directory.path}/mobilecode_projects/$slug');
+    await projectDirectory.create(recursive: true);
+
+    if (isWebArtifact) {
+      final html = _extractHtmlDocument(modelAnswer);
+      if (html == null) {
+        throw Exception('Provider responded, but did not return a complete ```html block. No game file was written.');
+      }
+      final tempFile = File('${projectDirectory.path}/index.html.tmp');
+      final file = File('${projectDirectory.path}/index.html');
+      await tempFile.writeAsString(html, flush: true);
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await tempFile.rename(file.path);
+      return file.path;
+    }
+
+    if (toolName.startsWith('mobile_coding.')) {
+      final file = File('${projectDirectory.path}/agent_response.md');
+      await file.writeAsString(modelAnswer, flush: true);
+      return file.path;
+    }
+    return null;
+  }
+
+  String? _extractHtmlDocument(String modelAnswer) {
+    final fenced = RegExp(r'```(?:html|HTML)\s*([\s\S]*?)```').firstMatch(modelAnswer)?.group(1)?.trim();
+    if (fenced != null && fenced.contains('<html')) return fenced;
+    final lower = modelAnswer.toLowerCase();
+    final start = lower.indexOf('<!doctype html');
+    if (start != -1) return modelAnswer.substring(start).trim();
+    final htmlStart = lower.indexOf('<html');
+    if (htmlStart != -1) return modelAnswer.substring(htmlStart).trim();
+    return null;
   }
 
   Future<void> _runAgent() async {
@@ -5237,18 +5323,21 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
 
-  Map<String, dynamic> _requestBody(_ApiFlavor flavor, List<_ChatTurn> turns) {
+  Map<String, dynamic> _requestBody(
+    _ApiFlavor flavor,
+    List<_ChatTurn> turns, {
+    required String systemPrompt,
+    int maxTokens = 1024,
+  }) {
     final model = widget.model.isEmpty
         ? (flavor == _ApiFlavor.anthropic ? _defaultModel : 'gpt-4o-mini')
         : widget.model;
-    final systemPrompt =
-        'You are MobileCode, a mobile AI development assistant. Use the saved multi-turn chat context, answer concisely, and prefer executable mobile development steps.';
     final messages = _providerMessages(turns);
     if (flavor == _ApiFlavor.anthropic) {
       return {
         'model': model,
         'system': systemPrompt,
-        'max_tokens': 1024,
+        'max_tokens': maxTokens,
         'messages': messages,
       };
     }

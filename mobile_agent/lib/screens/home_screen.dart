@@ -552,21 +552,32 @@ String _clockLabel(DateTime time) {
 
 bool _promptTargets2048(String prompt) {
   final lower = prompt.toLowerCase();
-  return lower.contains('2048') ||
-      lower.contains('game') ||
-      lower.contains('web') ||
-      lower.contains('html') ||
-      lower.contains('preview');
+  return lower.contains('2048') || prompt.contains('二零四八');
+}
+
+bool _promptTargetsSnake(String prompt) {
+  final lower = prompt.toLowerCase();
+  return lower.contains('snake') || prompt.contains('贪吃蛇');
+}
+
+bool _promptTargetsDiary(String prompt) {
+  final lower = prompt.toLowerCase();
+  return lower.contains('diary') || prompt.contains('日记');
 }
 
 String _agentToolNameForPrompt(String prompt) {
   final lower = prompt.toLowerCase();
+  if (_promptTargetsSnake(prompt)) return 'mobile_coding.generate_snake_preview';
   if (_promptTargets2048(prompt)) return 'mobile_coding.generate_2048_preview';
+  if (_promptTargetsDiary(prompt)) return 'mobile_coding.build_diary_demo';
   if (lower.contains('termux') || lower.contains('terminal') || lower.contains('shell')) {
     return 'mobile_tools.termux_probe';
   }
   if (lower.contains('github') || lower.contains('repo')) {
     return 'github.connectivity_test';
+  }
+  if (lower.contains('game') || lower.contains('web') || lower.contains('html') || lower.contains('preview')) {
+    return 'mobile_coding.generate_web_preview';
   }
   return 'mobile_tools.core_probe';
 }
@@ -591,7 +602,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
     ),
     const _AgentTraceStep(
       title: 'Execute tool surface',
-      detail: 'Open the matching MobileCode workspace so generated files and test results are visible.',
+      detail: 'Run the selected phone-safe tool and keep progress inside this chat instead of opening a temporary sheet.',
       icon: Icons.play_arrow_outlined,
     ),
   ];
@@ -1194,19 +1205,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _handleAgentPrompt(String prompt) async {
     final toolName = _agentToolNameForPrompt(prompt);
-    if (toolName == 'mobile_coding.generate_2048_preview') {
-      _openMobileCodingLabSheet(autoGenerate: true);
-      return;
-    }
-    if (toolName == 'mobile_tools.termux_probe') {
-      _openTermuxSheet();
-      return;
-    }
-    if (toolName == 'github.connectivity_test') {
-      _openGitHubTestSheet();
-      return;
-    }
-    _openToolLabSheet();
+    _addLog('Agent process stayed in chat', toolName, Icons.psychology_alt_outlined, _violet);
   }
 
   void _openMobileCodingLabSheet({bool autoGenerate = false}) {
@@ -1514,10 +1513,10 @@ class _HomeScreenState extends State<HomeScreen> {
   int get _simpleTabIndex {
     return switch (_tab) {
       _HomeTab.control => 0,
-      _HomeTab.ai => 1,
-      _HomeTab.ship => 2,
-      _HomeTab.guard => 3,
-      _HomeTab.insight => 3,
+      _HomeTab.ai => 0,
+      _HomeTab.ship => 1,
+      _HomeTab.guard => 2,
+      _HomeTab.insight => 2,
     };
   }
 
@@ -1822,6 +1821,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
+      resizeToAvoidBottomInset: true,
       backgroundColor: _bg,
       drawer: _MobileCodeDrawer(
         sessions: _drawerSessions,
@@ -1848,7 +1848,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 index: _simpleTabIndex,
                 children: [
                   _buildChatTab(),
-                  _buildCommandsTab(),
                   _buildToolsTab(),
                   _buildSettingsTab(),
                 ],
@@ -4088,10 +4087,10 @@ class _BottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     final selectedIndex = switch (tab) {
       _HomeTab.control => 0,
-      _HomeTab.ai => 1,
-      _HomeTab.ship => 2,
-      _HomeTab.guard => 3,
-      _HomeTab.insight => 3,
+      _HomeTab.ai => 0,
+      _HomeTab.ship => 1,
+      _HomeTab.guard => 2,
+      _HomeTab.insight => 2,
     };
     return Container(
       decoration: const BoxDecoration(
@@ -4102,8 +4101,7 @@ class _BottomNav extends StatelessWidget {
         selectedIndex: selectedIndex,
         onDestinationSelected: (index) => onChanged(switch (index) {
           0 => _HomeTab.control,
-          1 => _HomeTab.ai,
-          2 => _HomeTab.ship,
+          1 => _HomeTab.ship,
           _ => _HomeTab.guard,
         }),
         backgroundColor: _panel,
@@ -4111,7 +4109,6 @@ class _BottomNav extends StatelessWidget {
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.forum_outlined), selectedIcon: Icon(Icons.forum), label: 'Chat'),
-          NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome), label: 'Create'),
           NavigationDestination(icon: Icon(Icons.handyman_outlined), selectedIcon: Icon(Icons.handyman), label: 'Tools'),
           NavigationDestination(icon: Icon(Icons.tune_outlined), selectedIcon: Icon(Icons.tune), label: 'Settings'),
         ],
@@ -4787,6 +4784,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   static const _activeSessionKey = 'mobilecode.chat.activeSession.v1';
 
   final _promptController = TextEditingController();
+  final _chatScrollController = ScrollController();
   final _voiceService = VoiceService();
   final List<_ChatSession> _sessions = [];
   String? _activeSessionId;
@@ -4818,6 +4816,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     _voiceTranscriptSub?.cancel();
     _voiceStateSub?.cancel();
     _voiceService.dispose();
+    _chatScrollController.dispose();
     _promptController.dispose();
     super.dispose();
   }
@@ -4990,6 +4989,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       _promptController.clear();
       _storeSession(pending);
     });
+    _scrollConversationToEnd();
     await _persist();
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
@@ -5032,6 +5032,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         ],
       );
       setState(() => _storeSession(next));
+      _scrollConversationToEnd();
       await _persist();
       widget.onLog('AI response received', '${_flavorLabel(flavor)} - ${widget.model}', Icons.forum_outlined, _mint);
     } on Object catch (error) {
@@ -5115,6 +5116,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         ..addAll(_agentRunTraceTemplate(prompt));
       _storeSession(pending);
     });
+    _scrollConversationToEnd();
     await _persist();
 
     String? failure;
@@ -5145,6 +5147,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       _storeSession(next);
       if (failure != null) _error = failure;
     });
+    _scrollConversationToEnd();
     await _persist();
 
     if (failure == null) {
@@ -5160,6 +5163,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     setState(() {
       _agentTrace[index] = _agentTrace[index].copyWith(state: _AgentStepState.running);
     });
+    _scrollConversationToEnd();
     await Future<void>.delayed(const Duration(milliseconds: 240));
     if (!mounted || index < 0 || index >= _agentTrace.length) return;
     setState(() {
@@ -5168,6 +5172,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         finishedAt: DateTime.now(),
       );
     });
+    _scrollConversationToEnd();
   }
 
   void _failAgentRunStep(String detail) {
@@ -5182,16 +5187,48 @@ class _ChatPanelState extends State<_ChatPanel> {
         finishedAt: DateTime.now(),
       );
     });
+    _scrollConversationToEnd();
   }
 
   String _agentCompletionMessage(String toolName) {
+    final detail = switch (toolName) {
+      'mobile_coding.generate_snake_preview' => [
+          '- Target: create a phone-first Snake web game.',
+          '- Tools: list_files -> write_file(index.html) -> read_file -> preview_webview.',
+          '- Next visible step: keep generated code, diff, and WebView preview controls in this chat thread.',
+        ],
+      'mobile_coding.generate_2048_preview' => [
+          '- Target: create a local 2048 web game.',
+          '- Tools: list_files -> write_file(index.html) -> read_file -> preview_webview.',
+          '- Next visible step: keep generated code, diff, and WebView preview controls in this chat thread.',
+        ],
+      'mobile_coding.build_diary_demo' => [
+          '- Target: create the smallest useful diary app surface.',
+          '- Tools: write_file(local model + UI) -> read_file -> local storage probe.',
+          '- Next visible step: show file writes, storage checks, and APK readiness in this chat thread.',
+        ],
+      'mobile_tools.termux_probe' => [
+          '- Target: diagnose Termux, Termux:API, root, and backend bridge readiness.',
+          '- Tools: package probe -> root probe -> permission summary.',
+          '- Next visible step: explain exactly which mobile permission or bridge is missing here.',
+        ],
+      'github.connectivity_test' => [
+          '- Target: verify GitHub token and repo connectivity.',
+          '- Tools: GitHub API probe -> repo access check -> Pages/release route check.',
+          '- Next visible step: show success/failure reasons in this chat thread.',
+        ],
+      _ => [
+          '- Parsed the instruction.',
+          '- Selected the matching mobile-safe tool.',
+          '- Built an executable plan instead of returning only chat text.',
+        ],
+    };
     return [
       'Agent run completed: `$toolName`',
       '',
-      '- Parsed the instruction.',
-      '- Selected the matching mobile tool.',
-      '- Built an executable plan instead of returning only chat text.',
-      '- Opened the tool surface where generated files, preview, and test state are visible.',
+      ...detail,
+      '',
+      'No temporary module window was opened; progress and result are kept in the current conversation.',
     ].join('\n');
   }
 
@@ -5293,169 +5330,224 @@ class _ChatPanelState extends State<_ChatPanel> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _scrollConversationToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_chatScrollController.hasClients) return;
+      _chatScrollController.animateTo(
+        _chatScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Widget _buildChatHeader(_ChatSession? active) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _Panel(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.memory_outlined, color: _mint, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${active?.turns.length ?? 0} saved turns - context is sent with each request',
+                          style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              IconButton.filledTonal(
+                tooltip: 'New chat',
+                onPressed: _sending || _agentRunning ? null : _createSession,
+                icon: const Icon(Icons.add_comment_outlined),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (final session in _sessions)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: _ChatSessionChip(
+                      session: session,
+                      selected: session.id == active?.id,
+                      onTap: _sending || _agentRunning ? null : () => _selectSession(session.id),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConversationBody(_ChatSession? active) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _Panel(
+          padding: const EdgeInsets.all(12),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 220),
+            child: active == null || active.turns.isEmpty
+                ? const _EmptyChatState()
+                : Column(
+                    children: [
+                      for (var index = 0; index < active.turns.length; index++) ...[
+                        _ChatBubble(turn: active.turns[index]),
+                        if (index != active.turns.length - 1) const SizedBox(height: 10),
+                      ],
+                    ],
+                  ),
+          ),
+        ),
+        if (_agentTrace.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          _AgentTracePanel(
+            title: _agentRunning ? 'Agent is writing code' : 'Last agent process',
+            steps: _agentTrace,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildComposer(_ApiFlavor flavor) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: _bg,
+        border: Border(top: BorderSide(color: _line)),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+      child: _Panel(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ChatModeStrip(onPrompt: (prompt, {runAgent = false}) => setPromptFromShell(prompt, runAgent: runAgent)),
+            const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _promptController,
+                    minLines: 1,
+                    maxLines: 4,
+                    textInputAction: TextInputAction.newline,
+                    decoration: InputDecoration(
+                      labelText: _voiceService.isListening ? 'Listening...' : 'Message',
+                      hintText: 'Ask MobileCode, or tap a task shortcut.',
+                      helperText: _voiceHelperText(flavor, widget.model, _voiceState),
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _VoiceInputButton(
+                  enabled: !_sending && !_agentRunning,
+                  available: _voiceAvailable,
+                  state: _voiceState,
+                  onTap: _toggleVoiceInput,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _sending || _agentRunning ? null : _send,
+                    icon: _sending
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.send_outlined),
+                    label: Text(_sending ? 'Sending' : 'Send'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _sending || _agentRunning ? null : _runAgent,
+                    icon: _agentRunning
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.psychology_alt_outlined),
+                    label: Text(_agentRunning ? 'Running' : 'Run Agent'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                IconButton.outlined(
+                  tooltip: 'Delete chat',
+                  onPressed: _sending || _agentRunning ? null : _deleteActiveSession,
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                style: const TextStyle(color: _rose, fontSize: 12, height: 1.35),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
     final active = _activeSession;
-    final chatContent = _loading
-        ? const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
-        : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _Panel(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.memory_outlined, color: _mint, size: 18),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '${active?.turns.length ?? 0} saved turns - context is sent with each request',
-                                style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    IconButton.filledTonal(
-                      tooltip: 'New chat',
-                      onPressed: _sending || _agentRunning ? null : _createSession,
-                      icon: const Icon(Icons.add_comment_outlined),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      for (final session in _sessions)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: _ChatSessionChip(
-                            session: session,
-                            selected: session.id == active?.id,
-                            onTap: _sending || _agentRunning ? null : () => _selectSession(session.id),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _Panel(
-                  padding: const EdgeInsets.all(12),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 360),
-                    child: active == null || active.turns.isEmpty
-                        ? const _EmptyChatState()
-                        : ListView.separated(
-                            shrinkWrap: true,
-                            itemCount: active.turns.length,
-                            separatorBuilder: (context, index) => const SizedBox(height: 10),
-                            itemBuilder: (context, index) => _ChatBubble(turn: active.turns[index]),
-                          ),
-                  ),
-                ),
-                if (_agentTrace.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _AgentTracePanel(
-                    title: _agentRunning ? 'Agent is writing code' : 'Last agent process',
-                    steps: _agentTrace,
-                  ),
-                ],
-                const SizedBox(height: 14),
-                _Panel(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _ChatModeStrip(onPrompt: (prompt) => setPromptFromShell(prompt)),
-                      const SizedBox(height: 10),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _promptController,
-                              minLines: 2,
-                              maxLines: 6,
-                              textInputAction: TextInputAction.newline,
-                              decoration: InputDecoration(
-                                labelText: _voiceService.isListening ? 'Listening...' : 'Message',
-                                hintText: 'Ask MobileCode, or describe a tool task and tap Run Agent.',
-                                helperText: _voiceHelperText(flavor, widget.model, _voiceState),
-                                alignLabelWithHint: true,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          _VoiceInputButton(
-                            enabled: !_sending && !_agentRunning,
-                            available: _voiceAvailable,
-                            state: _voiceState,
-                            onTap: _toggleVoiceInput,
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: FilledButton.icon(
-                        onPressed: _sending || _agentRunning ? null : _send,
-                        icon: _sending
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.send_outlined),
-                        label: Text(_sending ? 'Sending' : 'Send Chat'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _sending || _agentRunning ? null : _runAgent,
-                        icon: _agentRunning
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.psychology_alt_outlined),
-                        label: Text(_agentRunning ? 'Running' : 'Run Agent'),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    IconButton.outlined(
-                      tooltip: 'Delete chat',
-                      onPressed: _sending || _agentRunning ? null : _deleteActiveSession,
-                      icon: const Icon(Icons.delete_outline),
-                    ),
-                  ],
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  Text(
-                    _error!,
-                    style: const TextStyle(color: _rose, fontSize: 12, height: 1.35),
-                  ),
-                ],
-              ],
-            );
+    if (_loading) {
+      return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
+    }
     if (widget.embedded) {
-      return SingleChildScrollView(
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: const EdgeInsets.fromLTRB(16, 2, 16, 20),
-        child: chatContent,
+      return Column(
+        children: [
+          _buildChatHeader(active),
+          Expanded(
+            child: SingleChildScrollView(
+              controller: _chatScrollController,
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: _buildConversationBody(active),
+            ),
+          ),
+          _buildComposer(flavor),
+        ],
       );
     }
     return _SheetScaffold(
       icon: Icons.forum_outlined,
       title: 'AI Chat',
       subtitle: _chatEndpointLabel(widget.baseUrl, flavor),
-      child: chatContent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildChatHeader(active),
+          const SizedBox(height: 12),
+          _buildConversationBody(active),
+          const SizedBox(height: 12),
+          _buildComposer(flavor),
+        ],
+      ),
     );
   }
 }
@@ -5576,7 +5668,7 @@ class _EmptyChatState extends StatelessWidget {
 class _ChatModeStrip extends StatelessWidget {
   const _ChatModeStrip({required this.onPrompt});
 
-  final ValueChanged<String> onPrompt;
+  final void Function(String prompt, {bool runAgent}) onPrompt;
 
   @override
   Widget build(BuildContext context) {
@@ -5592,6 +5684,12 @@ class _ChatModeStrip extends StatelessWidget {
         icon: Icons.grid_4x4_outlined,
         prompt: '帮我创建一个 2048 网页小游戏，保存为 index.html，并打开本地 WebView 预览。',
         color: _cyan,
+      ),
+      _PromptShortcutData(
+        label: '日记',
+        icon: Icons.edit_note_outlined,
+        prompt: '帮我做一个最小日记 App：本地保存、列表、编辑、删除和空状态都要能在 APK 里体验。',
+        color: _amber,
       ),
       _PromptShortcutData(
         label: 'GitHub',
@@ -5612,7 +5710,7 @@ class _ChatModeStrip extends StatelessWidget {
       child: Row(
         children: [
           for (final item in prompts) ...[
-            _PromptShortcutChip(item: item, onTap: () => onPrompt(item.prompt)),
+            _PromptShortcutChip(item: item, onTap: () => onPrompt(item.prompt, runAgent: true)),
             const SizedBox(width: 8),
           ],
         ],

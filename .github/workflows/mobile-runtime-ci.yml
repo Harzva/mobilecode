@@ -9,8 +9,6 @@ on:
       - 'docs/mobilecode-release-qa.md'
       - '.github/workflows/mobile-runtime-ci.yml'
   push:
-    branches:
-      - main
     paths:
       - 'mobile_agent/**'
       - 'docs/mobilecode-helper-runtime-protocol.md'

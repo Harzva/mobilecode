@@ -1138,7 +1138,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!silent) _runtimeMessage = 'Checking MobileCode runtime providers...';
     });
     try {
-      await _startMobileCodeHelperService();
+      if (!silent) {
+        await _startMobileCodeHelperService();
+      }
       await _runtimeManager.initialize();
       final runtimeHealth = await _runtimeManager.refresh();
       final runtimeCapabilities = await _runtimeManager.capabilities();

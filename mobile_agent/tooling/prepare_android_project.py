@@ -36,6 +36,40 @@ def main() -> None:
     if gradle.exists():
         gradle_text = gradle.read_text()
         gradle_text = gradle_text.replace('minSdk = flutter.minSdkVersion', 'minSdk = 24')
+        if 'import java.util.Properties' not in gradle_text:
+            gradle_text = (
+                'import java.util.Properties\n\n'
+                'val keystorePropertiesFile = rootProject.file("key.properties")\n'
+                'val keystoreProperties = Properties().apply {\n'
+                '    if (keystorePropertiesFile.exists()) {\n'
+                '        keystorePropertiesFile.inputStream().use { load(it) }\n'
+                '    }\n'
+                '}\n\n'
+                + gradle_text
+            )
+        if 'create("release")' not in gradle_text:
+            signing_block = (
+                '    signingConfigs {\n'
+                '        create("release") {\n'
+                '            if (keystorePropertiesFile.exists()) {\n'
+                '                keyAlias = keystoreProperties["keyAlias"] as String\n'
+                '                keyPassword = keystoreProperties["keyPassword"] as String\n'
+                '                storeFile = file(keystoreProperties["storeFile"] as String)\n'
+                '                storePassword = keystoreProperties["storePassword"] as String\n'
+                '            }\n'
+                '        }\n'
+                '    }\n\n'
+            )
+            gradle_text = gradle_text.replace('    buildTypes {\n', signing_block + '    buildTypes {\n', 1)
+            gradle_text = gradle_text.replace(
+                'signingConfig = signingConfigs.getByName("debug")',
+                'signingConfig = if (keystorePropertiesFile.exists()) {\n'
+                '                signingConfigs.getByName("release")\n'
+                '            } else {\n'
+                '                signingConfigs.getByName("debug")\n'
+                '            }',
+                1,
+            )
         gradle.write_text(gradle_text)
 
     launch_background = '''<?xml version="1.0" encoding="utf-8"?>

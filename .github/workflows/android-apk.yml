@@ -49,6 +49,29 @@ jobs:
         working-directory: mobile_agent
         run: flutter analyze lib/main.dart lib/screens/home_screen.dart --no-fatal-infos --no-fatal-warnings
 
+      - name: Configure stable Android release signing
+        working-directory: mobile_agent
+        env:
+          MOBILECODE_RELEASE_KEYSTORE_BASE64: ${{ secrets.MOBILECODE_RELEASE_KEYSTORE_BASE64 }}
+          MOBILECODE_RELEASE_STORE_PASSWORD: ${{ secrets.MOBILECODE_RELEASE_STORE_PASSWORD }}
+          MOBILECODE_RELEASE_KEY_ALIAS: ${{ secrets.MOBILECODE_RELEASE_KEY_ALIAS }}
+          MOBILECODE_RELEASE_KEY_PASSWORD: ${{ secrets.MOBILECODE_RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$MOBILECODE_RELEASE_KEYSTORE_BASE64" ] && [ -n "$MOBILECODE_RELEASE_STORE_PASSWORD" ] && [ -n "$MOBILECODE_RELEASE_KEY_ALIAS" ] && [ -n "$MOBILECODE_RELEASE_KEY_PASSWORD" ]; then
+            mkdir -p android/app
+            KEYSTORE_PATH="$PWD/android/app/mobilecode-release.jks"
+            printf '%s' "$MOBILECODE_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+            {
+              echo "storeFile=$KEYSTORE_PATH"
+              echo "storePassword=$MOBILECODE_RELEASE_STORE_PASSWORD"
+              echo "keyAlias=$MOBILECODE_RELEASE_KEY_ALIAS"
+              echo "keyPassword=$MOBILECODE_RELEASE_KEY_PASSWORD"
+            } > android/key.properties
+            echo "Stable release signing configured."
+          else
+            echo "Release signing secrets are not fully configured; falling back to Flutter debug signing."
+          fi
+
       - name: Build release APK
         working-directory: mobile_agent
         env:

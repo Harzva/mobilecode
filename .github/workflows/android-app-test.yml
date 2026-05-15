@@ -62,6 +62,7 @@ jobs:
           target: default
           disable-animations: true
           script: |
+            bash <<'BASH'
             set -eux
             mkdir -p artifacts
             adb wait-for-device
@@ -81,6 +82,7 @@ jobs:
             adb exec-out screencap -p > artifacts/mobilecode-android-smoke.png
             adb logcat -d -t 1200 > artifacts/android-logcat.txt
             grep -E "FATAL EXCEPTION|E AndroidRuntime|NoSuchMethodError|MissingPluginException|ANR in com.mobilecode.mobile_agent" artifacts/android-logcat.txt && exit 1 || true
+            BASH
 
       - name: Upload Android smoke artifacts
         uses: actions/upload-artifact@v4

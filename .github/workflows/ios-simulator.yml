@@ -36,6 +36,7 @@ jobs:
         run: |
           rm -rf ios
           flutter create --platforms=ios --project-name mobile_agent --org com.mobilecode .
+          python3 tooling/prepare_ios_project.py
 
       - name: Resolve Flutter dependencies
         working-directory: mobile_agent

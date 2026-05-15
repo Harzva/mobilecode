@@ -9,6 +9,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../services/voice_service.dart';
+
 enum _ApiFlavor { openAi, anthropic }
 
 enum _HealthState { unknown, checking, healthy, failed }
@@ -80,7 +82,7 @@ const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
 const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.0';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.0+13';
+const _releaseBuildLabel = 'v0.1.0+14';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 
 class _ProbeResult {
@@ -784,6 +786,8 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _apiKeyKey = 'mobilecode.apiKey';
   static const _modelKey = 'mobilecode.model';
 
+  final _scaffoldKey = GlobalKey<ScaffoldState>();
+  final _chatPanelKey = GlobalKey<_ChatPanelState>();
   final _baseUrlController = TextEditingController(text: _defaultBaseUrl);
   final _apiKeyController = TextEditingController();
   final _modelController = TextEditingController(text: _defaultModel);
@@ -799,6 +803,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool? _termuxApiInstalled;
   bool? _rootAvailable;
   String _runtimeMessage = 'Checking Termux and root status...';
+  List<_ChatSession> _drawerSessions = const [];
+  String? _drawerActiveSessionId;
 
   final List<_ActivityLog> _activity = [
     _ActivityLog(
@@ -1084,7 +1090,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _tab = tab;
       _selectedLayerIndex = switch (tab) {
         _HomeTab.control => 0,
-        _HomeTab.ai => 0,
+        _HomeTab.ai => 2,
         _HomeTab.ship => 3,
         _HomeTab.guard => 4,
         _HomeTab.insight => 5,
@@ -1466,13 +1472,52 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _syncDrawerSessions(List<_ChatSession> sessions, String? activeSessionId) {
+    if (!mounted) return;
+    setState(() {
+      _drawerSessions = List<_ChatSession>.unmodifiable(sessions);
+      _drawerActiveSessionId = activeSessionId;
+    });
+  }
+
+  void _openDrawer() {
+    _scaffoldKey.currentState?.openDrawer();
+  }
+
+  Future<void> _closeDrawerIfOpen() async {
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+    }
+  }
+
+  Future<void> _newChatFromDrawer() async {
+    await _closeDrawerIfOpen();
+    _setTab(_HomeTab.control);
+    await _chatPanelKey.currentState?.createSessionFromShell();
+  }
+
+  Future<void> _selectChatFromDrawer(String id) async {
+    await _closeDrawerIfOpen();
+    _setTab(_HomeTab.control);
+    await _chatPanelKey.currentState?.selectSessionFromShell(id);
+  }
+
+  Future<void> _usePromptShortcut(String prompt, {bool runAgent = false}) async {
+    await _closeDrawerIfOpen();
+    _setTab(_HomeTab.control);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _chatPanelKey.currentState?.setPromptFromShell(prompt, runAgent: runAgent);
+    });
+  }
+
   int get _simpleTabIndex {
     return switch (_tab) {
       _HomeTab.control => 0,
       _HomeTab.ai => 1,
       _HomeTab.ship => 2,
-      _HomeTab.guard => 2,
-      _HomeTab.insight => 2,
+      _HomeTab.guard => 3,
+      _HomeTab.insight => 3,
     };
   }
 
@@ -1484,6 +1529,11 @@ class _HomeScreenState extends State<HomeScreen> {
           child: _SimpleHeader(
             title: 'MobileCode',
             subtitle: 'Chat-first mobile coding agent',
+            leading: IconButton.filledTonal(
+              tooltip: 'Open conversations',
+              onPressed: _openDrawer,
+              icon: const Icon(Icons.menu_rounded),
+            ),
             trailing: _Pill(
               label: _managedProviderActive ? 'Managed' : _flavorLabel(_flavor),
               icon: Icons.auto_awesome_outlined,
@@ -1505,12 +1555,14 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         Expanded(
           child: _ChatPanel(
+            key: _chatPanelKey,
             baseUrl: _effectiveBaseUrl,
             apiKey: _effectiveApiKey,
             model: _effectiveModel,
             embedded: true,
             onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
             onAgentPrompt: _handleAgentPrompt,
+            onSessionsChanged: _syncDrawerSessions,
           ),
         ),
       ],
@@ -1520,44 +1572,112 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildCommandsTab() {
     final commands = [
       _CommandShortcut(
-        icon: Icons.grid_4x4_outlined,
-        title: 'Code 2048 demo',
-        subtitle: '让 agent 生成本地 HTML/CSS/JS 项目并用 WebView 预览。',
+        icon: Icons.videogame_asset_outlined,
+        title: '帮我做一个贪吃蛇游戏',
+        subtitle: '填入提示词，Run Agent 后展示写代码、写文件、预览流程。',
         color: _mint,
+        action: _ModuleAction.aiChat,
+      ),
+      _CommandShortcut(
+        icon: Icons.grid_4x4_outlined,
+        title: '做 2048 网页小游戏',
+        subtitle: '生成本地 HTML/CSS/JS，并一键进入 Android WebView 预览。',
+        color: _cyan,
         action: _ModuleAction.webDemo,
       ),
       _CommandShortcut(
+        icon: Icons.edit_note_outlined,
+        title: '做一个最小日记 App',
+        subtitle: '验证 APK 内本地写入、读取、列表和空状态体验。',
+        color: _amber,
+        action: _ModuleAction.diary,
+      ),
+      _CommandShortcut(
+        icon: Icons.note_add_outlined,
+        title: '新建代码文件',
+        subtitle: '为移动端工作区创建文件草稿，后续交给 agent 修改。',
+        color: _violet,
+        action: _ModuleAction.newFile,
+      ),
+      _CommandShortcut(
+        icon: Icons.data_object_outlined,
+        title: '保存代码片段',
+        subtitle: '把常用片段存入本地 snippet 面板。',
+        color: _lime,
+        action: _ModuleAction.snippet,
+      ),
+      _CommandShortcut(
+        icon: Icons.psychology_alt_outlined,
+        title: '深潜一个任务',
+        subtitle: '显示 agent 的计划、工具调用、观察和完成状态。',
+        color: _rose,
+        action: _ModuleAction.deepDive,
+      ),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+      cacheExtent: 700,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      children: [
+        _SimpleHeader(
+          title: 'Create',
+          subtitle: 'Prompt shortcuts for mobile coding tasks.',
+          leading: IconButton.filledTonal(
+            tooltip: 'Open conversations',
+            onPressed: _openDrawer,
+            icon: const Icon(Icons.menu_rounded),
+          ),
+        ),
+        const SizedBox(height: 12),
+        _PromptLaunchPanel(onPrompt: _usePromptShortcut),
+        const SizedBox(height: 12),
+        for (final command in commands) ...[
+          _CommandShortcutTile(
+            command: command,
+            onTap: () {
+              if (command.title.contains('贪吃蛇')) {
+                _usePromptShortcut('帮我在手机端创建一个可运行的贪吃蛇网页小游戏，生成 index.html、展示写代码过程，并用 WebView 预览。', runAgent: true);
+              } else if (command.title.contains('2048')) {
+                _usePromptShortcut('帮我创建一个 2048 网页小游戏，保存为 index.html，并打开本地 WebView 预览。', runAgent: true);
+              } else {
+                _runAction(command.action);
+              }
+            },
+          ),
+          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildToolsTab() {
+    final tools = [
+      _CommandShortcut(
         icon: Icons.handyman_outlined,
         title: 'Tool tests',
-        subtitle: '测试 storage、provider、GitHub、Termux 等手机工具。',
+        subtitle: '测试 provider、GitHub、WebView、storage、Termux、root。',
         color: _cyan,
         action: _ModuleAction.toolLab,
       ),
       _CommandShortcut(
         icon: Icons.terminal_outlined,
         title: 'Termux / root',
-        subtitle: '检查 Termux、Termux:API 和 root 缺失原因。',
+        subtitle: '检查 Termux 是否安装、root 是否授权、后端为何未启动。',
         color: _amber,
         action: _ModuleAction.termuxCheck,
       ),
       _CommandShortcut(
         icon: Icons.hub_outlined,
         title: 'GitHub test',
-        subtitle: '验证 GitHub token、仓库连接和 Pages 发布链路。',
+        subtitle: '填写 GitHub token 后验证 /user、repo、Pages 能否联通。',
         color: _violet,
         action: _ModuleAction.githubTest,
       ),
       _CommandShortcut(
-        icon: Icons.edit_note_outlined,
-        title: 'Diary demo',
-        subtitle: '最小日记 App 功能面，验证 APK 内本地应用体验。',
-        color: _lime,
-        action: _ModuleAction.diary,
-      ),
-      _CommandShortcut(
         icon: Icons.rocket_launch_outlined,
         title: 'Build / release',
-        subtitle: 'GitHub Release、APK、iOS simulator 和 Pages 构建入口。',
+        subtitle: '查看 GitHub Release、APK、iOS simulator 和 smoke report。',
         color: _rose,
         action: _ModuleAction.build,
       ),
@@ -1568,9 +1688,14 @@ class _HomeScreenState extends State<HomeScreen> {
       cacheExtent: 700,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
-        const _SimpleHeader(
-          title: 'Commands',
-          subtitle: 'Only the tools needed for mobile coding stay here.',
+        _SimpleHeader(
+          title: 'Tools',
+          subtitle: 'Phone runtime, backend bridge, GitHub, and release checks.',
+          leading: IconButton.filledTonal(
+            tooltip: 'Open conversations',
+            onPressed: _openDrawer,
+            icon: const Icon(Icons.menu_rounded),
+          ),
         ),
         const SizedBox(height: 12),
         _RuntimePermissionBanner(
@@ -1583,10 +1708,10 @@ class _HomeScreenState extends State<HomeScreen> {
           onOpenTermux: _openTermuxSheet,
         ),
         const SizedBox(height: 12),
-        for (final command in commands) ...[
+        for (final tool in tools) ...[
           _CommandShortcutTile(
-            command: command,
-            onTap: () => _runAction(command.action),
+            command: tool,
+            onTap: () => _runAction(tool.action),
           ),
           const SizedBox(height: 10),
         ],
@@ -1600,9 +1725,14 @@ class _HomeScreenState extends State<HomeScreen> {
       cacheExtent: 700,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       children: [
-        const _SimpleHeader(
+        _SimpleHeader(
           title: 'Settings',
           subtitle: 'Runtime, model, release, and advanced capability surfaces.',
+          leading: IconButton.filledTonal(
+            tooltip: 'Open conversations',
+            onPressed: _openDrawer,
+            icon: const Icon(Icons.menu_rounded),
+          ),
         ),
         const SizedBox(height: 12),
         _ApiConfigCard(
@@ -1691,7 +1821,25 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: _bg,
+      drawer: _MobileCodeDrawer(
+        sessions: _drawerSessions,
+        activeSessionId: _drawerActiveSessionId,
+        termuxInstalled: _termuxInstalled,
+        rootAvailable: _rootAvailable,
+        onNewChat: _newChatFromDrawer,
+        onSelectSession: _selectChatFromDrawer,
+        onPrompt: _usePromptShortcut,
+        onOpenSettings: () {
+          Navigator.of(context).pop();
+          _setTab(_HomeTab.guard);
+        },
+        onOpenTools: () {
+          Navigator.of(context).pop();
+          _setTab(_HomeTab.ship);
+        },
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -1701,6 +1849,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   _buildChatTab(),
                   _buildCommandsTab(),
+                  _buildToolsTab(),
                   _buildSettingsTab(),
                 ],
               ),
@@ -1771,27 +1920,30 @@ class _SimpleHeader extends StatelessWidget {
   const _SimpleHeader({
     required this.title,
     required this.subtitle,
+    this.leading,
     this.trailing,
   });
 
   final String title;
   final String subtitle;
+  final Widget? leading;
   final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: _panel,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: _line),
-          ),
-          child: const Icon(Icons.code_rounded, color: _mint),
-        ),
+        leading ??
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: _panel,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _line),
+              ),
+              child: const Icon(Icons.code_rounded, color: _mint),
+            ),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -1808,6 +1960,212 @@ class _SimpleHeader extends StatelessWidget {
           trailing!,
         ],
       ],
+    );
+  }
+}
+
+class _MobileCodeDrawer extends StatelessWidget {
+  const _MobileCodeDrawer({
+    required this.sessions,
+    required this.activeSessionId,
+    required this.termuxInstalled,
+    required this.rootAvailable,
+    required this.onNewChat,
+    required this.onSelectSession,
+    required this.onPrompt,
+    required this.onOpenSettings,
+    required this.onOpenTools,
+  });
+
+  final List<_ChatSession> sessions;
+  final String? activeSessionId;
+  final bool? termuxInstalled;
+  final bool? rootAvailable;
+  final VoidCallback onNewChat;
+  final ValueChanged<String> onSelectSession;
+  final Future<void> Function(String prompt, {bool runAgent}) onPrompt;
+  final VoidCallback onOpenSettings;
+  final VoidCallback onOpenTools;
+
+  @override
+  Widget build(BuildContext context) {
+    final runtimeColor = termuxInstalled == true && rootAvailable == true
+        ? _mint
+        : termuxInstalled == true
+            ? _amber
+            : _rose;
+    final runtimeLabel = termuxInstalled == true && rootAvailable == true
+        ? 'Termux + root ready'
+        : termuxInstalled == true
+            ? 'Termux detected, root missing'
+            : 'Termux/root not ready';
+
+    return Drawer(
+      width: MediaQuery.of(context).size.width.clamp(280, 360).toDouble(),
+      backgroundColor: _bg,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 14, 14, 10),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('MobileCode', style: TextStyle(color: _text, fontSize: 24, fontWeight: FontWeight.w900)),
+                  ),
+                  IconButton.filledTonal(
+                    tooltip: 'New chat',
+                    onPressed: onNewChat,
+                    icon: const Icon(Icons.edit_square),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _Panel(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Icon(Icons.admin_panel_settings_outlined, color: runtimeColor, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(runtimeLabel, style: const TextStyle(color: _muted, fontSize: 12, height: 1.3)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _DrawerAction(
+              icon: Icons.add_comment_outlined,
+              label: '新会话',
+              onTap: onNewChat,
+            ),
+            _DrawerAction(
+              icon: Icons.videogame_asset_outlined,
+              label: '帮我做贪吃蛇游戏',
+              onTap: () => onPrompt('帮我在手机端创建一个可运行的贪吃蛇网页小游戏，生成 index.html、展示写代码过程，并用 WebView 预览。', runAgent: true),
+            ),
+            _DrawerAction(
+              icon: Icons.handyman_outlined,
+              label: '工具与权限',
+              onTap: onOpenTools,
+            ),
+            _DrawerAction(
+              icon: Icons.tune_outlined,
+              label: '模型与设置',
+              onTap: onOpenSettings,
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(18, 18, 18, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Recent chats', style: TextStyle(color: _faint, fontSize: 12, fontWeight: FontWeight.w900)),
+              ),
+            ),
+            Expanded(
+              child: sessions.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(18),
+                      child: Text('No chat history yet', style: TextStyle(color: _muted)),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+                      itemCount: sessions.length,
+                      itemBuilder: (context, index) {
+                        final session = sessions[index];
+                        return _DrawerSessionTile(
+                          session: session,
+                          selected: session.id == activeSessionId,
+                          onTap: () => onSelectSession(session.id),
+                        );
+                      },
+                    ),
+            ),
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: _line)),
+              ),
+              child: Row(
+                children: [
+                  const CircleAvatar(
+                    radius: 16,
+                    backgroundColor: _panelSoft,
+                    child: Icon(Icons.person_outline, color: _mint, size: 18),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text('Local user', style: TextStyle(color: _text, fontWeight: FontWeight.w800)),
+                  ),
+                  IconButton(
+                    tooltip: 'Settings',
+                    onPressed: onOpenSettings,
+                    icon: const Icon(Icons.settings_outlined, color: _muted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DrawerAction extends StatelessWidget {
+  const _DrawerAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(icon, color: _text),
+      title: Text(label, style: const TextStyle(color: _text, fontWeight: FontWeight.w800)),
+      onTap: onTap,
+      minLeadingWidth: 26,
+    );
+  }
+}
+
+class _DrawerSessionTile extends StatelessWidget {
+  const _DrawerSessionTile({
+    required this.session,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _ChatSession session;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      selected: selected,
+      selectedTileColor: _mint.withOpacity(0.10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      leading: CircleAvatar(
+        radius: 15,
+        backgroundColor: selected ? _mint.withOpacity(0.18) : _panelSoft,
+        child: Icon(Icons.chat_bubble_outline, color: selected ? _mint : _muted, size: 16),
+      ),
+      title: Text(
+        session.title,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(color: selected ? _text : _muted, fontWeight: FontWeight.w800),
+      ),
+      subtitle: Text('${session.turns.length} turns', style: const TextStyle(color: _faint, fontSize: 11)),
+      onTap: onTap,
     );
   }
 }
@@ -3732,8 +4090,8 @@ class _BottomNav extends StatelessWidget {
       _HomeTab.control => 0,
       _HomeTab.ai => 1,
       _HomeTab.ship => 2,
-      _HomeTab.guard => 2,
-      _HomeTab.insight => 2,
+      _HomeTab.guard => 3,
+      _HomeTab.insight => 3,
     };
     return Container(
       decoration: const BoxDecoration(
@@ -3745,14 +4103,16 @@ class _BottomNav extends StatelessWidget {
         onDestinationSelected: (index) => onChanged(switch (index) {
           0 => _HomeTab.control,
           1 => _HomeTab.ai,
-          _ => _HomeTab.ship,
+          2 => _HomeTab.ship,
+          _ => _HomeTab.guard,
         }),
         backgroundColor: _panel,
         indicatorColor: _mint.withOpacity(0.16),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: const [
           NavigationDestination(icon: Icon(Icons.forum_outlined), selectedIcon: Icon(Icons.forum), label: 'Chat'),
-          NavigationDestination(icon: Icon(Icons.terminal_outlined), selectedIcon: Icon(Icons.terminal), label: 'Commands'),
+          NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome), label: 'Create'),
+          NavigationDestination(icon: Icon(Icons.handyman_outlined), selectedIcon: Icon(Icons.handyman), label: 'Tools'),
           NavigationDestination(icon: Icon(Icons.tune_outlined), selectedIcon: Icon(Icons.tune), label: 'Settings'),
         ],
       ),
@@ -4400,11 +4760,13 @@ class _TermuxSheetState extends State<_TermuxSheet> {
 
 class _ChatPanel extends StatefulWidget {
   const _ChatPanel({
+    super.key,
     required this.baseUrl,
     required this.apiKey,
     required this.model,
     required this.onLog,
     required this.onAgentPrompt,
+    this.onSessionsChanged,
     this.embedded = false,
   });
 
@@ -4413,6 +4775,7 @@ class _ChatPanel extends StatefulWidget {
   final String model;
   final void Function(String title, String detail, IconData icon, Color color) onLog;
   final Future<void> Function(String prompt) onAgentPrompt;
+  final void Function(List<_ChatSession> sessions, String? activeSessionId)? onSessionsChanged;
   final bool embedded;
 
   @override
@@ -4424,11 +4787,16 @@ class _ChatPanelState extends State<_ChatPanel> {
   static const _activeSessionKey = 'mobilecode.chat.activeSession.v1';
 
   final _promptController = TextEditingController();
+  final _voiceService = VoiceService();
   final List<_ChatSession> _sessions = [];
   String? _activeSessionId;
   bool _loading = true;
   bool _sending = false;
   bool _agentRunning = false;
+  bool _voiceAvailable = false;
+  VoiceState _voiceState = VoiceState.idle;
+  StreamSubscription<String>? _voiceTranscriptSub;
+  StreamSubscription<VoiceState>? _voiceStateSub;
   String? _error;
   final List<_AgentTraceStep> _agentTrace = [];
 
@@ -4442,12 +4810,35 @@ class _ChatPanelState extends State<_ChatPanel> {
   void initState() {
     super.initState();
     _loadSessions();
+    _initVoiceInput();
   }
 
   @override
   void dispose() {
+    _voiceTranscriptSub?.cancel();
+    _voiceStateSub?.cancel();
+    _voiceService.dispose();
     _promptController.dispose();
     super.dispose();
+  }
+
+  Future<void> _initVoiceInput() async {
+    _voiceTranscriptSub = _voiceService.onTranscriptUpdate.listen((text) {
+      if (!mounted || text.trim().isEmpty) return;
+      _promptController.text = text;
+      _promptController.selection = TextSelection.collapsed(offset: _promptController.text.length);
+      setState(() {});
+    });
+    _voiceStateSub = _voiceService.onStateChange.listen((state) {
+      if (!mounted) return;
+      setState(() => _voiceState = state);
+    });
+    final available = await _voiceService.initialize();
+    if (!mounted) return;
+    setState(() {
+      _voiceAvailable = available;
+      _voiceState = _voiceService.currentState;
+    });
   }
 
   Future<void> _loadSessions() async {
@@ -4485,6 +4876,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       }
       _loading = false;
     });
+    _notifySessionsChanged();
   }
 
   Future<void> _persist() async {
@@ -4493,6 +4885,25 @@ class _ChatPanelState extends State<_ChatPanel> {
     final activeId = _activeSessionId;
     if (activeId != null) {
       await prefs.setString(_activeSessionKey, activeId);
+    }
+    _notifySessionsChanged();
+  }
+
+  void _notifySessionsChanged() {
+    widget.onSessionsChanged?.call(List<_ChatSession>.unmodifiable(_sessions), _activeSessionId);
+  }
+
+  Future<void> createSessionFromShell() => _createSession();
+
+  Future<void> selectSessionFromShell(String id) => _selectSession(id);
+
+  void setPromptFromShell(String prompt, {bool runAgent = false}) {
+    _promptController.text = prompt;
+    _promptController.selection = TextSelection.collapsed(offset: prompt.length);
+    if (!mounted) return;
+    setState(() {});
+    if (runAgent) {
+      unawaited(_runAgentWithTrace());
     }
   }
 
@@ -4633,6 +5044,38 @@ class _ChatPanelState extends State<_ChatPanel> {
       if (mounted) {
         setState(() => _sending = false);
       }
+    }
+  }
+
+  Future<void> _toggleVoiceInput() async {
+    if (!_voiceAvailable) {
+      final available = await _voiceService.initialize();
+      if (!mounted) return;
+      setState(() => _voiceAvailable = available);
+      if (!available) {
+        _showMessage(_voiceService.lastError.isEmpty ? 'Voice input is not available' : _voiceService.lastError);
+        return;
+      }
+    }
+
+    if (_voiceService.isListening) {
+      final transcript = await _voiceService.stopListening();
+      if (!mounted) return;
+      if (transcript.trim().isNotEmpty) {
+        _promptController.text = transcript.trim();
+        _promptController.selection = TextSelection.collapsed(offset: _promptController.text.length);
+      }
+      setState(() => _voiceState = _voiceService.currentState);
+      return;
+    }
+
+    try {
+      await _voiceService.startListening();
+      if (mounted) setState(() => _voiceState = VoiceState.listening);
+    } on Object catch (error) {
+      if (!mounted) return;
+      _showMessage(_compact(error.toString(), limit: 120));
+      setState(() => _voiceState = VoiceState.error);
     }
   }
 
@@ -4926,16 +5369,40 @@ class _ChatPanelState extends State<_ChatPanel> {
                   ),
                 ],
                 const SizedBox(height: 14),
-                TextField(
-                  controller: _promptController,
-                  minLines: 2,
-                  maxLines: 6,
-                  textInputAction: TextInputAction.newline,
-                  decoration: InputDecoration(
-                    labelText: 'Message',
-                    hintText: 'Ask a follow-up, or describe a tool task and tap Run Agent to see every step.',
-                    helperText: '${_flavorLabel(flavor)} - ${widget.model.isEmpty ? 'default model' : widget.model}',
-                    alignLabelWithHint: true,
+                _Panel(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _ChatModeStrip(onPrompt: (prompt) => setPromptFromShell(prompt)),
+                      const SizedBox(height: 10),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _promptController,
+                              minLines: 2,
+                              maxLines: 6,
+                              textInputAction: TextInputAction.newline,
+                              decoration: InputDecoration(
+                                labelText: _voiceService.isListening ? 'Listening...' : 'Message',
+                                hintText: 'Ask MobileCode, or describe a tool task and tap Run Agent.',
+                                helperText: _voiceHelperText(flavor, widget.model, _voiceState),
+                                alignLabelWithHint: true,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          _VoiceInputButton(
+                            enabled: !_sending && !_agentRunning,
+                            available: _voiceAvailable,
+                            state: _voiceState,
+                            onTap: _toggleVoiceInput,
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -5104,6 +5571,241 @@ class _EmptyChatState extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ChatModeStrip extends StatelessWidget {
+  const _ChatModeStrip({required this.onPrompt});
+
+  final ValueChanged<String> onPrompt;
+
+  @override
+  Widget build(BuildContext context) {
+    const prompts = [
+      _PromptShortcutData(
+        label: '贪吃蛇',
+        icon: Icons.videogame_asset_outlined,
+        prompt: '帮我在手机端创建一个可运行的贪吃蛇网页小游戏，生成 index.html、展示写代码过程，并用 WebView 预览。',
+        color: _mint,
+      ),
+      _PromptShortcutData(
+        label: '2048',
+        icon: Icons.grid_4x4_outlined,
+        prompt: '帮我创建一个 2048 网页小游戏，保存为 index.html，并打开本地 WebView 预览。',
+        color: _cyan,
+      ),
+      _PromptShortcutData(
+        label: 'GitHub',
+        icon: Icons.hub_outlined,
+        prompt: '测试 GitHub token 与 Harzva/mobilecode 仓库是否联通，并说明失败原因。',
+        color: _violet,
+      ),
+      _PromptShortcutData(
+        label: 'Termux',
+        icon: Icons.terminal_outlined,
+        prompt: '检查 Termux、Termux:API、root、后端端口是否可用，并告诉我缺什么权限。',
+        color: _amber,
+      ),
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final item in prompts) ...[
+            _PromptShortcutChip(item: item, onTap: () => onPrompt(item.prompt)),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PromptLaunchPanel extends StatelessWidget {
+  const _PromptLaunchPanel({required this.onPrompt});
+
+  final Future<void> Function(String prompt, {bool runAgent}) onPrompt;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.bolt_outlined, color: _mint, size: 19),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'One-tap coding prompts',
+                  style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '这些按钮会回到聊天页并填入任务，让 agent 以“思考 -> 工具调用 -> 写文件 -> 预览”的方式执行。',
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _ActionChipButton(
+                icon: Icons.videogame_asset_outlined,
+                label: '贪吃蛇游戏',
+                color: _mint,
+                onTap: () => onPrompt('帮我在手机端创建一个可运行的贪吃蛇网页小游戏，生成 index.html、展示写代码过程，并用 WebView 预览。', runAgent: true),
+              ),
+              _ActionChipButton(
+                icon: Icons.grid_4x4_outlined,
+                label: '2048 Demo',
+                color: _cyan,
+                onTap: () => onPrompt('帮我创建一个 2048 网页小游戏，保存为 index.html，并打开本地 WebView 预览。', runAgent: true),
+              ),
+              _ActionChipButton(
+                icon: Icons.edit_note_outlined,
+                label: '日记 App',
+                color: _amber,
+                onTap: () => onPrompt('帮我做一个最小日记 App：本地保存、列表、编辑、删除和空状态都要能在 APK 里体验。'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PromptShortcutData {
+  const _PromptShortcutData({
+    required this.label,
+    required this.icon,
+    required this.prompt,
+    required this.color,
+  });
+
+  final String label;
+  final IconData icon;
+  final String prompt;
+  final Color color;
+}
+
+class _PromptShortcutChip extends StatelessWidget {
+  const _PromptShortcutChip({
+    required this.item,
+    required this.onTap,
+  });
+
+  final _PromptShortcutData item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: item.color.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: item.color.withOpacity(0.34)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(item.icon, color: item.color, size: 16),
+            const SizedBox(width: 6),
+            Text(item.label, style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w800)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionChipButton extends StatelessWidget {
+  const _ActionChipButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      avatar: Icon(icon, color: color, size: 17),
+      label: Text(label),
+      side: BorderSide(color: color.withOpacity(0.35)),
+      backgroundColor: color.withOpacity(0.10),
+      labelStyle: const TextStyle(color: _text, fontWeight: FontWeight.w800),
+      onPressed: onTap,
+    );
+  }
+}
+
+class _VoiceInputButton extends StatelessWidget {
+  const _VoiceInputButton({
+    required this.enabled,
+    required this.available,
+    required this.state,
+    required this.onTap,
+  });
+
+  final bool enabled;
+  final bool available;
+  final VoiceState state;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final listening = state == VoiceState.listening;
+    final color = listening
+        ? _rose
+        : available
+            ? _mint
+            : _amber;
+    return Tooltip(
+      message: listening ? 'Stop voice input' : 'Voice input',
+      child: SizedBox(
+        width: 54,
+        height: 54,
+        child: FilledButton(
+          style: FilledButton.styleFrom(
+            padding: EdgeInsets.zero,
+            backgroundColor: color.withOpacity(listening ? 0.92 : 0.16),
+            foregroundColor: listening ? _bg : color,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          ),
+          onPressed: enabled ? onTap : null,
+          child: Icon(listening ? Icons.stop_rounded : Icons.mic_none_outlined),
+        ),
+      ),
+    );
+  }
+}
+
+String _voiceHelperText(_ApiFlavor flavor, String model, VoiceState state) {
+  final modelLabel = model.isEmpty ? 'default model' : model;
+  final voiceLabel = switch (state) {
+    VoiceState.listening => 'voice listening',
+    VoiceState.processing => 'voice processing',
+    VoiceState.done => 'voice ready',
+    VoiceState.error => 'voice unavailable',
+    VoiceState.idle => 'voice ready',
+  };
+  return '${_flavorLabel(flavor)} - $modelLabel - $voiceLabel';
 }
 
 class _DraftSheet extends StatefulWidget {

@@ -10,11 +10,16 @@ def main() -> None:
             '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
             '<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n'
             '    <uses-permission android:name="android.permission.INTERNET" />\n'
+            '    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n'
+            '    <uses-permission android:name="android.permission.VIBRATE" />\n'
             '    <queries>\n'
             '        <package android:name="com.termux" />\n'
             '        <package android:name="com.termux.api" />\n'
             '        <intent>\n'
             '            <action android:name="android.intent.action.MAIN" />\n'
+            '        </intent>\n'
+            '        <intent>\n'
+            '            <action android:name="android.speech.RecognitionService" />\n'
             '        </intent>\n'
             '    </queries>',
             1,

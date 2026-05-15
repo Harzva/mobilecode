@@ -80,7 +80,7 @@ const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
 const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.0';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.0+11';
+const _releaseBuildLabel = 'v0.1.0+12';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 
 class _ProbeResult {
@@ -318,6 +318,23 @@ class _ToolProbeResult {
   final String name;
   final bool ok;
   final String message;
+}
+
+class _RootProbeResult {
+  const _RootProbeResult({
+    required this.available,
+    required this.detail,
+  });
+
+  final bool available;
+  final String detail;
+
+  factory _RootProbeResult.fromMap(Map<dynamic, dynamic> map) {
+    return _RootProbeResult(
+      available: map['available'] == true,
+      detail: map['detail'] as String? ?? 'Root status returned without detail.',
+    );
+  }
 }
 
 class _AgentTraceStep {
@@ -603,6 +620,18 @@ Future<bool> _launchAndroidPackage(String packageName) async {
   }
 }
 
+Future<_RootProbeResult?> _probeRootAvailability() async {
+  try {
+    final result = await _systemToolsChannel.invokeMethod<Map<dynamic, dynamic>>('rootProbe');
+    if (result == null) return null;
+    return _RootProbeResult.fromMap(result);
+  } on MissingPluginException {
+    return null;
+  } on PlatformException {
+    return null;
+  }
+}
+
 String _agent2048Html() {
   return r'''<!doctype html>
 <html lang="en">
@@ -765,6 +794,11 @@ class _HomeScreenState extends State<HomeScreen> {
   _HomeTab _tab = _HomeTab.control;
   int _selectedLayerIndex = 0;
   bool _showCapabilityMap = false;
+  bool _runtimeChecking = false;
+  bool? _termuxInstalled;
+  bool? _termuxApiInstalled;
+  bool? _rootAvailable;
+  String _runtimeMessage = 'Checking Termux and root status...';
 
   final List<_ActivityLog> _activity = [
     _ActivityLog(
@@ -804,6 +838,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadConfig();
+    unawaited(_checkRuntime(silent: true));
   }
 
   @override
@@ -999,6 +1034,49 @@ class _HomeScreenState extends State<HomeScreen> {
       probes.add(Uri.parse('$normalized/v1/models'));
     }
     return probes;
+  }
+
+  Future<void> _checkRuntime({bool silent = false}) async {
+    if (_runtimeChecking) return;
+    setState(() {
+      _runtimeChecking = true;
+      if (!silent) _runtimeMessage = 'Checking Termux package, Termux:API, and root...';
+    });
+    try {
+      final termux = await _isAndroidPackageInstalled('com.termux');
+      final termuxApi = await _isAndroidPackageInstalled('com.termux.api');
+      final rootProbe = await _probeRootAvailability();
+      final root = rootProbe?.available;
+      final message = switch ((termux, root)) {
+        (true, true) => 'Ready for local Codex-style backend: Termux detected and root appears available.',
+        (true, false) => 'Termux is installed, but root is missing or not granted. Real backend keepalive and auto-start will fail.',
+        (true, null) => 'Termux is installed. Root probe is unavailable in this build.',
+        (false, _) => 'Termux is not visible to Android package manager. Install Termux from F-Droid first.',
+        (null, _) => 'Package visibility channel is unavailable. Check Android queries or generated MainActivity.',
+      };
+      if (!mounted) return;
+      setState(() {
+        _termuxInstalled = termux;
+        _termuxApiInstalled = termuxApi;
+        _rootAvailable = root;
+        _runtimeMessage = rootProbe?.detail.isNotEmpty == true && root != true ? '$message ${rootProbe!.detail}' : message;
+      });
+      if (!silent) {
+        _addLog(
+          root == true && termux == true ? 'Runtime ready' : 'Runtime needs permission',
+          _runtimeMessage,
+          root == true && termux == true ? Icons.verified_outlined : Icons.warning_amber_outlined,
+          root == true && termux == true ? _mint : _amber,
+        );
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _runtimeMessage = _compact(error.toString(), limit: 160);
+      });
+    } finally {
+      if (mounted) setState(() => _runtimeChecking = false);
+    }
   }
 
   void _setTab(_HomeTab tab) {
@@ -1388,6 +1466,228 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  int get _simpleTabIndex {
+    return switch (_tab) {
+      _HomeTab.control => 0,
+      _HomeTab.ai => 1,
+      _HomeTab.ship => 2,
+      _HomeTab.guard => 2,
+      _HomeTab.insight => 2,
+    };
+  }
+
+  Widget _buildChatTab() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          child: _SimpleHeader(
+            title: 'MobileCode',
+            subtitle: 'Chat-first mobile coding agent',
+            trailing: _Pill(
+              label: _managedProviderActive ? 'Managed' : _flavorLabel(_flavor),
+              icon: Icons.auto_awesome_outlined,
+              color: _managedProviderActive ? _mint : (_flavor == _ApiFlavor.anthropic ? _amber : _cyan),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: _RuntimePermissionBanner(
+            termuxInstalled: _termuxInstalled,
+            termuxApiInstalled: _termuxApiInstalled,
+            rootAvailable: _rootAvailable,
+            checking: _runtimeChecking,
+            message: _runtimeMessage,
+            onCheck: () => _checkRuntime(),
+            onOpenTermux: _openTermuxSheet,
+          ),
+        ),
+        Expanded(
+          child: _ChatPanel(
+            baseUrl: _effectiveBaseUrl,
+            apiKey: _effectiveApiKey,
+            model: _effectiveModel,
+            embedded: true,
+            onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
+            onAgentPrompt: _handleAgentPrompt,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCommandsTab() {
+    final commands = [
+      _CommandShortcut(
+        icon: Icons.grid_4x4_outlined,
+        title: 'Code 2048 demo',
+        subtitle: '让 agent 生成本地 HTML/CSS/JS 项目并用 WebView 预览。',
+        color: _mint,
+        action: _ModuleAction.webDemo,
+      ),
+      _CommandShortcut(
+        icon: Icons.handyman_outlined,
+        title: 'Tool tests',
+        subtitle: '测试 storage、provider、GitHub、Termux 等手机工具。',
+        color: _cyan,
+        action: _ModuleAction.toolLab,
+      ),
+      _CommandShortcut(
+        icon: Icons.terminal_outlined,
+        title: 'Termux / root',
+        subtitle: '检查 Termux、Termux:API 和 root 缺失原因。',
+        color: _amber,
+        action: _ModuleAction.termuxCheck,
+      ),
+      _CommandShortcut(
+        icon: Icons.hub_outlined,
+        title: 'GitHub test',
+        subtitle: '验证 GitHub token、仓库连接和 Pages 发布链路。',
+        color: _violet,
+        action: _ModuleAction.githubTest,
+      ),
+      _CommandShortcut(
+        icon: Icons.edit_note_outlined,
+        title: 'Diary demo',
+        subtitle: '最小日记 App 功能面，验证 APK 内本地应用体验。',
+        color: _lime,
+        action: _ModuleAction.diary,
+      ),
+      _CommandShortcut(
+        icon: Icons.rocket_launch_outlined,
+        title: 'Build / release',
+        subtitle: 'GitHub Release、APK、iOS simulator 和 Pages 构建入口。',
+        color: _rose,
+        action: _ModuleAction.build,
+      ),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+      cacheExtent: 700,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      children: [
+        const _SimpleHeader(
+          title: 'Commands',
+          subtitle: 'Only the tools needed for mobile coding stay here.',
+        ),
+        const SizedBox(height: 12),
+        _RuntimePermissionBanner(
+          termuxInstalled: _termuxInstalled,
+          termuxApiInstalled: _termuxApiInstalled,
+          rootAvailable: _rootAvailable,
+          checking: _runtimeChecking,
+          message: _runtimeMessage,
+          onCheck: () => _checkRuntime(),
+          onOpenTermux: _openTermuxSheet,
+        ),
+        const SizedBox(height: 12),
+        for (final command in commands) ...[
+          _CommandShortcutTile(
+            command: command,
+            onTap: () => _runAction(command.action),
+          ),
+          const SizedBox(height: 10),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSettingsTab() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
+      cacheExtent: 700,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      children: [
+        const _SimpleHeader(
+          title: 'Settings',
+          subtitle: 'Runtime, model, release, and advanced capability surfaces.',
+        ),
+        const SizedBox(height: 12),
+        _ApiConfigCard(
+          baseUrlController: _baseUrlController,
+          apiKeyController: _apiKeyController,
+          modelController: _modelController,
+          saving: _saving,
+          flavor: _flavor,
+          managedProviderActive: _managedProviderActive,
+          onPreset: _applyDefaultProvider,
+          onSave: _saveConfig,
+          onHealth: _checkHealth,
+        ),
+        const SizedBox(height: 12),
+        _HealthCard(
+          state: _healthState,
+          message: _healthMessage,
+          flavor: _flavor,
+          onCheck: _checkHealth,
+        ),
+        const SizedBox(height: 12),
+        _SideloadStatusPanel(
+          managedProviderActive: _managedProviderActive,
+          onOpenRelease: () => _openUrl(_releaseUrl, 'GitHub Release'),
+          onOpenAndroidReport: () => _openUrl(_androidSmokeRunUrl, 'Android smoke report'),
+          onOpenIosReport: () => _openUrl(_iosSimulatorRunUrl, 'iOS simulator report'),
+        ),
+        const SizedBox(height: 12),
+        _Panel(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              const Icon(Icons.account_tree_outlined, color: _cyan),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Advanced backend map', style: TextStyle(color: _text, fontWeight: FontWeight.w800)),
+                    SizedBox(height: 2),
+                    Text('Hidden by default. Keep the product chat-first.', style: TextStyle(color: _muted, fontSize: 12)),
+                  ],
+                ),
+              ),
+              TextButton.icon(
+                onPressed: () => setState(() => _showCapabilityMap = !_showCapabilityMap),
+                icon: Icon(_showCapabilityMap ? Icons.expand_less_outlined : Icons.expand_more_outlined),
+                label: Text(_showCapabilityMap ? 'Hide' : 'Show'),
+              ),
+            ],
+          ),
+        ),
+        if (_showCapabilityMap) ...[
+          const SizedBox(height: 14),
+          _LayerSelector(
+            layers: _layers,
+            selectedIndex: _safeLayerIndex,
+            onSelected: (index) => setState(() => _selectedLayerIndex = index),
+          ),
+          const SizedBox(height: 12),
+          _LayerHeader(layer: _activeLayer),
+          const SizedBox(height: 10),
+          for (final capability in _activeLayer.capabilities) ...[
+            _CapabilityCard(
+              capability: capability,
+              layerColor: _activeLayer.color,
+              onRun: () => _runAction(capability.primaryAction, capability),
+              onInspect: () => _openCapabilitySheet(capability),
+            ),
+            const SizedBox(height: 10),
+          ],
+        ],
+        const SizedBox(height: 14),
+        _OperationsBoard(
+          activity: _activity,
+          drafts: _drafts,
+          snippets: _snippets,
+          healthState: _healthState,
+          layerCount: _layers.length,
+          serviceCount: _layers.fold<int>(0, (sum, layer) => sum + layer.serviceCount),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1396,121 +1696,12 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           children: [
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 20),
-                cacheExtent: 900,
-                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              child: IndexedStack(
+                index: _simpleTabIndex,
                 children: [
-                  _TopBar(
-                    healthState: _healthState,
-                    flavor: _flavor,
-                    onChat: _openChatSheet,
-                  ),
-                  const SizedBox(height: 12),
-                  _SideloadStatusPanel(
-                    managedProviderActive: _managedProviderActive,
-                    onOpenRelease: () => _openUrl(_releaseUrl, 'GitHub Release'),
-                    onOpenAndroidReport: () => _openUrl(_androidSmokeRunUrl, 'Android smoke report'),
-                    onOpenIosReport: () => _openUrl(_iosSimulatorRunUrl, 'iOS simulator report'),
-                  ),
-                  const SizedBox(height: 12),
-                  _FocusPanel(
-                    tab: _tab,
-                    healthState: _healthState,
-                    onPrimary: () => _runAction(_focusPrimaryAction(_tab)),
-                    onSecondary: () => _runAction(_focusSecondaryAction(_tab)),
-                  ),
-                  const SizedBox(height: 14),
-                  _ApiConfigCard(
-                    baseUrlController: _baseUrlController,
-                    apiKeyController: _apiKeyController,
-                    modelController: _modelController,
-                    saving: _saving,
-                    flavor: _flavor,
-                    managedProviderActive: _managedProviderActive,
-                    onPreset: _applyDefaultProvider,
-                    onSave: _saveConfig,
-                    onHealth: _checkHealth,
-                  ),
-                  const SizedBox(height: 12),
-                  _HealthCard(
-                    state: _healthState,
-                    message: _healthMessage,
-                    flavor: _flavor,
-                    onCheck: _checkHealth,
-                  ),
-                  const SizedBox(height: 16),
-                  _DemoLabPanel(
-                    onOpen2048: () => _runAction(_ModuleAction.webDemo),
-                    onGitHub: () => _runAction(_ModuleAction.githubTest),
-                    onDiary: () => _runAction(_ModuleAction.diary),
-                    onChat: () => _runAction(_ModuleAction.aiChat),
-                    onTools: () => _runAction(_ModuleAction.toolLab),
-                    onTermux: () => _runAction(_ModuleAction.termuxCheck),
-                  ),
-                  const SizedBox(height: 16),
-                  _QuickActionGrid(
-                    onAction: (action) => _runAction(action),
-                  ),
-                  const SizedBox(height: 22),
-                  _Panel(
-                    padding: const EdgeInsets.all(14),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.account_tree_outlined, color: _cyan),
-                        const SizedBox(width: 10),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Backend capability map', style: TextStyle(color: _text, fontWeight: FontWeight.w800)),
-                              SizedBox(height: 2),
-                              Text('Collapsed by default so Demo Lab stays focused.', style: TextStyle(color: _muted, fontSize: 12)),
-                            ],
-                          ),
-                        ),
-                        TextButton.icon(
-                          onPressed: () => setState(() => _showCapabilityMap = !_showCapabilityMap),
-                          icon: Icon(_showCapabilityMap ? Icons.expand_less_outlined : Icons.expand_more_outlined),
-                          label: Text(_showCapabilityMap ? 'Hide' : 'Show'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (_showCapabilityMap) ...[
-                    const SizedBox(height: 14),
-                    _SectionHeader(
-                      title: 'Backend Capability Map',
-                      subtitle: 'AI core, agents, code intelligence, remote dev, guardrails, analytics, tools, performance, and team surfaces.',
-                    ),
-                    const SizedBox(height: 12),
-                    _LayerSelector(
-                      layers: _layers,
-                      selectedIndex: _safeLayerIndex,
-                      onSelected: (index) => setState(() => _selectedLayerIndex = index),
-                    ),
-                    const SizedBox(height: 12),
-                    _LayerHeader(layer: _activeLayer),
-                    const SizedBox(height: 10),
-                    for (final capability in _activeLayer.capabilities) ...[
-                      _CapabilityCard(
-                        capability: capability,
-                        layerColor: _activeLayer.color,
-                        onRun: () => _runAction(capability.primaryAction, capability),
-                        onInspect: () => _openCapabilitySheet(capability),
-                      ),
-                      const SizedBox(height: 10),
-                    ],
-                  ],
-                  const SizedBox(height: 14),
-                  _OperationsBoard(
-                    activity: _activity,
-                    drafts: _drafts,
-                    snippets: _snippets,
-                    healthState: _healthState,
-                    layerCount: _layers.length,
-                    serviceCount: _layers.fold<int>(0, (sum, layer) => sum + layer.serviceCount),
-                  ),
+                  _buildChatTab(),
+                  _buildCommandsTab(),
+                  _buildSettingsTab(),
                 ],
               ),
             ),
@@ -1572,6 +1763,149 @@ class _TopBar extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SimpleHeader extends StatelessWidget {
+  const _SimpleHeader({
+    required this.title,
+    required this.subtitle,
+    this.trailing,
+  });
+
+  final String title;
+  final String subtitle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: _panel,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _line),
+          ),
+          child: const Icon(Icons.code_rounded, color: _mint),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(color: _text, fontSize: 24, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 2),
+              Text(subtitle, style: const TextStyle(color: _muted, fontSize: 12)),
+            ],
+          ),
+        ),
+        if (trailing != null) ...[
+          const SizedBox(width: 10),
+          trailing!,
+        ],
+      ],
+    );
+  }
+}
+
+class _RuntimePermissionBanner extends StatelessWidget {
+  const _RuntimePermissionBanner({
+    required this.termuxInstalled,
+    required this.termuxApiInstalled,
+    required this.rootAvailable,
+    required this.checking,
+    required this.message,
+    required this.onCheck,
+    required this.onOpenTermux,
+  });
+
+  final bool? termuxInstalled;
+  final bool? termuxApiInstalled;
+  final bool? rootAvailable;
+  final bool checking;
+  final String message;
+  final VoidCallback onCheck;
+  final VoidCallback onOpenTermux;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = termuxInstalled == true && rootAvailable == true;
+    final missingRoot = termuxInstalled == true && rootAvailable == false;
+    final missingTermux = termuxInstalled == false;
+    final color = ready
+        ? _mint
+        : missingRoot
+            ? _amber
+            : missingTermux
+                ? _rose
+                : _cyan;
+    final title = ready
+        ? 'Local runtime ready'
+        : missingRoot
+            ? '缺少 root 授权'
+            : missingTermux
+                ? '未检测到 Termux'
+                : 'Runtime permission check';
+    final rootLabel = rootAvailable == true
+        ? 'root on'
+        : rootAvailable == false
+            ? 'root off'
+            : 'root ?';
+    final termuxLabel = termuxInstalled == true
+        ? (termuxApiInstalled == true ? 'Termux + API' : 'Termux')
+        : termuxInstalled == false
+            ? 'No Termux'
+            : 'Termux ?';
+
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(ready ? Icons.verified_outlined : Icons.warning_amber_outlined, color: color),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15)),
+                    const SizedBox(height: 3),
+                    Text(message, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+                  ],
+                ),
+              ),
+              IconButton.outlined(
+                tooltip: 'Check runtime',
+                onPressed: checking ? null : onCheck,
+                icon: checking
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.refresh_outlined),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MiniChip(label: rootLabel, color: rootAvailable == true ? _mint : _amber),
+              _MiniChip(label: termuxLabel, color: termuxInstalled == true ? _mint : _rose),
+              _MiniChip(label: 'backend via Termux', color: _cyan),
+              ActionChip(
+                avatar: const Icon(Icons.terminal_outlined, size: 16),
+                label: const Text('Termux'),
+                onPressed: onOpenTermux,
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2169,6 +2503,70 @@ class _DemoAction {
   final String subtitle;
   final _ModuleAction action;
   final Color color;
+}
+
+class _CommandShortcut {
+  const _CommandShortcut({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.action,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final _ModuleAction action;
+}
+
+class _CommandShortcutTile extends StatelessWidget {
+  const _CommandShortcutTile({required this.command, required this.onTap});
+
+  final _CommandShortcut command;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: _Panel(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: command.color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: command.color.withOpacity(0.28)),
+                ),
+                child: Icon(command.icon, color: command.color, size: 21),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(command.title, style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15)),
+                    const SizedBox(height: 4),
+                    Text(command.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right_outlined, color: _faint),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _DemoActionTile extends StatelessWidget {
@@ -3330,23 +3728,32 @@ class _BottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final selectedIndex = switch (tab) {
+      _HomeTab.control => 0,
+      _HomeTab.ai => 1,
+      _HomeTab.ship => 2,
+      _HomeTab.guard => 2,
+      _HomeTab.insight => 2,
+    };
     return Container(
       decoration: const BoxDecoration(
         color: _panel,
         border: Border(top: BorderSide(color: _line)),
       ),
       child: NavigationBar(
-        selectedIndex: tab.index,
-        onDestinationSelected: (index) => onChanged(_HomeTab.values[index]),
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) => onChanged(switch (index) {
+          0 => _HomeTab.control,
+          1 => _HomeTab.ai,
+          _ => _HomeTab.ship,
+        }),
         backgroundColor: _panel,
         indicatorColor: _mint.withOpacity(0.16),
         labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Control'),
-          NavigationDestination(icon: Icon(Icons.auto_awesome_outlined), selectedIcon: Icon(Icons.auto_awesome), label: 'AI'),
-          NavigationDestination(icon: Icon(Icons.rocket_launch_outlined), selectedIcon: Icon(Icons.rocket_launch), label: 'Ship'),
-          NavigationDestination(icon: Icon(Icons.security_outlined), selectedIcon: Icon(Icons.security), label: 'Guard'),
-          NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Insight'),
+          NavigationDestination(icon: Icon(Icons.forum_outlined), selectedIcon: Icon(Icons.forum), label: 'Chat'),
+          NavigationDestination(icon: Icon(Icons.terminal_outlined), selectedIcon: Icon(Icons.terminal), label: 'Commands'),
+          NavigationDestination(icon: Icon(Icons.tune_outlined), selectedIcon: Icon(Icons.tune), label: 'Settings'),
         ],
       ),
     );
@@ -3633,6 +4040,7 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
     _ToolProbe(name: 'Code 2048 project', detail: 'Runs the local coding lab and WebView preview flow.', icon: Icons.grid_4x4_outlined, action: 'demo_2048'),
     _ToolProbe(name: 'Local storage', detail: 'Writes and reads SharedPreferences.', icon: Icons.save_outlined, action: 'storage'),
     _ToolProbe(name: 'Termux package', detail: 'Checks com.termux through Android package manager.', icon: Icons.terminal_outlined, action: 'termux'),
+    _ToolProbe(name: 'Root permission', detail: 'Detects whether a su binary is visible for backend keepalive.', icon: Icons.admin_panel_settings_outlined, action: 'root'),
   ];
 
   Future<void> _runAll() async {
@@ -3642,6 +4050,7 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
     });
     await _run('storage');
     await _run('termux');
+    await _run('root');
     await _run('health');
     if (mounted) setState(() => _running = false);
   }
@@ -3681,6 +4090,15 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
               ? 'termux:// handler is visible. Package channel unavailable.'
               : 'Package channel unavailable; termux:// is not reliable for installed Termux detection.',
         );
+      }
+      return;
+    }
+    if (action == 'root') {
+      final probe = await _probeRootAvailability();
+      if (probe == null) {
+        _addResult('Root permission', false, 'Root probe channel is unavailable in this build.');
+      } else {
+        _addResult('Root permission', probe.available, probe.detail);
       }
       return;
     }
@@ -3886,9 +4304,10 @@ class _TermuxSheetState extends State<_TermuxSheet> {
       final installed = await _isAndroidPackageInstalled('com.termux');
       final apiInstalled = await _isAndroidPackageInstalled('com.termux.api');
       final urlVisible = await canLaunchUrl(Uri.parse('termux://'));
+      final rootProbe = await _probeRootAvailability();
       if (!mounted) return;
       final status = installed == true
-          ? 'Termux is installed. ${apiInstalled == true ? 'Termux:API is also installed.' : 'Termux:API is not detected; command automation may need it.'}'
+          ? 'Termux is installed. ${apiInstalled == true ? 'Termux:API is also installed.' : 'Termux:API is not detected; command automation may need it.'} ${rootProbe?.available == true ? 'Root appears available.' : 'Root is missing or not granted, so backend auto-start/keepalive can fail.'}'
           : installed == false
               ? 'com.termux is not visible to Android package manager. Install Termux from F-Droid, or check package visibility.'
               : 'Package channel is unavailable in this build. termux:// visible: $urlVisible. URL scheme alone is not reliable.';
@@ -3986,6 +4405,7 @@ class _ChatPanel extends StatefulWidget {
     required this.model,
     required this.onLog,
     required this.onAgentPrompt,
+    this.embedded = false,
   });
 
   final String baseUrl;
@@ -3993,6 +4413,7 @@ class _ChatPanel extends StatefulWidget {
   final String model;
   final void Function(String title, String detail, IconData icon, Color color) onLog;
   final Future<void> Function(String prompt) onAgentPrompt;
+  final bool embedded;
 
   @override
   State<_ChatPanel> createState() => _ChatPanelState();
@@ -4433,13 +4854,9 @@ class _ChatPanelState extends State<_ChatPanel> {
   Widget build(BuildContext context) {
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
     final active = _activeSession;
-    return _SheetScaffold(
-      icon: Icons.forum_outlined,
-      title: 'AI Chat',
-      subtitle: _chatEndpointLabel(widget.baseUrl, flavor),
-      child: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
+    final chatContent = _loading
+        ? const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+        : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
@@ -4559,7 +4976,19 @@ class _ChatPanelState extends State<_ChatPanel> {
                   ),
                 ],
               ],
-            ),
+            );
+    if (widget.embedded) {
+      return SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 20),
+        child: chatContent,
+      );
+    }
+    return _SheetScaffold(
+      icon: Icons.forum_outlined,
+      title: 'AI Chat',
+      subtitle: _chatEndpointLabel(widget.baseUrl, flavor),
+      child: chatContent,
     );
   }
 }

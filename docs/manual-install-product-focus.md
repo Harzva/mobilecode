@@ -10,6 +10,8 @@ MobileCode is distributed from GitHub Releases for now. The product target is a 
 - API configuration must stay near the top, with health visible and actionable.
 - Heavy backend capability maps should stay collapsed until the user asks for detail.
 - Tooling surfaces should favor short action labels, clear status, and saved local artifacts over marketing copy.
+- The default product shape is chat-first: Chat, Commands, Settings.
+- Real phone-side Codex behavior requires Termux plus root or an equivalent privileged bridge; missing root must be shown as a runtime state, not hidden inside failed chat messages.
 
 ## Smoothness Targets
 

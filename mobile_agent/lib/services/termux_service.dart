@@ -11,7 +11,6 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
-import 'package:package_info_plus/package_info_plus.dart';
 
 import 'terminal_service.dart';
 
@@ -248,7 +247,7 @@ class TermuxService {
 
       // Clone the Flutter SDK installer for Termux.
       _buildLogController.add('[setup] Downloading Flutter SDK...');
-      await execute('git clone https://github.com/termux/termux-flutter.git \\$HOME/termux-flutter || true');
+      await execute('git clone https://github.com/termux/termux-flutter.git \$HOME/termux-flutter || true');
 
       // Run the installer.
       _buildLogController.add('[setup] Running Flutter SDK installer...');

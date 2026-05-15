@@ -423,7 +423,7 @@ class TerminalService {
     }
 
     // Block shell metacharacter injection attempts.
-    final blockedChars = [';', '&&', '||', '`', '$('];
+    final blockedChars = [';', '&&', '||', '`', r'$('];
     // Note: we allow && and || for compound commands but validate each part.
     // For now, simple validation - check each part separated by shell operators.
     final parts = _splitCompoundCommand(trimmed);

@@ -19,9 +19,10 @@ void main() {
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.light,
-      systemNavigationBarColor: AppTheme.surfaceDark,
-      systemNavigationBarIconBrightness: Brightness.light,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+      systemNavigationBarColor: AppTheme.auroraSurface,
+      systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
 
@@ -37,9 +38,9 @@ class MobileAgentApp extends StatelessWidget {
     return MaterialApp(
       title: 'Mobile Agent',
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
+      theme: AppTheme.auroraLightTheme,
       darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.dark,
+      themeMode: ThemeMode.light,
       home: const HomeScreen(),
     );
   }

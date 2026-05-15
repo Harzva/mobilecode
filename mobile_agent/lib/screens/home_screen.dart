@@ -51,20 +51,20 @@ enum _ModuleAction {
   inspect,
 }
 
-const _bg = Color(0xFF05070C);
-const _panel = Color(0xFF101522);
-const _panelSoft = Color(0xFF151A2A);
-const _line = Color(0xFF293049);
-const _text = Color(0xFFF0F3FA);
-const _muted = Color(0xFF9EA6BD);
-const _faint = Color(0xFF667089);
-const _mint = Color(0xFF7AF2C7);
-const _cyan = Color(0xFF62D9FF);
-const _amber = Color(0xFFFFC66B);
-const _rose = Color(0xFFFF6E87);
-const _lime = Color(0xFFB8F26B);
-const _violet = Color(0xFF8B5CF6);
-const _blue = Color(0xFF6EA8FF);
+const _bg = Color(0xFFF7FAFF);
+const _panel = Color(0xFFFFFFFF);
+const _panelSoft = Color(0xFFF0F5FF);
+const _line = Color(0xFFDDE7F7);
+const _text = Color(0xFF0B1020);
+const _muted = Color(0xFF536079);
+const _faint = Color(0xFF8B97AD);
+const _mint = Color(0xFF0B9B7E);
+const _cyan = Color(0xFF16B9C7);
+const _amber = Color(0xFFB7791F);
+const _rose = Color(0xFFE0526E);
+const _lime = Color(0xFF4F8F2D);
+const _violet = Color(0xFF7557E8);
+const _blue = Color(0xFF2555FF);
 const _defaultBaseUrl = 'https://token-plan-cn.xiaomimimo.com/anthropic';
 const _defaultModel = 'mimo-v2.5-pro';
 const _managedProviderEnabled = bool.fromEnvironment('MOBILECODE_MANAGED_PROVIDER');
@@ -82,7 +82,7 @@ const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
 const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.0';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.0+14';
+const _releaseBuildLabel = 'v0.1.0+19';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 
 class _ProbeResult {
@@ -534,6 +534,17 @@ String _compact(String value, {int limit = 800}) {
   return '${trimmed.substring(0, limit)}...';
 }
 
+String _friendlySocketError(SocketException error) {
+  final raw = error.message.trim().isEmpty ? error.toString() : error.message.trim();
+  final lower = raw.toLowerCase();
+  if (lower.contains('failed host lookup') ||
+      lower.contains('no address associated') ||
+      lower.contains('temporary failure in name resolution')) {
+    return '$raw. Network/DNS/proxy issue: the device cannot resolve the provider host, so the token was not checked.';
+  }
+  return raw;
+}
+
 List<String> _chunkText(String value, int chunkSize) {
   final chunks = <String>[];
   for (var offset = 0; offset < value.length; offset += chunkSize) {
@@ -980,6 +991,14 @@ class _HomeScreenState extends State<HomeScreen> {
         result.isHealthy ? Icons.check_circle_outline : Icons.error_outline,
         result.isHealthy ? _mint : _rose,
       );
+    } on SocketException catch (error) {
+      if (!mounted) return;
+      final message = _friendlySocketError(error);
+      setState(() {
+        _healthState = _HealthState.failed;
+        _healthMessage = message;
+      });
+      _addLog('Health check failed', _compact(message, limit: 140), Icons.error_outline, _rose);
     } on Object catch (error) {
       if (!mounted) return;
       final message = error.toString().replaceFirst('Exception: ', '');
@@ -1529,10 +1548,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
           child: _SimpleHeader(
             title: 'MobileCode',
-            subtitle: 'Chat-first mobile coding agent',
+            subtitle: 'Ask, build, preview on phone',
             leading: IconButton.filledTonal(
               tooltip: 'Open conversations',
               onPressed: _openDrawer,
@@ -1546,7 +1565,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
           child: _RuntimePermissionBanner(
             termuxInstalled: _termuxInstalled,
             termuxApiInstalled: _termuxApiInstalled,
@@ -1824,6 +1843,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Scaffold(
       key: _scaffoldKey,
       resizeToAvoidBottomInset: true,
@@ -1858,7 +1878,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-            _BottomNav(tab: _tab, onChanged: _setTab),
+            if (!keyboardOpen) _BottomNav(tab: _tab, onChanged: _setTab),
           ],
         ),
       ),
@@ -2223,48 +2243,48 @@ class _RuntimePermissionBanner extends StatelessWidget {
             ? 'No Termux'
             : 'Termux ?';
 
+    final statusLine = '$title · $termuxLabel · $rootLabel';
     return _Panel(
-      padding: const EdgeInsets.all(12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(ready ? Icons.verified_outlined : Icons.warning_amber_outlined, color: color),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15)),
-                    const SizedBox(height: 3),
-                    Text(message, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
-                  ],
+          Icon(ready ? Icons.verified_outlined : Icons.warning_amber_outlined, color: color, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  statusLine,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 13),
                 ),
-              ),
-              IconButton.outlined(
-                tooltip: 'Check runtime',
-                onPressed: checking ? null : onCheck,
-                icon: checking
-                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.refresh_outlined),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  message,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _muted, fontSize: 11, height: 1.2),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _MiniChip(label: rootLabel, color: rootAvailable == true ? _mint : _amber),
-              _MiniChip(label: termuxLabel, color: termuxInstalled == true ? _mint : _rose),
-              _MiniChip(label: 'backend via Termux', color: _cyan),
-              ActionChip(
-                avatar: const Icon(Icons.terminal_outlined, size: 16),
-                label: const Text('Termux'),
-                onPressed: onOpenTermux,
-              ),
-            ],
+          const SizedBox(width: 6),
+          IconButton(
+            tooltip: 'Open Termux',
+            visualDensity: VisualDensity.compact,
+            onPressed: onOpenTermux,
+            icon: Icon(Icons.terminal_outlined, color: _violet, size: 18),
+          ),
+          IconButton(
+            tooltip: 'Check runtime',
+            visualDensity: VisualDensity.compact,
+            onPressed: checking ? null : onCheck,
+            icon: checking
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.refresh_outlined, size: 18),
           ),
         ],
       ),
@@ -5107,7 +5127,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       }
       return answer;
     } on SocketException catch (error) {
-      throw Exception('Provider network error: ${error.message}');
+      throw Exception('Provider network error: ${_friendlySocketError(error)}');
     } on TimeoutException {
       throw Exception('Provider timed out while waiting for a model response.');
     } finally {
@@ -5432,55 +5452,30 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   Widget _buildChatHeader(_ChatSession? active) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _Panel(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.memory_outlined, color: _mint, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '${active?.turns.length ?? 0} saved turns - context is sent with each request',
-                          style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: _Panel(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: Row(
+          children: [
+            const Icon(Icons.memory_outlined, color: _blue, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '${active?.turns.length ?? 0} saved turns · context sent with each request',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
               ),
-              const SizedBox(width: 10),
-              IconButton.filledTonal(
-                tooltip: 'New chat',
-                onPressed: _sending || _agentRunning ? null : _createSession,
-                icon: const Icon(Icons.add_comment_outlined),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final session in _sessions)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: _ChatSessionChip(
-                      session: session,
-                      selected: session.id == active?.id,
-                      onTap: _sending || _agentRunning ? null : () => _selectSession(session.id),
-                    ),
-                  ),
-              ],
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            IconButton.filledTonal(
+              tooltip: 'New chat',
+              visualDensity: VisualDensity.compact,
+              onPressed: _sending || _agentRunning ? null : _createSession,
+              icon: const Icon(Icons.add_comment_outlined, size: 18),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -5776,22 +5771,10 @@ class _ChatModeStrip extends StatelessWidget {
         color: _cyan,
       ),
       _PromptShortcutData(
-        label: '日记',
-        icon: Icons.edit_note_outlined,
-        prompt: '帮我做一个最小日记 App：本地保存、列表、编辑、删除和空状态都要能在 APK 里体验。',
-        color: _amber,
-      ),
-      _PromptShortcutData(
         label: 'GitHub',
         icon: Icons.hub_outlined,
         prompt: '测试 GitHub token 与 Harzva/mobilecode 仓库是否联通，并说明失败原因。',
         color: _violet,
-      ),
-      _PromptShortcutData(
-        label: 'Termux',
-        icon: Icons.terminal_outlined,
-        prompt: '检查 Termux、Termux:API、root、后端端口是否可用，并告诉我缺什么权限。',
-        color: _amber,
       ),
     ];
 
@@ -6341,6 +6324,13 @@ class _Panel extends StatelessWidget {
         color: _panel,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: _line),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A2555FF),
+            blurRadius: 16,
+            offset: Offset(0, 8),
+          ),
+        ],
       ),
       child: child,
     );

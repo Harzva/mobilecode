@@ -90,6 +90,7 @@ class RuntimeCommandResult {
   final Duration duration;
   final RuntimeProviderType providerType;
   final String? taskId;
+  final RuntimeTaskFailureKind failureKind;
 
   const RuntimeCommandResult({
     required this.command,
@@ -99,6 +100,7 @@ class RuntimeCommandResult {
     required this.duration,
     required this.providerType,
     this.taskId,
+    this.failureKind = RuntimeTaskFailureKind.none,
   });
 
   bool get success => exitCode == 0;

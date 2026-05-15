@@ -477,6 +477,7 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
             cancelled = self.state.current_task is not None and self.state.current_task.get("status") == "cancelled"
         status = "cancelled" if cancelled else "timedOut" if timed_out else "succeeded" if exit_code == 0 else "failed"
         self.state.finish_task(status, exit_code, duration_ms, (stderr or "").strip() or None)
+        failure_kind = self.state.task_snapshot().get("failureKind", "none")
         self.send_json(
             {
                 "command": command,
@@ -485,6 +486,7 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                 "exitCode": exit_code,
                 "durationMs": duration_ms,
                 "taskId": task["id"],
+                "failureKind": failure_kind,
             }
         )
 

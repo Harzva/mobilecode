@@ -188,12 +188,18 @@ class RuntimeManager {
     final caps = await provider.capabilities();
     final plan = planRuntimeAction(request, caps);
     if (plan == null) {
+      const skippedReason = 'Missing capability or required action input.';
       return RuntimeActionResult(
         action: request.type,
         success: false,
         summary: 'Runtime cannot plan ${request.type.name} with current capabilities.',
         results: const [],
-        skippedReason: 'Missing capability or required action input.',
+        skippedReason: skippedReason,
+        recoveryHint: runtimeActionRecoveryHint(
+          action: request.type,
+          capabilities: caps,
+          skippedReason: skippedReason,
+        ),
       );
     }
 
@@ -211,6 +217,11 @@ class RuntimeManager {
           success: false,
           summary: '${plan.summary} Failed at: $command',
           results: List.unmodifiable(results),
+          recoveryHint: runtimeActionRecoveryHint(
+            action: request.type,
+            capabilities: caps,
+            result: result,
+          ),
         );
       }
     }
@@ -220,6 +231,30 @@ class RuntimeManager {
       success: true,
       summary: plan.summary,
       results: List.unmodifiable(results),
+    );
+  }
+
+  Future<RuntimeActionPipelineResult> runActionPipeline(
+    List<RuntimeActionRequest> requests,
+  ) async {
+    final steps = <RuntimeActionResult>[];
+    for (final request in requests) {
+      final result = await runAction(request);
+      steps.add(result);
+      if (!result.success) {
+        return RuntimeActionPipelineResult(
+          success: false,
+          summary: 'Stopped at ${request.type.name}: ${result.summary}',
+          steps: List.unmodifiable(steps),
+          recoveryHint: result.recoveryHint,
+        );
+      }
+    }
+
+    return RuntimeActionPipelineResult(
+      success: true,
+      summary: 'Runtime validation completed: ${steps.map((step) => step.action.name).join(' -> ')}.',
+      steps: List.unmodifiable(steps),
     );
   }
 

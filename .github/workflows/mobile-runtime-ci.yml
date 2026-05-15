@@ -132,6 +132,7 @@ jobs:
           grep '"ready":true' artifacts/helper-health.json
           grep '"authRequired":true' artifacts/helper-health.json
           grep '"exitCode":0' artifacts/helper-execute.json
+          grep '"failureKind":"none"' artifacts/helper-execute.json
           grep '"stdout":"42' artifacts/helper-execute.json
           grep '"type":"stdout"' artifacts/helper-stream.ndjson
           grep '"type":"exit"' artifacts/helper-stream.ndjson

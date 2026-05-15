@@ -115,7 +115,8 @@ Response:
   "stderr": "",
   "exitCode": 0,
   "durationMs": 42,
-  "taskId": "task-1715780000000"
+  "taskId": "task-1715780000000",
+  "failureKind": "none"
 }
 ```
 

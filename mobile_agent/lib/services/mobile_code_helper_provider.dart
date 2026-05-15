@@ -125,6 +125,7 @@ class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor {
       ),
       providerType: type,
       taskId: payload['taskId'] as String?,
+      failureKind: _taskFailureKindFromString(payload['failureKind']?.toString()),
     );
   }
 

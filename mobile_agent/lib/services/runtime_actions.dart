@@ -46,6 +46,7 @@ class RuntimeActionResult {
     required this.summary,
     required this.results,
     this.skippedReason,
+    this.recoveryHint,
   });
 
   final RuntimeActionType action;
@@ -53,8 +54,30 @@ class RuntimeActionResult {
   final String summary;
   final List<RuntimeCommandResult> results;
   final String? skippedReason;
+  final String? recoveryHint;
 
   RuntimeCommandResult? get lastResult => results.isEmpty ? null : results.last;
+}
+
+class RuntimeActionPipelineResult {
+  const RuntimeActionPipelineResult({
+    required this.success,
+    required this.summary,
+    required this.steps,
+    this.recoveryHint,
+  });
+
+  final bool success;
+  final String summary;
+  final List<RuntimeActionResult> steps;
+  final String? recoveryHint;
+
+  RuntimeActionResult? get failedStep {
+    for (final step in steps) {
+      if (!step.success) return step;
+    }
+    return null;
+  }
 }
 
 RuntimeActionPlan? planRuntimeAction(
@@ -152,4 +175,66 @@ RuntimeActionPlan? planRuntimeAction(
 String quoteRuntimeArg(String value) {
   final escaped = value.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
   return '"$escaped"';
+}
+
+String runtimeActionRecoveryHint({
+  required RuntimeActionType action,
+  required RuntimeCapabilities capabilities,
+  RuntimeCommandResult? result,
+  String? skippedReason,
+}) {
+  if (skippedReason != null && skippedReason.isNotEmpty) {
+    return _capabilityRecoveryHint(action, capabilities);
+  }
+
+  final failureKind = result?.failureKind;
+  switch (failureKind) {
+    case RuntimeTaskFailureKind.timeout:
+      return 'The task timed out. Retry with a longer timeout or move this build to Cloud Runtime.';
+    case RuntimeTaskFailureKind.cancelled:
+      return 'The task was cancelled. Retry the failed step when the runtime is idle.';
+    case RuntimeTaskFailureKind.dependencyMissing:
+      return 'A required tool or dependency is missing. Run Install first, then retry, or switch to Termux/Cloud with the toolchain installed.';
+    case RuntimeTaskFailureKind.commandBlocked:
+      return 'The runtime blocked this command. Prefer a structured Runtime Action or review the command policy before allowing it.';
+    case RuntimeTaskFailureKind.cwdOutsideWorkspace:
+      return 'The project path is outside the runtime workspace. Choose a workspace path exposed by Helper/Termux and retry.';
+    case RuntimeTaskFailureKind.authFailed:
+      return 'Helper auth failed. Restart the Helper and verify the app is using the same localhost token.';
+    case RuntimeTaskFailureKind.runtimeLost:
+      return 'The runtime lost the task after a restart. Open History, recover logs, then rerun the failed step.';
+    case RuntimeTaskFailureKind.processFailed:
+    case RuntimeTaskFailureKind.unknown:
+      return _processFailureHint(action);
+    case RuntimeTaskFailureKind.none:
+    case null:
+      if (result != null && !result.success) return _processFailureHint(action);
+      return 'No recovery action is needed.';
+  }
+}
+
+String _capabilityRecoveryHint(RuntimeActionType action, RuntimeCapabilities capabilities) {
+  return switch (action) {
+    RuntimeActionType.installDependencies || RuntimeActionType.runTests || RuntimeActionType.buildPreview =>
+      'Current runtime cannot plan this action from its capabilities. Pick the correct action profile, start Helper/Termux, or move the task to Cloud Runtime.',
+    RuntimeActionType.gitCommit || RuntimeActionType.publishPages =>
+      capabilities.git
+          ? 'Git is available, but this action is missing required input. Check the commit message or branch state.'
+          : 'Git is not available in the active runtime. Start Helper/Termux with git installed or use GitHub API publishing.',
+  };
+}
+
+String _processFailureHint(RuntimeActionType action) {
+  return switch (action) {
+    RuntimeActionType.installDependencies =>
+      'Dependency installation failed. Open logs, fix the package manager error, then retry Install before running tests.',
+    RuntimeActionType.runTests =>
+      'Tests failed. Open logs, fix the first failing assertion or compile error, then retry Test.',
+    RuntimeActionType.buildPreview =>
+      'Preview build failed. Inspect the build log, fix the compile/bundle error, then retry Preview.',
+    RuntimeActionType.gitCommit =>
+      'Git commit failed. Check whether there are staged changes, identity config, or repository initialization issues.',
+    RuntimeActionType.publishPages =>
+      'Publish failed. Check git remote/auth/branch permissions, then retry or switch to GitHub API publishing.',
+  };
 }

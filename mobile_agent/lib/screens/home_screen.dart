@@ -4966,6 +4966,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
   final List<String> _lines = ['No runtime action has run yet.'];
   bool _running = false;
   late String _packageManager;
+  RuntimeActionType? _lastFailedAction;
 
   @override
   void initState() {
@@ -4991,21 +4992,18 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
       _lines.insert(0, 'Running ${type.name}...');
     });
     try {
-      final result = await widget.runtimeManager.runAction(RuntimeActionRequest(
-        type: type,
-        projectPath: projectPath,
-        packageManager: _packageManager == 'auto' ? null : _packageManager,
-        message: _message.text.trim(),
-      ));
+      final result = await widget.runtimeManager.runAction(_requestFor(type, projectPath));
       if (!mounted) return;
       final tail = result.lastResult;
       final detail = [
         result.summary,
         if (result.skippedReason != null) result.skippedReason!,
+        if (result.recoveryHint != null) 'Recovery: ${result.recoveryHint!}',
         if (tail != null && tail.stdout.trim().isNotEmpty) _compact(tail.stdout.trim(), limit: 160),
         if (tail != null && tail.stderr.trim().isNotEmpty) _compact(tail.stderr.trim(), limit: 160),
       ].join('\n');
       setState(() {
+        _lastFailedAction = result.success ? null : result.action;
         _lines.insert(0, '${result.success ? 'OK' : 'FAILED'} ${type.name}: $detail');
       });
       widget.onLog(
@@ -5018,12 +5016,78 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
       if (!mounted) return;
       final message = _compact(error.toString(), limit: 180);
       setState(() {
+        _lastFailedAction = type;
         _lines.insert(0, 'ERROR ${type.name}: $message');
       });
       widget.onLog('Runtime action error', message, Icons.error_outline, _rose);
     } finally {
       if (mounted) setState(() => _running = false);
     }
+  }
+
+  RuntimeActionRequest _requestFor(RuntimeActionType type, String projectPath) {
+    return RuntimeActionRequest(
+      type: type,
+      projectPath: projectPath,
+      packageManager: _packageManager == 'auto' ? null : _packageManager,
+      message: _message.text.trim(),
+    );
+  }
+
+  Future<void> _runValidationLoop() async {
+    final projectPath = _projectPath.text.trim();
+    if (projectPath.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Project path is required')));
+      return;
+    }
+    setState(() {
+      _running = true;
+      _lines.insert(0, 'Running validate loop...');
+    });
+    try {
+      final result = await widget.runtimeManager.runActionPipeline([
+        _requestFor(RuntimeActionType.installDependencies, projectPath),
+        _requestFor(RuntimeActionType.runTests, projectPath),
+        _requestFor(RuntimeActionType.buildPreview, projectPath),
+      ]);
+      if (!mounted) return;
+      final failed = result.failedStep;
+      final stepLines = result.steps.map((step) => '${step.success ? 'OK' : 'FAILED'} ${step.action.name}: ${step.summary}');
+      setState(() {
+        _lastFailedAction = failed?.action;
+        _lines.insert(
+          0,
+          [
+            result.success ? 'VALIDATED: ${result.summary}' : 'VALIDATION STOPPED: ${result.summary}',
+            ...stepLines,
+            if (result.recoveryHint != null) 'Recovery: ${result.recoveryHint!}',
+          ].join('\n'),
+        );
+      });
+      widget.onLog(
+        result.success ? 'Runtime validate loop completed' : 'Runtime validate loop stopped',
+        result.summary,
+        result.success ? Icons.verified_outlined : Icons.error_outline,
+        result.success ? _mint : _rose,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 180);
+      setState(() => _lines.insert(0, 'VALIDATION ERROR: $message'));
+      widget.onLog('Runtime validate loop error', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  Future<void> _retryLastFailure() async {
+    final failedAction = _lastFailedAction;
+    if (failedAction == null) {
+      setState(() => _lines.insert(0, 'No failed runtime action to retry.'));
+      return;
+    }
+    await widget.runtimeManager.refresh();
+    await _run(failedAction);
   }
 
   Future<void> _inspectTask() async {
@@ -5160,6 +5224,8 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
               _RuntimeActionButton(icon: Icons.inventory_2_outlined, label: 'Install', disabled: _running, onTap: () => _run(RuntimeActionType.installDependencies)),
               _RuntimeActionButton(icon: Icons.fact_check_outlined, label: 'Test', disabled: _running, onTap: () => _run(RuntimeActionType.runTests)),
               _RuntimeActionButton(icon: Icons.web_asset_outlined, label: 'Preview', disabled: _running, onTap: () => _run(RuntimeActionType.buildPreview)),
+              _RuntimeActionButton(icon: Icons.verified_outlined, label: 'Validate', disabled: _running, onTap: _runValidationLoop),
+              _RuntimeActionButton(icon: Icons.replay_outlined, label: 'Retry', disabled: _running || _lastFailedAction == null, onTap: _retryLastFailure),
               _RuntimeActionButton(icon: Icons.account_tree_outlined, label: 'Commit', disabled: _running, onTap: () => _run(RuntimeActionType.gitCommit)),
               _RuntimeActionButton(icon: Icons.publish_outlined, label: 'Publish', disabled: _running, onTap: () => _run(RuntimeActionType.publishPages)),
               _RuntimeActionButton(icon: Icons.history_outlined, label: 'Recover', disabled: _running, onTap: _inspectTask),

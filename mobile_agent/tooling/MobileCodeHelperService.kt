@@ -215,6 +215,7 @@ class MobileCodeHelperService : Service() {
                 .put("exitCode", exitCode)
                 .put("durationMs", durationMs)
                 .put("taskId", taskId)
+                .put("failureKind", currentTaskFailureKind)
         )
     }
 

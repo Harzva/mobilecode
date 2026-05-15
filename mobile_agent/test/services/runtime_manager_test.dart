@@ -181,6 +181,50 @@ void main() {
 
       await manager.dispose();
     });
+
+    test('runs validation pipeline and stops at first failed action with recovery hint', () async {
+      final provider = _FakeRuntimeProvider(
+        type: RuntimeProviderType.mobileCodeHelper,
+        name: 'Helper',
+        health: const RuntimeHealth(
+          type: RuntimeProviderType.mobileCodeHelper,
+          name: 'Helper',
+          available: true,
+          ready: true,
+          status: 'ready',
+          capabilities: RuntimeCapabilities(shell: true, node: true),
+        ),
+        exitCodes: const {
+          'npm test': 1,
+        },
+      );
+      final manager = RuntimeManager(providers: [provider]);
+
+      final result = await manager.runActionPipeline(const [
+        RuntimeActionRequest(
+          type: RuntimeActionType.installDependencies,
+          projectPath: '/workspace/app',
+          packageManager: 'npm',
+        ),
+        RuntimeActionRequest(
+          type: RuntimeActionType.runTests,
+          projectPath: '/workspace/app',
+          packageManager: 'npm',
+        ),
+        RuntimeActionRequest(
+          type: RuntimeActionType.buildPreview,
+          projectPath: '/workspace/app',
+          packageManager: 'npm',
+        ),
+      ]);
+
+      expect(result.success, isFalse);
+      expect(result.failedStep?.action, RuntimeActionType.runTests);
+      expect(result.recoveryHint, contains('Tests failed'));
+      expect(provider.commands, ['npm install', 'npm test']);
+
+      await manager.dispose();
+    });
   });
 }
 
@@ -188,6 +232,7 @@ class _FakeRuntimeProvider implements RuntimeProvider {
   final RuntimeProviderType _type;
   final String _name;
   final RuntimeHealth _health;
+  final Map<String, int> _exitCodes;
   final StreamController<String> _logs = StreamController<String>.broadcast();
   final List<String> commands = [];
 
@@ -195,9 +240,11 @@ class _FakeRuntimeProvider implements RuntimeProvider {
     required RuntimeProviderType type,
     required String name,
     required RuntimeHealth health,
+    Map<String, int> exitCodes = const {},
   })  : _type = type,
         _name = name,
-        _health = health;
+        _health = health,
+        _exitCodes = exitCodes;
 
   @override
   RuntimeProviderType get type => _type;
@@ -225,13 +272,15 @@ class _FakeRuntimeProvider implements RuntimeProvider {
     Duration? timeout,
   }) async {
     commands.add(command);
+    final exitCode = _exitCodes[command] ?? 0;
     return RuntimeCommandResult(
       command: command,
-      stdout: '',
-      stderr: '',
-      exitCode: 0,
+      stdout: exitCode == 0 ? '' : 'ok before failure',
+      stderr: exitCode == 0 ? '' : 'test failed',
+      exitCode: exitCode,
       duration: Duration.zero,
       providerType: type,
+      failureKind: exitCode == 0 ? RuntimeTaskFailureKind.none : RuntimeTaskFailureKind.processFailed,
     );
   }
 

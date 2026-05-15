@@ -105,6 +105,7 @@ Pass criteria:
 - Tools -> Runtime providers can detect Helper or External Termux fallback.
 - Runtime Diagnostics can refresh without starting a crashing foreground service.
 - Build / release page exposes structured runtime actions without missing plugin errors.
+- Runtime Actions can run the Validate loop, stop at the first failed step, show a recovery hint, and retry the failed step after runtime refresh.
 - Logcat has no `FATAL EXCEPTION`, `AndroidRuntime`, `MissingPluginException`, or `ANR in com.mobilecode.mobile_agent`.
 
 ## Release Readiness

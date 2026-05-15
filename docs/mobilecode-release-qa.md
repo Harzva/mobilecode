@@ -8,7 +8,7 @@ Required GitHub Actions before publishing:
 
 - `.github/workflows/mobile-runtime-ci.yml`
   - Runs `flutter pub get`.
-  - Runs `flutter analyze lib test --no-fatal-infos --no-fatal-warnings`.
+  - Runs `flutter analyze` on the runtime provider files, Home/Build runtime surfaces, and runtime tests.
   - Runs RuntimeProvider tests for `RuntimeManager` and `MobileCodeHelperProvider`.
   - Compiles `mobile_agent/tooling/mobilecode_helper_daemon.py`.
   - Compiles `mobile_agent/tooling/prepare_android_project.py`, which injects the native Helper foreground service into generated Android projects.

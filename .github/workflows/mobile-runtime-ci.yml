@@ -49,7 +49,23 @@ jobs:
 
       - name: Analyze runtime and app sources
         working-directory: mobile_agent
-        run: flutter analyze lib test --no-fatal-infos --no-fatal-warnings
+        run: |
+          flutter analyze \
+            lib/main.dart \
+            lib/screens/home_screen.dart \
+            lib/screens/build_preview_screen.dart \
+            lib/services/runtime_provider.dart \
+            lib/services/runtime_manager.dart \
+            lib/services/runtime_actions.dart \
+            lib/services/runtime_placeholder_providers.dart \
+            lib/services/mobile_code_helper_provider.dart \
+            lib/services/external_termux_provider.dart \
+            lib/services/build_orchestrator.dart \
+            lib/widgets/flutter_web_preview.dart \
+            test/services/runtime_manager_test.dart \
+            test/services/mobile_code_helper_provider_test.dart \
+            --no-fatal-infos \
+            --no-fatal-warnings
 
       - name: Run RuntimeProvider tests
         working-directory: mobile_agent

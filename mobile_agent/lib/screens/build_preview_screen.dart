@@ -733,7 +733,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: const BorderSide(color: AppTheme.border),
+        border: Border.all(color: AppTheme.border),
       ),
       child: const Column(
         children: [

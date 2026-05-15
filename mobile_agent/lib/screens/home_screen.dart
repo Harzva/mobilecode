@@ -5463,8 +5463,6 @@ class _ProjectConsoleSheetState extends State<_ProjectConsoleSheet> {
   @override
   void initState() {
     super.initState();
-    _promptController.text =
-        'Inspect the selected project, run runtime preflight and validation, identify the next highest-value fix, implement it, and explain verification.';
     _projectPath.text = widget.defaultProjectPath;
   }
 
@@ -7086,6 +7084,8 @@ class _DeepDiveConsoleSheetState extends State<_DeepDiveConsoleSheet> {
   @override
   void initState() {
     super.initState();
+    _promptController.text =
+        'Inspect the selected project, run runtime preflight and validation, identify the next highest-value fix, implement it, and explain verification.';
     _projectPath.text = widget.defaultProjectPath;
   }
 

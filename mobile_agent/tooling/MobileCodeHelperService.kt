@@ -166,7 +166,7 @@ class MobileCodeHelperService : Service() {
         val env = envFromJson(payload)
         val taskId = UUID.randomUUID().toString()
         beginTask(taskId, command, cwd)
-        recordLog("task $taskId: $command")
+        recordLog(taskId, "task $taskId: $command")
 
         val started = System.nanoTime()
         val process = ProcessBuilder(args)
@@ -175,19 +175,19 @@ class MobileCodeHelperService : Service() {
             .apply { environment().putAll(env) }
             .start()
 
-        currentProcess = process
+        registerTaskProcess(taskId, process)
         val stdout = StringBuilder()
         val stderr = StringBuilder()
         val stdoutThread = thread(isDaemon = true) {
             process.inputStream.bufferedReader().forEachLine {
                 stdout.appendLine(it)
-                recordLog("stdout: $it")
+                recordLog(taskId, "stdout: $it")
             }
         }
         val stderrThread = thread(isDaemon = true) {
             process.errorStream.bufferedReader().forEachLine {
                 stderr.appendLine(it)
-                recordLog("stderr: $it")
+                recordLog(taskId, "stderr: $it")
             }
         }
 
@@ -195,21 +195,21 @@ class MobileCodeHelperService : Service() {
         if (!finished) {
             process.destroyForcibly()
             stderr.appendLine("Command timed out after ${timeoutMs}ms.")
-            recordLog("task timed out after ${timeoutMs}ms")
+            recordLog(taskId, "task timed out after ${timeoutMs}ms")
         }
         stdoutThread.join(500)
         stderrThread.join(500)
         val exitCode = if (finished) process.exitValue() else 124
         val durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
-        if (currentProcess == process) currentProcess = null
+        clearTaskProcess(taskId, process)
         val finalStatus = when {
-            currentTaskStatus == "cancelled" -> "cancelled"
+            isTaskCancelled(taskId) -> "cancelled"
             !finished -> "timedOut"
             exitCode == 0 -> "succeeded"
             else -> "failed"
         }
         val stderrText = stderr.toString().trim()
-        finishTask(finalStatus, exitCode, durationMs, if (stderrText.isBlank()) null else stderrText)
+        finishTask(taskId, finalStatus, exitCode, durationMs, if (stderrText.isBlank()) null else stderrText)
 
         writeJson(
             socket,
@@ -221,7 +221,7 @@ class MobileCodeHelperService : Service() {
                 .put("exitCode", exitCode)
                 .put("durationMs", durationMs)
                 .put("taskId", taskId)
-                .put("failureKind", currentTaskFailureKind)
+                .put("failureKind", taskFailureKind(taskId))
         )
     }
 
@@ -233,7 +233,7 @@ class MobileCodeHelperService : Service() {
         val env = envFromJson(payload)
         val taskId = UUID.randomUUID().toString()
         beginTask(taskId, command, cwd)
-        recordLog("task $taskId stream: $command")
+        recordLog(taskId, "task $taskId stream: $command")
 
         val output = socket.getOutputStream()
         writeHeaders(output, 200, "application/x-ndjson", null)
@@ -244,38 +244,38 @@ class MobileCodeHelperService : Service() {
             .apply { environment().putAll(env) }
             .start()
 
-        currentProcess = process
+        registerTaskProcess(taskId, process)
         val writeLock = Any()
         val stdoutThread = thread(isDaemon = true) {
             process.inputStream.bufferedReader().forEachLine { line ->
                 writeNdjson(output, writeLock, JSONObject().put("type", "stdout").put("data", line))
-                recordLog("stdout: $line")
+                recordLog(taskId, "stdout: $line")
             }
         }
         val stderrThread = thread(isDaemon = true) {
             process.errorStream.bufferedReader().forEachLine { line ->
                 writeNdjson(output, writeLock, JSONObject().put("type", "stderr").put("data", line))
-                recordLog("stderr: $line")
+                recordLog(taskId, "stderr: $line")
             }
         }
         val exitCode = process.waitFor()
         stdoutThread.join(500)
         stderrThread.join(500)
         val durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
-        val finalStatus = if (currentTaskStatus == "cancelled") {
+        clearTaskProcess(taskId, process)
+        val finalStatus = if (isTaskCancelled(taskId)) {
             "cancelled"
         } else if (exitCode == 0) {
             "succeeded"
         } else {
             "failed"
         }
-        finishTask(finalStatus, exitCode, durationMs, null)
+        finishTask(taskId, finalStatus, exitCode, durationMs, null)
         writeNdjson(
             output,
             writeLock,
             JSONObject().put("type", "exit").put("exitCode", exitCode).put("durationMs", durationMs).put("taskId", taskId)
         )
-        if (currentProcess == process) currentProcess = null
     }
 
     private fun handleProjectPreflight(socket: Socket, body: String) {
@@ -313,16 +313,26 @@ class MobileCodeHelperService : Service() {
                     .put("webViewPreview", true)
                     .put("cloudBuild", false)
             )
+            .put(
+                "taskRegistry",
+                JSONObject()
+                    .put("runningCount", runningTaskCount())
+                    .put("maxTasks", MAX_TASKS)
+            )
             .put("missingDependencies", JSONArray())
             .put("recoveryActions", JSONArray())
     }
 
     private fun taskJson(): JSONObject {
-        val snapshot = taskSnapshotJson()
+        val snapshot = synchronized(taskLock) {
+            syncCurrentTaskLocked()
+            taskSnapshotJson()
+        }
         return JSONObject()
-            .put("running", currentProcess != null)
-            .put("taskId", currentTaskId)
-            .put("command", currentCommand)
+            .put("running", snapshot.optString("status") == "running")
+            .put("runningCount", runningTaskCount())
+            .put("taskId", snapshot.optString("id", ""))
+            .put("command", snapshot.optString("command", ""))
             .put("logs", snapshot.optJSONArray("logs") ?: JSONArray())
             .put("task", snapshot)
     }
@@ -352,6 +362,65 @@ class MobileCodeHelperService : Service() {
             .put("logs", logs)
     }
 
+    private fun findTaskLocked(taskId: String): JSONObject? {
+        return taskHistory.firstOrNull { it.optString("id") == taskId || it.optString("taskId") == taskId }
+    }
+
+    private fun taskIdentity(task: JSONObject): String = task.optString("id", task.optString("taskId", ""))
+
+    private fun appendLogToTaskLocked(task: JSONObject, line: String) {
+        val logs = task.optJSONArray("logs") ?: JSONArray().also { task.put("logs", it) }
+        logs.put(line)
+        while (logs.length() > MAX_LOG_LINES) {
+            logs.remove(0)
+        }
+    }
+
+    private fun syncCurrentTaskLocked() {
+        val runningTask = taskHistory.firstOrNull { task ->
+            val taskId = taskIdentity(task)
+            task.optString("status") == "running" && taskProcesses.containsKey(taskId)
+        }
+        val nextTask = runningTask ?: taskHistory.firstOrNull()
+        if (nextTask == null) {
+            currentTaskId = ""
+            currentCommand = ""
+            currentTaskCwd = ""
+            currentTaskStatus = "unknown"
+            currentTaskStartedAtMs = 0L
+            currentTaskFinishedAtMs = 0L
+            currentTaskExitCode = null
+            currentTaskDurationMs = 0L
+            currentTaskError = ""
+            currentTaskFailureKind = "none"
+            currentProcess = null
+            synchronized(recentLogs) { recentLogs.clear() }
+            return
+        }
+        applyTaskJsonLocked(nextTask)
+        currentProcess = taskProcesses[currentTaskId]
+    }
+
+    private fun isTaskCancelled(taskId: String): Boolean {
+        synchronized(taskLock) {
+            return findTaskLocked(taskId)?.optString("status") == "cancelled"
+        }
+    }
+
+    private fun taskFailureKind(taskId: String): String {
+        synchronized(taskLock) {
+            return findTaskLocked(taskId)?.optString("failureKind", "none") ?: "none"
+        }
+    }
+
+    private fun runningTaskCount(): Int {
+        synchronized(taskLock) {
+            return taskHistory.count { task ->
+                task.optString("status") == "running" && taskProcesses.containsKey(taskIdentity(task))
+            }
+        }
+    }
+
     private fun beginTask(taskId: String, command: String, cwd: File) {
         synchronized(taskLock) {
             currentTaskId = taskId
@@ -371,18 +440,52 @@ class MobileCodeHelperService : Service() {
         }
     }
 
-    private fun finishTask(status: String, exitCode: Int, durationMs: Long, error: String?) {
+    private fun registerTaskProcess(taskId: String, process: Process) {
         synchronized(taskLock) {
-            currentTaskStatus = status
-            currentTaskFinishedAtMs = System.currentTimeMillis()
-            currentTaskExitCode = exitCode
-            currentTaskDurationMs = durationMs
-            currentTaskError = if (status == "cancelled" && error.isNullOrBlank() && currentTaskError.isNotBlank()) {
-                currentTaskError
+            taskProcesses[taskId] = process
+            if (taskId == currentTaskId) currentProcess = process
+            persistTaskStateLocked()
+        }
+    }
+
+    private fun clearTaskProcess(taskId: String, process: Process) {
+        synchronized(taskLock) {
+            if (taskProcesses[taskId] == process) {
+                taskProcesses.remove(taskId)
+            }
+            if (currentProcess == process) {
+                currentProcess = null
+            }
+            syncCurrentTaskLocked()
+            persistTaskStateLocked()
+        }
+    }
+
+    private fun finishTask(taskId: String, status: String, exitCode: Int, durationMs: Long, error: String?) {
+        synchronized(taskLock) {
+            val task = findTaskLocked(taskId) ?: return
+            val finalStatus = if (task.optString("status") == "cancelled") "cancelled" else status
+            val finalError = if (finalStatus == "cancelled" && error.isNullOrBlank() && task.optString("error").isNotBlank()) {
+                task.optString("error")
             } else {
                 error ?: ""
             }
-            currentTaskFailureKind = classifyFailure(status, exitCode, error)
+            task.put("status", finalStatus)
+            task.put("finishedAtMs", System.currentTimeMillis())
+            task.put("exitCode", exitCode)
+            task.put("durationMs", durationMs)
+            if (finalError.isNotBlank()) task.put("error", finalError)
+            task.put("failureKind", classifyFailure(finalStatus, exitCode, finalError.ifBlank { null }))
+            syncCurrentTaskLocked()
+            persistTaskStateLocked()
+        }
+    }
+
+    private fun recordLog(taskId: String, line: String) {
+        synchronized(taskLock) {
+            val task = findTaskLocked(taskId) ?: return
+            appendLogToTaskLocked(task, line)
+            if (taskId == currentTaskId) appendLog(line)
             persistTaskStateLocked()
         }
     }
@@ -406,18 +509,21 @@ class MobileCodeHelperService : Service() {
                         taskHistory.add(task)
                     }
                 }
-                val currentJson = taskHistory.firstOrNull()
-                    ?: if (taskStateFile.exists()) JSONObject(taskStateFile.readText()) else null
-                    ?: return
-                applyTaskJsonLocked(currentJson)
-                if (currentTaskStatus == "running" && currentProcess == null) {
-                    currentTaskStatus = "lost"
-                    currentTaskFinishedAtMs = System.currentTimeMillis()
-                    currentTaskError = "Helper service restarted before this task completed."
-                    currentTaskFailureKind = "runtimeLost"
-                    appendLog("task lost after helper restart")
-                    persistTaskStateLocked()
+                if (taskHistory.isEmpty() && taskStateFile.exists()) {
+                    taskHistory.add(JSONObject(taskStateFile.readText()))
                 }
+                val now = System.currentTimeMillis()
+                taskHistory.forEach { task ->
+                    if (task.optString("status") == "running") {
+                        task.put("status", "lost")
+                        task.put("finishedAtMs", now)
+                        task.put("error", "Helper service restarted before this task completed.")
+                        task.put("failureKind", "runtimeLost")
+                        appendLogToTaskLocked(task, "task lost after helper restart")
+                    }
+                }
+                syncCurrentTaskLocked()
+                persistTaskStateLocked()
             } catch (error: Throwable) {
                 lastError = "failed to load task state: ${error.message ?: error.javaClass.simpleName}"
             }
@@ -425,9 +531,10 @@ class MobileCodeHelperService : Service() {
     }
 
     private fun persistTaskStateLocked() {
-        if (currentTaskId.isBlank() && currentCommand.isBlank()) return
+        if (currentTaskId.isBlank() && currentCommand.isBlank() && taskHistory.isEmpty()) return
         try {
             upsertTaskHistoryLocked()
+            syncCurrentTaskLocked()
             val file = taskStateFile
             file.parentFile?.mkdirs()
             file.writeText(taskSnapshotJson().toString())
@@ -588,54 +695,39 @@ class MobileCodeHelperService : Service() {
         val requestedTaskId = taskId?.trim().orEmpty()
         var stoppingTaskId = ""
         val process = synchronized(taskLock) {
-            if (requestedTaskId.isNotEmpty()) {
-                val task = taskHistory.firstOrNull { it.optString("id") == requestedTaskId || it.optString("taskId") == requestedTaskId }
-                if (task == null) {
-                    return JSONObject()
-                        .put("success", false)
-                        .put("stopped", false)
-                        .put("taskId", requestedTaskId)
-                        .put("failureKind", "unknown")
-                        .put("error", "Task not found: $requestedTaskId")
-                }
-                if (requestedTaskId != currentTaskId) {
-                    return JSONObject()
-                        .put("success", true)
-                        .put("stopped", false)
-                        .put("taskId", requestedTaskId)
-                        .put("task", JSONObject(task.toString()))
-                }
+            val task = if (requestedTaskId.isNotEmpty()) {
+                findTaskLocked(requestedTaskId) ?: return JSONObject()
+                    .put("success", false)
+                    .put("stopped", false)
+                    .put("taskId", requestedTaskId)
+                    .put("failureKind", "unknown")
+                    .put("error", "Task not found: $requestedTaskId")
+            } else {
+                taskHistory.firstOrNull { candidate ->
+                    candidate.optString("status") == "running" && taskProcesses.containsKey(taskIdentity(candidate))
+                } ?: return JSONObject().put("success", true).put("stopped", false)
             }
-            stoppingTaskId = currentTaskId
-            currentProcess
-        } ?: return synchronized(taskLock) {
-            val payload = JSONObject().put("success", true).put("stopped", false)
-            if (requestedTaskId.isNotEmpty()) {
-                payload.put("taskId", requestedTaskId)
-                taskHistory
-                    .firstOrNull { it.optString("id") == requestedTaskId || it.optString("taskId") == requestedTaskId }
-                    ?.let { payload.put("task", JSONObject(it.toString())) }
+            stoppingTaskId = taskIdentity(task)
+            val process = taskProcesses.remove(stoppingTaskId)
+            if (process == null) {
+                return JSONObject()
+                    .put("success", true)
+                    .put("stopped", false)
+                    .put("taskId", stoppingTaskId)
+                    .put("task", JSONObject(task.toString()))
             }
-            payload
-        }
-
-        val markedTask = synchronized(taskLock) {
-            if (currentProcess == process && currentTaskId == stoppingTaskId) {
-                currentProcess = null
-                currentTaskStatus = "cancelled"
-                currentTaskFinishedAtMs = System.currentTimeMillis()
-                currentTaskDurationMs = if (currentTaskStartedAtMs > 0L) {
-                    (currentTaskFinishedAtMs - currentTaskStartedAtMs).coerceAtLeast(0L)
-                } else {
-                    currentTaskDurationMs
-                }
-                currentTaskError = "Task cancelled by MobileCode."
-                currentTaskFailureKind = "cancelled"
-                appendLog("task stopped")
-                persistTaskStateLocked()
-            }
-            val task = taskHistory.firstOrNull { it.optString("id") == stoppingTaskId || it.optString("taskId") == stoppingTaskId }
-            if (task == null) taskSnapshotJson() else JSONObject(task.toString())
+            appendLogToTaskLocked(task, "task stopped")
+            val finishedAtMs = System.currentTimeMillis()
+            val startedAtMs = task.optLong("startedAtMs", finishedAtMs)
+            task.put("status", "cancelled")
+            task.put("finishedAtMs", finishedAtMs)
+            task.put("durationMs", (finishedAtMs - startedAtMs).coerceAtLeast(0L))
+            task.put("error", "Task cancelled by MobileCode.")
+            task.put("failureKind", "cancelled")
+            if (currentProcess == process) currentProcess = null
+            syncCurrentTaskLocked()
+            persistTaskStateLocked()
+            process
         }
 
         return try {
@@ -644,18 +736,18 @@ class MobileCodeHelperService : Service() {
                 process.destroyForcibly()
             }
             synchronized(taskLock) {
-                val task = taskHistory.firstOrNull { it.optString("id") == stoppingTaskId || it.optString("taskId") == stoppingTaskId }
+                val task = findTaskLocked(stoppingTaskId)
                 JSONObject()
                     .put("success", true)
                     .put("stopped", true)
                     .put("taskId", stoppingTaskId)
-                    .put("task", if (task == null) markedTask else JSONObject(task.toString()))
+                    .put("task", if (task == null) JSONObject() else JSONObject(task.toString()))
             }
         } catch (error: Throwable) {
             JSONObject()
                 .put("success", false)
                 .put("stopped", false)
-                .put("taskId", requestedTaskId.ifEmpty { currentTaskId })
+                .put("taskId", requestedTaskId.ifEmpty { stoppingTaskId })
                 .put("failureKind", "unknown")
                 .put("error", error.message ?: error.javaClass.simpleName)
         }
@@ -771,6 +863,7 @@ class MobileCodeHelperService : Service() {
         private val taskLock = Any()
         private val recentLogs = Collections.synchronizedList(mutableListOf<String>())
         private val taskHistory = Collections.synchronizedList(mutableListOf<JSONObject>())
+        private val taskProcesses = Collections.synchronizedMap(mutableMapOf<String, Process>())
 
         fun status(): Map<String, Any> {
             return mapOf(
@@ -779,7 +872,8 @@ class MobileCodeHelperService : Service() {
                 "lastError" to lastError,
                 "taskId" to currentTaskId,
                 "command" to currentCommand,
-                "taskRunning" to (currentProcess != null),
+                "taskRunning" to (taskProcesses.isNotEmpty()),
+                "taskRunningCount" to taskProcesses.size,
                 "taskStatus" to currentTaskStatus,
                 "taskStartedAtMs" to currentTaskStartedAtMs,
                 "taskFinishedAtMs" to currentTaskFinishedAtMs,

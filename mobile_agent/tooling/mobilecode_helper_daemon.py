@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -98,12 +99,12 @@ class HelperState:
         self.allow_unsafe = allow_unsafe
         self.auth_token = (auth_token or "").strip()
         self.max_tasks = max_tasks
-        self.current_process: subprocess.Popen[str] | None = None
         self.current_lock = threading.Lock()
         self.task_file = self.workspace_root / ".mobilecode-helper-task.json"
         self.task_database_file = self.workspace_root / ".mobilecode-helper-tasks.json"
         self.current_task: dict[str, Any] | None = None
         self.tasks: list[dict[str, Any]] = []
+        self.processes: dict[str, subprocess.Popen[str]] = {}
         self._load_tasks()
 
     def capabilities(self) -> dict[str, bool]:
@@ -149,7 +150,7 @@ class HelperState:
 
     def begin_task(self, command: str, cwd: Path) -> dict[str, Any]:
         task = {
-            "id": f"task-{int(time.time() * 1000)}-{os.getpid()}",
+            "id": f"task-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}",
             "taskId": "",
             "command": command,
             "cwd": str(cwd),
@@ -169,37 +170,50 @@ class HelperState:
             self._persist_tasks_locked()
         return task
 
-    def append_log(self, line: str) -> None:
+    def register_process(self, task_id: str, process: subprocess.Popen[str]) -> None:
         with self.current_lock:
-            if self.current_task is None:
+            if self._find_task_locked(task_id) is None:
                 return
-            logs = self.current_task.setdefault("logs", [])
-            if isinstance(logs, list):
-                logs.append(line)
-                del logs[:-200]
+            self.processes[task_id] = process
             self._persist_tasks_locked()
 
-    def finish_task(self, status: str, exit_code: int | None, duration_ms: int, error: str | None = None) -> None:
+    def clear_process(self, task_id: str, process: subprocess.Popen[str]) -> None:
         with self.current_lock:
-            if self.current_task is None:
+            if self.processes.get(task_id) is process:
+                self.processes.pop(task_id, None)
+            self._persist_tasks_locked()
+
+    def append_log(self, task_id: str, line: str) -> None:
+        with self.current_lock:
+            task = self._find_task_locked(task_id)
+            if task is None:
                 return
-            self.current_task["status"] = status
-            self.current_task["finishedAtMs"] = int(time.time() * 1000)
-            self.current_task["durationMs"] = duration_ms
+            self._append_task_log_locked(task, line)
+            self._persist_tasks_locked()
+
+    def finish_task(self, task_id: str, status: str, exit_code: int | None, duration_ms: int, error: str | None = None) -> None:
+        with self.current_lock:
+            task = self._find_task_locked(task_id)
+            if task is None:
+                return
+            if task.get("status") == "cancelled":
+                status = "cancelled"
+                error = error or str(task.get("error") or "") or None
+            task["status"] = status
+            task["finishedAtMs"] = int(time.time() * 1000)
+            task["durationMs"] = duration_ms
             if exit_code is not None:
-                self.current_task["exitCode"] = exit_code
+                task["exitCode"] = exit_code
             if error:
-                self.current_task["error"] = error
-            self.current_task["failureKind"] = classify_failure(status, exit_code, error)
+                task["error"] = error
+            task["failureKind"] = classify_failure(status, exit_code, error)
+            self._sync_current_task_locked()
             self._persist_tasks_locked()
 
     def task_snapshot(self) -> dict[str, Any]:
         with self.current_lock:
-            task = dict(self.current_task or {})
-            logs = task.get("logs", [])
-            if isinstance(logs, list):
-                task["logs"] = list(logs)
-            return task
+            self._sync_current_task_locked()
+            return clone_task(self.current_task or {})
 
     def task_list(self, limit: int = 20) -> list[dict[str, Any]]:
         with self.current_lock:
@@ -218,32 +232,95 @@ class HelperState:
 
     def find_task(self, task_id: str) -> dict[str, Any] | None:
         with self.current_lock:
-            for task in self.tasks:
-                if task.get("id") == task_id or task.get("taskId") == task_id:
-                    return clone_task(task)
+            task = self._find_task_locked(task_id)
+            if task is not None:
+                return clone_task(task)
         return None
+
+    def current_running_task_id(self) -> str | None:
+        with self.current_lock:
+            if self.current_task is not None:
+                task_id = task_identity(self.current_task)
+                if self.current_task.get("status") == "running" and task_id in self.processes:
+                    return task_id
+            for task in self.tasks:
+                task_id = task_identity(task)
+                if task.get("status") == "running" and task_id in self.processes:
+                    return task_id
+        return None
+
+    def is_task_cancelled(self, task_id: str) -> bool:
+        with self.current_lock:
+            task = self._find_task_locked(task_id)
+            return task is not None and task.get("status") == "cancelled"
+
+    def cancel_task(self, task_id: str) -> tuple[subprocess.Popen[str] | None, dict[str, Any] | None, bool]:
+        with self.current_lock:
+            task = self._find_task_locked(task_id)
+            if task is None:
+                return None, None, False
+            process = self.processes.pop(task_id, None)
+            if process is None:
+                return None, clone_task(task), False
+            self._append_task_log_locked(task, "task stopped")
+            finished_at_ms = int(time.time() * 1000)
+            started_at_ms = int(task.get("startedAtMs") or finished_at_ms)
+            task["status"] = "cancelled"
+            task["finishedAtMs"] = finished_at_ms
+            task["durationMs"] = max(0, finished_at_ms - started_at_ms)
+            task["error"] = "Task cancelled by MobileCode."
+            task["failureKind"] = "cancelled"
+            self._sync_current_task_locked()
+            self._persist_tasks_locked()
+            return process, clone_task(task), True
+
+    def _find_task_locked(self, task_id: str) -> dict[str, Any] | None:
+        for task in self.tasks:
+            if task.get("id") == task_id or task.get("taskId") == task_id:
+                return task
+        return None
+
+    def _append_task_log_locked(self, task: dict[str, Any], line: str) -> None:
+        logs = task.setdefault("logs", [])
+        if isinstance(logs, list):
+            logs.append(line)
+            del logs[:-200]
+
+    def _sync_current_task_locked(self) -> None:
+        if not self.tasks:
+            self.current_task = None
+            return
+        for task in self.tasks:
+            if task.get("status") == "running" and task_identity(task) in self.processes:
+                self.current_task = task
+                return
+        self.current_task = self.tasks[0]
+
+    def has_running_tasks(self) -> bool:
+        with self.current_lock:
+            return any(task.get("status") == "running" and task_identity(task) in self.processes for task in self.tasks)
+
+    def running_task_count(self) -> int:
+        with self.current_lock:
+            return sum(1 for task in self.tasks if task.get("status") == "running" and task_identity(task) in self.processes)
 
     def cancel_current_task(self, task_id: str, process: Any) -> dict[str, Any] | None:
         with self.current_lock:
-            if self.current_process is not process or self.current_task is None:
+            task = self._find_task_locked(task_id)
+            if task is None or self.processes.get(task_id) is not process:
                 return None
-            current_task_id = str(self.current_task.get("id") or self.current_task.get("taskId") or "")
-            if current_task_id != task_id:
-                return None
-            self.current_process = None
-            logs = self.current_task.setdefault("logs", [])
-            if isinstance(logs, list):
-                logs.append("task stopped")
-                del logs[:-200]
+            self.processes.pop(task_id, None)
+            self._append_task_log_locked(task, "task stopped")
             finished_at_ms = int(time.time() * 1000)
-            started_at_ms = int(self.current_task.get("startedAtMs") or finished_at_ms)
-            self.current_task["status"] = "cancelled"
-            self.current_task["finishedAtMs"] = finished_at_ms
-            self.current_task["durationMs"] = max(0, finished_at_ms - started_at_ms)
-            self.current_task["error"] = "Task cancelled by MobileCode."
-            self.current_task["failureKind"] = "cancelled"
+            started_at_ms = int(task.get("startedAtMs") or finished_at_ms)
+            task["status"] = "cancelled"
+            task["finishedAtMs"] = finished_at_ms
+            task["durationMs"] = max(0, finished_at_ms - started_at_ms)
+            task["error"] = "Task cancelled by MobileCode."
+            task["failureKind"] = "cancelled"
+            self._sync_current_task_locked()
             self._persist_tasks_locked()
-            return clone_task(self.current_task)
+            return clone_task(task)
 
     def inspect_project(self, cwd: Path, max_depth: int = 2) -> list[str]:
         detected: set[str] = set()
@@ -293,13 +370,14 @@ class HelperState:
                     )
             loaded_tasks.sort(key=lambda item: int(item.get("startedAtMs") or 0), reverse=True)
             self.tasks = loaded_tasks[: self.max_tasks]
-            self.current_task = self.tasks[0] if self.tasks else None
+            self._sync_current_task_locked()
             self._persist_tasks_locked()
         except Exception:
             self.current_task = None
             self.tasks = []
 
     def _persist_tasks_locked(self) -> None:
+        self._sync_current_task_locked()
         if not self.current_task:
             return
         self.task_file.write_text(json.dumps(self.current_task, ensure_ascii=False), encoding="utf-8")
@@ -322,6 +400,10 @@ def clone_task(task: dict[str, Any]) -> dict[str, Any]:
     if isinstance(logs, list):
         copied["logs"] = [str(line) for line in logs]
     return copied
+
+
+def task_identity(task: dict[str, Any]) -> str:
+    return str(task.get("id") or task.get("taskId") or "")
 
 
 def classify_failure(status: str, exit_code: int | None, error: str | None) -> str:
@@ -423,6 +505,10 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                         "protocolVersion": 1,
                         "authRequired": bool(self.state.auth_token),
                         "capabilities": self.state.capabilities(),
+                        "taskRegistry": {
+                            "runningCount": self.state.running_task_count(),
+                            "maxTasks": self.state.max_tasks,
+                        },
                         "missingDependencies": [],
                         "recoveryActions": [],
                     }
@@ -433,6 +519,7 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                 self.send_json(
                     {
                         "running": task.get("status") == "running",
+                        "runningCount": self.state.running_task_count(),
                         "taskId": task.get("id", ""),
                         "command": task.get("command", ""),
                         "logs": task.get("logs", []),
@@ -497,7 +584,8 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         timeout_ms = int(payload.get("timeoutMs", 120000))
         args = self.state.command_args(command)
         task = self.state.begin_task(command, cwd)
-        self.state.append_log(f"task {task['id']}: {command}")
+        task_id = str(task["id"])
+        self.state.append_log(task_id, f"task {task_id}: {command}")
         started = time.monotonic()
         merged_env = os.environ.copy()
         if env:
@@ -510,8 +598,7 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        with self.state.current_lock:
-            self.state.current_process = process
+        self.state.register_process(task_id, process)
         timed_out = False
         try:
             stdout, stderr = process.communicate(timeout=max(timeout_ms / 1000, 1))
@@ -523,16 +610,14 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         duration_ms = int((time.monotonic() - started) * 1000)
         exit_code = 124 if timed_out else process.returncode
         for line in (stdout or "").splitlines():
-            self.state.append_log(f"stdout: {line}")
+            self.state.append_log(task_id, f"stdout: {line}")
         for line in (stderr or "").splitlines():
-            self.state.append_log(f"stderr: {line}")
-        with self.state.current_lock:
-            if self.state.current_process is process:
-                self.state.current_process = None
-            cancelled = self.state.current_task is not None and self.state.current_task.get("status") == "cancelled"
+            self.state.append_log(task_id, f"stderr: {line}")
+        self.state.clear_process(task_id, process)
+        cancelled = self.state.is_task_cancelled(task_id)
         status = "cancelled" if cancelled else "timedOut" if timed_out else "succeeded" if exit_code == 0 else "failed"
-        self.state.finish_task(status, exit_code, duration_ms, (stderr or "").strip() or None)
-        failure_kind = self.state.task_snapshot().get("failureKind", "none")
+        self.state.finish_task(task_id, status, exit_code, duration_ms, (stderr or "").strip() or None)
+        failure_kind = (self.state.find_task(task_id) or {}).get("failureKind", "none")
         self.send_json(
             {
                 "command": command,
@@ -540,7 +625,7 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                 "stderr": stderr or "",
                 "exitCode": exit_code,
                 "durationMs": duration_ms,
-                "taskId": task["id"],
+                "taskId": task_id,
                 "failureKind": failure_kind,
             }
         )
@@ -552,7 +637,8 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         env = payload.get("env") if isinstance(payload.get("env"), dict) else None
         args = self.state.command_args(command)
         task = self.state.begin_task(command, cwd)
-        self.state.append_log(f"task {task['id']} stream: {command}")
+        task_id = str(task["id"])
+        self.state.append_log(task_id, f"task {task_id} stream: {command}")
 
         merged_env = os.environ.copy()
         if env:
@@ -569,8 +655,7 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
             universal_newlines=True,
         )
 
-        with self.state.current_lock:
-            self.state.current_process = process
+        self.state.register_process(task_id, process)
 
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/x-ndjson")
@@ -598,18 +683,16 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
             if line is None:
                 ended_streams += 1
                 continue
-            self.state.append_log(f"{stream_type}: {line}")
+            self.state.append_log(task_id, f"{stream_type}: {line}")
             self.write_ndjson({"type": stream_type, "data": line})
 
         exit_code = process.wait()
         duration_ms = int((time.monotonic() - started) * 1000)
-        with self.state.current_lock:
-            if self.state.current_process is process:
-                self.state.current_process = None
-            cancelled = self.state.current_task is not None and self.state.current_task.get("status") == "cancelled"
+        self.state.clear_process(task_id, process)
+        cancelled = self.state.is_task_cancelled(task_id)
         status = "cancelled" if cancelled else "succeeded" if exit_code == 0 else "failed"
-        self.state.finish_task(status, exit_code, duration_ms)
-        self.write_ndjson({"type": "exit", "exitCode": exit_code, "durationMs": duration_ms, "taskId": task["id"]})
+        self.state.finish_task(task_id, status, exit_code, duration_ms)
+        self.write_ndjson({"type": "exit", "exitCode": exit_code, "durationMs": duration_ms, "taskId": task_id})
 
     def handle_project_preflight(self) -> None:
         payload = read_json(self)
@@ -624,33 +707,26 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         )
 
     def handle_stop(self, task_id: str | None = None) -> None:
-        with self.state.current_lock:
-            process = self.state.current_process
-            current_task_id = ""
-            if self.state.current_task is not None:
-                current_task_id = str(self.state.current_task.get("id") or self.state.current_task.get("taskId") or "")
+        if task_id is None:
+            task_id = self.state.current_running_task_id()
+            if task_id is None:
+                self.send_json({"success": True, "stopped": False})
+                return
         if task_id:
             task = self.state.find_task(task_id)
             if task is None:
                 self.send_error_json(HTTPStatus.NOT_FOUND, f"Task not found: {task_id}", "unknown")
                 return
-            if task_id != current_task_id:
-                self.send_json({"success": True, "stopped": False, "taskId": task_id, "task": task})
-                return
-        if process is None:
-            payload: dict[str, Any] = {"success": True, "stopped": False}
-            if task_id:
-                payload["taskId"] = task_id
-                payload["task"] = self.state.find_task(task_id) or {}
-            self.send_json(payload)
+        process, snapshot, stopped = self.state.cancel_task(task_id)
+        if not stopped or process is None:
+            self.send_json({"success": True, "stopped": False, "taskId": task_id, "task": snapshot or task})
             return
-        snapshot = self.state.cancel_current_task(current_task_id, process)
         process.send_signal(signal.SIGTERM)
         try:
             process.wait(timeout=2)
         except subprocess.TimeoutExpired:
             process.kill()
-        snapshot = self.state.find_task(current_task_id) or snapshot or {}
+        snapshot = self.state.find_task(task_id) or snapshot or {}
         self.send_json({"success": True, "stopped": True, "taskId": snapshot.get("id", task_id or ""), "task": snapshot})
 
     def send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:

@@ -83,6 +83,10 @@ Response:
     "webViewPreview": true,
     "cloudBuild": false
   },
+  "taskRegistry": {
+    "runningCount": 0,
+    "maxTasks": 50
+  },
   "missingDependencies": [],
   "recoveryActions": []
 }
@@ -268,7 +272,9 @@ Task ID endpoint for queue-ready clients:
 POST /v1/tasks/task-1715780000000/stop
 ```
 
-If a matching task is running, the helper should terminate the process, mark the task `cancelled`, set `failureKind` to `cancelled`, append a stop log line, persist the task snapshot, and make the updated state visible from `/v1/tasks/current` and `/v1/tasks/:id/logs`. If the matching task exists but is not running, the endpoint should return `success: true` with `stopped: false` and the persisted `task`. If the task ID is unknown, return HTTP 404 with `success: false`.
+Helper implementations must treat tasks as a registry keyed by task ID, not as a single global process. A task record owns its command, status, timing, exit code, failure kind, and recent logs. Running process handles are stored in an in-memory `taskId -> process` map, while task snapshots are persisted for recovery.
+
+If a matching task is running, the helper should terminate only that task's process, mark the task `cancelled`, set `failureKind` to `cancelled`, append a stop log line, persist the task snapshot, and make the updated state visible from `/v1/tasks/current`, `/v1/tasks`, and `/v1/tasks/:id/logs`. Other running tasks must remain running. If the matching task exists but is not running, the endpoint should return `success: true` with `stopped: false` and the persisted `task`. If the task ID is unknown, return HTTP 404 with `success: false`.
 
 The Android service persists task history under its app-private runtime directory. The Termux/Python prototype persists the latest task as `.mobilecode-helper-task.json` and the recoverable task database as `.mobilecode-helper-tasks.json` in the configured workspace root. If the helper restarts while a task is marked `running`, it must return `lost`/`runtimeLost` with a recovery error instead of pretending the process is still alive.
 

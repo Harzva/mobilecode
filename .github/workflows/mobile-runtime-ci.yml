@@ -153,6 +153,42 @@ jobs:
             | tee artifacts/helper-stop.json
           wait "$long_pid" || true
           curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/tasks/current | tee artifacts/helper-cancelled-task.json
+          curl -fsS \
+            -H "$auth_header" \
+            -H 'Content-Type: application/json' \
+            -X POST http://127.0.0.1:18765/v1/execute \
+            -d '{"command":"python3 -c \"import time; time.sleep(20)\"","cwd":"/tmp/mobilecode-workspace","timeoutMs":30000}' \
+            > artifacts/helper-concurrent-a.json 2>&1 &
+          concurrent_a_pid=$!
+          curl -fsS \
+            -H "$auth_header" \
+            -H 'Content-Type: application/json' \
+            -X POST http://127.0.0.1:18765/v1/execute \
+            -d '{"command":"python3 -c \"import time; time.sleep(20)\"","cwd":"/tmp/mobilecode-workspace","timeoutMs":30000}' \
+            > artifacts/helper-concurrent-b.json 2>&1 &
+          concurrent_b_pid=$!
+          sleep 1
+          curl -fsS -H "$auth_header" 'http://127.0.0.1:18765/v1/tasks?limit=10' | tee artifacts/helper-concurrent-running.json
+          first_concurrent_id=$(python3 -c "import json; tasks=json.load(open('artifacts/helper-concurrent-running.json'))['tasks']; running=[t['id'] for t in tasks if t.get('status')=='running']; assert len(running) >= 2, running; print(running[0])")
+          second_concurrent_id=$(python3 -c "import json; tasks=json.load(open('artifacts/helper-concurrent-running.json'))['tasks']; running=[t['id'] for t in tasks if t.get('status')=='running']; assert len(running) >= 2, running; print(running[1])")
+          export first_concurrent_id second_concurrent_id
+          curl -fsS \
+            -H "$auth_header" \
+            -H 'Content-Type: application/json' \
+            -X POST "http://127.0.0.1:18765/v1/tasks/${first_concurrent_id}/stop" \
+            -d '{}' \
+            | tee artifacts/helper-concurrent-stop-first.json
+          curl -fsS -H "$auth_header" 'http://127.0.0.1:18765/v1/tasks?limit=10' | tee artifacts/helper-concurrent-after-first-stop.json
+          python3 -c "import json, os; tasks=json.load(open('artifacts/helper-concurrent-after-first-stop.json'))['tasks']; by_id={t['id']:t for t in tasks}; first=os.environ['first_concurrent_id']; second=os.environ['second_concurrent_id']; assert by_id[first]['status']=='cancelled', by_id[first]; assert by_id[second]['status']=='running', by_id[second]"
+          curl -fsS \
+            -H "$auth_header" \
+            -H 'Content-Type: application/json' \
+            -X POST "http://127.0.0.1:18765/v1/tasks/${second_concurrent_id}/stop" \
+            -d '{}' \
+            | tee artifacts/helper-concurrent-stop-second.json
+          wait "$concurrent_a_pid" || true
+          wait "$concurrent_b_pid" || true
+          curl -fsS -H "$auth_header" 'http://127.0.0.1:18765/v1/tasks?limit=10' | tee artifacts/helper-concurrent-after-second-stop.json
 
           grep '"ready":true' artifacts/helper-health.json
           grep '"authRequired":true' artifacts/helper-health.json
@@ -172,6 +208,8 @@ jobs:
           grep "\"taskId\":\"${running_task_id}\"" artifacts/helper-stop.json
           grep '"status":"cancelled"' artifacts/helper-cancelled-task.json
           grep '"failureKind":"cancelled"' artifacts/helper-cancelled-task.json
+          grep '"stopped":true' artifacts/helper-concurrent-stop-first.json
+          grep '"stopped":true' artifacts/helper-concurrent-stop-second.json
 
       - name: Upload helper smoke artifacts
         uses: actions/upload-artifact@v4

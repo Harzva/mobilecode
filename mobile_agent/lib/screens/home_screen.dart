@@ -91,6 +91,31 @@ const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workfl
 const _releaseBuildLabel = 'v0.1.1+20';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 
+String? runtimeFailureKindHint(RuntimeTaskFailureKind kind) {
+  switch (kind) {
+    case RuntimeTaskFailureKind.none:
+      return null;
+    case RuntimeTaskFailureKind.timeout:
+      return 'Increase the timeout, inspect recent logs, then retry or move the task to cloud runtime.';
+    case RuntimeTaskFailureKind.cancelled:
+      return 'The task was stopped intentionally. Retry the same taskId when ready.';
+    case RuntimeTaskFailureKind.dependencyMissing:
+      return 'Install the missing dependency in Helper or Termux before retrying.';
+    case RuntimeTaskFailureKind.commandBlocked:
+      return 'Use a structured runtime action or confirm the command before running it.';
+    case RuntimeTaskFailureKind.cwdOutsideWorkspace:
+      return 'Move the project under the MobileCode workspace and retry.';
+    case RuntimeTaskFailureKind.authFailed:
+      return 'Check the provider token, GitHub token, or Helper auth token.';
+    case RuntimeTaskFailureKind.processFailed:
+      return 'Open task details, copy the failure summary, fix the command error, then retry.';
+    case RuntimeTaskFailureKind.runtimeLost:
+      return 'Restart MobileCode Helper or Termux daemon, refresh runtime status, then retry.';
+    case RuntimeTaskFailureKind.unknown:
+      return 'Check task logs and runtime health before retrying.';
+  }
+}
+
 class _ProbeResult {
   const _ProbeResult({
     required this.uri,

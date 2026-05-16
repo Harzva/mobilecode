@@ -126,7 +126,7 @@ v1 范围：Mobile Runtime CI 绿灯、Android App Smoke Test 绿灯、RuntimeMa
 | ID | Priority | Task | Status | Evidence Required | Current Evidence | Reviewer Notes |
 |----|----------|------|--------|-------------------|------------------|----------------|
 | V1-CM-01 | P0 | 清理 UI 中剩余 Termux-only 文案 | ACCEPTED | grep 无 Termux UI 引用 | home_screen.dart 9 处 user-visible 文案已改为 Runtime-first/External Termux fallback；build_preview_screen.dart 6 处 user-visible 文案已改为 Runtime-first/External Termux fallback。仅保留技术标识符（com.termux、termux_probe、变量名、方法名、服务名）和 Runtime Diagnostics 中诊断行（External Termux / External Termux:API），后者属于技术诊断项。追加修补 3 处文案：(1) `_openUrl` label 改为 `External Termux install page`；(2) Mini harness booted detail 中 `termux_probe` 显示文案改为 `runtime_probe`；(3) Diagnostics 诊断行 label `Termux:API` 改为 `External Termux:API`。再修补 Tool Lab probe 结果文案 2 处：`Termux:API fallback detected.` → `External Termux:API fallback detected.`；`Termux:API not detected.` → `External Termux:API not detected.`（line 4496）。 | Codex accepted after ccmimo output review, targeted text search, and `git diff --check`; remaining Termux hits are technical identifiers, package names, or explicit External Termux fallback diagnostics. |
-| V1-CM-02 | P0 | 补小 Web 项目端到端 smoke 文档 | ACCEPTED | QA 文档有 smoke 章节 | 新增 `mobile_agent/tooling/runtime_web_smoke.py` 脚本；CI `helper-daemon-smoke` job 新增 web smoke 步骤并上传 `artifacts/runtime-web-smoke.json`；`docs/mobilecode-release-qa.md` 新增 "Small Web Project Runtime Smoke" 章节（本地/CI 验证、7 步协议调用、预期结果、失败恢复）。**Windows 9009 fix**: `_helper_python_command()` 封装跨平台 Python 可执行名选择（Windows→`python`，POSIX→`python3`），替换所有硬编码 `python3` 引用，修复 Helper /v1/execute 在 Windows 下 exitCode 9009 问题。 | Codex accepted after `python -m py_compile mobile_agent/tooling/runtime_web_smoke.py`, local `python mobile_agent/tooling/runtime_web_smoke.py --output qa/runtime-web-smoke-local.json` passed 7/7 steps, and `git diff --check` passed. |
+| V1-CM-02 | P0 | 补小 Web 项目端到端 smoke 文档 | ACCEPTED | QA 文档有 smoke 章节 | 新增 `mobile_agent/tooling/runtime_web_smoke.py` 脚本；CI `helper-daemon-smoke` job 新增 web smoke 步骤并上传 `artifacts/runtime-web-smoke.json`；`docs/mobilecode-release-qa.md` 新增 "Small Web Project Runtime Smoke" 章节（本地/CI 验证、7 步协议调用、预期结果、失败恢复）。**Windows 9009 fix**: `_helper_python_command()` 封装跨平台 Python 可执行名选择（Windows→`python`，POSIX→`python3`），替换所有硬编码 `python3` 引用，修复 Helper /v1/execute 在 Windows 下 exitCode 9009 问题。**CI readiness fix**: `_wait_ready()` 每次探测使用新的 `HTTPConnection`，避免 daemon 启动期间异常连接复用导致 `http.client.CannotSendRequest: Request-sent`。 | Codex accepted after `python -m py_compile mobile_agent/tooling/runtime_web_smoke.py`, local `python mobile_agent/tooling/runtime_web_smoke.py --output qa/runtime-web-smoke-local.json` passed 7/7 steps, `git diff --check` passed, and Mobile Runtime CI passed on https://github.com/Harzva/mobilecode/actions/runs/25960104143. |
 | V1-CM-03 | P0 | 收束绕过 RuntimeManager 的执行入口 | TODO | 无绕过执行路径或已记录 | — | — |
 | V1-CM-04 | P1 | Runtime Diagnostics 页面收尾 | TODO | 测试通过，页面可渲染 | — | — |
 | V1-CM-05 | P1 | 失败恢复建议标准化 | TODO | 错误消息有恢复建议 | — | — |
@@ -140,6 +140,8 @@ v1 范围：Mobile Runtime CI 绿灯、Android App Smoke Test 绿灯、RuntimeMa
 | Helper taskId/queue/protocol baseline (Mobile Runtime CI) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25958141678 |
 | Android APK build/install/launch/helper protocol baseline (Android App Smoke Test) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25958141674 |
 | Remote head | `bd9373d7d26c12e57622b05d065a83735f7678f2` | — |
+| V1-CM-02 web smoke CI follow-up (Mobile Runtime CI) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25960104143 |
+| Latest verified remote head | `8b051e4a76d6bc5348506071c208332c7bf93e2a` | — |
 
 ---
 
@@ -199,6 +201,8 @@ v1 范围：Mobile Runtime CI 绿灯、Android App Smoke Test 绿灯、RuntimeMa
 | 2026-05-16 | V1-CM-02 | ccmimo | REVIEW_NEEDED | 新增 `runtime_web_smoke.py` 脚本（helper daemon 启动 -> 创建最小 web 项目 -> 7 步协议调用 -> preview 证据）；CI helper-daemon-smoke job 新增编译检查和 smoke 运行步骤；QA 文档新增 "Small Web Project Runtime Smoke" 章节 |
 | 2026-05-16 | V1-CM-02 | ccmimo patch | REVIEW_NEEDED | Windows 9009 fix: 新增 `_helper_python_command()` 封装跨平台 Python 可执行名（Windows→`python`，POSIX→`python3`），替换 4 处硬编码 `python3` 引用，修复 Helper /v1/execute 在 Windows 下 exitCode 9009 |
 | 2026-05-16 | V1-CM-02 | Codex | ACCEPTED | 已审核脚本、CI、QA 文档和收尾状态；本地 py_compile 通过，runtime web smoke 7/7 步通过，`git diff --check` 通过 |
+| 2026-05-16 | V1-CM-02 CI follow-up | ccmimo patch | REVIEW_NEEDED | 修复 GitHub Actions 中 `_wait_ready` 复用异常 `HTTPConnection` 导致的 `CannotSendRequest: Request-sent`；仅修改 `mobile_agent/tooling/runtime_web_smoke.py` |
+| 2026-05-16 | V1-CM-02 CI follow-up | Codex | ACCEPTED | 已审核 ccmimo 输出、脚本 diff、本地 `py_compile`、本地 runtime web smoke 7/7；推送后 Mobile Runtime CI 25960104143 通过 |
 
 ---
 

@@ -21,7 +21,38 @@ Required GitHub Actions before publishing:
 - `.github/workflows/android-apk.yml`
   - Builds the release APK.
   - Uses stable signing when release keystore secrets are configured.
-  - Uploads `mobilecode-v0.1.0.apk` as an artifact and GitHub Release asset.
+  - Uploads `mobilecode-v0.1.1.apk` as an artifact and GitHub Release asset.
+
+## v0.1.1 Release Evidence
+
+Release candidate:
+
+- Branch: `v011-streaming-fix`
+- Head commit: `4b12d54`
+- Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.1`
+- APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.1/mobilecode-v0.1.1.apk`
+- APK SHA256: `b0421825e4e589d3a30217cbc76ad0ebe053b61a6de0eb05fc4500c9091cb98a`
+
+Required CI evidence:
+
+| Gate | Run | Result |
+| --- | --- | --- |
+| Mobile Runtime CI | `https://github.com/Harzva/mobilecode/actions/runs/25967178068` | Passed |
+| Build Android APK | `https://github.com/Harzva/mobilecode/actions/runs/25967178065` | Passed |
+| Android App Smoke Test | `https://github.com/Harzva/mobilecode/actions/runs/25966860458` | Passed |
+
+Validated coverage:
+
+- Flutter scoped analyzer passed for runtime and Home entry surfaces.
+- RuntimeProvider tests passed.
+- Helper daemon protocol smoke passed for health, execute, stream, task history, task logs, cancel, and project preflight.
+- Android release APK build passed and uploaded the release asset.
+- Android emulator smoke installed the debug APK, started the Helper launcher, verified localhost Helper health and execute, launched the main app, captured screenshot/logcat artifacts, and checked common crash signatures.
+
+Manual device coverage:
+
+- Local `adb devices` showed no online device on 2026-05-17, so physical-device validation remains a manual release step.
+- Before promoting `v0.1.1` beyond prerelease, verify provider/base URL settings, normal chat streaming, agent pause, new chat creation, recent chat turn counts, and Runtime Diagnostics on a real Android device.
 
 ## Android Release Signing
 
@@ -96,7 +127,7 @@ Expected result:
 After downloading the release APK:
 
 ```bash
-adb install -r mobilecode-v0.1.0.apk
+adb install -r mobilecode-v0.1.1.apk
 adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
 adb shell pidof com.mobilecode.mobile_agent
 adb logcat -d -t 1200 > android-logcat.txt

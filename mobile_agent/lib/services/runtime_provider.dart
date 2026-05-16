@@ -224,3 +224,9 @@ abstract class RuntimeTaskMonitor {
   Future<List<RuntimeTaskSnapshot>> listTasks({int limit = 20});
   Future<List<String>> taskLogs(String taskId, {int limit = 200});
 }
+
+/// Optional extension implemented by runtimes that can control individual
+/// tasks instead of only stopping the current foreground process.
+abstract class RuntimeTaskController {
+  Future<void> stopTask(String taskId);
+}

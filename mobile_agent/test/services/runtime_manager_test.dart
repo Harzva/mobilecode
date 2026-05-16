@@ -182,6 +182,35 @@ void main() {
       await manager.dispose();
     });
 
+    test('stops task by id through controller-capable provider', () async {
+      const snapshot = RuntimeTaskSnapshot(
+        taskId: 'task-3',
+        status: RuntimeTaskStatus.running,
+        command: 'npm run build',
+        providerType: RuntimeProviderType.mobileCodeHelper,
+      );
+      final provider = _FakeRuntimeProviderWithTask(
+        type: RuntimeProviderType.mobileCodeHelper,
+        name: 'Helper',
+        health: const RuntimeHealth(
+          type: RuntimeProviderType.mobileCodeHelper,
+          name: 'Helper',
+          available: true,
+          ready: true,
+          status: 'ready',
+          capabilities: RuntimeCapabilities(shell: true),
+        ),
+        task: snapshot,
+      );
+      final manager = RuntimeManager(providers: [provider]);
+
+      await manager.stopTask('task-3');
+
+      expect(provider.stoppedTaskIds, ['task-3']);
+
+      await manager.dispose();
+    });
+
     test('runs validation pipeline and stops at first failed action with recovery hint', () async {
       final provider = _FakeRuntimeProvider(
         type: RuntimeProviderType.mobileCodeHelper,
@@ -425,8 +454,9 @@ class _FakeRuntimeProvider implements RuntimeProvider {
   Future<void> stopCurrentTask() async {}
 }
 
-class _FakeRuntimeProviderWithTask extends _FakeRuntimeProvider implements RuntimeTaskMonitor {
+class _FakeRuntimeProviderWithTask extends _FakeRuntimeProvider implements RuntimeTaskMonitor, RuntimeTaskController {
   final RuntimeTaskSnapshot task;
+  final List<String> stoppedTaskIds = [];
 
   _FakeRuntimeProviderWithTask({
     required RuntimeProviderType type,
@@ -443,4 +473,9 @@ class _FakeRuntimeProviderWithTask extends _FakeRuntimeProvider implements Runti
 
   @override
   Future<List<String>> taskLogs(String taskId, {int limit = 200}) async => task.logs;
+
+  @override
+  Future<void> stopTask(String taskId) async {
+    stoppedTaskIds.add(taskId);
+  }
 }

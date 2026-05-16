@@ -198,6 +198,22 @@ void main() {
       await provider.stopCurrentTask();
     });
 
+    test('sends helper stop request for a task id', () async {
+      _serve((request) async {
+        expect(request.uri.path, '/v1/tasks/task-123/stop');
+        expect(request.method, 'POST');
+        await _json(request.response, {
+          'success': true,
+          'stopped': true,
+          'taskId': 'task-123',
+        });
+      }, server);
+
+      final provider = MobileCodeHelperProvider(baseUri: baseUri);
+
+      await provider.stopTask('task-123');
+    });
+
     test('preflights project markers through helper protocol', () async {
       var requestCount = 0;
       _serve((request) async {

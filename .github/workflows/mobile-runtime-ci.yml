@@ -143,10 +143,12 @@ jobs:
             > artifacts/helper-cancelled-execute.json 2>&1 &
           long_pid=$!
           sleep 1
+          curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/tasks/current | tee artifacts/helper-running-task.json
+          running_task_id=$(python3 -c "import json; print(json.load(open('artifacts/helper-running-task.json'))['task']['id'])")
           curl -fsS \
             -H "$auth_header" \
             -H 'Content-Type: application/json' \
-            -X POST http://127.0.0.1:18765/v1/task/stop \
+            -X POST "http://127.0.0.1:18765/v1/tasks/${running_task_id}/stop" \
             -d '{}' \
             | tee artifacts/helper-stop.json
           wait "$long_pid" || true
@@ -165,7 +167,9 @@ jobs:
           grep '"count":' artifacts/helper-tasks.json
           grep '"logs":' artifacts/helper-task-logs.json
           grep 'package.json' artifacts/helper-project-preflight.json
+          grep '"status":"running"' artifacts/helper-running-task.json
           grep '"stopped":true' artifacts/helper-stop.json
+          grep "\"taskId\":\"${running_task_id}\"" artifacts/helper-stop.json
           grep '"status":"cancelled"' artifacts/helper-cancelled-task.json
           grep '"failureKind":"cancelled"' artifacts/helper-cancelled-task.json
 

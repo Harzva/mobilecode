@@ -22,11 +22,12 @@ import 'termux_service.dart';
 /// - POST /v1/app/launch
 /// - POST /v1/app/uninstall
 /// - POST /v1/task/stop
+/// - POST /v1/tasks/:id/stop
 /// - GET  /v1/tasks/current
 /// - GET  /v1/tasks
 /// - GET  /v1/tasks/:id/logs
 /// - POST /v1/project/preflight
-class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor, RuntimeProjectInspector {
+class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor, RuntimeTaskController, RuntimeProjectInspector {
   final Uri baseUri;
   final Duration probeTimeout;
   final String? authToken;
@@ -287,6 +288,15 @@ class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor, R
   @override
   Future<void> stopCurrentTask() async {
     await _postJson('/v1/task/stop', const {});
+  }
+
+  @override
+  Future<void> stopTask(String taskId) async {
+    final safeTaskId = Uri.encodeComponent(taskId.trim());
+    if (safeTaskId.isEmpty) {
+      throw const MobileCodeHelperException('Task ID is required to stop a helper task.');
+    }
+    await _postJson('/v1/tasks/$safeTaskId/stop', const {});
   }
 
   Uri _resolve(String path) => baseUri.resolve(path);

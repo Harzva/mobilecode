@@ -42,7 +42,7 @@ python3 tooling/mobilecode_helper_daemon.py \
   --auth-token "$MOBILECODE_HELPER_TOKEN"
 ```
 
-Both prototypes implement `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/project/preflight`, `/v1/tasks/current`, `/v1/tasks`, `/v1/tasks/:id/logs`, and `/v1/task/stop`. Both prototypes intentionally run allowlisted commands without shell expansion and reject working directories outside the configured workspace boundary.
+Both prototypes implement `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/project/preflight`, `/v1/tasks/current`, `/v1/tasks`, `/v1/tasks/:id/logs`, `/v1/task/stop`, and `/v1/tasks/:id/stop`. Both prototypes intentionally run allowlisted commands without shell expansion and reject working directories outside the configured workspace boundary.
 
 ## Localhost Auth
 
@@ -251,6 +251,8 @@ Task cancellation:
 POST /v1/task/stop
 ```
 
+Compatibility endpoint for the currently running task:
+
 Response:
 
 ```json
@@ -260,7 +262,13 @@ Response:
 }
 ```
 
-If a task is running, the helper should terminate the process, mark the task `cancelled`, set `failureKind` to `cancelled`, append a stop log line, persist the task snapshot, and make the updated state visible from `/v1/tasks/current` and `/v1/tasks/:id/logs`. If no task is running, the endpoint should still return `success: true` with `stopped: false`.
+Task ID endpoint for queue-ready clients:
+
+```http
+POST /v1/tasks/task-1715780000000/stop
+```
+
+If a matching task is running, the helper should terminate the process, mark the task `cancelled`, set `failureKind` to `cancelled`, append a stop log line, persist the task snapshot, and make the updated state visible from `/v1/tasks/current` and `/v1/tasks/:id/logs`. If the matching task exists but is not running, the endpoint should return `success: true` with `stopped: false` and the persisted `task`. If the task ID is unknown, return HTTP 404 with `success: false`.
 
 The Android service persists task history under its app-private runtime directory. The Termux/Python prototype persists the latest task as `.mobilecode-helper-task.json` and the recoverable task database as `.mobilecode-helper-tasks.json` in the configured workspace root. If the helper restarts while a task is marked `running`, it must return `lost`/`runtimeLost` with a recovery error instead of pretending the process is still alive.
 
@@ -300,6 +308,7 @@ POST /v1/apk/install
 POST /v1/app/launch
 POST /v1/app/uninstall
 POST /v1/task/stop
+POST /v1/tasks/:id/stop
 ```
 
 Build response:

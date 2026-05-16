@@ -216,6 +216,35 @@ class HelperState:
                     return [str(line) for line in logs[-max(1, limit) :]]
         return []
 
+    def find_task(self, task_id: str) -> dict[str, Any] | None:
+        with self.current_lock:
+            for task in self.tasks:
+                if task.get("id") == task_id or task.get("taskId") == task_id:
+                    return clone_task(task)
+        return None
+
+    def cancel_current_task(self, task_id: str, process: Any) -> dict[str, Any] | None:
+        with self.current_lock:
+            if self.current_process is not process or self.current_task is None:
+                return None
+            current_task_id = str(self.current_task.get("id") or self.current_task.get("taskId") or "")
+            if current_task_id != task_id:
+                return None
+            self.current_process = None
+            logs = self.current_task.setdefault("logs", [])
+            if isinstance(logs, list):
+                logs.append("task stopped")
+                del logs[:-200]
+            finished_at_ms = int(time.time() * 1000)
+            started_at_ms = int(self.current_task.get("startedAtMs") or finished_at_ms)
+            self.current_task["status"] = "cancelled"
+            self.current_task["finishedAtMs"] = finished_at_ms
+            self.current_task["durationMs"] = max(0, finished_at_ms - started_at_ms)
+            self.current_task["error"] = "Task cancelled by MobileCode."
+            self.current_task["failureKind"] = "cancelled"
+            self._persist_tasks_locked()
+            return clone_task(self.current_task)
+
     def inspect_project(self, cwd: Path, max_depth: int = 2) -> list[str]:
         detected: set[str] = set()
         for root, dirs, files in os.walk(cwd):
@@ -444,6 +473,10 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
             if path == "/v1/task/stop":
                 self.handle_stop()
                 return
+            if path.startswith("/v1/tasks/") and path.endswith("/stop"):
+                task_id = unquote(path.removeprefix("/v1/tasks/").removesuffix("/stop").strip("/"))
+                self.handle_stop(task_id=task_id)
+                return
             self.send_error_json(HTTPStatus.NOT_FOUND, "Endpoint is not implemented in prototype")
         except Exception as exc:
             self.send_error_json(HTTPStatus.BAD_REQUEST, str(exc))
@@ -590,20 +623,35 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
             }
         )
 
-    def handle_stop(self) -> None:
+    def handle_stop(self, task_id: str | None = None) -> None:
         with self.state.current_lock:
             process = self.state.current_process
+            current_task_id = ""
+            if self.state.current_task is not None:
+                current_task_id = str(self.state.current_task.get("id") or self.state.current_task.get("taskId") or "")
+        if task_id:
+            task = self.state.find_task(task_id)
+            if task is None:
+                self.send_error_json(HTTPStatus.NOT_FOUND, f"Task not found: {task_id}", "unknown")
+                return
+            if task_id != current_task_id:
+                self.send_json({"success": True, "stopped": False, "taskId": task_id, "task": task})
+                return
         if process is None:
-            self.send_json({"success": True, "stopped": False})
+            payload: dict[str, Any] = {"success": True, "stopped": False}
+            if task_id:
+                payload["taskId"] = task_id
+                payload["task"] = self.state.find_task(task_id) or {}
+            self.send_json(payload)
             return
+        snapshot = self.state.cancel_current_task(current_task_id, process)
         process.send_signal(signal.SIGTERM)
         try:
             process.wait(timeout=2)
         except subprocess.TimeoutExpired:
             process.kill()
-        self.state.append_log("task stopped")
-        self.state.finish_task("cancelled", None, 0, "Task cancelled by MobileCode.")
-        self.send_json({"success": True, "stopped": True})
+        snapshot = self.state.find_task(current_task_id) or snapshot or {}
+        self.send_json({"success": True, "stopped": True, "taskId": snapshot.get("id", task_id or ""), "task": snapshot})
 
     def send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         data = json_bytes(payload)

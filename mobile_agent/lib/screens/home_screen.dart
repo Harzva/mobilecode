@@ -4839,13 +4839,13 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
     );
   }
 
-  Future<void> _stopTask() async {
+  Future<void> _stopTask(String taskId) async {
     setState(() {
       _checking = true;
-      _status = 'Stopping active runtime task...';
+      _status = 'Stopping runtime task $taskId...';
     });
     try {
-      await widget.runtimeManager.stopCurrentTask();
+      await widget.runtimeManager.stopTask(taskId);
       final task = await widget.runtimeManager.currentTaskSnapshot();
       if (!mounted) return;
       setState(() {
@@ -4929,18 +4929,10 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
             ),
           ),
           const SizedBox(height: 12),
-          _TaskSnapshotPanel(task: _task),
-          if (_task?.canCancel == true) ...[
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _checking ? null : _stopTask,
-                icon: const Icon(Icons.stop_circle_outlined),
-                label: const Text('Stop active task'),
-              ),
-            ),
-          ],
+          _TaskSnapshotPanel(
+            task: _task,
+            onStop: _task?.canCancel == true && !_checking ? () => _stopTask(_task!.taskId) : null,
+          ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: widget.onOpenInstall,
@@ -4988,6 +4980,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
   late String _packageManager;
   RuntimeActionType? _lastFailedAction;
   RuntimeProjectProfile? _lastProjectProfile;
+  RuntimeTaskSnapshot? _lastTask;
 
   @override
   void initState() {
@@ -5156,17 +5149,25 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
     await _run(failedAction);
   }
 
-  Future<void> _cancelTask() async {
+  Future<void> _cancelTask([String? taskId]) async {
+    final id = taskId ?? (_lastTask?.canCancel == true ? _lastTask!.taskId : null);
     setState(() {
       _cancelling = true;
-      _lines.insert(0, 'Stopping active runtime task...');
+      _lines.insert(0, id == null ? 'Stopping active runtime task...' : 'Stopping runtime task $id...');
     });
     try {
-      await widget.runtimeManager.stopCurrentTask();
+      if (id == null) {
+        await widget.runtimeManager.stopCurrentTask();
+      } else {
+        await widget.runtimeManager.stopTask(id);
+      }
       final task = await widget.runtimeManager.currentTaskSnapshot();
       if (!mounted) return;
       final summary = task == null ? 'No recoverable runtime task after stop request.' : _taskSummary(task);
-      setState(() => _lines.insert(0, 'STOP REQUESTED: $summary'));
+      setState(() {
+        _lastTask = task;
+        _lines.insert(0, 'STOP REQUESTED: $summary');
+      });
       widget.onLog('Runtime task stop requested', summary, Icons.stop_circle_outlined, _amber);
     } on Object catch (error) {
       if (!mounted) return;
@@ -5184,6 +5185,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
       final task = await widget.runtimeManager.currentTaskSnapshot();
       if (!mounted) return;
       setState(() {
+        _lastTask = task;
         _lines.insert(0, task == null ? 'No recoverable runtime task.' : _taskSummary(task));
       });
     } on Object catch (error) {
@@ -5230,7 +5232,16 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
     try {
       final tasks = await widget.runtimeManager.taskHistory(limit: 5);
       if (!mounted) return;
+      RuntimeTaskSnapshot? selectedTask;
+      for (final task in tasks) {
+        if (task.running) {
+          selectedTask = task;
+          break;
+        }
+      }
+      selectedTask ??= tasks.isEmpty ? null : tasks.first;
       setState(() {
+        _lastTask = selectedTask;
         _lines.insert(
           0,
           tasks.isEmpty
@@ -5247,7 +5258,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
   }
 
   String _taskSummary(RuntimeTaskSnapshot task) {
-    final logs = task.logs.take(4).join('\n');
+    final logs = _recentLogLines(task.logs, limit: 4).join('\n');
     final failure = task.failureKind == RuntimeTaskFailureKind.none ? '' : ' (${task.failureKind.name})';
     return 'Task ${task.taskId} is ${task.status.name}$failure: ${task.command}${logs.isEmpty ? '' : '\n$logs'}';
   }
@@ -5450,9 +5461,10 @@ class _DiagnosticLine extends StatelessWidget {
 }
 
 class _TaskSnapshotPanel extends StatelessWidget {
-  const _TaskSnapshotPanel({required this.task});
+  const _TaskSnapshotPanel({required this.task, this.onStop});
 
   final RuntimeTaskSnapshot? task;
+  final VoidCallback? onStop;
 
   @override
   Widget build(BuildContext context) {
@@ -5468,6 +5480,12 @@ class _TaskSnapshotPanel extends StatelessWidget {
         : snapshot.status == RuntimeTaskStatus.succeeded
             ? _mint
             : _rose;
+    final details = [
+      if (snapshot.startedAt != null) 'Started ${_timeLabel(snapshot.startedAt!)} ago',
+      if (snapshot.duration != null) 'Duration ${_durationLabel(snapshot.duration!)}',
+      if (snapshot.exitCode != null) 'Exit ${snapshot.exitCode}',
+      if (snapshot.failureKind != RuntimeTaskFailureKind.none) 'Failure ${snapshot.failureKind.name}',
+    ];
     return _Panel(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -5479,20 +5497,78 @@ class _TaskSnapshotPanel extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(child: Text('Task ${snapshot.taskId}', style: const TextStyle(color: _text, fontWeight: FontWeight.w900))),
               Text(snapshot.status.name, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w800)),
+              if (snapshot.canCancel && onStop != null) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: 'Stop task',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onStop,
+                  icon: const Icon(Icons.stop_circle_outlined, size: 18),
+                  color: _amber,
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 6),
           Text(snapshot.command.isEmpty ? 'No command recorded.' : snapshot.command, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+          if (details.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final detail in details) _TaskDetailChip(label: detail, color: color),
+              ],
+            ),
+          ],
           if (snapshot.workingDir != null && snapshot.workingDir!.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(snapshot.workingDir!, style: const TextStyle(color: _faint, fontSize: 11, height: 1.3)),
           ],
+          if (snapshot.error != null && snapshot.error!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(snapshot.error!, style: const TextStyle(color: _rose, fontSize: 11, height: 1.3)),
+          ],
           if (snapshot.logs.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(snapshot.logs.take(6).join('\n'), style: const TextStyle(color: _faint, fontSize: 11, height: 1.3)),
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: EdgeInsets.zero,
+                initiallyExpanded: snapshot.running || snapshot.status != RuntimeTaskStatus.succeeded,
+                title: const Text('Recent logs', style: TextStyle(color: _muted, fontSize: 12, fontWeight: FontWeight.w800)),
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(_recentLogLines(snapshot.logs, limit: 8).join('\n'), style: const TextStyle(color: _faint, fontSize: 11, height: 1.3)),
+                  ),
+                ],
+              ),
+            ),
           ],
         ],
       ),
+    );
+  }
+}
+
+class _TaskDetailChip extends StatelessWidget {
+  const _TaskDetailChip({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
     );
   }
 }
@@ -5515,7 +5591,9 @@ class _ProjectConsoleSheet extends StatefulWidget {
 class _ProjectConsoleSheetState extends State<_ProjectConsoleSheet> {
   final _projectName = TextEditingController();
   final _projectPath = TextEditingController();
+  final _gitUrl = TextEditingController();
   final List<String> _lines = ['No project action has run yet.'];
+  List<String> _recentProjectPaths = const [];
   bool _running = false;
   RuntimeProjectProfile? _profile;
 
@@ -5523,13 +5601,95 @@ class _ProjectConsoleSheetState extends State<_ProjectConsoleSheet> {
   void initState() {
     super.initState();
     _projectPath.text = widget.defaultProjectPath;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_loadRecentProjects());
+    });
   }
 
   @override
   void dispose() {
     _projectName.dispose();
     _projectPath.dispose();
+    _gitUrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadRecentProjects() async {
+    setState(() {
+      _running = true;
+      _lines.insert(0, 'Loading recent runtime project paths...');
+    });
+    try {
+      final tasks = await widget.runtimeManager.taskHistory(limit: 12);
+      final paths = <String>{};
+      for (final task in tasks) {
+        final path = task.workingDir?.trim();
+        if (path != null && path.isNotEmpty) paths.add(path);
+      }
+      if (_profile?.projectPath.trim().isNotEmpty == true) {
+        paths.add(_profile!.projectPath.trim());
+      }
+      if (!mounted) return;
+      setState(() {
+        _recentProjectPaths = paths.take(6).toList();
+        _lines.insert(0, paths.isEmpty ? 'No recent runtime project paths found.' : 'Loaded ${paths.length} recent project path(s).');
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 180);
+      setState(() => _lines.insert(0, 'RECENT PROJECTS ERROR: $message'));
+      widget.onLog('Recent project load failed', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  Future<void> _cloneRepository() async {
+    final url = _gitUrl.text.trim();
+    final validationError = _gitUrlError(url);
+    if (validationError != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(validationError)));
+      return;
+    }
+    final targetName = _safeProjectDirectoryName(_projectName.text.trim().isEmpty ? _projectNameFromGitUrl(url) : _projectName.text.trim());
+    final targetPath = '${widget.defaultProjectPath}/$targetName';
+    setState(() {
+      _running = true;
+      _lines.insert(0, 'Cloning repository into $targetPath...');
+    });
+    try {
+      final result = await widget.runtimeManager.execute(
+        'git clone ${_quoteCommandArg(url)} ${_quoteCommandArg(targetName)}',
+        workingDir: widget.defaultProjectPath,
+        timeout: const Duration(minutes: 10),
+      );
+      if (!mounted) return;
+      setState(() {
+        _projectPath.text = targetPath;
+        _recentProjectPaths = [targetPath, ..._recentProjectPaths.where((path) => path != targetPath)].take(6).toList();
+        _lines.insert(
+          0,
+          [
+            result.success ? 'CLONED: $targetPath' : 'CLONE FAILED: $targetPath',
+            if (result.stdout.trim().isNotEmpty) _compact(result.stdout.trim(), limit: 220),
+            if (result.stderr.trim().isNotEmpty) _compact(result.stderr.trim(), limit: 220),
+          ].join('\n'),
+        );
+      });
+      widget.onLog(
+        result.success ? 'Git repository cloned' : 'Git clone failed',
+        targetPath,
+        result.success ? Icons.download_done_outlined : Icons.error_outline,
+        result.success ? _mint : _rose,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 180);
+      setState(() => _lines.insert(0, 'CLONE ERROR: $message'));
+      widget.onLog('Git clone error', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
   }
 
   Future<void> _runPreflight() async {
@@ -5652,6 +5812,12 @@ class _ProjectConsoleSheetState extends State<_ProjectConsoleSheet> {
                 onTap: _fillDefaultPath,
               ),
               _RuntimeActionButton(
+                icon: Icons.manage_history_outlined,
+                label: 'Recent paths',
+                disabled: _running,
+                onTap: _loadRecentProjects,
+              ),
+              _RuntimeActionButton(
                 icon: Icons.search_outlined,
                 label: 'Preflight',
                 disabled: _running,
@@ -5664,6 +5830,36 @@ class _ProjectConsoleSheetState extends State<_ProjectConsoleSheet> {
                 onTap: _runValidation,
               ),
             ],
+          ),
+          if (_recentProjectPaths.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _Panel(
+              padding: const EdgeInsets.all(12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final path in _recentProjectPaths)
+                    ActionChip(
+                      avatar: const Icon(Icons.folder_open_outlined, size: 16),
+                      label: Text(_compact(path, limit: 34)),
+                      onPressed: _running ? null : () => setState(() => _projectPath.text = path),
+                    ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          TextField(
+            controller: _gitUrl,
+            decoration: const InputDecoration(labelText: 'Git repository URL', prefixIcon: Icon(Icons.cloud_download_outlined)),
+          ),
+          const SizedBox(height: 8),
+          _RuntimeActionButton(
+            icon: Icons.download_outlined,
+            label: 'Clone / import Git',
+            disabled: _running,
+            onTap: _cloneRepository,
           ),
           const SizedBox(height: 12),
           if (_profile != null) ...[
@@ -7187,13 +7383,26 @@ class _DeepDiveConsoleSheetState extends State<_DeepDiveConsoleSheet> {
     }
   }
 
-  Future<void> _cancelTask() async {
+  Future<void> _cancelTask([String? taskId]) async {
+    String? id = taskId;
+    if (id == null) {
+      for (final task in _recentTasks) {
+        if (task.running) {
+          id = task.taskId;
+          break;
+        }
+      }
+    }
     setState(() {
       _cancelling = true;
-      _lines.insert(0, 'Stopping active runtime task...');
+      _lines.insert(0, id == null ? 'Stopping active runtime task...' : 'Stopping runtime task $id...');
     });
     try {
-      await widget.runtimeManager.stopCurrentTask();
+      if (id == null) {
+        await widget.runtimeManager.stopCurrentTask();
+      } else {
+        await widget.runtimeManager.stopTask(id);
+      }
       final task = await widget.runtimeManager.currentTaskSnapshot();
       if (!mounted) return;
       setState(() {
@@ -7219,7 +7428,7 @@ class _DeepDiveConsoleSheetState extends State<_DeepDiveConsoleSheet> {
   }
 
   String _taskSummary(RuntimeTaskSnapshot task) {
-    final logs = task.logs.take(4).join('\n');
+    final logs = _recentLogLines(task.logs, limit: 4).join('\n');
     final failure = task.failureKind == RuntimeTaskFailureKind.none ? '' : ' (${task.failureKind.name})';
     return 'Task ${task.taskId} is ${task.status.name}$failure: ${task.command}${logs.isEmpty ? '' : '\n$logs'}';
   }
@@ -7313,7 +7522,10 @@ class _DeepDiveConsoleSheetState extends State<_DeepDiveConsoleSheet> {
           const SizedBox(height: 12),
           if (_recentTasks.isNotEmpty) ...[
             for (final task in _recentTasks.take(3)) ...[
-              _TaskSnapshotPanel(task: task),
+              _TaskSnapshotPanel(
+                task: task,
+                onStop: task.canCancel ? () => _cancelTask(task.taskId) : null,
+              ),
               const SizedBox(height: 8),
             ],
           ],
@@ -8205,6 +8417,48 @@ String _timeLabel(DateTime time) {
   if (diff.inSeconds < 60) return '${diff.inSeconds}s';
   if (diff.inMinutes < 60) return '${diff.inMinutes}m';
   return '${diff.inHours}h';
+}
+
+String _durationLabel(Duration duration) {
+  if (duration.inMilliseconds < 1000) return '${duration.inMilliseconds}ms';
+  if (duration.inMinutes < 1) return '${duration.inSeconds}s';
+  final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+  return '${duration.inMinutes}m ${seconds}s';
+}
+
+List<String> _recentLogLines(List<String> logs, {required int limit}) {
+  if (limit <= 0) return const [];
+  if (logs.length <= limit) return logs;
+  return logs.skip(logs.length - limit).toList();
+}
+
+String? _gitUrlError(String url) {
+  if (url.trim().isEmpty) return 'Git repository URL is required';
+  if (RegExp(r'[\s`$;&|<>]').hasMatch(url)) return 'Git URL contains unsafe shell characters';
+  final parsed = Uri.tryParse(url);
+  if (parsed != null && (parsed.scheme == 'https' || parsed.scheme == 'http' || parsed.scheme == 'ssh') && parsed.host.isNotEmpty) {
+    return null;
+  }
+  if (RegExp(r'^[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+:[A-Za-z0-9_./-]+(?:\.git)?$').hasMatch(url)) {
+    return null;
+  }
+  return 'Use an https://, http://, ssh://, or git@host:owner/repo.git URL';
+}
+
+String _projectNameFromGitUrl(String url) {
+  final parts = url.split(RegExp(r'[:/]')).where((part) => part.trim().isNotEmpty).toList();
+  final raw = parts.isEmpty ? 'mobilecode_project' : parts.last;
+  return raw.endsWith('.git') ? raw.substring(0, raw.length - 4) : raw;
+}
+
+String _safeProjectDirectoryName(String value) {
+  final sanitized = value.trim().replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_').replaceAll(RegExp(r'^\.|\.$'), '');
+  if (sanitized.isEmpty || sanitized == '.' || sanitized == '..') return 'mobilecode_project';
+  return sanitized;
+}
+
+String _quoteCommandArg(String value) {
+  return "'${value.replaceAll("'", "'\"'\"'")}'";
 }
 
 final List<_CapabilityLayer> _capabilityLayers = [

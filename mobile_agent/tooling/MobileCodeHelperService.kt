@@ -17,6 +17,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.Collections
 import java.util.Locale
@@ -142,8 +143,12 @@ class MobileCodeHelperService : Service() {
                 method == "POST" && path == "/v1/execute/stream" -> handleExecuteStream(socket, body)
                 method == "POST" && path == "/v1/project/preflight" -> handleProjectPreflight(socket, body)
                 method == "POST" && path == "/v1/task/stop" -> {
-                    val stopped = stopCurrentProcess()
-                    writeJson(socket, 200, JSONObject().put("success", true).put("stopped", stopped))
+                    writeJson(socket, 200, stopTask(null))
+                }
+                method == "POST" && path.startsWith("/v1/tasks/") && path.endsWith("/stop") -> {
+                    val taskId = decodePathSegment(path.removePrefix("/v1/tasks/").removeSuffix("/stop").trim('/'))
+                    val result = stopTask(taskId)
+                    writeJson(socket, if (result.optBoolean("success", false)) 200 else 404, result)
                 }
                 else -> writeJson(socket, 404, JSONObject().put("success", false).put("error", "Unknown endpoint"))
             }
@@ -372,7 +377,11 @@ class MobileCodeHelperService : Service() {
             currentTaskFinishedAtMs = System.currentTimeMillis()
             currentTaskExitCode = exitCode
             currentTaskDurationMs = durationMs
-            currentTaskError = error ?: ""
+            currentTaskError = if (status == "cancelled" && error.isNullOrBlank() && currentTaskError.isNotBlank()) {
+                currentTaskError
+            } else {
+                error ?: ""
+            }
             currentTaskFailureKind = classifyFailure(status, exitCode, error)
             persistTaskStateLocked()
         }
@@ -573,24 +582,86 @@ class MobileCodeHelperService : Service() {
         }
     }
 
-    private fun stopCurrentProcess(): Boolean {
-        val process = currentProcess ?: return false
+    private fun stopCurrentProcess(): Boolean = stopTask(null).optBoolean("stopped", false)
+
+    private fun stopTask(taskId: String?): JSONObject {
+        val requestedTaskId = taskId?.trim().orEmpty()
+        var stoppingTaskId = ""
+        val process = synchronized(taskLock) {
+            if (requestedTaskId.isNotEmpty()) {
+                val task = taskHistory.firstOrNull { it.optString("id") == requestedTaskId || it.optString("taskId") == requestedTaskId }
+                if (task == null) {
+                    return JSONObject()
+                        .put("success", false)
+                        .put("stopped", false)
+                        .put("taskId", requestedTaskId)
+                        .put("failureKind", "unknown")
+                        .put("error", "Task not found: $requestedTaskId")
+                }
+                if (requestedTaskId != currentTaskId) {
+                    return JSONObject()
+                        .put("success", true)
+                        .put("stopped", false)
+                        .put("taskId", requestedTaskId)
+                        .put("task", JSONObject(task.toString()))
+                }
+            }
+            stoppingTaskId = currentTaskId
+            currentProcess
+        } ?: return synchronized(taskLock) {
+            val payload = JSONObject().put("success", true).put("stopped", false)
+            if (requestedTaskId.isNotEmpty()) {
+                payload.put("taskId", requestedTaskId)
+                taskHistory
+                    .firstOrNull { it.optString("id") == requestedTaskId || it.optString("taskId") == requestedTaskId }
+                    ?.let { payload.put("task", JSONObject(it.toString())) }
+            }
+            payload
+        }
+
+        val markedTask = synchronized(taskLock) {
+            if (currentProcess == process && currentTaskId == stoppingTaskId) {
+                currentProcess = null
+                currentTaskStatus = "cancelled"
+                currentTaskFinishedAtMs = System.currentTimeMillis()
+                currentTaskDurationMs = if (currentTaskStartedAtMs > 0L) {
+                    (currentTaskFinishedAtMs - currentTaskStartedAtMs).coerceAtLeast(0L)
+                } else {
+                    currentTaskDurationMs
+                }
+                currentTaskError = "Task cancelled by MobileCode."
+                currentTaskFailureKind = "cancelled"
+                appendLog("task stopped")
+                persistTaskStateLocked()
+            }
+            val task = taskHistory.firstOrNull { it.optString("id") == stoppingTaskId || it.optString("taskId") == stoppingTaskId }
+            if (task == null) taskSnapshotJson() else JSONObject(task.toString())
+        }
+
         return try {
             process.destroy()
             if (!process.waitFor(2, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
             }
-            currentProcess = null
-            currentTaskStatus = "cancelled"
-            currentTaskFinishedAtMs = System.currentTimeMillis()
-            currentTaskError = "Task cancelled by MobileCode."
-            currentTaskFailureKind = "cancelled"
-            recordLog("task stopped")
-            true
-        } catch (_: Throwable) {
-            false
+            synchronized(taskLock) {
+                val task = taskHistory.firstOrNull { it.optString("id") == stoppingTaskId || it.optString("taskId") == stoppingTaskId }
+                JSONObject()
+                    .put("success", true)
+                    .put("stopped", true)
+                    .put("taskId", stoppingTaskId)
+                    .put("task", if (task == null) markedTask else JSONObject(task.toString()))
+            }
+        } catch (error: Throwable) {
+            JSONObject()
+                .put("success", false)
+                .put("stopped", false)
+                .put("taskId", requestedTaskId.ifEmpty { currentTaskId })
+                .put("failureKind", "unknown")
+                .put("error", error.message ?: error.javaClass.simpleName)
         }
     }
+
+    private fun decodePathSegment(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8.name())
 
     private fun queryLimit(query: String, fallback: Int): Int {
         return query.split("&")

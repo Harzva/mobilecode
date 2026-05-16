@@ -161,6 +161,27 @@ class RuntimeManager {
     await _activeProvider!.stopCurrentTask();
   }
 
+  Future<void> stopTask(String taskId) async {
+    await _ensureReady();
+    final id = taskId.trim();
+    if (id.isEmpty) {
+      throw ArgumentError.value(taskId, 'taskId', 'Task ID is required.');
+    }
+    final provider = _activeProvider!;
+    if (provider is RuntimeTaskController) {
+      await (provider as RuntimeTaskController).stopTask(id);
+      return;
+    }
+    if (provider is RuntimeTaskMonitor) {
+      final task = await (provider as RuntimeTaskMonitor).currentTask();
+      if (task?.taskId == id) {
+        await provider.stopCurrentTask();
+        return;
+      }
+    }
+    throw UnsupportedError('${provider.name} cannot stop task $id by ID.');
+  }
+
   Future<RuntimeTaskSnapshot?> currentTaskSnapshot() async {
     await _ensureReady();
     final provider = _activeProvider;

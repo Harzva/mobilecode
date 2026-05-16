@@ -74,6 +74,26 @@ jobs:
             adb shell pidof com.mobilecode.mobile_agent
             grep -q "com.mobilecode.mobile_agent" artifacts/window-focus.txt
             ! grep -q "Splash Screen com.mobilecode.mobile_agent" artifacts/window-focus.txt
+            adb shell am start -n com.mobilecode.mobile_agent/.MainActivity --ez mobilecode_start_helper true
+            adb forward tcp:18765 tcp:8765
+            for attempt in $(seq 1 20); do
+              if curl -fsS http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then
+                break
+              fi
+              sleep 1
+            done
+            curl -fsS http://127.0.0.1:18765/v1/health | tee artifacts/android-helper-health.json
+            curl -fsS \
+              -H 'Content-Type: application/json' \
+              -X POST http://127.0.0.1:18765/v1/execute \
+              -d '{"command":"pwd","timeoutMs":10000}' \
+              | tee artifacts/android-helper-execute.json
+            curl -fsS http://127.0.0.1:18765/v1/tasks/current | tee artifacts/android-helper-task.json
+            grep '"name":"MobileCode Helper Service"' artifacts/android-helper-health.json
+            grep '"ready":true' artifacts/android-helper-health.json
+            grep '"backgroundService":true' artifacts/android-helper-health.json
+            grep '"exitCode":0' artifacts/android-helper-execute.json
+            grep '"failureKind":"none"' artifacts/android-helper-execute.json
             adb exec-out screencap -p > artifacts/mobilecode-android-smoke.png
             adb logcat -d -t 1200 > artifacts/android-logcat.txt
             grep -E "FATAL EXCEPTION|E AndroidRuntime|NoSuchMethodError|MissingPluginException|ANR in com.mobilecode.mobile_agent" artifacts/android-logcat.txt && exit 1 || true

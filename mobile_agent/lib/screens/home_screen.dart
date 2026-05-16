@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../services/runtime_manager.dart';
+import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
 import '../services/termux_service.dart';
 import '../services/voice_service.dart';
@@ -1411,8 +1412,15 @@ class _HomeScreenState extends State<HomeScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
       ),
-      builder: (context) => _TermuxSheet(
+      builder: (context) => _RuntimeDiagnosticsSheet(
+        runtimeManager: _runtimeManager,
+        initialHealth: _runtimeHealth,
+        initialCapabilities: _runtimeCapabilities,
+        termuxInstalled: _termuxInstalled,
+        termuxApiInstalled: _termuxApiInstalled,
+        rootAvailable: _rootAvailable,
         onOpenInstall: () => _openUrl('https://f-droid.org/packages/com.termux/', 'Termux install page'),
+        onRefreshParent: () => _checkRuntime(),
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
       ),
     );
@@ -1490,20 +1498,13 @@ class _HomeScreenState extends State<HomeScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
       ),
-      builder: (context) => _ActionConsoleSheet(
+      builder: (context) => _RuntimeActionsSheet(
         icon: Icons.terminal_outlined,
-        title: 'Terminal Console',
-        subtitle: 'Terminal controller, shell service, SSH, and Termux bridges are grouped for mobile command work.',
-        actions: const [
-          'Run local shell command',
-          'Attach SSH host',
-          'Send Termux build command',
-          'Stream command output into task history',
-        ],
-        buttonLabel: 'Prepare terminal session',
-        onRun: () {
-          _addLog('Terminal session prepared', 'Local, SSH, and Termux actions available', Icons.terminal_outlined, _cyan);
-        },
+        title: 'Runtime Actions',
+        subtitle: 'Run structured mobile coding actions through the active RuntimeProvider.',
+        runtimeManager: _runtimeManager,
+        defaultPackageManager: 'npm',
+        onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
       ),
     );
   }
@@ -1542,20 +1543,13 @@ class _HomeScreenState extends State<HomeScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
       ),
-      builder: (context) => _ActionConsoleSheet(
+      builder: (context) => _RuntimeActionsSheet(
         icon: Icons.rocket_launch_outlined,
-        title: 'Build and Release',
-        subtitle: 'Build orchestrator, preview service, Termux, GitHub Pages, and WeChat publish flows share this surface.',
-        actions: const [
-          'Build Android APK through local or GitHub workflow',
-          'Preview HTML and mobile app surfaces',
-          'Deploy static site to GitHub Pages',
-          'Prepare WeChat mini-program upload',
-        ],
-        buttonLabel: 'Stage release workflow',
-        onRun: () {
-          _addLog('Release workflow staged', 'APK, preview, Pages, and WeChat paths grouped', Icons.rocket_launch_outlined, _amber);
-        },
+        title: 'Build and Release Actions',
+        subtitle: 'Install, test, build preview, commit, and publish through RuntimeManager.',
+        runtimeManager: _runtimeManager,
+        defaultPackageManager: 'flutter',
+        onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
       ),
     );
   }
@@ -2325,10 +2319,10 @@ class _RuntimePermissionBanner extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           IconButton(
-            tooltip: 'Open runtime setup',
+            tooltip: 'Open runtime diagnostics',
             visualDensity: VisualDensity.compact,
             onPressed: onOpenRuntime,
-            icon: Icon(Icons.terminal_outlined, color: _violet, size: 18),
+            icon: Icon(Icons.monitor_heart_outlined, color: _violet, size: 18),
           ),
           IconButton(
             tooltip: 'Check runtime',
@@ -4756,64 +4750,106 @@ class _ToolScopeLine extends StatelessWidget {
   }
 }
 
-class _TermuxSheet extends StatefulWidget {
-  const _TermuxSheet({
+class _RuntimeDiagnosticsSheet extends StatefulWidget {
+  const _RuntimeDiagnosticsSheet({
+    required this.runtimeManager,
+    required this.initialHealth,
+    required this.initialCapabilities,
+    required this.termuxInstalled,
+    required this.termuxApiInstalled,
+    required this.rootAvailable,
     required this.onOpenInstall,
+    required this.onRefreshParent,
     required this.onLog,
   });
 
+  final RuntimeManager runtimeManager;
+  final List<RuntimeHealth> initialHealth;
+  final RuntimeCapabilities initialCapabilities;
+  final bool? termuxInstalled;
+  final bool? termuxApiInstalled;
+  final bool? rootAvailable;
   final VoidCallback onOpenInstall;
+  final Future<void> Function() onRefreshParent;
   final void Function(String title, String detail, IconData icon, Color color) onLog;
 
   @override
-  State<_TermuxSheet> createState() => _TermuxSheetState();
+  State<_RuntimeDiagnosticsSheet> createState() => _RuntimeDiagnosticsSheetState();
 }
 
-class _TermuxSheetState extends State<_TermuxSheet> {
+class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
   bool _checking = false;
-  String _status = 'Not checked yet.';
+  late List<RuntimeHealth> _health;
+  late RuntimeCapabilities _capabilities;
+  bool? _termuxInstalled;
+  bool? _termuxApiInstalled;
+  bool? _rootAvailable;
+  RuntimeTaskSnapshot? _task;
+  String _status = 'Runtime diagnostics are ready to refresh.';
 
-  Future<void> _check() async {
+  @override
+  void initState() {
+    super.initState();
+    _health = widget.initialHealth;
+    _capabilities = widget.initialCapabilities;
+    _termuxInstalled = widget.termuxInstalled;
+    _termuxApiInstalled = widget.termuxApiInstalled;
+    _rootAvailable = widget.rootAvailable;
+  }
+
+  Future<void> _refresh() async {
     setState(() {
       _checking = true;
-      _status = 'Checking Android package manager for com.termux...';
+      _status = 'Checking Helper, External Termux, root, and active task state...';
     });
     try {
-      final installed = await _isAndroidPackageInstalled('com.termux');
-      final apiInstalled = await _isAndroidPackageInstalled('com.termux.api');
-      final urlVisible = await canLaunchUrl(Uri.parse('termux://'));
+      await _startMobileCodeHelperService();
+      await widget.runtimeManager.initialize();
+      final health = await widget.runtimeManager.refresh();
+      final capabilities = await widget.runtimeManager.capabilities();
+      final termux = await _isAndroidPackageInstalled('com.termux');
+      final termuxApi = await _isAndroidPackageInstalled('com.termux.api');
       final rootProbe = await _probeRootAvailability();
+      final task = await widget.runtimeManager.currentTaskSnapshot();
       if (!mounted) return;
-      final status = installed == true
-          ? 'Termux is installed. ${apiInstalled == true ? 'Termux:API is also installed.' : 'Termux:API is not detected; command automation may need it.'} ${rootProbe?.available == true ? 'Root appears available.' : 'Root is missing or not granted, so backend auto-start/keepalive can fail.'}'
-          : installed == false
-              ? 'com.termux is not visible to Android package manager. Install Termux from F-Droid, or check package visibility.'
-              : 'Package channel is unavailable in this build. termux:// visible: $urlVisible. URL scheme alone is not reliable.';
+      final active = widget.runtimeManager.activeHealth;
       setState(() {
-        _status = status;
+        _health = health;
+        _capabilities = capabilities;
+        _termuxInstalled = termux;
+        _termuxApiInstalled = termuxApi;
+        _rootAvailable = rootProbe?.available;
+        _task = task;
+        _status = '${active?.name ?? 'No runtime'}: ${active?.status ?? 'No provider responded.'}';
       });
       widget.onLog(
-        installed == true ? 'Termux detected' : 'Termux check completed',
+        active?.ready == true ? 'Runtime diagnostics ready' : 'Runtime diagnostics need setup',
         _status,
-        installed == true ? Icons.terminal_outlined : Icons.info_outline,
-        installed == true ? _mint : _amber,
+        active?.ready == true ? Icons.verified_outlined : Icons.warning_amber_outlined,
+        active?.ready == true ? _mint : _amber,
       );
+      unawaited(widget.onRefreshParent());
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _status = _compact(error.toString(), limit: 180);
+      });
+      widget.onLog('Runtime diagnostics failed', _status, Icons.error_outline, _rose);
     } finally {
       if (mounted) setState(() => _checking = false);
     }
   }
 
-  Future<void> _launch() async {
+  Future<void> _launchTermux() async {
     final opened = await _launchAndroidPackage('com.termux');
     if (!mounted) return;
-    setState(() {
-      _status = opened
-          ? 'Termux launch intent sent. Return to MobileCode after preparing the shell.'
-          : 'Could not launch com.termux. The package may be missing, disabled, or hidden from this build.';
-    });
+    final message = opened
+        ? 'External Termux launch intent sent.'
+        : 'Could not launch com.termux. It may be missing, disabled, or hidden.';
+    setState(() => _status = message);
     widget.onLog(
-      opened ? 'Termux launched' : 'Termux launch failed',
-      _status,
+      opened ? 'External Termux launched' : 'External Termux launch failed',
+      message,
       opened ? Icons.open_in_new_outlined : Icons.error_outline,
       opened ? _mint : _rose,
     );
@@ -4821,59 +4857,411 @@ class _TermuxSheetState extends State<_TermuxSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final active = widget.runtimeManager.activeHealth ?? (_health.isNotEmpty ? _health.first : null);
     return _SheetScaffold(
-      icon: Icons.terminal_outlined,
-      title: 'Runtime Fallback Check',
-      subtitle: 'Use this when Helper is missing and MobileCode falls back to External Termux.',
+      icon: Icons.monitor_heart_outlined,
+      title: 'Runtime Diagnostics',
+      subtitle: 'Helper, Termux fallback, task recovery, and capability status in one place.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _Panel(
-            child: Text(_status, style: const TextStyle(color: _muted, height: 1.4)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(active?.name ?? 'Runtime discovery pending', style: const TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 6),
+                Text(_status, style: const TextStyle(color: _muted, height: 1.4)),
+                const SizedBox(height: 8),
+                Text('Capabilities: ${_runtimeCapabilitiesText(_capabilities)}', style: const TextStyle(color: _faint, fontSize: 12, height: 1.35)),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: _checking ? null : _check,
+                  onPressed: _checking ? null : _refresh,
                   icon: _checking
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.search_outlined),
-                  label: Text(_checking ? 'Checking' : 'Check fallback'),
+                      : const Icon(Icons.refresh_outlined),
+                  label: Text(_checking ? 'Refreshing' : 'Refresh'),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: _launch,
+                  onPressed: _launchTermux,
                   icon: const Icon(Icons.open_in_new_outlined),
-                  label: const Text('Launch'),
+                  label: const Text('Open Termux'),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: widget.onOpenInstall,
-                  icon: const Icon(Icons.download_outlined),
-                  label: const Text('Install guide'),
-                ),
-              ),
+          if (_health.isEmpty)
+            const Text('No runtime health records yet.', style: TextStyle(color: _muted))
+          else
+            for (final health in _health) ...[
+              _RuntimeHealthTile(health: health),
+              const SizedBox(height: 8),
             ],
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Fallback visibility', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                _DiagnosticLine(label: 'External Termux', value: _boolStatus(_termuxInstalled), good: _termuxInstalled == true),
+                _DiagnosticLine(label: 'Termux:API', value: _boolStatus(_termuxApiInstalled), good: _termuxApiInstalled == true),
+                _DiagnosticLine(label: 'Root keepalive', value: _boolStatus(_rootAvailable), good: _rootAvailable == true),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _TaskSnapshotPanel(task: _task),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: widget.onOpenInstall,
+            icon: const Icon(Icons.download_outlined),
+            label: const Text('External Termux install guide'),
           ),
           const SizedBox(height: 12),
           const Text(
-            'External Termux is a fallback runtime, not the product boundary. Pure Flutter tools can use storage, network, WebView, camera, microphone, and GitHub APIs directly. Helper or Termux is needed for Linux-like shell commands, local build tools, package managers, git/ssh binaries, and long-running developer scripts.',
+            'External Termux remains a fallback. MobileCode should prefer Helper, Embedded Lite, or Cloud providers through RuntimeManager whenever possible.',
             style: TextStyle(color: _muted, fontSize: 12, height: 1.4),
           ),
         ],
       ),
     );
   }
+}
+
+class _RuntimeActionsSheet extends StatefulWidget {
+  const _RuntimeActionsSheet({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.runtimeManager,
+    required this.defaultPackageManager,
+    required this.onLog,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final RuntimeManager runtimeManager;
+  final String defaultPackageManager;
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
+
+  @override
+  State<_RuntimeActionsSheet> createState() => _RuntimeActionsSheetState();
+}
+
+class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
+  final _projectPath = TextEditingController(text: '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime');
+  final _message = TextEditingController(text: 'mobile runtime update');
+  final List<String> _lines = ['No runtime action has run yet.'];
+  bool _running = false;
+  late String _packageManager;
+
+  @override
+  void initState() {
+    super.initState();
+    _packageManager = widget.defaultPackageManager;
+  }
+
+  @override
+  void dispose() {
+    _projectPath.dispose();
+    _message.dispose();
+    super.dispose();
+  }
+
+  Future<void> _run(RuntimeActionType type) async {
+    final projectPath = _projectPath.text.trim();
+    if (projectPath.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Project path is required')));
+      return;
+    }
+    setState(() {
+      _running = true;
+      _lines.insert(0, 'Running ${type.name}...');
+    });
+    try {
+      final result = await widget.runtimeManager.runAction(RuntimeActionRequest(
+        type: type,
+        projectPath: projectPath,
+        packageManager: _packageManager == 'auto' ? null : _packageManager,
+        message: _message.text.trim(),
+      ));
+      if (!mounted) return;
+      final tail = result.lastResult;
+      final detail = [
+        result.summary,
+        if (result.skippedReason != null) result.skippedReason!,
+        if (tail != null && tail.stdout.trim().isNotEmpty) _compact(tail.stdout.trim(), limit: 160),
+        if (tail != null && tail.stderr.trim().isNotEmpty) _compact(tail.stderr.trim(), limit: 160),
+      ].join('\n');
+      setState(() {
+        _lines.insert(0, '${result.success ? 'OK' : 'FAILED'} ${type.name}: $detail');
+      });
+      widget.onLog(
+        result.success ? 'Runtime action completed' : 'Runtime action failed',
+        '${type.name}: ${result.summary}',
+        result.success ? Icons.check_circle_outline : Icons.error_outline,
+        result.success ? _mint : _rose,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 180);
+      setState(() {
+        _lines.insert(0, 'ERROR ${type.name}: $message');
+      });
+      widget.onLog('Runtime action error', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  Future<void> _inspectTask() async {
+    setState(() => _running = true);
+    try {
+      final task = await widget.runtimeManager.currentTaskSnapshot();
+      if (!mounted) return;
+      setState(() {
+        _lines.insert(0, task == null ? 'No recoverable runtime task.' : _taskSummary(task));
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _lines.insert(0, 'Task recovery failed: ${_compact(error.toString(), limit: 160)}'));
+    } finally {
+      if (mounted) setState(() => _running = false);
+    }
+  }
+
+  String _taskSummary(RuntimeTaskSnapshot task) {
+    final logs = task.logs.take(4).join('\n');
+    return 'Task ${task.taskId} is ${task.status.name}: ${task.command}${logs.isEmpty ? '' : '\n$logs'}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: widget.icon,
+      title: widget.title,
+      subtitle: widget.subtitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _projectPath,
+            decoration: const InputDecoration(labelText: 'Runtime project path', prefixIcon: Icon(Icons.folder_outlined)),
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value: _packageManager,
+            decoration: const InputDecoration(labelText: 'Action profile', prefixIcon: Icon(Icons.tune_outlined)),
+            items: const [
+              DropdownMenuItem(value: 'auto', child: Text('Auto from capabilities')),
+              DropdownMenuItem(value: 'flutter', child: Text('Flutter')),
+              DropdownMenuItem(value: 'npm', child: Text('Node / npm')),
+              DropdownMenuItem(value: 'python', child: Text('Python')),
+            ],
+            onChanged: _running ? null : (value) => setState(() => _packageManager = value ?? 'auto'),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _message,
+            decoration: const InputDecoration(labelText: 'Commit message', prefixIcon: Icon(Icons.edit_note_outlined)),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _ActionChipButton(icon: Icons.inventory_2_outlined, label: 'Install', disabled: _running, onTap: () => _run(RuntimeActionType.installDependencies)),
+              _ActionChipButton(icon: Icons.fact_check_outlined, label: 'Test', disabled: _running, onTap: () => _run(RuntimeActionType.runTests)),
+              _ActionChipButton(icon: Icons.web_asset_outlined, label: 'Preview', disabled: _running, onTap: () => _run(RuntimeActionType.buildPreview)),
+              _ActionChipButton(icon: Icons.account_tree_outlined, label: 'Commit', disabled: _running, onTap: () => _run(RuntimeActionType.gitCommit)),
+              _ActionChipButton(icon: Icons.publish_outlined, label: 'Publish', disabled: _running, onTap: () => _run(RuntimeActionType.publishPages)),
+              _ActionChipButton(icon: Icons.history_outlined, label: 'Recover', disabled: _running, onTap: _inspectTask),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            child: Text(
+              _lines.take(8).join('\n\n'),
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RuntimeHealthTile extends StatelessWidget {
+  const _RuntimeHealthTile({required this.health});
+
+  final RuntimeHealth health;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = health.ready ? _mint : health.available ? _amber : _rose;
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(health.ready ? Icons.check_circle_outline : Icons.info_outline, color: color, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(health.name, style: const TextStyle(color: _text, fontWeight: FontWeight.w900)),
+              ),
+              Text(health.ready ? 'ready' : health.available ? 'available' : 'offline', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(health.status, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+          const SizedBox(height: 6),
+          Text(_runtimeCapabilitiesText(health.capabilities), style: const TextStyle(color: _faint, fontSize: 11, height: 1.3)),
+          if (health.missingDependencies.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('Missing: ${health.missingDependencies.join(', ')}', style: const TextStyle(color: _amber, fontSize: 11, height: 1.3)),
+          ],
+          if (health.recoveryActions.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('Recover: ${health.recoveryActions.join(' / ')}', style: const TextStyle(color: _muted, fontSize: 11, height: 1.3)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DiagnosticLine extends StatelessWidget {
+  const _DiagnosticLine({
+    required this.label,
+    required this.value,
+    required this.good,
+  });
+
+  final String label;
+  final String value;
+  final bool good;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Icon(good ? Icons.check_circle_outline : Icons.radio_button_unchecked_outlined, size: 16, color: good ? _mint : _faint),
+          const SizedBox(width: 8),
+          Expanded(child: Text(label, style: const TextStyle(color: _muted, fontSize: 12))),
+          Text(value, style: TextStyle(color: good ? _mint : _faint, fontSize: 12, fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+}
+
+class _TaskSnapshotPanel extends StatelessWidget {
+  const _TaskSnapshotPanel({required this.task});
+
+  final RuntimeTaskSnapshot? task;
+
+  @override
+  Widget build(BuildContext context) {
+    final snapshot = task;
+    if (snapshot == null) {
+      return const _Panel(
+        padding: EdgeInsets.all(12),
+        child: Text('No recoverable runtime task snapshot yet.', style: TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+      );
+    }
+    final color = snapshot.running
+        ? _amber
+        : snapshot.status == RuntimeTaskStatus.succeeded
+            ? _mint
+            : _rose;
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.history_outlined, color: color, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Task ${snapshot.taskId}', style: const TextStyle(color: _text, fontWeight: FontWeight.w900))),
+              Text(snapshot.status.name, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(snapshot.command.isEmpty ? 'No command recorded.' : snapshot.command, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+          if (snapshot.workingDir != null && snapshot.workingDir!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(snapshot.workingDir!, style: const TextStyle(color: _faint, fontSize: 11, height: 1.3)),
+          ],
+          if (snapshot.logs.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(snapshot.logs.take(6).join('\n'), style: const TextStyle(color: _faint, fontSize: 11, height: 1.3)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionChipButton extends StatelessWidget {
+  const _ActionChipButton({
+    required this.icon,
+    required this.label,
+    required this.disabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool disabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: disabled ? null : onTap,
+      icon: Icon(icon, size: 17),
+      label: Text(label),
+    );
+  }
+}
+
+String _runtimeCapabilitiesText(RuntimeCapabilities capabilities) {
+  final labels = <String>[
+    if (capabilities.shell) 'shell',
+    if (capabilities.git) 'git',
+    if (capabilities.node) 'node',
+    if (capabilities.python) 'python',
+    if (capabilities.flutter) 'flutter',
+    if (capabilities.androidBuild) 'apk',
+    if (capabilities.pty) 'pty',
+    if (capabilities.backgroundService) 'background',
+    if (capabilities.cloudBuild) 'cloud',
+    if (capabilities.webViewPreview) 'webview',
+  ];
+  return labels.isEmpty ? 'webview-only' : labels.join(', ');
+}
+
+String _boolStatus(bool? value) {
+  if (value == true) return 'yes';
+  if (value == false) return 'no';
+  return 'unknown';
 }
 
 class _ChatPanel extends StatefulWidget {

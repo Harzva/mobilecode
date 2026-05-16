@@ -89,6 +89,9 @@ class HelperState:
         self.allow_unsafe = allow_unsafe
         self.current_process: subprocess.Popen[str] | None = None
         self.current_lock = threading.Lock()
+        self.task_file = self.workspace_root / ".mobilecode-helper-task.json"
+        self.current_task: dict[str, Any] | None = None
+        self._load_task()
 
     def capabilities(self) -> dict[str, bool]:
         return {
@@ -130,6 +133,80 @@ class HelperState:
         if executable not in DEFAULT_ALLOWED_COMMANDS:
             raise ValueError(f"command is not allowed: {executable}")
         return parts
+
+    def begin_task(self, command: str, cwd: Path) -> dict[str, Any]:
+        task = {
+            "id": f"task-{int(time.time() * 1000)}-{os.getpid()}",
+            "taskId": "",
+            "command": command,
+            "cwd": str(cwd),
+            "status": "running",
+            "startedAtMs": int(time.time() * 1000),
+            "finishedAtMs": 0,
+            "durationMs": 0,
+            "logs": [],
+            "provider": "mobileCodeHelper",
+        }
+        task["taskId"] = task["id"]
+        with self.current_lock:
+            self.current_task = task
+            self._persist_task_locked()
+        return task
+
+    def append_log(self, line: str) -> None:
+        with self.current_lock:
+            if self.current_task is None:
+                return
+            logs = self.current_task.setdefault("logs", [])
+            if isinstance(logs, list):
+                logs.append(line)
+                del logs[:-200]
+            self._persist_task_locked()
+
+    def finish_task(self, status: str, exit_code: int | None, duration_ms: int, error: str | None = None) -> None:
+        with self.current_lock:
+            if self.current_task is None:
+                return
+            self.current_task["status"] = status
+            self.current_task["finishedAtMs"] = int(time.time() * 1000)
+            self.current_task["durationMs"] = duration_ms
+            if exit_code is not None:
+                self.current_task["exitCode"] = exit_code
+            if error:
+                self.current_task["error"] = error
+            self._persist_task_locked()
+
+    def task_snapshot(self) -> dict[str, Any]:
+        with self.current_lock:
+            task = dict(self.current_task or {})
+            logs = task.get("logs", [])
+            if isinstance(logs, list):
+                task["logs"] = list(logs)
+            return task
+
+    def _load_task(self) -> None:
+        if not self.task_file.exists():
+            return
+        try:
+            loaded = json.loads(self.task_file.read_text(encoding="utf-8"))
+            if not isinstance(loaded, dict):
+                return
+            self.current_task = loaded
+            if loaded.get("status") == "running":
+                loaded["status"] = "lost"
+                loaded["finishedAtMs"] = int(time.time() * 1000)
+                loaded["error"] = "Helper daemon restarted before this task completed."
+                logs = loaded.setdefault("logs", [])
+                if isinstance(logs, list):
+                    logs.append("task lost after helper restart")
+                self._persist_task_locked()
+        except Exception:
+            self.current_task = None
+
+    def _persist_task_locked(self) -> None:
+        if not self.current_task:
+            return
+        self.task_file.write_text(json.dumps(self.current_task, ensure_ascii=False), encoding="utf-8")
 
 
 def has_binary(name: str) -> bool:
@@ -207,6 +284,18 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                     }
                 )
                 return
+            if self.path == "/v1/tasks/current":
+                task = self.state.task_snapshot()
+                self.send_json(
+                    {
+                        "running": task.get("status") == "running",
+                        "taskId": task.get("id", ""),
+                        "command": task.get("command", ""),
+                        "logs": task.get("logs", []),
+                        "task": task,
+                    }
+                )
+                return
             self.send_error_json(HTTPStatus.NOT_FOUND, "Unknown endpoint")
         except Exception as exc:  # pragma: no cover - defensive server boundary
             self.send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
@@ -233,7 +322,52 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         env = payload.get("env") if isinstance(payload.get("env"), dict) else None
         timeout_ms = int(payload.get("timeoutMs", 120000))
         args = self.state.command_args(command)
-        self.send_json(command_result(command, args, cwd, env, timeout_ms))
+        task = self.state.begin_task(command, cwd)
+        self.state.append_log(f"task {task['id']}: {command}")
+        started = time.monotonic()
+        merged_env = os.environ.copy()
+        if env:
+            merged_env.update({str(k): str(v) for k, v in env.items()})
+        process = subprocess.Popen(
+            args,
+            cwd=str(cwd),
+            env=merged_env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        with self.state.current_lock:
+            self.state.current_process = process
+        timed_out = False
+        try:
+            stdout, stderr = process.communicate(timeout=max(timeout_ms / 1000, 1))
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            process.kill()
+            stdout, stderr = process.communicate()
+            stderr = (stderr or "") + f"\nCommand timed out after {timeout_ms}ms.\n"
+        duration_ms = int((time.monotonic() - started) * 1000)
+        exit_code = 124 if timed_out else process.returncode
+        for line in (stdout or "").splitlines():
+            self.state.append_log(f"stdout: {line}")
+        for line in (stderr or "").splitlines():
+            self.state.append_log(f"stderr: {line}")
+        with self.state.current_lock:
+            if self.state.current_process is process:
+                self.state.current_process = None
+            cancelled = self.state.current_task is not None and self.state.current_task.get("status") == "cancelled"
+        status = "cancelled" if cancelled else "timedOut" if timed_out else "succeeded" if exit_code == 0 else "failed"
+        self.state.finish_task(status, exit_code, duration_ms, (stderr or "").strip() or None)
+        self.send_json(
+            {
+                "command": command,
+                "stdout": stdout or "",
+                "stderr": stderr or "",
+                "exitCode": exit_code,
+                "durationMs": duration_ms,
+                "taskId": task["id"],
+            }
+        )
 
     def handle_execute_stream(self) -> None:
         payload = read_json(self)
@@ -241,6 +375,8 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         cwd = self.state.validate_cwd(payload.get("cwd"))
         env = payload.get("env") if isinstance(payload.get("env"), dict) else None
         args = self.state.command_args(command)
+        task = self.state.begin_task(command, cwd)
+        self.state.append_log(f"task {task['id']} stream: {command}")
 
         merged_env = os.environ.copy()
         if env:
@@ -286,15 +422,18 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
             if line is None:
                 ended_streams += 1
                 continue
+            self.state.append_log(f"{stream_type}: {line}")
             self.write_ndjson({"type": stream_type, "data": line})
 
         exit_code = process.wait()
         duration_ms = int((time.monotonic() - started) * 1000)
-        self.write_ndjson({"type": "exit", "exitCode": exit_code, "durationMs": duration_ms})
-
         with self.state.current_lock:
             if self.state.current_process is process:
                 self.state.current_process = None
+            cancelled = self.state.current_task is not None and self.state.current_task.get("status") == "cancelled"
+        status = "cancelled" if cancelled else "succeeded" if exit_code == 0 else "failed"
+        self.state.finish_task(status, exit_code, duration_ms)
+        self.write_ndjson({"type": "exit", "exitCode": exit_code, "durationMs": duration_ms, "taskId": task["id"]})
 
     def handle_stop(self) -> None:
         with self.state.current_lock:
@@ -307,6 +446,8 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
             process.wait(timeout=2)
         except subprocess.TimeoutExpired:
             process.kill()
+        self.state.append_log("task stopped")
+        self.state.finish_task("cancelled", None, 0, "Task cancelled by MobileCode.")
         self.send_json({"success": True, "stopped": True})
 
     def send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:

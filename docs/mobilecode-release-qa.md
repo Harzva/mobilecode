@@ -12,7 +12,7 @@ Required GitHub Actions before publishing:
   - Runs RuntimeProvider tests for `RuntimeManager` and `MobileCodeHelperProvider`.
   - Compiles `mobile_agent/tooling/mobilecode_helper_daemon.py`.
   - Compiles `mobile_agent/tooling/prepare_android_project.py`, which injects the native Helper foreground service into generated Android projects.
-  - Starts the helper daemon and smoke tests `/v1/health`, `/v1/execute`, and `/v1/execute/stream`.
+  - Starts the helper daemon and smoke tests `/v1/health`, `/v1/execute`, `/v1/execute/stream`, and `/v1/tasks/current`.
 - `.github/workflows/android-app-test.yml`
   - Builds a debug APK.
   - Installs and launches it on an Android emulator.
@@ -46,6 +46,7 @@ Android foreground-service prototype:
 - Use Home or Tools -> Runtime providers.
 - The app calls `startHelperService` through the native `mobilecode/system_tools` channel.
 - Verify the Runtime banner reports `MobileCode Helper Service` and capabilities include `shell` and `bg`.
+- Open Runtime Diagnostics and verify the provider list, fallback visibility, and task snapshot panels render.
 
 Termux/Python helper daemon fallback:
 
@@ -69,6 +70,7 @@ curl -fsS -N -H 'Content-Type: application/json' \
   -H 'Accept: application/x-ndjson' \
   -X POST http://127.0.0.1:8765/v1/execute/stream \
   -d '{"command":"python3 -c \"print(43)\"","cwd":"'$HOME'/mobilecode_projects","timeoutMs":10000}'
+curl -fsS http://127.0.0.1:8765/v1/tasks/current
 ```
 
 Expected result:
@@ -76,6 +78,7 @@ Expected result:
 - `/v1/health` returns `ready: true`.
 - `/v1/execute` returns `exitCode: 0`.
 - `/v1/execute/stream` emits at least one `stdout` event and one `exit` event.
+- `/v1/tasks/current` returns a task object with `taskId`, `status`, and recent `logs`.
 - MobileCode Home/Tools shows a Runtime-ready banner when the Helper provider is reachable.
 
 ## Manual APK Validation
@@ -94,7 +97,8 @@ Pass criteria:
 - App launches beyond splash.
 - Home Runtime banner renders without Flutter red-screen errors.
 - Tools -> Runtime providers can detect Helper or External Termux fallback.
-- Build / release page opens without missing plugin errors.
+- Runtime Diagnostics can refresh without starting a crashing foreground service.
+- Build / release page exposes structured runtime actions without missing plugin errors.
 - Logcat has no `FATAL EXCEPTION`, `AndroidRuntime`, `MissingPluginException`, or `ANR in com.mobilecode.mobile_agent`.
 
 ## Release Readiness
@@ -104,4 +108,5 @@ Publish only when:
 - Runtime provider selection degrades cleanly: Helper > External Termux > Cloud > WebView-only.
 - Unsupported tasks explain the missing capability and recovery action.
 - Helper command execution is workspace-bounded, allowlisted, timed, and log-streamable.
+- Helper task state is recoverable after app reconnect and reports `lost` after helper restart.
 - APK artifact, smoke screenshot, logcat, helper smoke artifacts, and release notes are attached or linked.

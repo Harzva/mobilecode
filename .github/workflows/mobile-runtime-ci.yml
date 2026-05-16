@@ -18,6 +18,9 @@ on:
 permissions:
   contents: read
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: mobile-runtime-ci-${{ github.ref }}
   cancel-in-progress: true
@@ -117,12 +120,15 @@ jobs:
             -X POST http://127.0.0.1:18765/v1/execute/stream \
             -d '{"command":"python3 -c \"print(43)\"","cwd":"/tmp/mobilecode-workspace","timeoutMs":10000}' \
             | tee artifacts/helper-stream.ndjson
+          curl -fsS http://127.0.0.1:18765/v1/tasks/current | tee artifacts/helper-task.json
 
           grep '"ready":true' artifacts/helper-health.json
           grep '"exitCode":0' artifacts/helper-execute.json
           grep '"stdout":"42' artifacts/helper-execute.json
           grep '"type":"stdout"' artifacts/helper-stream.ndjson
           grep '"type":"exit"' artifacts/helper-stream.ndjson
+          grep '"status":"succeeded"' artifacts/helper-task.json
+          grep '"logs":' artifacts/helper-task.json
 
       - name: Upload helper smoke artifacts
         uses: actions/upload-artifact@v4

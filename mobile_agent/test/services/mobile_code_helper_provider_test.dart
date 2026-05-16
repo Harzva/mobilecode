@@ -84,6 +84,40 @@ void main() {
 
       expect(lines, ['hello', '[stderr] warn', '[exit] Helper command exited with code 0']);
     });
+
+    test('restores current helper task snapshot', () async {
+      _serve((request) async {
+        expect(request.uri.path, '/v1/tasks/current');
+        await _json(request.response, {
+          'running': false,
+          'taskId': 'task-123',
+          'command': 'npm test',
+          'logs': ['stdout: ok'],
+          'task': {
+            'id': 'task-123',
+            'command': 'npm test',
+            'cwd': '/workspace/app',
+            'status': 'succeeded',
+            'startedAtMs': 1700000000000,
+            'finishedAtMs': 1700000001000,
+            'exitCode': 0,
+            'durationMs': 1000,
+            'logs': ['stdout: ok'],
+          },
+        });
+      }, server);
+
+      final provider = MobileCodeHelperProvider(baseUri: baseUri);
+      final task = await provider.currentTask();
+
+      expect(task, isNotNull);
+      expect(task!.taskId, 'task-123');
+      expect(task.status, RuntimeTaskStatus.succeeded);
+      expect(task.command, 'npm test');
+      expect(task.workingDir, '/workspace/app');
+      expect(task.duration, const Duration(seconds: 1));
+      expect(task.logs, ['stdout: ok']);
+    });
   });
 }
 

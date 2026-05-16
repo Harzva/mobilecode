@@ -161,6 +161,15 @@ class RuntimeManager {
     await _activeProvider!.stopCurrentTask();
   }
 
+  Future<RuntimeTaskSnapshot?> currentTaskSnapshot() async {
+    await _ensureReady();
+    final provider = _activeProvider;
+    if (provider is RuntimeTaskMonitor) {
+      return provider.currentTask();
+    }
+    return null;
+  }
+
   Future<RuntimeActionResult> runAction(RuntimeActionRequest request) async {
     await _ensureReady();
     final provider = _activeProvider!;

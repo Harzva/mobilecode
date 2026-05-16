@@ -41,7 +41,7 @@ python3 tooling/mobilecode_helper_daemon.py \
   --workspace-root "$HOME/mobilecode_projects"
 ```
 
-Both prototypes implement `/v1/health`, `/v1/execute`, `/v1/execute/stream`, and `/v1/task/stop`. The Android service also exposes `GET /v1/tasks/current` for reconnect/status recovery. Both prototypes intentionally run allowlisted commands without shell expansion and reject working directories outside the configured workspace boundary.
+Both prototypes implement `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/tasks/current`, and `/v1/task/stop`. Both prototypes intentionally run allowlisted commands without shell expansion and reject working directories outside the configured workspace boundary.
 
 ## Health
 
@@ -100,7 +100,8 @@ Response:
   "stdout": "",
   "stderr": "",
   "exitCode": 0,
-  "durationMs": 42
+  "durationMs": 42,
+  "taskId": "task-1715780000000"
 }
 ```
 
@@ -117,8 +118,45 @@ Each response line is a JSON object:
 ```json
 {"type":"stdout","data":"build output"}
 {"type":"stderr","data":"warning output"}
-{"type":"exit","exitCode":0,"durationMs":1200}
+{"type":"exit","exitCode":0,"durationMs":1200,"taskId":"task-1715780000000"}
 ```
+
+## Task Recovery
+
+```http
+GET /v1/tasks/current
+```
+
+Response:
+
+```json
+{
+  "running": false,
+  "taskId": "task-1715780000000",
+  "command": "npm test",
+  "logs": ["stdout: test ok"],
+  "task": {
+    "id": "task-1715780000000",
+    "taskId": "task-1715780000000",
+    "command": "npm test",
+    "cwd": "/helper/workspace/project",
+    "status": "succeeded",
+    "startedAtMs": 1715780000000,
+    "finishedAtMs": 1715780001200,
+    "exitCode": 0,
+    "durationMs": 1200,
+    "logs": ["stdout: test ok"]
+  }
+}
+```
+
+Task status values are:
+
+```text
+queued, running, succeeded, failed, cancelled, timedOut, lost, unknown
+```
+
+The Android service persists the latest task snapshot under its app-private runtime directory. The Termux/Python prototype persists the same shape as `.mobilecode-helper-task.json` in the configured workspace root. If the helper restarts while a task is marked `running`, it must return `lost` with a recovery error instead of pretending the process is still alive.
 
 ## Workspace Sync
 

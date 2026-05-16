@@ -89,6 +89,7 @@ class RuntimeCommandResult {
   final int exitCode;
   final Duration duration;
   final RuntimeProviderType providerType;
+  final String? taskId;
 
   const RuntimeCommandResult({
     required this.command,
@@ -97,9 +98,55 @@ class RuntimeCommandResult {
     required this.exitCode,
     required this.duration,
     required this.providerType,
+    this.taskId,
   });
 
   bool get success => exitCode == 0;
+}
+
+/// Recoverable task state exposed by runtimes that support background work.
+enum RuntimeTaskStatus {
+  queued,
+  running,
+  succeeded,
+  failed,
+  cancelled,
+  timedOut,
+  lost,
+  unknown,
+}
+
+/// A task snapshot is intentionally compact so the UI can restore context after
+/// reconnecting without needing to understand each runtime's internal process model.
+class RuntimeTaskSnapshot {
+  final String taskId;
+  final RuntimeTaskStatus status;
+  final String command;
+  final String? workingDir;
+  final DateTime? startedAt;
+  final DateTime? finishedAt;
+  final int? exitCode;
+  final Duration? duration;
+  final List<String> logs;
+  final RuntimeProviderType providerType;
+  final String? error;
+
+  const RuntimeTaskSnapshot({
+    required this.taskId,
+    required this.status,
+    required this.command,
+    required this.providerType,
+    this.workingDir,
+    this.startedAt,
+    this.finishedAt,
+    this.exitCode,
+    this.duration,
+    this.logs = const [],
+    this.error,
+  });
+
+  bool get running => status == RuntimeTaskStatus.running || status == RuntimeTaskStatus.queued;
+  bool get canCancel => running;
 }
 
 /// Result of syncing workspaces between the app and a runtime backend.
@@ -151,4 +198,9 @@ abstract class RuntimeProvider {
   Future<void> launchApp(String packageName);
   Future<void> uninstallApp(String packageName);
   Future<void> stopCurrentTask();
+}
+
+/// Optional extension implemented by providers that can recover task state.
+abstract class RuntimeTaskMonitor {
+  Future<RuntimeTaskSnapshot?> currentTask();
 }

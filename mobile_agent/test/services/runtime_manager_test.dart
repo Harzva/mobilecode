@@ -117,6 +117,37 @@ void main() {
 
       await manager.dispose();
     });
+
+    test('restores current task snapshot from monitor-capable provider', () async {
+      final provider = _FakeRuntimeProviderWithTask(
+        type: RuntimeProviderType.mobileCodeHelper,
+        name: 'Helper',
+        health: const RuntimeHealth(
+          type: RuntimeProviderType.mobileCodeHelper,
+          name: 'Helper',
+          available: true,
+          ready: true,
+          status: 'ready',
+          capabilities: RuntimeCapabilities(shell: true),
+        ),
+        task: const RuntimeTaskSnapshot(
+          taskId: 'task-1',
+          status: RuntimeTaskStatus.running,
+          command: 'npm run build',
+          providerType: RuntimeProviderType.mobileCodeHelper,
+          logs: ['stdout: building'],
+        ),
+      );
+      final manager = RuntimeManager(providers: [provider]);
+
+      final task = await manager.currentTaskSnapshot();
+
+      expect(task?.taskId, 'task-1');
+      expect(task?.running, isTrue);
+      expect(task?.logs, ['stdout: building']);
+
+      await manager.dispose();
+    });
   });
 }
 
@@ -213,4 +244,18 @@ class _FakeRuntimeProvider implements RuntimeProvider {
 
   @override
   Future<void> stopCurrentTask() async {}
+}
+
+class _FakeRuntimeProviderWithTask extends _FakeRuntimeProvider implements RuntimeTaskMonitor {
+  final RuntimeTaskSnapshot task;
+
+  _FakeRuntimeProviderWithTask({
+    required RuntimeProviderType type,
+    required String name,
+    required RuntimeHealth health,
+    required this.task,
+  }) : super(type: type, name: name, health: health);
+
+  @override
+  Future<RuntimeTaskSnapshot?> currentTask() async => task;
 }

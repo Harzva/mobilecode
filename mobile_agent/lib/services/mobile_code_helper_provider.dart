@@ -21,7 +21,7 @@ import 'termux_service.dart';
 /// - POST /v1/app/launch
 /// - POST /v1/app/uninstall
 /// - POST /v1/task/stop
-class MobileCodeHelperProvider implements RuntimeProvider {
+class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor {
   final Uri baseUri;
   final Duration probeTimeout;
   final HttpClient _client;
@@ -118,6 +118,28 @@ class MobileCodeHelperProvider implements RuntimeProvider {
         milliseconds: (payload['durationMs'] as num?)?.toInt() ??
             stopwatch.elapsedMilliseconds,
       ),
+      providerType: type,
+      taskId: payload['taskId'] as String?,
+    );
+  }
+
+  @override
+  Future<RuntimeTaskSnapshot?> currentTask() async {
+    final payload = await _getJson('/v1/tasks/current', timeout: const Duration(seconds: 3));
+    final taskPayload = payload['task'];
+    if (taskPayload is Map) {
+      return _taskSnapshotFromJson(Map<String, dynamic>.from(taskPayload));
+    }
+
+    final taskId = payload['taskId']?.toString() ?? '';
+    final command = payload['command']?.toString() ?? '';
+    final logs = _stringList(payload['logs']);
+    if (taskId.isEmpty && command.isEmpty && logs.isEmpty) return null;
+    return RuntimeTaskSnapshot(
+      taskId: taskId,
+      status: payload['running'] == true ? RuntimeTaskStatus.running : RuntimeTaskStatus.unknown,
+      command: command,
+      logs: logs,
       providerType: type,
     );
   }
@@ -285,6 +307,42 @@ class MobileCodeHelperProvider implements RuntimeProvider {
       buildTime: Duration(milliseconds: (json['buildTimeMs'] as num?)?.toInt() ?? 0),
       fileSize: (json['fileSize'] as num?)?.toInt() ?? 0,
     );
+  }
+
+  RuntimeTaskSnapshot _taskSnapshotFromJson(Map<String, dynamic> json) {
+    final durationMs = (json['durationMs'] as num?)?.toInt();
+    return RuntimeTaskSnapshot(
+      taskId: json['id']?.toString() ?? json['taskId']?.toString() ?? '',
+      status: _taskStatusFromString(json['status']?.toString()),
+      command: json['command']?.toString() ?? '',
+      workingDir: json['cwd']?.toString() ?? json['workingDir']?.toString(),
+      startedAt: _dateFromEpochMs(json['startedAtMs']),
+      finishedAt: _dateFromEpochMs(json['finishedAtMs']),
+      exitCode: (json['exitCode'] as num?)?.toInt(),
+      duration: durationMs == null ? null : Duration(milliseconds: durationMs),
+      logs: _stringList(json['logs']),
+      providerType: type,
+      error: json['error']?.toString(),
+    );
+  }
+
+  RuntimeTaskStatus _taskStatusFromString(String? value) {
+    return switch (value) {
+      'queued' => RuntimeTaskStatus.queued,
+      'running' => RuntimeTaskStatus.running,
+      'succeeded' => RuntimeTaskStatus.succeeded,
+      'failed' => RuntimeTaskStatus.failed,
+      'cancelled' => RuntimeTaskStatus.cancelled,
+      'timedOut' || 'timed_out' || 'timeout' => RuntimeTaskStatus.timedOut,
+      'lost' => RuntimeTaskStatus.lost,
+      _ => RuntimeTaskStatus.unknown,
+    };
+  }
+
+  DateTime? _dateFromEpochMs(Object? value) {
+    final millis = (value as num?)?.toInt();
+    if (millis == null || millis <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(millis);
   }
 
   Map<String, dynamic> _mapValue(Object? value) {

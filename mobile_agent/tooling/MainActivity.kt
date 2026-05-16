@@ -4,6 +4,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -123,19 +124,23 @@ class MainActivity : FlutterActivity() {
             } else {
                 startService(intent)
             }
+            Log.i(TAG, "MobileCode helper service start requested")
             true
-        } catch (_: Throwable) {
+        } catch (error: Throwable) {
+            Log.e(TAG, "Failed to request MobileCode helper service start", error)
             false
         }
     }
 
     private fun maybeStartHelperFromIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_START_HELPER, false) == true) {
+            Log.i(TAG, "mobilecode_start_helper intent received")
             startHelperService()
         }
     }
 
     companion object {
+        private const val TAG = "MobileCodeMain"
         private const val EXTRA_START_HELPER = "mobilecode_start_helper"
     }
 }

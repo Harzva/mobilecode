@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -81,6 +82,7 @@ class MobileCodeHelperService : Service() {
                 }
                 serverSocket = socket
                 recordLog("helper: listening on 127.0.0.1:$PORT")
+                Log.i(TAG, "Helper server listening on 127.0.0.1:$PORT")
 
                 while (!socket.isClosed) {
                     val client = socket.accept()
@@ -92,6 +94,7 @@ class MobileCodeHelperService : Service() {
                 if (running) {
                     lastError = error.message ?: error.javaClass.simpleName
                     recordLog("helper error: $lastError")
+                    Log.e(TAG, "Helper server failed", error)
                 }
             }
         }
@@ -107,6 +110,26 @@ class MobileCodeHelperService : Service() {
     }
 
     private fun handleClient(socket: Socket) {
+        try {
+            handleClientUnchecked(socket)
+        } catch (error: Throwable) {
+            lastError = error.message ?: error.javaClass.simpleName
+            Log.e(TAG, "Helper request failed", error)
+            try {
+                writeJson(
+                    socket,
+                    500,
+                    JSONObject()
+                        .put("success", false)
+                        .put("failureKind", "unknown")
+                        .put("error", lastError)
+                )
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    private fun handleClientUnchecked(socket: Socket) {
         val reader = BufferedReader(InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))
         val requestLine = reader.readLine() ?: return
         val parts = requestLine.split(" ")
@@ -842,6 +865,7 @@ class MobileCodeHelperService : Service() {
     companion object {
         const val ACTION_STOP = "com.mobilecode.mobile_agent.action.STOP_HELPER"
         private const val CHANNEL_ID = "mobilecode_helper_runtime"
+        private const val TAG = "MobileCodeHelper"
         private const val NOTIFICATION_ID = 8765
         private const val PORT = 8765
         private const val MAX_LOG_LINES = 200

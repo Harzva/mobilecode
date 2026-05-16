@@ -73,11 +73,7 @@ jobs:
             adb forward tcp:18765 tcp:8765
             helper_ready=0; for attempt in $(seq 1 20); do if curl -fsS http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then helper_ready=1; break; fi; sleep 1; done; if [ "$helper_ready" != 1 ]; then adb shell dumpsys activity services com.mobilecode.mobile_agent > artifacts/helper-services.txt || true; adb logcat -d -t 1500 > artifacts/android-logcat.txt || true; exit 1; fi
             curl -fsS http://127.0.0.1:18765/v1/health | tee artifacts/android-helper-health.json
-            curl -fsS \
-              -H 'Content-Type: application/json' \
-              -X POST http://127.0.0.1:18765/v1/execute \
-              -d '{"command":"pwd","timeoutMs":10000}' \
-              | tee artifacts/android-helper-execute.json
+            curl -fsS -H 'Content-Type: application/json' -X POST http://127.0.0.1:18765/v1/execute -d '{"command":"pwd","timeoutMs":10000}' | tee artifacts/android-helper-execute.json
             curl -fsS http://127.0.0.1:18765/v1/tasks/current | tee artifacts/android-helper-task.json
             grep '"name":"MobileCode Helper Service"' artifacts/android-helper-health.json
             grep '"ready":true' artifacts/android-helper-health.json

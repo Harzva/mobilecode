@@ -41,8 +41,8 @@ v1 范围：Mobile Runtime CI 绿灯、Android App Smoke Test 绿灯、RuntimeMa
 
 - **Helper taskId/queue/protocol baseline** 已通过 Mobile Runtime CI: https://github.com/Harzva/mobilecode/actions/runs/25958141678
 - **Android emulator smoke baseline** (install/launch/helper protocol) 已通过 Android App Smoke Test: https://github.com/Harzva/mobilecode/actions/runs/25959749508 — artifact `mobilecode-android-smoke`，不含 APK
-- **Release APK build baseline** 已通过 Build Android APK: https://github.com/Harzva/mobilecode/actions/runs/25904715949 — artifact `mobilecode-apk`，文件 `mobilecode-v0.1.0.apk`。此 run 不是当前 closure head；final release 前需在目标 release commit 上重跑 Build Android APK
-- **Remote head**: `bd9373d7d26c12e57622b05d065a83735f7678f2`
+- **Release APK build baseline** 已通过 Build Android APK: https://github.com/Harzva/mobilecode/actions/runs/25960889017 — artifact `mobilecode-apk`，文件 `mobilecode-v0.1.0.apk`，APK 大小 `53051517` bytes，SHA256 `A13C0381EE2DEC6DA4C055CEC86A0990AE67344B7FE696641EB0B2682A8F928D`；GitHub Release `v0.1.0` asset digest `sha256:a13c0381ee2dec6da4c055cec86a0990ae67344b7fe696641eb0b2682a8f928d`
+- **Remote head**: `594e6e51e794600e036b8a431f464dbf6f914313`
 
 ---
 
@@ -140,8 +140,8 @@ v1 范围：Mobile Runtime CI 绿灯、Android App Smoke Test 绿灯、RuntimeMa
 |--------|------|--------|----------|
 | Helper taskId/queue/protocol baseline (Mobile Runtime CI) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25958141678 | `mobilecode-helper-smoke` |
 | Android emulator smoke: install/launch/helper protocol (Android App Smoke Test) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25959749508 | `mobilecode-android-smoke` (smoke evidence only, no APK) |
-| Release APK build (Build Android APK) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25904715949 | `mobilecode-apk` (`mobilecode-v0.1.0.apk`) |
-| Remote head | `bd9373d7d26c12e57622b05d065a83735f7678f2` | — | — |
+| Release APK build (Build Android APK) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25960889017 | `mobilecode-apk` (`mobilecode-v0.1.0.apk`, SHA256 `A13C0381…`) |
+| Remote head | `594e6e51e794600e036b8a431f464dbf6f914313` | — | — |
 | V1-CM-02 web smoke CI follow-up (Mobile Runtime CI) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25960104143 | `mobilecode-helper-smoke` |
 | Latest verified remote head | `8b051e4a76d6bc5348506071c208332c7bf93e2a` | — | — |
 
@@ -222,6 +222,8 @@ v1 范围：Mobile Runtime CI 绿灯、Android App Smoke Test 绿灯、RuntimeMa
 | 2026-05-16 | V1-CM-07 | ccmimo | REVIEW_NEEDED | 确认 V1-CM-01–06 状态列均为 ACCEPTED；V1-CM-07 更新为 REVIEW_NEEDED；Final Release Gate 6 条件（P0 accepted、P1 accepted/deferred、Mobile Runtime CI passed、Android App Smoke Test passed、QA 文档有 artifact/manual steps、Deferred/Not V1 明确）均可从本文档读出 |
 | 2026-05-16 | V1-CM-07 | Codex | ACCEPTED | 已审核状态表、Final Release Gate 证据和 `git diff --check`；v1 Runtime 底层扩张停止线达成 |
 | 2026-05-16 | Final Release Gate | Codex | ACCEPTED | P0/P1/P2 收尾任务均 ACCEPTED；Mobile Runtime CI 25960104143 通过；Android App Smoke Test 25959749508 通过；Release QA 文档有 artifact/run/manual/evidence/recovery；Deferred/Not V1 未被纳入 v1 |
+| 2026-05-16 | Release APK evidence | Codex | ACCEPTED | Build Android APK 25960889017 passed (head `594e6e51`)；GitHub Release `v0.1.0` asset `mobilecode-v0.1.0.apk` updated `2026-05-16T11:40:29Z`, size `53051517`, digest `sha256:a13c0381ee2dec6da4c055cec86a0990ae67344b7fe696641eb0b2682a8f928d`；local downloaded APK SHA256 verified match；manual install/launch BLOCKED — no online adb device (`qa/release-apk-25960889017/summary.json` status `blocked`, error `No online adb device`) |
+| 2026-05-16 | QA script path correction | Codex | ACCEPTED | Codex audit correction for QA script path: recovery command in Latest APK Evidence changed from non-existent `mobile_agent/tooling/android_release_qa.py` to local Codex skill script `C:\Users\harzva\.codex\skills\android-release-emulator-qa-skill\scripts\android_release_qa.py` with full arguments (--apk, --package, --github-release, --output) |
 
 ---
 

@@ -31,7 +31,7 @@ Verified CI runs for the v1 runtime closure:
 |----------|--------|--------|--------|----------|-----|
 | Mobile Runtime CI | `25960104143` | `8b051e4a76d6bc5348506071c208332c7bf93e2a` | PASSED | `mobilecode-helper-smoke` | https://github.com/Harzva/mobilecode/actions/runs/25960104143 |
 | Android App Smoke Test | `25959749508` | `1bef790237fb38eefc6eb7651530e8a3c63fbeb1` | PASSED | `mobilecode-android-smoke` | https://github.com/Harzva/mobilecode/actions/runs/25959749508 |
-| Build Android APK | `25904715949` | — | PASSED | `mobilecode-apk` | https://github.com/Harzva/mobilecode/actions/runs/25904715949 |
+| Build Android APK | `25960889017` | `594e6e51e794600e036b8a431f464dbf6f914313` | PASSED | `mobilecode-apk` | https://github.com/Harzva/mobilecode/actions/runs/25960889017 |
 
 ### Downloading CI Artifacts
 
@@ -62,10 +62,10 @@ This creates `qa/ci-artifacts/mobilecode-android-smoke/` containing:
 
 Note: This artifact contains emulator smoke evidence only. It does **not** contain an installable APK.
 
-**Build Android APK** (run `25904715949`) — artifact `mobilecode-apk`:
+**Build Android APK** (run `25960889017`) — artifact `mobilecode-apk`:
 
 ```bash
-gh run download 25904715949 --name mobilecode-apk --dir qa/ci-artifacts
+gh run download 25960889017 --name mobilecode-apk --dir qa/ci-artifacts
 ```
 
 This creates `qa/ci-artifacts/mobilecode-apk/` containing:
@@ -95,7 +95,7 @@ Full end-to-end manual verification using CI artifacts.
 ```bash
 gh run download 25960104143 --name mobilecode-helper-smoke --dir qa/ci-artifacts
 gh run download 25959749508 --name mobilecode-android-smoke --dir qa/ci-artifacts
-gh run download 25904715949 --name mobilecode-apk --dir qa/ci-artifacts
+gh run download 25960889017 --name mobilecode-apk --dir qa/ci-artifacts
 ```
 
 **2. Install the APK**
@@ -207,6 +207,32 @@ adb shell getprop ro.build.version.sdk >> qa/device-info.txt
 - Attach failure screenshots and logcat to the relevant GitHub issue or PR comment.
 - For CI-related failures, reference the run URL and artifact name.
 - For local-only failures, include device info (`ro.build.fingerprint`, SDK version) in the report.
+
+## Latest APK Evidence
+
+Build run: [25960889017](https://github.com/Harzva/mobilecode/actions/runs/25960889017), head `594e6e51e794600e036b8a431f464dbf6f914313`.
+
+| Evidence | Value |
+|----------|-------|
+| APK file | `mobilecode-v0.1.0.apk` |
+| APK size | `53051517` bytes |
+| Local SHA256 | `A13C0381EE2DEC6DA4C055CEC86A0990AE67344B7FE696641EB0B2682A8F928D` |
+| GitHub Release asset digest | `sha256:a13c0381ee2dec6da4c055cec86a0990ae67344b7fe696641eb0b2682a8f928d` |
+| Checksum match | Verified |
+| Release asset updated | `2026-05-16T11:40:29Z` |
+| Manual install/launch | **BLOCKED** — no online adb device |
+
+Local QA script `qa/release-apk-25960889017/summary.json`: status `blocked`, error `No online adb device. Start MuMu or another emulator and rerun.`
+
+**Recovery steps**: start MuMu or another Android emulator, ensure `adb devices` shows the device, then rerun:
+
+```bash
+python "C:\Users\harzva\.codex\skills\android-release-emulator-qa-skill\scripts\android_release_qa.py" \
+  --apk "qa\build-apk-25960889017\mobilecode-v0.1.0.apk" \
+  --package com.mobilecode.mobile_agent \
+  --github-release Harzva/mobilecode@v0.1.0 \
+  --output "qa\release-apk-25960889017"
+```
 
 ## Android Release Signing
 

@@ -76,15 +76,21 @@ def _http_json(
     return result
 
 
-def _wait_ready(conn: HTTPConnection, token: str, timeout: float = 10.0) -> bool:
+def _wait_ready(host: str, port: int, token: str, timeout: float = 10.0) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        conn = HTTPConnection(host, port, timeout=5)
         try:
             r = _http_json(conn, "GET", "/v1/health", None, token)
             if r.get("ready"):
                 return True
         except Exception:
             pass
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
         time.sleep(0.3)
     return False
 
@@ -146,10 +152,9 @@ def main() -> int:
         )
 
         try:
-            conn = HTTPConnection("127.0.0.1", port, timeout=15)
-
             # Step 1: /v1/health
-            if not _wait_ready(conn, token):
+            conn = HTTPConnection("127.0.0.1", port, timeout=15)
+            if not _wait_ready("127.0.0.1", port, token):
                 results["steps"].append({"name": "health", "ok": False, "error": "daemon not ready"})
                 passed = False
             else:

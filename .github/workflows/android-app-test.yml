@@ -69,12 +69,7 @@ jobs:
             mkdir -p artifacts
             adb wait-for-device
             installed=0; for attempt in 1 2 3; do if adb install -r mobile_agent/build/app/outputs/flutter-apk/app-debug.apk; then installed=1; break; fi; adb kill-server; adb start-server; adb wait-for-device; sleep 20; done; test "$installed" = 1
-            adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
-            for attempt in $(seq 1 18); do adb shell pidof com.mobilecode.mobile_agent; adb shell dumpsys window windows > artifacts/window-focus.txt || true; if grep -q "com.mobilecode.mobile_agent" artifacts/window-focus.txt && ! grep -q "Splash Screen com.mobilecode.mobile_agent" artifacts/window-focus.txt; then break; fi; sleep 5; done
-            adb shell pidof com.mobilecode.mobile_agent
-            grep -q "com.mobilecode.mobile_agent" artifacts/window-focus.txt
-            ! grep -q "Splash Screen com.mobilecode.mobile_agent" artifacts/window-focus.txt
-            adb shell am start -n com.mobilecode.mobile_agent/.MainActivity --ez mobilecode_start_helper true
+            adb shell am start -n com.mobilecode.mobile_agent/.MobileCodeHelperLauncherActivity
             adb forward tcp:18765 tcp:8765
             helper_ready=0; for attempt in $(seq 1 20); do if curl -fsS http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then helper_ready=1; break; fi; sleep 1; done; if [ "$helper_ready" != 1 ]; then adb shell dumpsys activity services com.mobilecode.mobile_agent > artifacts/helper-services.txt || true; adb logcat -d -t 1500 > artifacts/android-logcat.txt || true; exit 1; fi
             curl -fsS http://127.0.0.1:18765/v1/health | tee artifacts/android-helper-health.json
@@ -89,6 +84,11 @@ jobs:
             grep '"backgroundService":true' artifacts/android-helper-health.json
             grep '"exitCode":0' artifacts/android-helper-execute.json
             grep '"failureKind":"none"' artifacts/android-helper-execute.json
+            adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
+            for attempt in $(seq 1 18); do adb shell pidof com.mobilecode.mobile_agent; adb shell dumpsys window windows > artifacts/window-focus.txt || true; if grep -q "com.mobilecode.mobile_agent" artifacts/window-focus.txt && ! grep -q "Splash Screen com.mobilecode.mobile_agent" artifacts/window-focus.txt; then break; fi; sleep 5; done
+            adb shell pidof com.mobilecode.mobile_agent
+            grep -q "com.mobilecode.mobile_agent" artifacts/window-focus.txt
+            ! grep -q "Splash Screen com.mobilecode.mobile_agent" artifacts/window-focus.txt
             adb exec-out screencap -p > artifacts/mobilecode-android-smoke.png
             adb logcat -d -t 1200 > artifacts/android-logcat.txt
             grep -E "FATAL EXCEPTION|E AndroidRuntime|NoSuchMethodError|MissingPluginException|ANR in com.mobilecode.mobile_agent" artifacts/android-logcat.txt && exit 1 || true

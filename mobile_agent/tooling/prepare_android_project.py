@@ -59,6 +59,14 @@ def main() -> None:
         '            android:exported="false" />'
     )
     text = ensure_application_child(text, helper_service, 'android:name=".MobileCodeHelperService"')
+    helper_launcher = (
+        '        <activity\n'
+        '            android:name=".MobileCodeHelperLauncherActivity"\n'
+        '            android:exported="true"\n'
+        '            android:permission="android.permission.DUMP"\n'
+        '            android:theme="@android:style/Theme.NoDisplay" />'
+    )
+    text = ensure_application_child(text, helper_launcher, 'android:name=".MobileCodeHelperLauncherActivity"')
     manifest.write_text(text)
 
     gradle = Path('android/app/build.gradle.kts')
@@ -118,6 +126,8 @@ def main() -> None:
     activity.write_text(Path('tooling/MainActivity.kt').read_text())
     helper_service = Path('android/app/src/main/kotlin/com/mobilecode/mobile_agent/MobileCodeHelperService.kt')
     helper_service.write_text(Path('tooling/MobileCodeHelperService.kt').read_text())
+    helper_launcher = Path('android/app/src/main/kotlin/com/mobilecode/mobile_agent/MobileCodeHelperLauncherActivity.kt')
+    helper_launcher.write_text(Path('tooling/MobileCodeHelperLauncherActivity.kt').read_text())
 
 
 if __name__ == '__main__':

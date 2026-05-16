@@ -6999,64 +6999,6 @@ class _SnippetSheetState extends State<_SnippetSheet> {
   }
 }
 
-class _ActionConsoleSheet extends StatelessWidget {
-  const _ActionConsoleSheet({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.actions,
-    required this.buttonLabel,
-    required this.onRun,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final List<String> actions;
-  final String buttonLabel;
-  final VoidCallback onRun;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SheetScaffold(
-      icon: icon,
-      title: title,
-      subtitle: subtitle,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (final action in actions)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Icon(Icons.check_circle_outline, color: _mint, size: 18),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(action, style: const TextStyle(color: _text, height: 1.35)),
-                  ),
-                ],
-              ),
-            ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: () {
-                onRun();
-                Navigator.pop(context);
-              },
-              icon: const Icon(Icons.play_arrow_outlined),
-              label: Text(buttonLabel),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _DeepDiveConsoleSheet extends StatefulWidget {
   const _DeepDiveConsoleSheet({
     required this.runtimeManager,

@@ -183,6 +183,21 @@ void main() {
       expect(logs, ['stdout: start', 'stderr: failed']);
     });
 
+    test('sends helper stop request for active task cancellation', () async {
+      _serve((request) async {
+        expect(request.uri.path, '/v1/task/stop');
+        expect(request.method, 'POST');
+        await _json(request.response, {
+          'success': true,
+          'stopped': true,
+        });
+      }, server);
+
+      final provider = MobileCodeHelperProvider(baseUri: baseUri);
+
+      await provider.stopCurrentTask();
+    });
+
     test('preflights project markers through helper protocol', () async {
       var requestCount = 0;
       _serve((request) async {

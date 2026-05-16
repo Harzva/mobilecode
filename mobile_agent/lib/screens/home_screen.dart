@@ -4839,6 +4839,30 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
     );
   }
 
+  Future<void> _stopTask() async {
+    setState(() {
+      _checking = true;
+      _status = 'Stopping active runtime task...';
+    });
+    try {
+      await widget.runtimeManager.stopCurrentTask();
+      final task = await widget.runtimeManager.currentTaskSnapshot();
+      if (!mounted) return;
+      setState(() {
+        _task = task;
+        _status = task == null ? 'No active runtime task after stop request.' : 'Task ${task.taskId} is ${task.status.name}.';
+      });
+      widget.onLog('Runtime task stop requested', _status, Icons.stop_circle_outlined, _amber);
+      unawaited(widget.onRefreshParent());
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _status = _compact(error.toString(), limit: 180));
+      widget.onLog('Runtime task stop failed', _status, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _checking = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final active = widget.runtimeManager.activeHealth ?? (_health.isNotEmpty ? _health.first : null);
@@ -4906,6 +4930,17 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
           ),
           const SizedBox(height: 12),
           _TaskSnapshotPanel(task: _task),
+          if (_task?.canCancel == true) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _checking ? null : _stopTask,
+                icon: const Icon(Icons.stop_circle_outlined),
+                label: const Text('Stop active task'),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: widget.onOpenInstall,
@@ -4949,6 +4984,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
   final _message = TextEditingController(text: 'mobile runtime update');
   final List<String> _lines = ['No runtime action has run yet.'];
   bool _running = false;
+  bool _cancelling = false;
   late String _packageManager;
   RuntimeActionType? _lastFailedAction;
   RuntimeProjectProfile? _lastProjectProfile;
@@ -5120,6 +5156,28 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
     await _run(failedAction);
   }
 
+  Future<void> _cancelTask() async {
+    setState(() {
+      _cancelling = true;
+      _lines.insert(0, 'Stopping active runtime task...');
+    });
+    try {
+      await widget.runtimeManager.stopCurrentTask();
+      final task = await widget.runtimeManager.currentTaskSnapshot();
+      if (!mounted) return;
+      final summary = task == null ? 'No recoverable runtime task after stop request.' : _taskSummary(task);
+      setState(() => _lines.insert(0, 'STOP REQUESTED: $summary'));
+      widget.onLog('Runtime task stop requested', summary, Icons.stop_circle_outlined, _amber);
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 180);
+      setState(() => _lines.insert(0, 'STOP ERROR: $message'));
+      widget.onLog('Runtime task stop failed', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
+    }
+  }
+
   Future<void> _inspectTask() async {
     setState(() => _running = true);
     try {
@@ -5256,6 +5314,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
               _RuntimeActionButton(icon: Icons.web_asset_outlined, label: 'Preview', disabled: _running, onTap: () => _run(RuntimeActionType.buildPreview)),
               _RuntimeActionButton(icon: Icons.search_outlined, label: 'Preflight', disabled: _running, onTap: _preflightProject),
               _RuntimeActionButton(icon: Icons.verified_outlined, label: 'Validate', disabled: _running, onTap: _runValidationLoop),
+              _RuntimeActionButton(icon: Icons.stop_circle_outlined, label: 'Stop', disabled: _cancelling, onTap: _cancelTask),
               _RuntimeActionButton(icon: Icons.replay_outlined, label: 'Retry', disabled: _running || _lastFailedAction == null, onTap: _retryLastFailure),
               _RuntimeActionButton(icon: Icons.account_tree_outlined, label: 'Commit', disabled: _running, onTap: () => _run(RuntimeActionType.gitCommit)),
               _RuntimeActionButton(icon: Icons.publish_outlined, label: 'Publish', disabled: _running, onTap: () => _run(RuntimeActionType.publishPages)),
@@ -7021,6 +7080,7 @@ class _DeepDiveConsoleSheetState extends State<_DeepDiveConsoleSheet> {
   final _projectPath = TextEditingController();
   final List<String> _lines = ['No deep dive action has run yet.'];
   bool _running = false;
+  bool _cancelling = false;
   List<RuntimeTaskSnapshot> _recentTasks = const [];
 
   @override
@@ -7127,6 +7187,37 @@ class _DeepDiveConsoleSheetState extends State<_DeepDiveConsoleSheet> {
     }
   }
 
+  Future<void> _cancelTask() async {
+    setState(() {
+      _cancelling = true;
+      _lines.insert(0, 'Stopping active runtime task...');
+    });
+    try {
+      await widget.runtimeManager.stopCurrentTask();
+      final task = await widget.runtimeManager.currentTaskSnapshot();
+      if (!mounted) return;
+      setState(() {
+        if (task != null) {
+          _recentTasks = [task, ..._recentTasks.where((item) => item.taskId != task.taskId)].take(5).toList();
+        }
+        _lines.insert(0, task == null ? 'STOP REQUESTED: no recoverable runtime task.' : 'STOP REQUESTED: ${_taskSummary(task)}');
+      });
+      widget.onLog(
+        'Deep Dive stop requested',
+        task == null ? 'No recoverable runtime task after stop request.' : _taskSummary(task),
+        Icons.stop_circle_outlined,
+        _amber,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 180);
+      setState(() => _lines.insert(0, 'STOP ERROR: $message'));
+      widget.onLog('Deep Dive stop failed', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _cancelling = false);
+    }
+  }
+
   String _taskSummary(RuntimeTaskSnapshot task) {
     final logs = task.logs.take(4).join('\n');
     final failure = task.failureKind == RuntimeTaskFailureKind.none ? '' : ' (${task.failureKind.name})';
@@ -7204,6 +7295,12 @@ class _DeepDiveConsoleSheetState extends State<_DeepDiveConsoleSheet> {
                 label: 'Validate project',
                 disabled: _running,
                 onTap: _validateProject,
+              ),
+              _RuntimeActionButton(
+                icon: Icons.stop_circle_outlined,
+                label: 'Stop runtime task',
+                disabled: _cancelling,
+                onTap: _cancelTask,
               ),
               _RuntimeActionButton(
                 icon: Icons.history_outlined,

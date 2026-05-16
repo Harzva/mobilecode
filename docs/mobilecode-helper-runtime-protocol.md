@@ -245,6 +245,23 @@ Response:
 }
 ```
 
+Task cancellation:
+
+```http
+POST /v1/task/stop
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "stopped": true
+}
+```
+
+If a task is running, the helper should terminate the process, mark the task `cancelled`, set `failureKind` to `cancelled`, append a stop log line, persist the task snapshot, and make the updated state visible from `/v1/tasks/current` and `/v1/tasks/:id/logs`. If no task is running, the endpoint should still return `success: true` with `stopped: false`.
+
 The Android service persists task history under its app-private runtime directory. The Termux/Python prototype persists the latest task as `.mobilecode-helper-task.json` and the recoverable task database as `.mobilecode-helper-tasks.json` in the configured workspace root. If the helper restarts while a task is marked `running`, it must return `lost`/`runtimeLost` with a recovery error instead of pretending the process is still alive.
 
 ## Workspace Sync

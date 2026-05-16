@@ -135,6 +135,22 @@ jobs:
             -X POST http://127.0.0.1:18765/v1/project/preflight \
             -d '{"cwd":"/tmp/mobilecode-workspace"}' \
             | tee artifacts/helper-project-preflight.json
+          curl -fsS \
+            -H "$auth_header" \
+            -H 'Content-Type: application/json' \
+            -X POST http://127.0.0.1:18765/v1/execute \
+            -d '{"command":"python3 -c \"import time; time.sleep(20)\"","cwd":"/tmp/mobilecode-workspace","timeoutMs":30000}' \
+            > artifacts/helper-cancelled-execute.json 2>&1 &
+          long_pid=$!
+          sleep 1
+          curl -fsS \
+            -H "$auth_header" \
+            -H 'Content-Type: application/json' \
+            -X POST http://127.0.0.1:18765/v1/task/stop \
+            -d '{}' \
+            | tee artifacts/helper-stop.json
+          wait "$long_pid" || true
+          curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/tasks/current | tee artifacts/helper-cancelled-task.json
 
           grep '"ready":true' artifacts/helper-health.json
           grep '"authRequired":true' artifacts/helper-health.json
@@ -149,6 +165,9 @@ jobs:
           grep '"count":' artifacts/helper-tasks.json
           grep '"logs":' artifacts/helper-task-logs.json
           grep 'package.json' artifacts/helper-project-preflight.json
+          grep '"stopped":true' artifacts/helper-stop.json
+          grep '"status":"cancelled"' artifacts/helper-cancelled-task.json
+          grep '"failureKind":"cancelled"' artifacts/helper-cancelled-task.json
 
       - name: Upload helper smoke artifacts
         uses: actions/upload-artifact@v4

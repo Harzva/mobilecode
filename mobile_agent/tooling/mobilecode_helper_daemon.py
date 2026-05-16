@@ -361,7 +361,7 @@ class HelperState:
             return self._queued_task_count_locked()
 
     def _running_task_count_locked(self) -> int:
-        return sum(1 for task in self.tasks if task.get("status") == "running" and task_identity(task) in self.processes)
+        return sum(1 for task in self.tasks if task.get("status") == "running")
 
     def _queued_task_count_locked(self) -> int:
         return sum(1 for task in self.tasks if task.get("status") == "queued")
@@ -744,19 +744,6 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         if env:
             merged_env.update({str(k): str(v) for k, v in env.items()})
 
-        process = subprocess.Popen(
-            args,
-            cwd=str(cwd),
-            env=merged_env,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            bufsize=1,
-            universal_newlines=True,
-        )
-
-        self.state.register_process(task_id, process)
-
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "application/x-ndjson")
         self.send_header("Cache-Control", "no-cache")
@@ -775,6 +762,18 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
             )
             return
         self.write_ndjson({"type": "status", "status": "running", "taskId": task_id})
+
+        process = subprocess.Popen(
+            args,
+            cwd=str(cwd),
+            env=merged_env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=1,
+            universal_newlines=True,
+        )
+        self.state.register_process(task_id, process)
 
         started = time.monotonic()
         output_queue: queue.Queue[tuple[str, str | None]] = queue.Queue()

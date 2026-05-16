@@ -477,9 +477,7 @@ class MobileCodeHelperService : Service() {
 
     private fun runningTaskCount(): Int {
         synchronized(taskLock) {
-            return taskHistory.count { task ->
-                task.optString("status") == "running" && taskProcesses.containsKey(taskIdentity(task))
-            }
+            return taskHistory.count { task -> task.optString("status") == "running" }
         }
     }
 

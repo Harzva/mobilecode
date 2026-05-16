@@ -4932,6 +4932,14 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
           _TaskSnapshotPanel(
             task: _task,
             onStop: _task?.canCancel == true && !_checking ? () => _stopTask(_task!.taskId) : null,
+            onOpenDetails: _task == null
+                ? null
+                : () => _showRuntimeTaskDetailsSheet(
+                      context: context,
+                      runtimeManager: widget.runtimeManager,
+                      task: _task!,
+                      onLog: widget.onLog,
+                    ),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
@@ -5257,6 +5265,47 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
     }
   }
 
+  Future<void> _openTaskDetails() async {
+    var task = _lastTask;
+    if (task == null) {
+      setState(() => _running = true);
+      try {
+        final tasks = await widget.runtimeManager.taskHistory(limit: 12);
+        if (!mounted) return;
+        for (final item in tasks) {
+          if (item.running) {
+            task = item;
+            break;
+          }
+        }
+        task ??= tasks.isEmpty ? null : tasks.first;
+        final selectedTask = task;
+        setState(() {
+          _lastTask = selectedTask;
+          _lines.insert(0, selectedTask == null ? 'No runtime task available for detail view.' : 'Opening details for ${selectedTask.taskId}.');
+        });
+      } on Object catch (error) {
+        if (!mounted) return;
+        final message = _compact(error.toString(), limit: 160);
+        setState(() => _lines.insert(0, 'Task detail load failed: $message'));
+        return;
+      } finally {
+        if (mounted) setState(() => _running = false);
+      }
+    }
+    if (!mounted) return;
+    if (task == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No runtime task to inspect.')));
+      return;
+    }
+    _showRuntimeTaskDetailsSheet(
+      context: context,
+      runtimeManager: widget.runtimeManager,
+      task: task,
+      onLog: widget.onLog,
+    );
+  }
+
   String _taskSummary(RuntimeTaskSnapshot task) {
     final logs = _recentLogLines(task.logs, limit: 4).join('\n');
     final failure = task.failureKind == RuntimeTaskFailureKind.none ? '' : ' (${task.failureKind.name})';
@@ -5331,11 +5380,25 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
               _RuntimeActionButton(icon: Icons.publish_outlined, label: 'Publish', disabled: _running, onTap: () => _run(RuntimeActionType.publishPages)),
               _RuntimeActionButton(icon: Icons.history_outlined, label: 'Recover', disabled: _running, onTap: _inspectTask),
               _RuntimeActionButton(icon: Icons.manage_history_outlined, label: 'History', disabled: _running, onTap: _inspectHistory),
+              _RuntimeActionButton(icon: Icons.subject_outlined, label: 'Task detail', disabled: _running, onTap: _openTaskDetails),
             ],
           ),
           const SizedBox(height: 12),
           if (_lastProjectProfile != null) ...[
             _RuntimeProjectProfilePanel(profile: _lastProjectProfile!),
+            const SizedBox(height: 12),
+          ],
+          if (_lastTask != null) ...[
+            _TaskSnapshotPanel(
+              task: _lastTask,
+              onStop: _lastTask!.canCancel ? () => _cancelTask(_lastTask!.taskId) : null,
+              onOpenDetails: () => _showRuntimeTaskDetailsSheet(
+                context: context,
+                runtimeManager: widget.runtimeManager,
+                task: _lastTask!,
+                onLog: widget.onLog,
+              ),
+            ),
             const SizedBox(height: 12),
           ],
           _Panel(
@@ -5461,10 +5524,11 @@ class _DiagnosticLine extends StatelessWidget {
 }
 
 class _TaskSnapshotPanel extends StatelessWidget {
-  const _TaskSnapshotPanel({required this.task, this.onStop});
+  const _TaskSnapshotPanel({required this.task, this.onStop, this.onOpenDetails});
 
   final RuntimeTaskSnapshot? task;
   final VoidCallback? onStop;
+  final VoidCallback? onOpenDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -5497,6 +5561,16 @@ class _TaskSnapshotPanel extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(child: Text('Task ${snapshot.taskId}', style: const TextStyle(color: _text, fontWeight: FontWeight.w900))),
               Text(snapshot.status.name, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w800)),
+              if (onOpenDetails != null) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: 'Open task details',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onOpenDetails,
+                  icon: const Icon(Icons.subject_outlined, size: 18),
+                  color: _cyan,
+                ),
+              ],
               if (snapshot.canCancel && onStop != null) ...[
                 const SizedBox(width: 4),
                 IconButton(
@@ -5569,6 +5643,349 @@ class _TaskDetailChip extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+    );
+  }
+}
+
+void _showRuntimeTaskDetailsSheet({
+  required BuildContext context,
+  required RuntimeManager runtimeManager,
+  required RuntimeTaskSnapshot task,
+  required void Function(String title, String detail, IconData icon, Color color) onLog,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: _panel,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+    ),
+    builder: (context) => _RuntimeTaskDetailSheet(
+      runtimeManager: runtimeManager,
+      initialTask: task,
+      onLog: onLog,
+    ),
+  );
+}
+
+class _RuntimeTaskDetailSheet extends StatefulWidget {
+  const _RuntimeTaskDetailSheet({
+    required this.runtimeManager,
+    required this.initialTask,
+    required this.onLog,
+  });
+
+  final RuntimeManager runtimeManager;
+  final RuntimeTaskSnapshot initialTask;
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
+
+  @override
+  State<_RuntimeTaskDetailSheet> createState() => _RuntimeTaskDetailSheetState();
+}
+
+class _RuntimeTaskDetailSheetState extends State<_RuntimeTaskDetailSheet> {
+  late RuntimeTaskSnapshot _task;
+  List<RuntimeTaskSnapshot> _tasks = const [];
+  bool _loading = false;
+  bool _retrying = false;
+  bool _stopping = false;
+  String _status = 'Task detail is ready.';
+  DateTime? _lastRefresh;
+  Timer? _poller;
+
+  @override
+  void initState() {
+    super.initState();
+    _task = widget.initialTask;
+    _tasks = [_task];
+    unawaited(_refresh());
+    _poller = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+      if (_task.running || _tasks.any((task) => task.running)) {
+        unawaited(_refresh(silent: true));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh({bool silent = false}) async {
+    if (!silent && mounted) {
+      setState(() {
+        _loading = true;
+        _status = 'Refreshing task ${_task.taskId}...';
+      });
+    }
+    try {
+      final tasks = await widget.runtimeManager.taskHistory(limit: 24);
+      var selected = _task;
+      for (final candidate in tasks) {
+        if (candidate.taskId == _task.taskId) {
+          selected = candidate;
+          break;
+        }
+      }
+      var logs = selected.logs;
+      if (selected.taskId.trim().isNotEmpty) {
+        final recoveredLogs = await widget.runtimeManager.taskLogs(selected.taskId, limit: 300);
+        if (recoveredLogs.isNotEmpty) logs = recoveredLogs;
+      }
+      if (!mounted) return;
+      setState(() {
+        _tasks = tasks;
+        _task = selected.copyWith(logs: logs);
+        _lastRefresh = DateTime.now();
+        _status = 'Task ${_task.taskId} is ${_task.status.name}.';
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _status = 'Task refresh failed: ${_compact(error.toString(), limit: 160)}');
+    } finally {
+      if (!silent && mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _stopTask() async {
+    setState(() {
+      _stopping = true;
+      _status = 'Stopping task ${_task.taskId}...';
+    });
+    try {
+      await widget.runtimeManager.stopTask(_task.taskId);
+      await _refresh(silent: true);
+      widget.onLog('Runtime task stop requested', 'Task ${_task.taskId}', Icons.stop_circle_outlined, _amber);
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 160);
+      setState(() => _status = 'Stop failed: $message');
+      widget.onLog('Runtime task stop failed', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _stopping = false);
+    }
+  }
+
+  Future<void> _retryTask() async {
+    final command = _task.command.trim();
+    if (command.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Task has no command to retry.')));
+      return;
+    }
+    setState(() {
+      _retrying = true;
+      _status = 'Retrying task ${_task.taskId}...';
+    });
+    try {
+      final result = await widget.runtimeManager.execute(
+        command,
+        workingDir: _task.workingDir,
+        timeout: const Duration(minutes: 10),
+      );
+      final tasks = await widget.runtimeManager.taskHistory(limit: 24);
+      RuntimeTaskSnapshot? nextTask;
+      final nextTaskId = result.taskId;
+      if (nextTaskId != null && nextTaskId.isNotEmpty) {
+        for (final candidate in tasks) {
+          if (candidate.taskId == nextTaskId) {
+            nextTask = candidate;
+            break;
+          }
+        }
+      }
+      nextTask ??= tasks.isEmpty ? null : tasks.first;
+      final fallbackLogs = [
+        if (result.stdout.trim().isNotEmpty) ...result.stdout.trim().split('\n'),
+        if (result.stderr.trim().isNotEmpty) ...result.stderr.trim().split('\n'),
+      ];
+      if (!mounted) return;
+      setState(() {
+        _tasks = tasks;
+        _task = nextTask ??
+            _task.copyWith(
+              status: result.success ? RuntimeTaskStatus.succeeded : RuntimeTaskStatus.failed,
+              exitCode: result.exitCode,
+              duration: result.duration,
+              logs: fallbackLogs,
+              failureKind: result.failureKind,
+            );
+        _status = result.success ? 'Retry completed successfully.' : 'Retry failed with exit ${result.exitCode}.';
+      });
+      widget.onLog(
+        result.success ? 'Runtime task retry completed' : 'Runtime task retry failed',
+        'Original ${widget.initialTask.taskId} -> ${result.taskId ?? 'no task id'}',
+        result.success ? Icons.replay_circle_filled_outlined : Icons.error_outline,
+        result.success ? _mint : _rose,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 160);
+      setState(() => _status = 'Retry failed: $message');
+      widget.onLog('Runtime task retry error', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+  }
+
+  Future<void> _copyFailureSummary() async {
+    await Clipboard.setData(ClipboardData(text: _failureSummary()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Task summary copied.')));
+    widget.onLog('Runtime failure summary copied', 'Task ${_task.taskId}', Icons.copy_outlined, _cyan);
+  }
+
+  String _failureSummary() {
+    final lines = <String>[
+      'Task: ${_task.taskId}',
+      'Status: ${_task.status.name}',
+      'Command: ${_task.command.isEmpty ? '(empty)' : _task.command}',
+      if (_task.workingDir != null && _task.workingDir!.isNotEmpty) 'cwd: ${_task.workingDir}',
+      if (_task.startedAt != null) 'Started: ${_task.startedAt!.toIso8601String()}',
+      if (_task.duration != null) 'Duration: ${_durationLabel(_task.duration!)}',
+      if (_task.exitCode != null) 'Exit code: ${_task.exitCode}',
+      if (_task.failureKind != RuntimeTaskFailureKind.none) 'Failure kind: ${_task.failureKind.name}',
+      if (_task.error != null && _task.error!.isNotEmpty) 'Error: ${_task.error}',
+    ];
+    final logs = _recentLogLines(_task.logs, limit: 24);
+    if (logs.isNotEmpty) {
+      lines
+        ..add('Recent logs:')
+        ..addAll(logs);
+    }
+    return lines.join('\n');
+  }
+
+  Color _statusColor(RuntimeTaskSnapshot task) {
+    if (task.running) return _amber;
+    return task.status == RuntimeTaskStatus.succeeded ? _mint : _rose;
+  }
+
+  void _selectTask(RuntimeTaskSnapshot task) {
+    setState(() {
+      _task = task;
+      _status = 'Selected task ${task.taskId}.';
+    });
+    unawaited(_refresh(silent: true));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _statusColor(_task);
+    final queuedTasks = _tasks.where((task) => task.status == RuntimeTaskStatus.queued).toList();
+    final logs = _recentLogLines(_task.logs, limit: 120);
+    final detailChips = [
+      _task.status.name,
+      if (_task.startedAt != null) 'started ${_timeLabel(_task.startedAt!)} ago',
+      if (_task.duration != null) 'duration ${_durationLabel(_task.duration!)}',
+      if (_task.exitCode != null) 'exit ${_task.exitCode}',
+      if (_task.failureKind != RuntimeTaskFailureKind.none) _task.failureKind.name,
+    ];
+    return _SheetScaffold(
+      icon: Icons.subject_outlined,
+      title: 'Runtime Task Detail',
+      subtitle: 'Live logs, task retry, failure summary, and queue visibility.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.bolt_outlined, color: color, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('Task ${_task.taskId}', style: const TextStyle(color: _text, fontWeight: FontWeight.w900))),
+                    Text(_lastRefresh == null ? 'not synced' : 'synced ${_timeLabel(_lastRefresh!)} ago', style: const TextStyle(color: _faint, fontSize: 11)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(_status, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final detail in detailChips) _TaskDetailChip(label: detail, color: color),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SelectableText(_task.command.isEmpty ? 'No command recorded.' : _task.command, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+                if (_task.workingDir != null && _task.workingDir!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  SelectableText(_task.workingDir!, style: const TextStyle(color: _faint, fontSize: 11, height: 1.3)),
+                ],
+                if (_task.error != null && _task.error!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(_task.error!, style: const TextStyle(color: _rose, fontSize: 11, height: 1.3)),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _RuntimeActionButton(icon: Icons.refresh_outlined, label: _loading ? 'Refreshing' : 'Refresh', disabled: _loading, onTap: () => unawaited(_refresh())),
+              _RuntimeActionButton(icon: Icons.stop_circle_outlined, label: _stopping ? 'Stopping' : 'Stop', disabled: _stopping || !_task.canCancel, onTap: () => unawaited(_stopTask())),
+              _RuntimeActionButton(icon: Icons.replay_outlined, label: _retrying ? 'Retrying' : 'Retry taskId', disabled: _retrying || _task.command.trim().isEmpty, onTap: () => unawaited(_retryTask())),
+              _RuntimeActionButton(icon: Icons.copy_outlined, label: 'Copy failure', disabled: false, onTap: () => unawaited(_copyFailureSummary())),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Queue', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                if (queuedTasks.isEmpty)
+                  const Text('No queued runtime tasks.', style: TextStyle(color: _muted, fontSize: 12, height: 1.35))
+                else
+                  for (final task in queuedTasks) ...[
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.pending_actions_outlined, color: _amber),
+                      title: Text('Task ${task.taskId}', style: const TextStyle(color: _text, fontWeight: FontWeight.w800)),
+                      subtitle: Text(_compact(task.command, limit: 96), style: const TextStyle(color: _muted, fontSize: 12)),
+                      trailing: IconButton(
+                        tooltip: 'Inspect queued task',
+                        onPressed: () => _selectTask(task),
+                        icon: const Icon(Icons.open_in_new_outlined, size: 18),
+                      ),
+                    ),
+                  ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Live logs', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      logs.isEmpty ? 'No logs recovered for this task yet.' : logs.join('\n'),
+                      style: const TextStyle(color: _faint, fontSize: 11, height: 1.3),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -7525,6 +7942,12 @@ class _DeepDiveConsoleSheetState extends State<_DeepDiveConsoleSheet> {
               _TaskSnapshotPanel(
                 task: task,
                 onStop: task.canCancel ? () => _cancelTask(task.taskId) : null,
+                onOpenDetails: () => _showRuntimeTaskDetailsSheet(
+                  context: context,
+                  runtimeManager: widget.runtimeManager,
+                  task: task,
+                  onLog: widget.onLog,
+                ),
               ),
               const SizedBox(height: 8),
             ],

@@ -165,6 +165,36 @@ class RuntimeTaskSnapshot {
 
   bool get running => status == RuntimeTaskStatus.running || status == RuntimeTaskStatus.queued;
   bool get canCancel => running;
+
+  RuntimeTaskSnapshot copyWith({
+    String? taskId,
+    RuntimeTaskStatus? status,
+    String? command,
+    String? workingDir,
+    DateTime? startedAt,
+    DateTime? finishedAt,
+    int? exitCode,
+    Duration? duration,
+    List<String>? logs,
+    RuntimeProviderType? providerType,
+    String? error,
+    RuntimeTaskFailureKind? failureKind,
+  }) {
+    return RuntimeTaskSnapshot(
+      taskId: taskId ?? this.taskId,
+      status: status ?? this.status,
+      command: command ?? this.command,
+      workingDir: workingDir ?? this.workingDir,
+      startedAt: startedAt ?? this.startedAt,
+      finishedAt: finishedAt ?? this.finishedAt,
+      exitCode: exitCode ?? this.exitCode,
+      duration: duration ?? this.duration,
+      logs: logs ?? this.logs,
+      providerType: providerType ?? this.providerType,
+      error: error ?? this.error,
+      failureKind: failureKind ?? this.failureKind,
+    );
+  }
 }
 
 /// Result of syncing workspaces between the app and a runtime backend.

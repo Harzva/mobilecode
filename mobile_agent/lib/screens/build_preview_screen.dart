@@ -2,7 +2,7 @@
 // Build & Preview Screen — Central hub for previewing and building apps.
 //
 // Features: project type detection, preview method cards, quick preview,
-// build options (web/APK/split-screen/Termux), real-time build log viewer,
+// build options (web/APK/split-screen/Runtime fallback), real-time build log viewer,
 // build history, and settings. Dark theme with cards and progress indicators.
 
 import 'dart:async';
@@ -28,7 +28,7 @@ import '../services/termux_service.dart';
 /// - Project type detection (auto)
 /// - Available preview methods (cards)
 /// - Quick preview button (best method)
-/// - Build options: Web preview, APK build, Split-screen preview, Termux
+/// - Build options: Web preview, APK build, Split-screen preview, Runtime fallback
 /// - Build log viewer (real-time scrolling)
 /// - Build history
 /// - Settings: default preview method, auto-preview toggle
@@ -834,7 +834,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
             Expanded(
               child: _buildBuildButton(
                 icon: Icons.terminal,
-                label: 'Open Termux',
+                label: 'Open External Termux',
                 color: AppTheme.primary,
                 onPressed: _termuxInstalled ? _openTermux : null,
               ),
@@ -1230,7 +1230,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
                 child: OutlinedButton.icon(
                   onPressed: _copyTermuxSetupScript,
                   icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('Copy Termux Setup Script'),
+                  label: const Text('Copy Runtime Fallback Setup Script'),
                 ),
               ),
             ],
@@ -1431,7 +1431,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
       await _termux.execute('am start -n com.termux/.app.TermuxActivity');
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to open Termux: $e')),
+        SnackBar(content: Text('Failed to open External Termux: $e')),
       );
     }
   }
@@ -1439,7 +1439,7 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
   void _copyTermuxSetupScript() {
     Clipboard.setData(ClipboardData(text: _termux.generateSetupScript()));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Termux setup script copied')),
+      const SnackBar(content: Text('Runtime fallback setup script copied')),
     );
   }
 

@@ -912,7 +912,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final runtime = _bestRuntimeHealth;
     final capabilityLabel = _runtimeCapabilityLabel(_runtimeCapabilities);
     final fallback = <String>[
-      if (_termuxInstalled == true) _termuxApiInstalled == true ? 'Termux API fallback' : 'Termux fallback',
+      if (_termuxInstalled == true) _termuxApiInstalled == true ? 'External Termux API fallback' : 'External Termux fallback',
       if (_rootAvailable == true) 'root keepalive',
     ];
     if (runtime == null) {
@@ -1419,7 +1419,7 @@ class _HomeScreenState extends State<HomeScreen> {
         termuxInstalled: _termuxInstalled,
         termuxApiInstalled: _termuxApiInstalled,
         rootAvailable: _rootAvailable,
-        onOpenInstall: () => _openUrl('https://f-droid.org/packages/com.termux/', 'Termux install page'),
+        onOpenInstall: () => _openUrl('https://f-droid.org/packages/com.termux/', 'External Termux install page'),
         onRefreshParent: () => _checkRuntime(),
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
       ),
@@ -1751,7 +1751,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _CommandShortcut(
         icon: Icons.terminal_outlined,
         title: 'Runtime providers',
-        subtitle: '检查 Helper、Termux fallback、root keepalive 和后端状态。',
+        subtitle: '检查 Helper、External Termux fallback、root keepalive 和后端状态。',
         color: _amber,
         action: _ModuleAction.termuxCheck,
       ),
@@ -2803,7 +2803,7 @@ class _DemoLabPanel extends StatelessWidget {
                 _DemoAction(Icons.edit_note_outlined, 'Diary APK', 'Local diary demo inside this APK', _ModuleAction.diary, _amber),
                 _DemoAction(Icons.forum_outlined, 'Chat Memory', 'Conversation list and context', _ModuleAction.aiChat, _mint),
                 _DemoAction(Icons.handyman_outlined, 'Tool Tests', 'Run mobile tool probes', _ModuleAction.toolLab, _cyan),
-                _DemoAction(Icons.terminal_outlined, 'Runtime', 'Check Helper and fallback setup', _ModuleAction.termuxCheck, _lime),
+                _DemoAction(Icons.terminal_outlined, 'Runtime', 'Check Helper and Runtime fallback setup', _ModuleAction.termuxCheck, _lime),
               ];
               return GridView.builder(
                 shrinkWrap: true,
@@ -3083,7 +3083,7 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
           kind: _MiniAgentEventKind.system,
           title: 'Mini harness booted',
           detail:
-              'Loaded phone-safe tools: list_files, write_file, read_file, preview_webview, termux_probe, github_connect.',
+              'Loaded phone-safe tools: list_files, write_file, read_file, preview_webview, runtime_probe, github_connect.',
           time: DateTime.now(),
         ),
       );
@@ -4493,7 +4493,7 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
       if (helper.ready) {
         _addResult('Runtime providers', true, helper.detail);
       } else if (installed == true) {
-        final termuxDetail = apiInstalled == true ? 'External Termux + Termux:API fallback detected.' : 'External Termux fallback detected; Termux:API not detected.';
+        final termuxDetail = apiInstalled == true ? 'External Termux + External Termux:API fallback detected.' : 'External Termux fallback detected; External Termux:API not detected.';
         _addResult('Runtime providers', true, '${helper.detail} $termuxDetail');
       } else if (installed == false) {
         _addResult('Runtime providers', false, '${helper.detail} External Termux is not installed or not visible.');
@@ -4869,7 +4869,7 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
     return _SheetScaffold(
       icon: Icons.monitor_heart_outlined,
       title: 'Runtime Diagnostics',
-      subtitle: 'Helper, Termux fallback, task recovery, and capability status in one place.',
+      subtitle: 'Helper, External Termux fallback, task recovery, and capability status in one place.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -4902,7 +4902,7 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
                 child: OutlinedButton.icon(
                   onPressed: _launchTermux,
                   icon: const Icon(Icons.open_in_new_outlined),
-                  label: const Text('Open Termux'),
+                  label: const Text('Open External Termux'),
                 ),
               ),
             ],
@@ -4923,7 +4923,7 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
                 const Text('Fallback visibility', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 8),
                 _DiagnosticLine(label: 'External Termux', value: _boolStatus(_termuxInstalled), good: _termuxInstalled == true),
-                _DiagnosticLine(label: 'Termux:API', value: _boolStatus(_termuxApiInstalled), good: _termuxApiInstalled == true),
+                _DiagnosticLine(label: 'External Termux:API', value: _boolStatus(_termuxApiInstalled), good: _termuxApiInstalled == true),
                 _DiagnosticLine(label: 'Root keepalive', value: _boolStatus(_rootAvailable), good: _rootAvailable == true),
               ],
             ),
@@ -8720,7 +8720,7 @@ String _focusTitle(_HomeTab tab) {
 
 String _focusSubtitle(_HomeTab tab) {
   return switch (tab) {
-    _HomeTab.control => 'Provider, mini agent, GitHub, Termux, and local demo surfaces stay one tap away.',
+    _HomeTab.control => 'Provider, mini agent, GitHub, Runtime, and local demo surfaces stay one tap away.',
     _HomeTab.ai => 'Persistent chat plus visible tool traces for phone-first coding.',
     _HomeTab.ship => 'GitHub Release, Android APK, iOS simulator build, Pages, and preview paths.',
     _HomeTab.guard => 'Provider health, tool probes, install checks, and local storage checks.',
@@ -9004,20 +9004,20 @@ final List<_CapabilityLayer> _capabilityLayers = [
         icon: Icons.terminal_outlined,
         status: _CapabilityStatus.preview,
         services: ['terminal_service.dart', 'terminal_controller.dart', 'terminal_provider.dart'],
-        actions: ['Prepare command session', 'Inspect output stream', 'Bridge to SSH or Termux'],
+        actions: ['Prepare command session', 'Inspect output stream', 'Bridge to SSH or Runtime'],
         primaryAction: _ModuleAction.terminal,
       ),
     ],
   ),
   _CapabilityLayer(
     name: 'Remote',
-    subtitle: 'SSH, Termux, build orchestration, previews, GitHub, Gist, Pages, and WeChat publishing.',
+    subtitle: 'SSH, Runtime, build orchestration, previews, GitHub, Gist, Pages, and WeChat publishing.',
     icon: Icons.cloud_sync_outlined,
     color: _amber,
     capabilities: [
       _Capability(
         title: 'Remote Dev',
-        subtitle: 'SSH, SFTP, port forwarding, Termux commands, and mobile Linux workflows.',
+        subtitle: 'SSH, SFTP, port forwarding, Runtime commands, and mobile Linux workflows.',
         icon: Icons.dns_outlined,
         status: _CapabilityStatus.needsConfig,
         services: ['ssh_service.dart', 'termux_service.dart', 'ssh_provider.dart'],

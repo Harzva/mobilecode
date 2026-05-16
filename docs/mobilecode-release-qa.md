@@ -91,6 +91,53 @@ Expected result:
 - `/v1/project/preflight` returns project markers without requiring shell-specific `find` behavior.
 - MobileCode Home/Tools shows a Runtime-ready banner when the Helper provider is reachable.
 
+## Small Web Project Runtime Smoke
+
+End-to-end smoke verifying the helper daemon can manage a minimal web project
+through create/import -> build/test -> preview/recovery.
+
+### Local verification
+
+```bash
+python3 mobile_agent/tooling/runtime_web_smoke.py
+```
+
+Exit 0 means all steps passed. The script prints a JSON summary to stdout.
+
+### CI verification
+
+The `helper-daemon-smoke` job in `.github/workflows/mobile-runtime-ci.yml`
+runs the same script automatically. The output is uploaded as
+`artifacts/runtime-web-smoke.json` in the `mobilecode-helper-smoke` artifact.
+
+### Steps exercised
+
+1. `/v1/health` - daemon is ready and authenticated.
+2. `/v1/project/preflight` - detects `package.json` in the workspace.
+3. `/v1/execute` (test) - runs `python3 -c "print('test passed')"`, expects
+   exit code 0 and stdout containing `test passed`.
+4. `/v1/execute` (build) - copies `index.html` into `dist/index.html` without
+   npm install or network. Expects exit code 0 and `dist/index.html` existing.
+5. `/v1/tasks?limit=10` - at least 2 tasks recorded (test + build).
+6. `/v1/tasks/:id/logs` - build task has logs.
+7. Preview evidence - `dist/index.html` is readable and contains the expected
+   content. On-device WebView preview uses this build artifact.
+
+### Expected result
+
+All 7 steps report `ok: true`. The JSON output has `"passed": true`.
+
+### Failure recovery
+
+- If the daemon fails to start, check that port is not in use and Python 3.10+
+  is available.
+- If `/v1/health` times out, increase the timeout or check for firewall
+  blocking localhost.
+- If build fails, verify `python3` and `shutil` are available (standard
+  library).
+- If `dist/index.html` is missing, the build command may have run in the wrong
+  working directory; check the `cwd` field in the execute response.
+
 ## Manual APK Validation
 
 After downloading the release APK:

@@ -89,6 +89,7 @@ jobs:
         run: |
           python3 -m py_compile mobile_agent/tooling/mobilecode_helper_daemon.py
           python3 -m py_compile mobile_agent/tooling/prepare_android_project.py
+          python3 -m py_compile mobile_agent/tooling/runtime_web_smoke.py
 
       - name: Smoke test helper protocol
         run: |
@@ -215,6 +216,11 @@ jobs:
           grep '"stopped":true' artifacts/helper-concurrent-stop-queued.json
           grep "\"taskId\":\"${queued_concurrent_id}\"" artifacts/helper-concurrent-stop-queued.json
           grep '"stopped":true' artifacts/helper-concurrent-stop-running.json
+
+      - name: Run web project smoke test
+        run: |
+          python3 mobile_agent/tooling/runtime_web_smoke.py \
+            --output artifacts/runtime-web-smoke.json
 
       - name: Upload helper smoke artifacts
         uses: actions/upload-artifact@v4

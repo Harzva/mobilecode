@@ -40,7 +40,8 @@ v1 范围：Mobile Runtime CI 绿灯、Android App Smoke Test 绿灯、RuntimeMa
 以下基线证据已被 Codex 接受，不受后续任务修改影响：
 
 - **Helper taskId/queue/protocol baseline** 已通过 Mobile Runtime CI: https://github.com/Harzva/mobilecode/actions/runs/25958141678
-- **Android APK build/install/launch/helper protocol baseline** 已通过 Android App Smoke Test: https://github.com/Harzva/mobilecode/actions/runs/25958141674
+- **Android emulator smoke baseline** (install/launch/helper protocol) 已通过 Android App Smoke Test: https://github.com/Harzva/mobilecode/actions/runs/25959749508 — artifact `mobilecode-android-smoke`，不含 APK
+- **Release APK build baseline** 已通过 Build Android APK: https://github.com/Harzva/mobilecode/actions/runs/25904715949 — artifact `mobilecode-apk`，文件 `mobilecode-v0.1.0.apk`。此 run 不是当前 closure head；final release 前需在目标 release commit 上重跑 Build Android APK
 - **Remote head**: `bd9373d7d26c12e57622b05d065a83735f7678f2`
 
 ---
@@ -128,20 +129,21 @@ v1 范围：Mobile Runtime CI 绿灯、Android App Smoke Test 绿灯、RuntimeMa
 | V1-CM-01 | P0 | 清理 UI 中剩余 Termux-only 文案 | ACCEPTED | grep 无 Termux UI 引用 | home_screen.dart 9 处 user-visible 文案已改为 Runtime-first/External Termux fallback；build_preview_screen.dart 6 处 user-visible 文案已改为 Runtime-first/External Termux fallback。仅保留技术标识符（com.termux、termux_probe、变量名、方法名、服务名）和 Runtime Diagnostics 中诊断行（External Termux / External Termux:API），后者属于技术诊断项。追加修补 3 处文案：(1) `_openUrl` label 改为 `External Termux install page`；(2) Mini harness booted detail 中 `termux_probe` 显示文案改为 `runtime_probe`；(3) Diagnostics 诊断行 label `Termux:API` 改为 `External Termux:API`。再修补 Tool Lab probe 结果文案 2 处：`Termux:API fallback detected.` → `External Termux:API fallback detected.`；`Termux:API not detected.` → `External Termux:API not detected.`（line 4496）。 | Codex accepted after ccmimo output review, targeted text search, and `git diff --check`; remaining Termux hits are technical identifiers, package names, or explicit External Termux fallback diagnostics. |
 | V1-CM-02 | P0 | 补小 Web 项目端到端 smoke 文档 | ACCEPTED | QA 文档有 smoke 章节 | 新增 `mobile_agent/tooling/runtime_web_smoke.py` 脚本；CI `helper-daemon-smoke` job 新增 web smoke 步骤并上传 `artifacts/runtime-web-smoke.json`；`docs/mobilecode-release-qa.md` 新增 "Small Web Project Runtime Smoke" 章节（本地/CI 验证、7 步协议调用、预期结果、失败恢复）。**Windows 9009 fix**: `_helper_python_command()` 封装跨平台 Python 可执行名选择（Windows→`python`，POSIX→`python3`），替换所有硬编码 `python3` 引用，修复 Helper /v1/execute 在 Windows 下 exitCode 9009 问题。**CI readiness fix**: `_wait_ready()` 每次探测使用新的 `HTTPConnection`，避免 daemon 启动期间异常连接复用导致 `http.client.CannotSendRequest: Request-sent`。 | Codex accepted after `python -m py_compile mobile_agent/tooling/runtime_web_smoke.py`, local `python mobile_agent/tooling/runtime_web_smoke.py --output qa/runtime-web-smoke-local.json` passed 7/7 steps, `git diff --check` passed, and Mobile Runtime CI passed on https://github.com/Harzva/mobilecode/actions/runs/25960104143. |
 | V1-CM-03 | P0 | 收束绕过 RuntimeManager 的执行入口 | ACCEPTED | 无绕过执行路径或已记录 | ccmimo 补扫并由 Codex 复审 `rg "Process\.(run|start)|TermuxService|_termux\.execute|\.executeStream\(|\.execute\(" mobile_agent/lib/services mobile_agent/lib/providers mobile_agent/lib/screens`。Runtime/provider 内部实现保留：`terminal_service.dart`、`terminal_controller.dart`、`termux_service.dart`、`external_termux_provider.dart`、`terminal_provider.dart`、`ssh_provider.dart`、`github_pages_service.dart`。UI 中 `build_preview_screen.dart` 的 `_termux.execute('am start ...')` 仅用于打开 External Termux App，不是 build/command 执行。已记录 Deferred：`agent_action_system.dart` 和 `project_manager.dart` 仍有 direct `Process.run`  legacy path，不纳入 v1 runtime gate。 | Codex 未接受第一轮 ccmimo 扫描（漏项），要求补扫；第二轮补扫分类完整。V1 接受标准是：Build/Preview/Runtime UI 执行入口已走 RuntimeManager；剩余 legacy direct Process path 明确记录为 Not V1，不继续扩底层。 |
-| V1-CM-04 | P1 | Runtime Diagnostics 页面收尾 | TODO | 测试通过，页面可渲染 | — | — |
-| V1-CM-05 | P1 | 失败恢复建议标准化 | TODO | 错误消息有恢复建议 | — | — |
-| V1-CM-06 | P1 | Release QA 文档补齐 artifact/run id | TODO | QA 文档有完整章节 | — | — |
-| V1-CM-07 | P2 | 收尾清单状态维护 | TODO | 状态列准确 | — | — |
+| V1-CM-04 | P1 | Runtime Diagnostics 页面收尾 | ACCEPTED | 测试通过，页面可渲染 | `_RuntimeDiagnosticsSheet` (L4737-4958) 已完整实现：active runtime/provider 状态、Helper/External Termux/WebViewOnly fallback visibility panel、capabilities/missing dependencies/recovery actions（每个 `_RuntimeHealthTile`）、task snapshot（`_TaskSnapshotPanel`）。4 处入口（icon button、command shortcut、quick action、grid action）均指向同一 sheet。无散落 Termux-only setup sheet。External Termux install/launch 按钮作为 fallback 保留。无 home_screen 测试文件存在，forbidden 规则禁止修改 tests。 | Codex accepted after ccmimo output review and targeted `rg` verification. Note: ccmimo touched this closure doc despite the V1-CM-04 prompt limiting edits to `home_screen.dart`; Codex retained the reviewed status evidence and did not accept any unreviewed code change. |
+| V1-CM-05 | P1 | 失败恢复建议标准化 | ACCEPTED | 错误消息有恢复建议 | `RuntimeTaskFailureKind` 已覆盖 `timeout/cancelled/dependencyMissing/commandBlocked/cwdOutsideWorkspace/authFailed/runtimeLost/processFailed/unknown`；`runtimeActionRecoveryHint()` 提供 action-aware 恢复建议；`runtimeFailureKindHint()` 为 task snapshot/detail 提供无 action 上下文建议；Home UI 展示 `Recovery:`、`failureKind`、`missingDependencies`、`recoveryActions`。 | Codex accepted after ccmimo read-only review and local `rg` verification. First editable ccmimo attempt timed out and produced no review metadata; Codex stopped the stray Claude process and reran a narrower read-only check. No code changes were required. |
+| V1-CM-06 | P1 | Release QA 文档补齐 artifact/run id | ACCEPTED | QA 文档有完整章节 | 新增 "CI Artifact & Run References"（run ID 25960104143、25959749508、25904715949；`gh run download` 命令；浏览器下载说明）；新增 "Manual Verification"（7 步手动验证）；新增 "Failure Evidence & Recovery"。**Codex correction**: 修正 artifact 区分——`mobilecode-helper-smoke`=helper/web smoke evidence；`mobilecode-android-smoke`=emulator smoke evidence 不含 APK；`mobilecode-apk`=可安装 APK 来自 Build Android APK；手动验证步骤改为从 `mobilecode-apk` 安装；baseline 表增加 Artifact 列和 Build Android APK 行；说明 final release 前需在目标 release commit 重跑 Build Android APK。 | Codex accepted after reviewing ccmimo correction, GitHub artifact API output, targeted `rg`, and `git diff --check`. |
+| V1-CM-07 | P2 | 收尾清单状态维护 | ACCEPTED | 状态列准确 | V1-CM-01–06 均 ACCEPTED；V1-CM-07 经 Codex 审核后更新为 ACCEPTED；Final Release Gate 6 条件均可从本文档读出；Review Log 已追加。 | Codex accepted after reviewing ccmimo output, Required Tasks states, Final Release Gate evidence, and `git diff --check`. |
 
 ### Baseline Evidence (已通过，独立于任务)
 
-| 基线项 | 状态 | CI Run |
-|--------|------|--------|
-| Helper taskId/queue/protocol baseline (Mobile Runtime CI) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25958141678 |
-| Android APK build/install/launch/helper protocol baseline (Android App Smoke Test) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25958141674 |
-| Remote head | `bd9373d7d26c12e57622b05d065a83735f7678f2` | — |
-| V1-CM-02 web smoke CI follow-up (Mobile Runtime CI) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25960104143 |
-| Latest verified remote head | `8b051e4a76d6bc5348506071c208332c7bf93e2a` | — |
+| 基线项 | 状态 | CI Run | Artifact |
+|--------|------|--------|----------|
+| Helper taskId/queue/protocol baseline (Mobile Runtime CI) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25958141678 | `mobilecode-helper-smoke` |
+| Android emulator smoke: install/launch/helper protocol (Android App Smoke Test) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25959749508 | `mobilecode-android-smoke` (smoke evidence only, no APK) |
+| Release APK build (Build Android APK) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25904715949 | `mobilecode-apk` (`mobilecode-v0.1.0.apk`) |
+| Remote head | `bd9373d7d26c12e57622b05d065a83735f7678f2` | — | — |
+| V1-CM-02 web smoke CI follow-up (Mobile Runtime CI) | PASSED | https://github.com/Harzva/mobilecode/actions/runs/25960104143 | `mobilecode-helper-smoke` |
+| Latest verified remote head | `8b051e4a76d6bc5348506071c208332c7bf93e2a` | — | — |
 
 ---
 
@@ -209,6 +211,17 @@ v1 范围：Mobile Runtime CI 绿灯、Android App Smoke Test 绿灯、RuntimeMa
 | 2026-05-16 | V1-CM-03 | Codex | REVIEW_NEEDED | 未接受初扫；用完整 `rg` 命中要求 ccmimo 复扫分类 |
 | 2026-05-16 | V1-CM-03 | ccmimo supplement | REVIEW_NEEDED | 完整分类 direct execution 命中：runtime/provider internals 保留，`agent_action_system.dart` 与 `project_manager.dart` 记录为 legacy Deferred，不做 v1 大重构 |
 | 2026-05-16 | V1-CM-03 | Codex | ACCEPTED | 已审核补扫输出和 `rg` 证据；确认 Build/Preview/Runtime UI 执行入口不绕过 RuntimeManager，剩余 legacy direct Process path 已写入 Deferred / Not V1 |
+| 2026-05-16 | V1-CM-04 | ccmimo | REVIEW_NEEDED | 无需代码改动；`_RuntimeDiagnosticsSheet` 已完整实现 active runtime/provider 状态、fallback visibility、capabilities/missing deps/recovery actions、task snapshot；4 处入口指向同一 sheet；无散落 Termux-only setup sheet；无 home_screen 测试文件（forbidden 禁止修改 tests） |
+| 2026-05-16 | V1-CM-04 | Codex | ACCEPTED | 已审核输出、`home_screen.dart` diagnostics 文案/入口搜索和 `git diff --check`；接受为已满足。记录 ccmimo 越界更新 closure doc，Codex 已复审并保留状态证据 |
+| 2026-05-16 | V1-CM-05 | ccmimo | BLOCKED | 首次 editable 运行超时且未生成 pending review metadata；Codex 停止残留 Claude 进程并改为窄范围只读复核 |
+| 2026-05-16 | V1-CM-05 | ccmimo readonly | REVIEW_NEEDED | 确认 `RuntimeTaskFailureKind`、`runtimeActionRecoveryHint()`、`runtimeFailureKindHint()`、Home UI `Recovery:` / `failureKind` / `missingDependencies` / `recoveryActions` 均已覆盖 |
+| 2026-05-16 | V1-CM-05 | Codex | ACCEPTED | 已审核 ccmimo 只读输出与本地 `rg` 证据；失败恢复建议已标准化，无需代码改动 |
+| 2026-05-16 | V1-CM-06 | ccmimo | REVIEW_NEEDED | 新增 "CI Artifact & Run References"（run ID 25960104143/25959749508、`gh run download` 命令、浏览器下载说明）；新增 "Manual Verification: Download → Install → Runtime Smoke"（7 步手动验证流程）；新增 "Failure Evidence & Recovery"（证据收集命令、常见失败恢复表、evidence 归档说明） |
+| 2026-05-16 | V1-CM-06 | ccmimo correction | REVIEW_NEEDED | Codex 审核修正 artifact 准确性：(1) `mobilecode-android-smoke` 是 emulator smoke evidence，不含 APK；(2) 可安装 APK 来自 Build Android APK workflow 的 `mobilecode-apk` artifact（run 25904715949），文件 `mobilecode-v0.1.0.apk`；(3) `mobilecode-helper-smoke` 是 Mobile Runtime CI helper/web smoke evidence；(4) 手动验证步骤改为从 `mobilecode-apk` 安装 APK；(5) baseline 表增加 Artifact 列和 Build Android APK 行；(6) 说明 final release 前需在目标 release commit 重跑 Build Android APK |
+| 2026-05-16 | V1-CM-06 | Codex | ACCEPTED | 已审核 ccmimo correction、GitHub artifact API 输出、`rg` 命中和 `git diff --check`；接受 Release QA 文档为可复现发布验证指南 |
+| 2026-05-16 | V1-CM-07 | ccmimo | REVIEW_NEEDED | 确认 V1-CM-01–06 状态列均为 ACCEPTED；V1-CM-07 更新为 REVIEW_NEEDED；Final Release Gate 6 条件（P0 accepted、P1 accepted/deferred、Mobile Runtime CI passed、Android App Smoke Test passed、QA 文档有 artifact/manual steps、Deferred/Not V1 明确）均可从本文档读出 |
+| 2026-05-16 | V1-CM-07 | Codex | ACCEPTED | 已审核状态表、Final Release Gate 证据和 `git diff --check`；v1 Runtime 底层扩张停止线达成 |
+| 2026-05-16 | Final Release Gate | Codex | ACCEPTED | P0/P1/P2 收尾任务均 ACCEPTED；Mobile Runtime CI 25960104143 通过；Android App Smoke Test 25959749508 通过；Release QA 文档有 artifact/run/manual/evidence/recovery；Deferred/Not V1 未被纳入 v1 |
 
 ---
 

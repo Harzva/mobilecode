@@ -94,12 +94,15 @@ class HelperState:
         allow_unsafe: bool = False,
         auth_token: str | None = None,
         max_tasks: int = 50,
+        max_concurrent_tasks: int = 1,
     ) -> None:
         self.workspace_root = workspace_root.resolve()
         self.allow_unsafe = allow_unsafe
         self.auth_token = (auth_token or "").strip()
         self.max_tasks = max_tasks
+        self.max_concurrent_tasks = max(1, max_concurrent_tasks)
         self.current_lock = threading.Lock()
+        self.task_condition = threading.Condition(self.current_lock)
         self.task_file = self.workspace_root / ".mobilecode-helper-task.json"
         self.task_database_file = self.workspace_root / ".mobilecode-helper-tasks.json"
         self.current_task: dict[str, Any] | None = None
@@ -148,14 +151,17 @@ class HelperState:
             raise ValueError(f"command is not allowed: {executable}")
         return parts
 
-    def begin_task(self, command: str, cwd: Path) -> dict[str, Any]:
+    def begin_task(self, command: str, cwd: Path, priority: int = 0) -> dict[str, Any]:
+        now_ms = int(time.time() * 1000)
         task = {
-            "id": f"task-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}",
+            "id": f"task-{now_ms}-{uuid.uuid4().hex[:8]}",
             "taskId": "",
             "command": command,
             "cwd": str(cwd),
-            "status": "running",
-            "startedAtMs": int(time.time() * 1000),
+            "status": "queued",
+            "priority": priority,
+            "enqueuedAtMs": now_ms,
+            "startedAtMs": 0,
             "finishedAtMs": 0,
             "durationMs": 0,
             "logs": [],
@@ -168,7 +174,33 @@ class HelperState:
             self.tasks.insert(0, task)
             del self.tasks[self.max_tasks :]
             self._persist_tasks_locked()
+            self.task_condition.notify_all()
         return task
+
+    def wait_for_turn(self, task_id: str) -> bool:
+        with self.task_condition:
+            while True:
+                task = self._find_task_locked(task_id)
+                if task is None:
+                    return False
+                if task.get("status") == "cancelled":
+                    return False
+                if task.get("status") == "running":
+                    return True
+                next_task = self._next_queued_task_locked()
+                if (
+                    next_task is not None
+                    and task_identity(next_task) == task_id
+                    and self._running_task_count_locked() < self.max_concurrent_tasks
+                ):
+                    task["status"] = "running"
+                    task["startedAtMs"] = int(time.time() * 1000)
+                    self._append_task_log_locked(task, "task started")
+                    self._sync_current_task_locked()
+                    self._persist_tasks_locked()
+                    self.task_condition.notify_all()
+                    return True
+                self.task_condition.wait(timeout=0.5)
 
     def register_process(self, task_id: str, process: subprocess.Popen[str]) -> None:
         with self.current_lock:
@@ -182,6 +214,7 @@ class HelperState:
             if self.processes.get(task_id) is process:
                 self.processes.pop(task_id, None)
             self._persist_tasks_locked()
+            self.task_condition.notify_all()
 
     def append_log(self, task_id: str, line: str) -> None:
         with self.current_lock:
@@ -209,6 +242,7 @@ class HelperState:
             task["failureKind"] = classify_failure(status, exit_code, error)
             self._sync_current_task_locked()
             self._persist_tasks_locked()
+            self.task_condition.notify_all()
 
     def task_snapshot(self) -> dict[str, Any]:
         with self.current_lock:
@@ -261,6 +295,19 @@ class HelperState:
                 return None, None, False
             process = self.processes.pop(task_id, None)
             if process is None:
+                if task.get("status") == "queued":
+                    self._append_task_log_locked(task, "queued task cancelled")
+                    finished_at_ms = int(time.time() * 1000)
+                    enqueued_at_ms = int(task.get("enqueuedAtMs") or finished_at_ms)
+                    task["status"] = "cancelled"
+                    task["finishedAtMs"] = finished_at_ms
+                    task["durationMs"] = max(0, finished_at_ms - enqueued_at_ms)
+                    task["error"] = "Queued task cancelled by MobileCode."
+                    task["failureKind"] = "cancelled"
+                    self._sync_current_task_locked()
+                    self._persist_tasks_locked()
+                    self.task_condition.notify_all()
+                    return None, clone_task(task), True
                 return None, clone_task(task), False
             self._append_task_log_locked(task, "task stopped")
             finished_at_ms = int(time.time() * 1000)
@@ -272,6 +319,7 @@ class HelperState:
             task["failureKind"] = "cancelled"
             self._sync_current_task_locked()
             self._persist_tasks_locked()
+            self.task_condition.notify_all()
             return process, clone_task(task), True
 
     def _find_task_locked(self, task_id: str) -> dict[str, Any] | None:
@@ -294,6 +342,10 @@ class HelperState:
             if task.get("status") == "running" and task_identity(task) in self.processes:
                 self.current_task = task
                 return
+        for task in self.tasks:
+            if task.get("status") == "queued":
+                self.current_task = task
+                return
         self.current_task = self.tasks[0]
 
     def has_running_tasks(self) -> bool:
@@ -302,7 +354,29 @@ class HelperState:
 
     def running_task_count(self) -> int:
         with self.current_lock:
-            return sum(1 for task in self.tasks if task.get("status") == "running" and task_identity(task) in self.processes)
+            return self._running_task_count_locked()
+
+    def queued_task_count(self) -> int:
+        with self.current_lock:
+            return self._queued_task_count_locked()
+
+    def _running_task_count_locked(self) -> int:
+        return sum(1 for task in self.tasks if task.get("status") == "running" and task_identity(task) in self.processes)
+
+    def _queued_task_count_locked(self) -> int:
+        return sum(1 for task in self.tasks if task.get("status") == "queued")
+
+    def _next_queued_task_locked(self) -> dict[str, Any] | None:
+        queued = [task for task in self.tasks if task.get("status") == "queued"]
+        if not queued:
+            return None
+        queued.sort(
+            key=lambda task: (
+                -int(task.get("priority") or 0),
+                int(task.get("enqueuedAtMs") or task.get("startedAtMs") or 0),
+            )
+        )
+        return queued[0]
 
     def cancel_current_task(self, task_id: str, process: Any) -> dict[str, Any] | None:
         with self.current_lock:
@@ -362,6 +436,14 @@ class HelperState:
                     logs = task.setdefault("logs", [])
                     if isinstance(logs, list):
                         logs.append("task lost after helper restart")
+                elif task.get("status") == "queued":
+                    task["status"] = "cancelled"
+                    task["finishedAtMs"] = int(time.time() * 1000)
+                    task["failureKind"] = "cancelled"
+                    task["error"] = "Queued task cancelled because Helper daemon restarted."
+                    logs = task.setdefault("logs", [])
+                    if isinstance(logs, list):
+                        logs.append("queued task cancelled after helper restart")
                 else:
                     task["failureKind"] = task.get("failureKind") or classify_failure(
                         str(task.get("status") or "unknown"),
@@ -507,7 +589,9 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                         "capabilities": self.state.capabilities(),
                         "taskRegistry": {
                             "runningCount": self.state.running_task_count(),
+                            "queueDepth": self.state.queued_task_count(),
                             "maxTasks": self.state.max_tasks,
+                            "maxConcurrentTasks": self.state.max_concurrent_tasks,
                         },
                         "missingDependencies": [],
                         "recoveryActions": [],
@@ -582,10 +666,25 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         cwd = self.state.validate_cwd(payload.get("cwd"))
         env = payload.get("env") if isinstance(payload.get("env"), dict) else None
         timeout_ms = int(payload.get("timeoutMs", 120000))
+        priority = int(payload.get("priority", 0))
         args = self.state.command_args(command)
-        task = self.state.begin_task(command, cwd)
+        task = self.state.begin_task(command, cwd, priority=priority)
         task_id = str(task["id"])
-        self.state.append_log(task_id, f"task {task_id}: {command}")
+        self.state.append_log(task_id, f"task {task_id} queued: {command}")
+        if not self.state.wait_for_turn(task_id):
+            snapshot = self.state.find_task(task_id) or {}
+            self.send_json(
+                {
+                    "command": command,
+                    "stdout": "",
+                    "stderr": str(snapshot.get("error") or "Task cancelled before it started."),
+                    "exitCode": 130,
+                    "durationMs": int(snapshot.get("durationMs") or 0),
+                    "taskId": task_id,
+                    "failureKind": snapshot.get("failureKind", "cancelled"),
+                }
+            )
+            return
         started = time.monotonic()
         merged_env = os.environ.copy()
         if env:
@@ -635,10 +734,11 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         command = str(payload.get("command", ""))
         cwd = self.state.validate_cwd(payload.get("cwd"))
         env = payload.get("env") if isinstance(payload.get("env"), dict) else None
+        priority = int(payload.get("priority", 0))
         args = self.state.command_args(command)
-        task = self.state.begin_task(command, cwd)
+        task = self.state.begin_task(command, cwd, priority=priority)
         task_id = str(task["id"])
-        self.state.append_log(task_id, f"task {task_id} stream: {command}")
+        self.state.append_log(task_id, f"task {task_id} stream queued: {command}")
 
         merged_env = os.environ.copy()
         if env:
@@ -661,6 +761,20 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/x-ndjson")
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
+        self.write_ndjson({"type": "status", "status": "queued", "taskId": task_id})
+        if not self.state.wait_for_turn(task_id):
+            snapshot = self.state.find_task(task_id) or {}
+            self.write_ndjson(
+                {
+                    "type": "exit",
+                    "exitCode": 130,
+                    "durationMs": int(snapshot.get("durationMs") or 0),
+                    "taskId": task_id,
+                    "failureKind": snapshot.get("failureKind", "cancelled"),
+                }
+            )
+            return
+        self.write_ndjson({"type": "status", "status": "running", "taskId": task_id})
 
         started = time.monotonic()
         output_queue: queue.Queue[tuple[str, str | None]] = queue.Queue()
@@ -718,8 +832,11 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                 self.send_error_json(HTTPStatus.NOT_FOUND, f"Task not found: {task_id}", "unknown")
                 return
         process, snapshot, stopped = self.state.cancel_task(task_id)
-        if not stopped or process is None:
+        if not stopped:
             self.send_json({"success": True, "stopped": False, "taskId": task_id, "task": snapshot or task})
+            return
+        if process is None:
+            self.send_json({"success": True, "stopped": True, "taskId": task_id, "task": snapshot or task})
             return
         process.send_signal(signal.SIGTERM)
         try:
@@ -782,6 +899,12 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help="Maximum recoverable task snapshots to keep, default: 50.",
     )
+    parser.add_argument(
+        "--max-concurrent-tasks",
+        default=int(os.environ.get("MOBILECODE_HELPER_MAX_CONCURRENT_TASKS", "1")),
+        type=int,
+        help="Maximum concurrently running tasks before new tasks queue, default: 1.",
+    )
     return parser.parse_args()
 
 
@@ -794,6 +917,7 @@ def main() -> int:
         allow_unsafe=args.allow_unsafe,
         auth_token=args.auth_token,
         max_tasks=max(1, args.max_tasks),
+        max_concurrent_tasks=max(1, args.max_concurrent_tasks),
     )
     server = MobileCodeServer((args.host, args.port), state)
     auth_label = "auth: required" if state.auth_token else "auth: disabled"

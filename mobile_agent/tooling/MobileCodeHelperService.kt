@@ -186,10 +186,27 @@ class MobileCodeHelperService : Service() {
         val args = commandArgs(command)
         val cwd = validateCwd(payload.optString("cwd", ""))
         val timeoutMs = payload.optLong("timeoutMs", 120_000L)
+        val priority = payload.optInt("priority", 0)
         val env = envFromJson(payload)
         val taskId = UUID.randomUUID().toString()
-        beginTask(taskId, command, cwd)
-        recordLog(taskId, "task $taskId: $command")
+        beginTask(taskId, command, cwd, priority)
+        recordLog(taskId, "task $taskId queued: $command")
+        if (!waitForTaskTurn(taskId)) {
+            val snapshot = synchronized(taskLock) { findTaskLocked(taskId)?.let { JSONObject(it.toString()) } }
+            writeJson(
+                socket,
+                200,
+                JSONObject()
+                    .put("command", command)
+                    .put("stdout", "")
+                    .put("stderr", snapshot?.optString("error", "Task cancelled before it started.") ?: "Task cancelled before it started.")
+                    .put("exitCode", 130)
+                    .put("durationMs", snapshot?.optLong("durationMs", 0L) ?: 0L)
+                    .put("taskId", taskId)
+                    .put("failureKind", snapshot?.optString("failureKind", "cancelled") ?: "cancelled")
+            )
+            return
+        }
 
         val started = System.nanoTime()
         val process = ProcessBuilder(args)
@@ -254,12 +271,30 @@ class MobileCodeHelperService : Service() {
         val args = commandArgs(command)
         val cwd = validateCwd(payload.optString("cwd", ""))
         val env = envFromJson(payload)
+        val priority = payload.optInt("priority", 0)
         val taskId = UUID.randomUUID().toString()
-        beginTask(taskId, command, cwd)
-        recordLog(taskId, "task $taskId stream: $command")
+        beginTask(taskId, command, cwd, priority)
+        recordLog(taskId, "task $taskId stream queued: $command")
 
         val output = socket.getOutputStream()
         writeHeaders(output, 200, "application/x-ndjson", null)
+        val writeLock = Any()
+        writeNdjson(output, writeLock, JSONObject().put("type", "status").put("status", "queued").put("taskId", taskId))
+        if (!waitForTaskTurn(taskId)) {
+            val snapshot = synchronized(taskLock) { findTaskLocked(taskId)?.let { JSONObject(it.toString()) } }
+            writeNdjson(
+                output,
+                writeLock,
+                JSONObject()
+                    .put("type", "exit")
+                    .put("exitCode", 130)
+                    .put("durationMs", snapshot?.optLong("durationMs", 0L) ?: 0L)
+                    .put("taskId", taskId)
+                    .put("failureKind", snapshot?.optString("failureKind", "cancelled") ?: "cancelled")
+            )
+            return
+        }
+        writeNdjson(output, writeLock, JSONObject().put("type", "status").put("status", "running").put("taskId", taskId))
         val started = System.nanoTime()
         val process = ProcessBuilder(args)
             .directory(cwd)
@@ -268,7 +303,6 @@ class MobileCodeHelperService : Service() {
             .start()
 
         registerTaskProcess(taskId, process)
-        val writeLock = Any()
         val stdoutThread = thread(isDaemon = true) {
             process.inputStream.bufferedReader().forEachLine { line ->
                 writeNdjson(output, writeLock, JSONObject().put("type", "stdout").put("data", line))
@@ -340,7 +374,9 @@ class MobileCodeHelperService : Service() {
                 "taskRegistry",
                 JSONObject()
                     .put("runningCount", runningTaskCount())
+                    .put("queueDepth", queuedTaskCount())
                     .put("maxTasks", MAX_TASKS)
+                    .put("maxConcurrentTasks", MAX_CONCURRENT_TASKS)
             )
             .put("missingDependencies", JSONArray())
             .put("recoveryActions", JSONArray())
@@ -404,12 +440,15 @@ class MobileCodeHelperService : Service() {
             val taskId = taskIdentity(task)
             task.optString("status") == "running" && taskProcesses.containsKey(taskId)
         }
-        val nextTask = runningTask ?: taskHistory.firstOrNull()
+        val queuedTask = taskHistory.firstOrNull { it.optString("status") == "queued" }
+        val nextTask = runningTask ?: queuedTask ?: taskHistory.firstOrNull()
         if (nextTask == null) {
             currentTaskId = ""
             currentCommand = ""
             currentTaskCwd = ""
             currentTaskStatus = "unknown"
+            currentTaskPriority = 0
+            currentTaskEnqueuedAtMs = 0L
             currentTaskStartedAtMs = 0L
             currentTaskFinishedAtMs = 0L
             currentTaskExitCode = null
@@ -444,13 +483,55 @@ class MobileCodeHelperService : Service() {
         }
     }
 
-    private fun beginTask(taskId: String, command: String, cwd: File) {
+    private fun queuedTaskCount(): Int {
+        synchronized(taskLock) {
+            return taskHistory.count { task -> task.optString("status") == "queued" }
+        }
+    }
+
+    private fun nextQueuedTaskLocked(): JSONObject? {
+        return taskHistory
+            .filter { it.optString("status") == "queued" }
+            .minWithOrNull(
+                compareByDescending<JSONObject> { it.optInt("priority", 0) }
+                    .thenBy { it.optLong("enqueuedAtMs", it.optLong("startedAtMs", 0L)) }
+            )
+    }
+
+    private fun waitForTaskTurn(taskId: String): Boolean {
+        while (true) {
+            synchronized(taskLock) {
+                val task = findTaskLocked(taskId) ?: return false
+                if (task.optString("status") == "cancelled") return false
+                if (task.optString("status") == "running") return true
+                val nextQueued = nextQueuedTaskLocked()
+                if (
+                    nextQueued != null &&
+                    taskIdentity(nextQueued) == taskId &&
+                    runningTaskCount() < MAX_CONCURRENT_TASKS
+                ) {
+                    task.put("status", "running")
+                    task.put("startedAtMs", System.currentTimeMillis())
+                    appendLogToTaskLocked(task, "task started")
+                    syncCurrentTaskLocked()
+                    persistTaskStateLocked()
+                    return true
+                }
+            }
+            Thread.sleep(250)
+        }
+    }
+
+    private fun beginTask(taskId: String, command: String, cwd: File, priority: Int) {
+        val now = System.currentTimeMillis()
         synchronized(taskLock) {
             currentTaskId = taskId
             currentCommand = command
             currentTaskCwd = cwd.path
-            currentTaskStatus = "running"
-            currentTaskStartedAtMs = System.currentTimeMillis()
+            currentTaskStatus = "queued"
+            currentTaskPriority = priority
+            currentTaskEnqueuedAtMs = now
+            currentTaskStartedAtMs = 0L
             currentTaskFinishedAtMs = 0L
             currentTaskExitCode = null
             currentTaskDurationMs = 0L
@@ -543,6 +624,12 @@ class MobileCodeHelperService : Service() {
                         task.put("error", "Helper service restarted before this task completed.")
                         task.put("failureKind", "runtimeLost")
                         appendLogToTaskLocked(task, "task lost after helper restart")
+                    } else if (task.optString("status") == "queued") {
+                        task.put("status", "cancelled")
+                        task.put("finishedAtMs", now)
+                        task.put("error", "Queued task cancelled because Helper service restarted.")
+                        task.put("failureKind", "cancelled")
+                        appendLogToTaskLocked(task, "queued task cancelled after helper restart")
                     }
                 }
                 syncCurrentTaskLocked()
@@ -574,6 +661,8 @@ class MobileCodeHelperService : Service() {
         currentCommand = json.optString("command", "")
         currentTaskCwd = json.optString("cwd", "")
         currentTaskStatus = json.optString("status", "unknown")
+        currentTaskPriority = json.optInt("priority", 0)
+        currentTaskEnqueuedAtMs = json.optLong("enqueuedAtMs", 0L)
         currentTaskStartedAtMs = json.optLong("startedAtMs", 0L)
         currentTaskFinishedAtMs = json.optLong("finishedAtMs", 0L)
         currentTaskExitCode = if (json.has("exitCode") && !json.isNull("exitCode")) json.optInt("exitCode") else null
@@ -613,6 +702,8 @@ class MobileCodeHelperService : Service() {
             .put("command", currentCommand)
             .put("cwd", currentTaskCwd)
             .put("status", if (currentTaskStatus.isBlank()) "unknown" else currentTaskStatus)
+            .put("priority", currentTaskPriority)
+            .put("enqueuedAtMs", currentTaskEnqueuedAtMs)
             .put("startedAtMs", currentTaskStartedAtMs)
             .put("finishedAtMs", currentTaskFinishedAtMs)
             .put("durationMs", currentTaskDurationMs)
@@ -733,6 +824,23 @@ class MobileCodeHelperService : Service() {
             stoppingTaskId = taskIdentity(task)
             val process = taskProcesses.remove(stoppingTaskId)
             if (process == null) {
+                if (task.optString("status") == "queued") {
+                    appendLogToTaskLocked(task, "queued task cancelled")
+                    val finishedAtMs = System.currentTimeMillis()
+                    val enqueuedAtMs = task.optLong("enqueuedAtMs", task.optLong("startedAtMs", finishedAtMs))
+                    task.put("status", "cancelled")
+                    task.put("finishedAtMs", finishedAtMs)
+                    task.put("durationMs", (finishedAtMs - enqueuedAtMs).coerceAtLeast(0L))
+                    task.put("error", "Queued task cancelled by MobileCode.")
+                    task.put("failureKind", "cancelled")
+                    syncCurrentTaskLocked()
+                    persistTaskStateLocked()
+                    return JSONObject()
+                        .put("success", true)
+                        .put("stopped", true)
+                        .put("taskId", stoppingTaskId)
+                        .put("task", JSONObject(task.toString()))
+                }
                 return JSONObject()
                     .put("success", true)
                     .put("stopped", false)
@@ -870,6 +978,7 @@ class MobileCodeHelperService : Service() {
         private const val PORT = 8765
         private const val MAX_LOG_LINES = 200
         private const val MAX_TASKS = 50
+        private const val MAX_CONCURRENT_TASKS = 1
 
         @Volatile private var running = false
         @Volatile private var lastError = ""
@@ -878,6 +987,8 @@ class MobileCodeHelperService : Service() {
         @Volatile private var currentCommand = ""
         @Volatile private var currentTaskCwd = ""
         @Volatile private var currentTaskStatus = "unknown"
+        @Volatile private var currentTaskPriority = 0
+        @Volatile private var currentTaskEnqueuedAtMs = 0L
         @Volatile private var currentTaskStartedAtMs = 0L
         @Volatile private var currentTaskFinishedAtMs = 0L
         @Volatile private var currentTaskExitCode: Int? = null
@@ -899,6 +1010,8 @@ class MobileCodeHelperService : Service() {
                 "taskRunning" to (taskProcesses.isNotEmpty()),
                 "taskRunningCount" to taskProcesses.size,
                 "taskStatus" to currentTaskStatus,
+                "taskPriority" to currentTaskPriority,
+                "taskEnqueuedAtMs" to currentTaskEnqueuedAtMs,
                 "taskStartedAtMs" to currentTaskStartedAtMs,
                 "taskFinishedAtMs" to currentTaskFinishedAtMs,
                 "taskFailureKind" to currentTaskFailureKind,

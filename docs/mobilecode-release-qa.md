@@ -28,7 +28,8 @@ Required GitHub Actions before publishing:
 Release candidate:
 
 - Branch: `v011-streaming-fix`
-- Head commit: `4b12d54`
+- App/build content commit: `4b12d54`
+- Later commits on this branch only record QA evidence unless noted otherwise.
 - Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.1`
 - APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.1/mobilecode-v0.1.1.apk`
 - APK SHA256: `b0421825e4e589d3a30217cbc76ad0ebe053b61a6de0eb05fc4500c9091cb98a`

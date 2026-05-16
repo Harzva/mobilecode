@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
-import '../themes/app_theme.dart';
-import '../widgets/glass_card_widget.dart';
-import '../widgets/gradient_button_widget.dart';
-import '../models/api_config_model.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// LLM API Configuration screen
-/// Manage API keys for OpenAI, Claude, Gemini, Custom providers
+import '../themes/app_theme.dart';
+
+/// LLM provider configuration shared with HomeScreen.
+///
+/// This screen intentionally writes the same SharedPreferences keys that the
+/// chat surface reads, so Settings, drawer shortcuts, and the chat composer do
+/// not drift into separate provider profiles.
 class ApiConfigScreen extends StatefulWidget {
   const ApiConfigScreen({super.key});
 
@@ -13,574 +15,258 @@ class ApiConfigScreen extends StatefulWidget {
   State<ApiConfigScreen> createState() => _ApiConfigScreenState();
 }
 
+enum _ProviderPreset { mimo, anthropic, openAi, custom }
+
+class _ProviderDefinition {
+  const _ProviderDefinition({
+    required this.preset,
+    required this.label,
+    required this.baseUrl,
+    required this.model,
+    required this.icon,
+  });
+
+  final _ProviderPreset preset;
+  final String label;
+  final String baseUrl;
+  final String model;
+  final IconData icon;
+}
+
 class _ApiConfigScreenState extends State<ApiConfigScreen> {
-  final List<Map<String, dynamic>> _configs = [
-    {
-      'id': '1',
-      'name': 'OpenAI GPT-4',
-      'provider': LLMProvider.openAI,
-      'apiKey': '',  // SECURE: Load from SecureStorage or env var, never hardcode
-      'baseUrl': 'https://api.openai.com/v1',
-      'model': 'gpt-4o',
-      'isActive': true,
-      'temperature': 0.7,
-    },
-    {
-      'id': '2',
-      'name': 'Claude Sonnet',
-      'provider': LLMProvider.claude,
-      'apiKey': '',  // SECURE: Load from SecureStorage or env var, never hardcode
-      'baseUrl': 'https://api.anthropic.com/v1',
-      'model': 'claude-3-5-sonnet',
-      'isActive': false,
-      'temperature': 0.8,
-    },
-    {
-      'id': '3',
-      'name': 'Gemini Pro',
-      'provider': LLMProvider.gemini,
-      'apiKey': '',  // SECURE: Load from SecureStorage or env var, never hardcode
-      'baseUrl': 'https://generativelanguage.googleapis.com/v1',
-      'model': 'gemini-1.5-pro',
-      'isActive': false,
-      'temperature': 0.7,
-    },
+  static const _baseUrlKey = 'mobilecode.baseUrl';
+  static const _apiKeyKey = 'mobilecode.apiKey';
+  static const _modelKey = 'mobilecode.model';
+  static const _providerModeKey = 'mobilecode.providerMode';
+  static const _defaultBaseUrl = 'https://token-plan-cn.xiaomimimo.com/anthropic';
+  static const _defaultModel = 'mimo-v2.5-pro';
+
+  static const _providers = [
+    _ProviderDefinition(
+      preset: _ProviderPreset.mimo,
+      label: 'Mimo Anthropic',
+      baseUrl: _defaultBaseUrl,
+      model: _defaultModel,
+      icon: Icons.auto_awesome_outlined,
+    ),
+    _ProviderDefinition(
+      preset: _ProviderPreset.anthropic,
+      label: 'Anthropic',
+      baseUrl: 'https://api.anthropic.com',
+      model: 'claude-3-5-sonnet-latest',
+      icon: Icons.hub_outlined,
+    ),
+    _ProviderDefinition(
+      preset: _ProviderPreset.openAi,
+      label: 'OpenAI',
+      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+      icon: Icons.api_outlined,
+    ),
+    _ProviderDefinition(
+      preset: _ProviderPreset.custom,
+      label: 'Custom Provider',
+      baseUrl: '',
+      model: '',
+      icon: Icons.tune_outlined,
+    ),
   ];
 
-  void _toggleActive(String id) {
+  final _baseUrlController = TextEditingController(text: _defaultBaseUrl);
+  final _apiKeyController = TextEditingController();
+  final _modelController = TextEditingController(text: _defaultModel);
+  _ProviderPreset _selectedPreset = _ProviderPreset.mimo;
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConfig();
+  }
+
+  @override
+  void dispose() {
+    _baseUrlController.dispose();
+    _apiKeyController.dispose();
+    _modelController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadConfig() async {
+    final prefs = await SharedPreferences.getInstance();
+    final baseUrl = prefs.getString(_baseUrlKey)?.trim();
+    final model = prefs.getString(_modelKey)?.trim();
+    if (!mounted) return;
     setState(() {
-      for (final config in _configs) {
-        if (config['id'] == id) {
-          config['isActive'] = !config['isActive'];
-        } else {
-          config['isActive'] = false; // Only one active at a time
-        }
+      _baseUrlController.text = baseUrl == null || baseUrl.isEmpty ? _defaultBaseUrl : baseUrl;
+      _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
+      _modelController.text = model == null || model.isEmpty ? _defaultModel : model;
+      _selectedPreset = _detectPreset(_baseUrlController.text, _modelController.text);
+      _loading = false;
+    });
+  }
+
+  _ProviderPreset _detectPreset(String baseUrl, String model) {
+    final probe = '$baseUrl $model'.toLowerCase();
+    if (probe.contains('xiaomimimo') || probe.contains('mimo-')) {
+      return _ProviderPreset.mimo;
+    }
+    if (probe.contains('anthropic') || probe.contains('claude')) {
+      return _ProviderPreset.anthropic;
+    }
+    if (probe.contains('openai') || probe.contains('gpt-')) {
+      return _ProviderPreset.openAi;
+    }
+    return _ProviderPreset.custom;
+  }
+
+  void _selectPreset(_ProviderDefinition provider) {
+    setState(() {
+      _selectedPreset = provider.preset;
+      if (provider.baseUrl.isNotEmpty) {
+        _baseUrlController.text = provider.baseUrl;
+      }
+      if (provider.model.isNotEmpty) {
+        _modelController.text = provider.model;
       }
     });
   }
 
-  void _deleteConfig(String id) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surfaceElevated,
-        title: const Text('删除配置', style: TextStyle(color: AppTheme.textPrimary)),
-        content: const Text(
-          '确定要删除这个 API 配置吗？',
-          style: TextStyle(color: AppTheme.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () {
-              setState(() => _configs.removeWhere((c) => c['id'] == id));
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('配置已删除')),
-              );
-            },
-            child: const Text('删除', style: TextStyle(color: AppTheme.error)),
-          ),
-        ],
-      ),
-    );
+  Future<void> _save() async {
+    final baseUrl = _baseUrlController.text.trim();
+    final model = _modelController.text.trim();
+    if (baseUrl.isEmpty || model.isEmpty) {
+      _showMessage('请填写 Base URL 和 Model');
+      return;
+    }
+    final uri = Uri.tryParse(baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      _showMessage('Base URL 格式不正确');
+      return;
+    }
+
+    setState(() => _saving = true);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_providerModeKey, 'custom');
+      await prefs.setString(_baseUrlKey, baseUrl);
+      await prefs.setString(_apiKeyKey, _apiKeyController.text.trim());
+      await prefs.setString(_modelKey, model);
+      if (!mounted) return;
+      _showMessage('模型配置已保存');
+      Navigator.of(context).maybePop();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
-  void _showAddConfigSheet({Map<String, dynamic>? existingConfig}) {
-    final isEditing = existingConfig != null;
-    final nameController = TextEditingController(text: existingConfig?['name'] ?? '');
-    final keyController = TextEditingController(text: existingConfig?['apiKey'] ?? '');
-    final urlController = TextEditingController(text: existingConfig?['baseUrl'] ?? '');
-    LLMProvider selectedProvider = existingConfig?['provider'] ?? LLMProvider.openAI;
-    String selectedModel = existingConfig?['model'] ?? 'gpt-4o';
-    double temperature = (existingConfig?['temperature'] ?? 0.7).toDouble();
-    bool isTesting = false;
-    bool? testResult;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppTheme.surfaceElevated,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
-          ),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: AppTheme.border,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Text(
-                    isEditing ? '编辑 API 配置' : '添加 API 配置',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Name
-                  TextField(
-                    controller: nameController,
-                    style: const TextStyle(color: AppTheme.textPrimary),
-                    decoration: const InputDecoration(
-                      labelText: '配置名称',
-                      labelStyle: TextStyle(color: AppTheme.textSecondary),
-                      hintText: '例如: OpenAI GPT-4',
-                      hintStyle: TextStyle(color: AppTheme.textTertiary),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Provider selector
-                  const Text(
-                    '提供商',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: LLMProvider.values.map((provider) {
-                      final isSelected = provider == selectedProvider;
-                      return ChoiceChip(
-                        label: Text(provider.displayName),
-                        selected: isSelected,
-                        onSelected: (_) {
-                          setModalState(() {
-                            selectedProvider = provider;
-                            selectedModel =
-                                ApiConfig.defaultModels(provider).first;
-                            if (urlController.text.isEmpty) {
-                              urlController.text =
-                                  ApiConfig.defaultBaseUrl(provider);
-                            }
-                          });
-                        },
-                        selectedColor: AppTheme.violet.withOpacity(0.3),
-                        labelStyle: TextStyle(
-                          color: isSelected
-                              ? AppTheme.violetLight
-                              : AppTheme.textSecondary,
-                          fontSize: 13,
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // API Key
-                  TextField(
-                    controller: keyController,
-                    obscureText: true,
-                    style: const TextStyle(color: AppTheme.textPrimary),
-                    decoration: const InputDecoration(
-                      labelText: 'API Key',
-                      labelStyle: TextStyle(color: AppTheme.textSecondary),
-                      hintText: 'sk-...',
-                      hintStyle: TextStyle(color: AppTheme.textTertiary),
-                      prefixIcon: Icon(Icons.vpn_key, color: AppTheme.textTertiary),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Base URL
-                  TextField(
-                    controller: urlController,
-                    style: const TextStyle(color: AppTheme.textPrimary),
-                    decoration: const InputDecoration(
-                      labelText: 'Base URL',
-                      labelStyle: TextStyle(color: AppTheme.textSecondary),
-                      hintText: 'https://api.example.com/v1',
-                      hintStyle: TextStyle(color: AppTheme.textTertiary),
-                      prefixIcon: Icon(Icons.link, color: AppTheme.textTertiary),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Model selector
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceDark,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.border),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: selectedModel,
-                        isExpanded: true,
-                        dropdownColor: AppTheme.surfaceDark,
-                        icon: const Icon(Icons.arrow_drop_down,
-                            color: AppTheme.textSecondary),
-                        style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 14,
-                        ),
-                        onChanged: (v) => setModalState(() => selectedModel = v!),
-                        items: ApiConfig.defaultModels(selectedProvider)
-                            .map((model) => DropdownMenuItem(
-                                  value: model,
-                                  child: Text(model),
-                                ))
-                            .toList(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Temperature slider
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Temperature',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
-                      Text(
-                        temperature.toStringAsFixed(1),
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.violetLight,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Slider(
-                    value: temperature,
-                    min: 0.0,
-                    max: 2.0,
-                    divisions: 20,
-                    activeColor: AppTheme.violet,
-                    inactiveColor: AppTheme.border,
-                    onChanged: (v) => setModalState(() => temperature = v),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Test connection button
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: isTesting
-                          ? null
-                          : () async {
-                              setModalState(() {
-                                isTesting = true;
-                                testResult = null;
-                              });
-                              await Future.delayed(
-                                  const Duration(seconds: 1));
-                              setModalState(() {
-                                isTesting = false;
-                                testResult = true;
-                              });
-                            },
-                      icon: isTesting
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation(
-                                    AppTheme.violetLight),
-                              ),
-                            )
-                          : Icon(
-                              testResult == true
-                                  ? Icons.check_circle
-                                  : Icons.network_check,
-                              size: 18,
-                              color: testResult == true
-                                  ? AppTheme.success
-                                  : AppTheme.textSecondary,
-                            ),
-                      label: Text(
-                        isTesting
-                            ? '测试中...'
-                            : testResult == true
-                                ? '连接成功'
-                                : '测试连接',
-                        style: TextStyle(
-                          color: testResult == true
-                              ? AppTheme.success
-                              : AppTheme.textSecondary,
-                        ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(
-                          color: testResult == true
-                              ? AppTheme.success
-                              : AppTheme.border,
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Save button
-                  SizedBox(
-                    width: double.infinity,
-                    child: GradientButtonWidget(
-                      label: isEditing ? '保存更改' : '添加配置',
-                      icon: isEditing ? Icons.save : Icons.add,
-                      onPressed: () {
-                        if (nameController.text.isEmpty ||
-                            keyController.text.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('请填写必填项')),
-                          );
-                          return;
-                        }
-
-                        setState(() {
-                          if (isEditing) {
-                            final idx = _configs.indexWhere(
-                                (c) => c['id'] == existingConfig['id']);
-                            if (idx != -1) {
-                              _configs[idx] = {
-                                ...existingConfig,
-                                'name': nameController.text,
-                                'provider': selectedProvider,
-                                'apiKey': keyController.text,
-                                'baseUrl': urlController.text,
-                                'model': selectedModel,
-                                'temperature': temperature,
-                              };
-                            }
-                          } else {
-                            _configs.add({
-                              'id': DateTime.now()
-                                  .millisecondsSinceEpoch
-                                  .toString(),
-                              'name': nameController.text,
-                              'provider': selectedProvider,
-                              'apiKey': keyController.text,
-                              'baseUrl': urlController.text,
-                              'model': selectedModel,
-                              'isActive': false,
-                              'temperature': temperature,
-                            });
-                          }
-                        });
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                                isEditing ? '配置已更新' : '配置已添加'),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.deepSpace,
+      backgroundColor: AppTheme.auroraBackground,
       appBar: AppBar(
-        backgroundColor: AppTheme.surfaceDark,
-        elevation: 0,
-        title: const Text(
-          'API 配置',
-          style: TextStyle(color: AppTheme.textPrimary),
-        ),
+        title: const Text('模型与 Provider'),
         leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back, color: AppTheme.textSecondary),
+          tooltip: 'Back',
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back),
         ),
       ),
-      body: SafeArea(
-        child: ListView.builder(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          itemCount: _configs.length,
-          itemBuilder: (context, index) {
-            final config = _configs[index];
-            return _buildConfigCard(config);
-          },
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddConfigSheet(),
-        icon: const Icon(Icons.add),
-        label: const Text('添加 API'),
-      ),
-    );
-  }
-
-  Widget _buildConfigCard(Map<String, dynamic> config) {
-    final providerColors = {
-      LLMProvider.openAI: const Color(0xFF10A37F),
-      LLMProvider.claude: const Color(0xFFD4A574),
-      LLMProvider.gemini: const Color(0xFF4285F4),
-      LLMProvider.custom: AppTheme.textSecondary,
-    };
-
-    return Dismissible(
-      key: ValueKey(config['id']),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppTheme.error.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        child: const Icon(Icons.delete, color: AppTheme.error),
-      ),
-      onDismissed: (_) => _deleteConfig(config['id']),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: GlassCardWidget(
-          onTap: () => _showAddConfigSheet(existingConfig: config),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
-                Row(
-                  children: [
-                    // Provider indicator
-                    Container(
-                      width: 10,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: providerColors[config['provider']] ??
-                            AppTheme.textSecondary,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        config['name'],
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimary,
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Provider',
+                          style: TextStyle(
+                            color: AppTheme.auroraText,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
-                      ),
-                    ),
-                    // Active toggle
-                    Switch(
-                      value: config['isActive'] ?? false,
-                      onChanged: (_) => _toggleActive(config['id']),
-                      activeColor: AppTheme.violet,
-                      activeTrackColor: AppTheme.violet.withOpacity(0.3),
-                      inactiveTrackColor: AppTheme.border,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  (config['provider'] as LLMProvider).displayName,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  config['model'],
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppTheme.violetLight,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.link,
-                      size: 12,
-                      color: AppTheme.textTertiary.withOpacity(0.7),
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        config['baseUrl'],
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppTheme.textTertiary.withOpacity(0.7),
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (config['isActive'] == true)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 3,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.success.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Row(
-                          mainAxisSize: MainAxisSize.min,
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
                           children: [
-                            Icon(
-                              Icons.check_circle,
-                              size: 12,
-                              color: AppTheme.success,
-                            ),
-                            SizedBox(width: 4),
-                            Text(
-                              '默认',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: AppTheme.success,
-                                fontWeight: FontWeight.w500,
+                            for (final provider in _providers)
+                              ChoiceChip(
+                                avatar: Icon(provider.icon, size: 16),
+                                label: Text(provider.label),
+                                selected: _selectedPreset == provider.preset,
+                                onSelected: (_) => _selectPreset(provider),
                               ),
-                            ),
                           ],
                         ),
-                      ),
-                  ],
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: _baseUrlController,
+                          keyboardType: TextInputType.url,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: 'Base URL',
+                            hintText: 'https://api.example.com/v1',
+                            prefixIcon: Icon(Icons.link_outlined),
+                          ),
+                          onChanged: (_) => setState(() {
+                            _selectedPreset = _detectPreset(_baseUrlController.text, _modelController.text);
+                          }),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _modelController,
+                          textInputAction: TextInputAction.next,
+                          decoration: const InputDecoration(
+                            labelText: 'Model',
+                            hintText: 'mimo-v2.5-pro / gpt-4o-mini / claude-3-5-sonnet-latest',
+                            prefixIcon: Icon(Icons.memory_outlined),
+                          ),
+                          onChanged: (_) => setState(() {
+                            _selectedPreset = _detectPreset(_baseUrlController.text, _modelController.text);
+                          }),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _apiKeyController,
+                          obscureText: true,
+                          textInputAction: TextInputAction.done,
+                          decoration: const InputDecoration(
+                            labelText: 'API Key',
+                            hintText: 'sk-... or provider token',
+                            prefixIcon: Icon(Icons.key_outlined),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Custom Provider 会按 Base URL 自动识别 Anthropic 或 OpenAI-compatible 调用路径。保存后 Home/Chat 会立即读取同一份配置。',
+                          style: TextStyle(color: AppTheme.auroraTextMuted, fontSize: 12, height: 1.35),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                FilledButton.icon(
+                  onPressed: _saving ? null : _save,
+                  icon: _saving
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.save_outlined),
+                  label: Text(_saving ? 'Saving' : 'Save provider'),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
     );
   }
 }

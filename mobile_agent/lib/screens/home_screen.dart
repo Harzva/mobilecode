@@ -17,6 +17,8 @@ import '../services/voice_service.dart';
 
 enum _ApiFlavor { openAi, anthropic }
 
+enum _ProviderPreset { mimo, anthropic, openAi, custom }
+
 enum _HealthState { unknown, checking, healthy, failed }
 
 enum _HomeTab { control, ai, ship, guard, insight }
@@ -83,10 +85,10 @@ const _managedModel = String.fromEnvironment(
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.0';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.1';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.0+19';
+const _releaseBuildLabel = 'v0.1.1+20';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 
 class _ProbeResult {
@@ -508,6 +510,47 @@ _ApiFlavor _detectApiFlavor(String baseUrl, String model) {
   return _ApiFlavor.openAi;
 }
 
+_ProviderPreset _detectProviderPreset(String baseUrl, String model) {
+  final probe = '$baseUrl $model'.toLowerCase();
+  if (probe.contains('xiaomimimo') || probe.contains('mimo-')) {
+    return _ProviderPreset.mimo;
+  }
+  if (probe.contains('anthropic') || probe.contains('claude')) {
+    return _ProviderPreset.anthropic;
+  }
+  if (probe.contains('openai') || probe.contains('gpt-')) {
+    return _ProviderPreset.openAi;
+  }
+  return _ProviderPreset.custom;
+}
+
+String _providerPresetLabel(_ProviderPreset preset) {
+  return switch (preset) {
+    _ProviderPreset.mimo => 'Mimo',
+    _ProviderPreset.anthropic => 'Anthropic',
+    _ProviderPreset.openAi => 'OpenAI',
+    _ProviderPreset.custom => 'Custom',
+  };
+}
+
+String _providerPresetBaseUrl(_ProviderPreset preset) {
+  return switch (preset) {
+    _ProviderPreset.mimo => _defaultBaseUrl,
+    _ProviderPreset.anthropic => 'https://api.anthropic.com',
+    _ProviderPreset.openAi => 'https://api.openai.com/v1',
+    _ProviderPreset.custom => '',
+  };
+}
+
+String _providerPresetModel(_ProviderPreset preset) {
+  return switch (preset) {
+    _ProviderPreset.mimo => _defaultModel,
+    _ProviderPreset.anthropic => 'claude-3-5-sonnet-latest',
+    _ProviderPreset.openAi => 'gpt-4o-mini',
+    _ProviderPreset.custom => '',
+  };
+}
+
 Uri _parseBaseUrl(String baseUrl) {
   final uri = Uri.parse(_normalizedBaseUrl(baseUrl));
   if (!uri.hasScheme || uri.host.isEmpty) {
@@ -573,6 +616,17 @@ String _clockLabel(DateTime time) {
   final minute = time.minute.toString().padLeft(2, '0');
   final second = time.second.toString().padLeft(2, '0');
   return '$hour:$minute:$second';
+}
+
+String _sessionTurnLabel(_ChatSession session) {
+  final messages = session.turns.where((turn) => turn.content.trim().isNotEmpty).length;
+  if (messages == 0) return 'Ready to start';
+  final userMessages = session.turns.where((turn) => turn.role == 'user' && turn.content.trim().isNotEmpty).length;
+  final assistantMessages = session.turns.where((turn) => turn.role == 'assistant' && turn.content.trim().isNotEmpty).length;
+  if (userMessages > 0 && assistantMessages > 0) {
+    return '$userMessages prompts · $assistantMessages replies';
+  }
+  return messages == 1 ? '1 message' : '$messages messages';
 }
 
 bool _promptTargets2048(String prompt) {
@@ -836,6 +890,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _baseUrlKey = 'mobilecode.baseUrl';
   static const _apiKeyKey = 'mobilecode.apiKey';
   static const _modelKey = 'mobilecode.model';
+  static const _providerModeKey = 'mobilecode.providerMode';
 
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _chatPanelKey = GlobalKey<_ChatPanelState>();
@@ -850,6 +905,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _selectedLayerIndex = 0;
   bool _showCapabilityMap = false;
   bool _runtimeChecking = false;
+  bool _customProviderOverride = false;
   bool? _termuxInstalled;
   bool? _termuxApiInstalled;
   bool? _rootAvailable;
@@ -883,7 +939,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   _CapabilityLayer get _activeLayer => _layers[_safeLayerIndex];
 
-  bool get _managedProviderActive => _managedProviderEnabled && _managedApiKey.trim().isNotEmpty;
+  bool get _managedProviderAvailable => _managedProviderEnabled && _managedApiKey.trim().isNotEmpty;
+
+  bool get _managedProviderActive => _managedProviderAvailable && !_customProviderOverride;
 
   String get _effectiveBaseUrl => _managedProviderActive ? _managedBaseUrl : _baseUrlController.text.trim();
 
@@ -912,7 +970,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final runtime = _bestRuntimeHealth;
     final capabilityLabel = _runtimeCapabilityLabel(_runtimeCapabilities);
     final fallback = <String>[
-      if (_termuxInstalled == true) _termuxApiInstalled == true ? 'Termux API fallback' : 'Termux fallback',
+      if (_termuxInstalled == true) _termuxApiInstalled == true ? 'External Termux API fallback' : 'External Termux fallback',
       if (_rootAvailable == true) 'root keepalive',
     ];
     if (runtime == null) {
@@ -942,6 +1000,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
       setState(() {
+        _customProviderOverride = prefs.getString(_providerModeKey) == 'custom';
         if (_managedProviderActive) {
           _baseUrlController.text = '';
           _apiKeyController.text = '';
@@ -958,29 +1017,77 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _applyDefaultProvider() {
-    if (_managedProviderActive) {
-      _showMessage('Managed provider is already active');
+    _applyProviderPreset(_ProviderPreset.mimo);
+  }
+
+  Future<void> _setProviderMode({required bool useCustom}) async {
+    if (!useCustom && !_managedProviderAvailable) {
+      _showMessage('Managed provider is not available in this build');
       return;
     }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_providerModeKey, useCustom ? 'custom' : 'managed');
+    if (!mounted) return;
     setState(() {
-      _baseUrlController.text = _defaultBaseUrl;
-      _modelController.text = _defaultModel;
+      _customProviderOverride = useCustom;
+      if (useCustom) {
+        _baseUrlController.text = _savedOrDefault(prefs.getString(_baseUrlKey), _defaultBaseUrl);
+        _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
+        _modelController.text = _savedOrDefault(prefs.getString(_modelKey), _defaultModel);
+      } else {
+        _baseUrlController.text = '';
+        _apiKeyController.text = '';
+        _modelController.text = '';
+      }
     });
-    _addLog('Mimo provider applied', 'Default Base URL and model filled. API key stays private.', Icons.tune_outlined, _mint);
+    _addLog(
+      useCustom ? 'Custom provider enabled' : 'Managed provider enabled',
+      useCustom ? 'Base URL, API key, and model fields are editable.' : 'Bundled managed provider credentials are active.',
+      Icons.tune_outlined,
+      useCustom ? _cyan : _mint,
+    );
+  }
+
+  void _applyProviderPreset(_ProviderPreset preset) {
+    if (_managedProviderActive) {
+      _customProviderOverride = true;
+      unawaited(SharedPreferences.getInstance().then((prefs) => prefs.setString(_providerModeKey, 'custom')));
+    }
+    setState(() {
+      final presetBaseUrl = _providerPresetBaseUrl(preset);
+      final presetModel = _providerPresetModel(preset);
+      if (presetBaseUrl.isNotEmpty) {
+        _baseUrlController.text = presetBaseUrl;
+      }
+      if (presetModel.isNotEmpty) {
+        _modelController.text = presetModel;
+      }
+    });
+    final label = _providerPresetLabel(preset);
+    _addLog(
+      '$label provider selected',
+      preset == _ProviderPreset.custom
+          ? 'Custom mode keeps your current Base URL/model so you can edit them directly.'
+          : 'Base URL and model filled. API key stays private.',
+      Icons.tune_outlined,
+      preset == _ProviderPreset.custom ? _cyan : _mint,
+    );
   }
 
   Future<void> _saveConfig() async {
     if (_managedProviderActive) {
-      _showMessage('Managed provider uses hidden debug credentials');
+      _showMessage('Switch to Custom provider before saving your own Base URL');
       return;
     }
     setState(() => _saving = true);
     try {
       final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_providerModeKey, 'custom');
       await prefs.setString(_baseUrlKey, _baseUrlController.text.trim());
       await prefs.setString(_apiKeyKey, _apiKeyController.text.trim());
       await prefs.setString(_modelKey, _modelController.text.trim());
       if (!mounted) return;
+      setState(() => _customProviderOverride = true);
       _addLog(
         'API profile saved',
         '${_flavorLabel(_flavor)} - ${_effectiveModel.isEmpty ? 'default model' : _effectiveModel}',
@@ -1419,7 +1526,7 @@ class _HomeScreenState extends State<HomeScreen> {
         termuxInstalled: _termuxInstalled,
         termuxApiInstalled: _termuxApiInstalled,
         rootAvailable: _rootAvailable,
-        onOpenInstall: () => _openUrl('https://f-droid.org/packages/com.termux/', 'Termux install page'),
+        onOpenInstall: () => _openUrl('https://f-droid.org/packages/com.termux/', 'External Termux install page'),
         onRefreshParent: () => _checkRuntime(),
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
       ),
@@ -1573,30 +1680,52 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _closeDrawerIfOpen() async {
-    if (Navigator.of(context).canPop()) {
-      Navigator.of(context).pop();
+    final scaffold = _scaffoldKey.currentState;
+    if (scaffold?.isDrawerOpen == true) {
+      scaffold?.closeDrawer();
       await Future<void>.delayed(const Duration(milliseconds: 80));
     }
   }
 
+  Future<_ChatPanelState?> _focusChatPanel() async {
+    _setTab(_HomeTab.control);
+    for (var attempt = 0; attempt < 4; attempt++) {
+      final state = _chatPanelKey.currentState;
+      if (state != null) return state;
+      await Future<void>.delayed(const Duration(milliseconds: 24));
+    }
+    return _chatPanelKey.currentState;
+  }
+
   Future<void> _newChatFromDrawer() async {
     await _closeDrawerIfOpen();
-    _setTab(_HomeTab.control);
-    await _chatPanelKey.currentState?.createSessionFromShell();
+    final chat = await _focusChatPanel();
+    if (chat == null) {
+      _showMessage('Chat panel is still loading');
+      return;
+    }
+    await chat.createSessionFromShell();
+    _addLog('New chat created', 'A fresh conversation is ready.', Icons.add_comment_outlined, _mint);
   }
 
   Future<void> _selectChatFromDrawer(String id) async {
     await _closeDrawerIfOpen();
-    _setTab(_HomeTab.control);
-    await _chatPanelKey.currentState?.selectSessionFromShell(id);
+    final chat = await _focusChatPanel();
+    if (chat == null) {
+      _showMessage('Chat panel is still loading');
+      return;
+    }
+    await chat.selectSessionFromShell(id);
   }
 
   Future<void> _usePromptShortcut(String prompt, {bool runAgent = false}) async {
     await _closeDrawerIfOpen();
-    _setTab(_HomeTab.control);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _chatPanelKey.currentState?.setPromptFromShell(prompt, runAgent: runAgent);
-    });
+    final chat = await _focusChatPanel();
+    if (chat == null) {
+      _showMessage('Chat panel is still loading');
+      return;
+    }
+    chat.setPromptFromShell(prompt, runAgent: runAgent);
   }
 
   int get _simpleTabIndex {
@@ -1751,7 +1880,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _CommandShortcut(
         icon: Icons.terminal_outlined,
         title: 'Runtime providers',
-        subtitle: '检查 Helper、Termux fallback、root keepalive 和后端状态。',
+        subtitle: '检查 Helper、External Termux fallback、root keepalive 和后端状态。',
         color: _amber,
         action: _ModuleAction.termuxCheck,
       ),
@@ -1829,8 +1958,13 @@ class _HomeScreenState extends State<HomeScreen> {
           modelController: _modelController,
           saving: _saving,
           flavor: _flavor,
+          providerPreset: _detectProviderPreset(_effectiveBaseUrl, _effectiveModel),
+          managedProviderAvailable: _managedProviderAvailable,
           managedProviderActive: _managedProviderActive,
           onPreset: _applyDefaultProvider,
+          onProviderPreset: _applyProviderPreset,
+          onUseManagedProvider: () => unawaited(_setProviderMode(useCustom: false)),
+          onUseCustomProvider: () => unawaited(_setProviderMode(useCustom: true)),
           onSave: _saveConfig,
           onHealth: _checkHealth,
         ),
@@ -2244,7 +2378,7 @@ class _DrawerSessionTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(color: selected ? _text : _muted, fontWeight: FontWeight.w800),
       ),
-      subtitle: Text('${session.turns.length} turns', style: const TextStyle(color: _faint, fontSize: 11)),
+      subtitle: Text(_sessionTurnLabel(session), style: const TextStyle(color: _faint, fontSize: 11)),
       onTap: onTap,
     );
   }
@@ -2528,8 +2662,13 @@ class _ApiConfigCard extends StatelessWidget {
     required this.modelController,
     required this.saving,
     required this.flavor,
+    required this.providerPreset,
+    required this.managedProviderAvailable,
     required this.managedProviderActive,
     required this.onPreset,
+    required this.onProviderPreset,
+    required this.onUseManagedProvider,
+    required this.onUseCustomProvider,
     required this.onSave,
     required this.onHealth,
   });
@@ -2539,8 +2678,13 @@ class _ApiConfigCard extends StatelessWidget {
   final TextEditingController modelController;
   final bool saving;
   final _ApiFlavor flavor;
+  final _ProviderPreset providerPreset;
+  final bool managedProviderAvailable;
   final bool managedProviderActive;
   final VoidCallback onPreset;
+  final ValueChanged<_ProviderPreset> onProviderPreset;
+  final VoidCallback onUseManagedProvider;
+  final VoidCallback onUseCustomProvider;
   final VoidCallback onSave;
   final VoidCallback onHealth;
 
@@ -2586,16 +2730,71 @@ class _ApiConfigCard extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             const Text(
-              'MobileCode will call the configured provider with bundled debug credentials. Base URL, API key, and model are intentionally not shown on this screen.',
+              'MobileCode is using bundled managed credentials by default. You can switch to Custom Provider when you need your own Base URL, key, or model.',
               style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
             ),
             const SizedBox(height: 14),
-            OutlinedButton.icon(
-              onPressed: onHealth,
-              icon: const Icon(Icons.monitor_heart_outlined),
-              label: const Text('Check Managed Provider'),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onUseCustomProvider,
+                    icon: const Icon(Icons.tune_outlined),
+                    label: const Text('Use Custom'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: onHealth,
+                    icon: const Icon(Icons.monitor_heart_outlined),
+                    label: const Text('Check Managed'),
+                  ),
+                ),
+              ],
             ),
           ] else ...[
+          if (managedProviderAvailable) ...[
+            _InlineStatus(
+              icon: Icons.tune_outlined,
+              label: 'Custom provider override is active. Managed provider remains available as fallback.',
+              color: _cyan,
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: onUseManagedProvider,
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              label: const Text('Use Managed Provider'),
+            ),
+            const SizedBox(height: 12),
+          ],
+          const Text(
+            'Provider',
+            style: TextStyle(color: _muted, fontSize: 12, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final preset in _ProviderPreset.values)
+                ChoiceChip(
+                  label: Text(_providerPresetLabel(preset)),
+                  selected: providerPreset == preset,
+                  onSelected: (_) => onProviderPreset(preset),
+                  avatar: Icon(
+                    preset == _ProviderPreset.custom
+                        ? Icons.tune_outlined
+                        : preset == _ProviderPreset.openAi
+                            ? Icons.api_outlined
+                            : Icons.hub_outlined,
+                    size: 16,
+                    color: providerPreset == preset ? _blue : _muted,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: baseUrlController,
             keyboardType: TextInputType.url,
@@ -2629,7 +2828,7 @@ class _ApiConfigCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Default provider fills Base URL and model only. Paste your API key locally; it is never shipped inside the APK.',
+            'Choose Custom for any OpenAI-compatible or Anthropic-compatible endpoint. Paste your API key locally; it is never shipped inside the APK.',
             style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
           ),
           const SizedBox(height: 14),
@@ -2803,7 +3002,7 @@ class _DemoLabPanel extends StatelessWidget {
                 _DemoAction(Icons.edit_note_outlined, 'Diary APK', 'Local diary demo inside this APK', _ModuleAction.diary, _amber),
                 _DemoAction(Icons.forum_outlined, 'Chat Memory', 'Conversation list and context', _ModuleAction.aiChat, _mint),
                 _DemoAction(Icons.handyman_outlined, 'Tool Tests', 'Run mobile tool probes', _ModuleAction.toolLab, _cyan),
-                _DemoAction(Icons.terminal_outlined, 'Runtime', 'Check Helper and fallback setup', _ModuleAction.termuxCheck, _lime),
+                _DemoAction(Icons.terminal_outlined, 'Runtime', 'Check Helper and Runtime fallback setup', _ModuleAction.termuxCheck, _lime),
               ];
               return GridView.builder(
                 shrinkWrap: true,
@@ -3083,7 +3282,7 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
           kind: _MiniAgentEventKind.system,
           title: 'Mini harness booted',
           detail:
-              'Loaded phone-safe tools: list_files, write_file, read_file, preview_webview, termux_probe, github_connect.',
+              'Loaded phone-safe tools: list_files, write_file, read_file, preview_webview, runtime_probe, github_connect.',
           time: DateTime.now(),
         ),
       );
@@ -4493,7 +4692,7 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
       if (helper.ready) {
         _addResult('Runtime providers', true, helper.detail);
       } else if (installed == true) {
-        final termuxDetail = apiInstalled == true ? 'External Termux + Termux:API fallback detected.' : 'External Termux fallback detected; Termux:API not detected.';
+        final termuxDetail = apiInstalled == true ? 'External Termux + External Termux:API fallback detected.' : 'External Termux fallback detected; External Termux:API not detected.';
         _addResult('Runtime providers', true, '${helper.detail} $termuxDetail');
       } else if (installed == false) {
         _addResult('Runtime providers', false, '${helper.detail} External Termux is not installed or not visible.');
@@ -4779,6 +4978,9 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
     _termuxInstalled = widget.termuxInstalled;
     _termuxApiInstalled = widget.termuxApiInstalled;
     _rootAvailable = widget.rootAvailable;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_refresh());
+    });
   }
 
   Future<void> _refresh() async {
@@ -4866,10 +5068,21 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
   @override
   Widget build(BuildContext context) {
     final active = widget.runtimeManager.activeHealth ?? (_health.isNotEmpty ? _health.first : null);
+    final healthItems = [..._health]
+      ..sort((a, b) {
+        int rank(RuntimeHealth item) {
+          if (item.ready) return 0;
+          if (item.available) return 1;
+          if (item.type == RuntimeProviderType.embeddedLite || item.type == RuntimeProviderType.cloud) return 3;
+          return 2;
+        }
+
+        return rank(a).compareTo(rank(b));
+      });
     return _SheetScaffold(
       icon: Icons.monitor_heart_outlined,
       title: 'Runtime Diagnostics',
-      subtitle: 'Helper, Termux fallback, task recovery, and capability status in one place.',
+      subtitle: 'Helper, External Termux fallback, task recovery, and capability status in one place.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -4902,16 +5115,16 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
                 child: OutlinedButton.icon(
                   onPressed: _launchTermux,
                   icon: const Icon(Icons.open_in_new_outlined),
-                  label: const Text('Open Termux'),
+                  label: const Text('Open External Termux'),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          if (_health.isEmpty)
+          if (healthItems.isEmpty)
             const Text('No runtime health records yet.', style: TextStyle(color: _muted))
           else
-            for (final health in _health) ...[
+            for (final health in healthItems) ...[
               _RuntimeHealthTile(health: health),
               const SizedBox(height: 8),
             ],
@@ -4923,7 +5136,7 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
                 const Text('Fallback visibility', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 8),
                 _DiagnosticLine(label: 'External Termux', value: _boolStatus(_termuxInstalled), good: _termuxInstalled == true),
-                _DiagnosticLine(label: 'Termux:API', value: _boolStatus(_termuxApiInstalled), good: _termuxApiInstalled == true),
+                _DiagnosticLine(label: 'External Termux:API', value: _boolStatus(_termuxApiInstalled), good: _termuxApiInstalled == true),
                 _DiagnosticLine(label: 'Root keepalive', value: _boolStatus(_rootAvailable), good: _rootAvailable == true),
               ],
             ),
@@ -4932,6 +5145,14 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
           _TaskSnapshotPanel(
             task: _task,
             onStop: _task?.canCancel == true && !_checking ? () => _stopTask(_task!.taskId) : null,
+            onOpenDetails: _task == null
+                ? null
+                : () => _showRuntimeTaskDetailsSheet(
+                      context: context,
+                      runtimeManager: widget.runtimeManager,
+                      task: _task!,
+                      onLog: widget.onLog,
+                    ),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
@@ -5257,6 +5478,47 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
     }
   }
 
+  Future<void> _openTaskDetails() async {
+    var task = _lastTask;
+    if (task == null) {
+      setState(() => _running = true);
+      try {
+        final tasks = await widget.runtimeManager.taskHistory(limit: 12);
+        if (!mounted) return;
+        for (final item in tasks) {
+          if (item.running) {
+            task = item;
+            break;
+          }
+        }
+        task ??= tasks.isEmpty ? null : tasks.first;
+        final selectedTask = task;
+        setState(() {
+          _lastTask = selectedTask;
+          _lines.insert(0, selectedTask == null ? 'No runtime task available for detail view.' : 'Opening details for ${selectedTask.taskId}.');
+        });
+      } on Object catch (error) {
+        if (!mounted) return;
+        final message = _compact(error.toString(), limit: 160);
+        setState(() => _lines.insert(0, 'Task detail load failed: $message'));
+        return;
+      } finally {
+        if (mounted) setState(() => _running = false);
+      }
+    }
+    if (!mounted) return;
+    if (task == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No runtime task to inspect.')));
+      return;
+    }
+    _showRuntimeTaskDetailsSheet(
+      context: context,
+      runtimeManager: widget.runtimeManager,
+      task: task,
+      onLog: widget.onLog,
+    );
+  }
+
   String _taskSummary(RuntimeTaskSnapshot task) {
     final logs = _recentLogLines(task.logs, limit: 4).join('\n');
     final failure = task.failureKind == RuntimeTaskFailureKind.none ? '' : ' (${task.failureKind.name})';
@@ -5331,11 +5593,25 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
               _RuntimeActionButton(icon: Icons.publish_outlined, label: 'Publish', disabled: _running, onTap: () => _run(RuntimeActionType.publishPages)),
               _RuntimeActionButton(icon: Icons.history_outlined, label: 'Recover', disabled: _running, onTap: _inspectTask),
               _RuntimeActionButton(icon: Icons.manage_history_outlined, label: 'History', disabled: _running, onTap: _inspectHistory),
+              _RuntimeActionButton(icon: Icons.subject_outlined, label: 'Task detail', disabled: _running, onTap: _openTaskDetails),
             ],
           ),
           const SizedBox(height: 12),
           if (_lastProjectProfile != null) ...[
             _RuntimeProjectProfilePanel(profile: _lastProjectProfile!),
+            const SizedBox(height: 12),
+          ],
+          if (_lastTask != null) ...[
+            _TaskSnapshotPanel(
+              task: _lastTask,
+              onStop: _lastTask!.canCancel ? () => _cancelTask(_lastTask!.taskId) : null,
+              onOpenDetails: () => _showRuntimeTaskDetailsSheet(
+                context: context,
+                runtimeManager: widget.runtimeManager,
+                task: _lastTask!,
+                onLog: widget.onLog,
+              ),
+            ),
             const SizedBox(height: 12),
           ],
           _Panel(
@@ -5399,7 +5675,30 @@ class _RuntimeHealthTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = health.ready ? _mint : health.available ? _amber : _rose;
+    final planned = health.type == RuntimeProviderType.embeddedLite ||
+        health.status.toLowerCase().contains('planned');
+    final configuredLater = health.type == RuntimeProviderType.cloud && !health.ready;
+    final color = health.ready
+        ? _mint
+        : planned || configuredLater
+            ? _faint
+            : health.available
+                ? _amber
+                : _rose;
+    final label = health.ready
+        ? 'ready'
+        : planned
+            ? 'planned'
+            : configuredLater
+                ? 'setup'
+                : health.available
+                    ? 'available'
+                    : 'offline';
+    final icon = health.ready
+        ? Icons.check_circle_outline
+        : planned || configuredLater
+            ? Icons.event_note_outlined
+            : Icons.info_outline;
     return _Panel(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -5407,12 +5706,12 @@ class _RuntimeHealthTile extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(health.ready ? Icons.check_circle_outline : Icons.info_outline, color: color, size: 18),
+              Icon(icon, color: color, size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(health.name, style: const TextStyle(color: _text, fontWeight: FontWeight.w900)),
               ),
-              Text(health.ready ? 'ready' : health.available ? 'available' : 'offline', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w800)),
+              Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w800)),
             ],
           ),
           const SizedBox(height: 6),
@@ -5421,7 +5720,10 @@ class _RuntimeHealthTile extends StatelessWidget {
           Text(_runtimeCapabilitiesText(health.capabilities), style: const TextStyle(color: _faint, fontSize: 11, height: 1.3)),
           if (health.missingDependencies.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text('Missing: ${health.missingDependencies.join(', ')}', style: const TextStyle(color: _amber, fontSize: 11, height: 1.3)),
+            Text(
+              planned ? 'Planned: ${health.missingDependencies.join(', ')}' : 'Missing: ${health.missingDependencies.join(', ')}',
+              style: TextStyle(color: planned ? _faint : _amber, fontSize: 11, height: 1.3),
+            ),
           ],
           if (health.recoveryActions.isNotEmpty) ...[
             const SizedBox(height: 6),
@@ -5461,10 +5763,11 @@ class _DiagnosticLine extends StatelessWidget {
 }
 
 class _TaskSnapshotPanel extends StatelessWidget {
-  const _TaskSnapshotPanel({required this.task, this.onStop});
+  const _TaskSnapshotPanel({required this.task, this.onStop, this.onOpenDetails});
 
   final RuntimeTaskSnapshot? task;
   final VoidCallback? onStop;
+  final VoidCallback? onOpenDetails;
 
   @override
   Widget build(BuildContext context) {
@@ -5497,6 +5800,16 @@ class _TaskSnapshotPanel extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(child: Text('Task ${snapshot.taskId}', style: const TextStyle(color: _text, fontWeight: FontWeight.w900))),
               Text(snapshot.status.name, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w800)),
+              if (onOpenDetails != null) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: 'Open task details',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onOpenDetails,
+                  icon: const Icon(Icons.subject_outlined, size: 18),
+                  color: _cyan,
+                ),
+              ],
               if (snapshot.canCancel && onStop != null) ...[
                 const SizedBox(width: 4),
                 IconButton(
@@ -5528,6 +5841,10 @@ class _TaskSnapshotPanel extends StatelessWidget {
           if (snapshot.error != null && snapshot.error!.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(snapshot.error!, style: const TextStyle(color: _rose, fontSize: 11, height: 1.3)),
+          ],
+          if (runtimeFailureKindHint(snapshot.failureKind) != null) ...[
+            const SizedBox(height: 6),
+            Text('Recovery: ${runtimeFailureKindHint(snapshot.failureKind)!}', style: const TextStyle(color: _amber, fontSize: 11, height: 1.3)),
           ],
           if (snapshot.logs.isNotEmpty) ...[
             const SizedBox(height: 8),
@@ -5569,6 +5886,354 @@ class _TaskDetailChip extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+    );
+  }
+}
+
+void _showRuntimeTaskDetailsSheet({
+  required BuildContext context,
+  required RuntimeManager runtimeManager,
+  required RuntimeTaskSnapshot task,
+  required void Function(String title, String detail, IconData icon, Color color) onLog,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: _panel,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+    ),
+    builder: (context) => _RuntimeTaskDetailSheet(
+      runtimeManager: runtimeManager,
+      initialTask: task,
+      onLog: onLog,
+    ),
+  );
+}
+
+class _RuntimeTaskDetailSheet extends StatefulWidget {
+  const _RuntimeTaskDetailSheet({
+    required this.runtimeManager,
+    required this.initialTask,
+    required this.onLog,
+  });
+
+  final RuntimeManager runtimeManager;
+  final RuntimeTaskSnapshot initialTask;
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
+
+  @override
+  State<_RuntimeTaskDetailSheet> createState() => _RuntimeTaskDetailSheetState();
+}
+
+class _RuntimeTaskDetailSheetState extends State<_RuntimeTaskDetailSheet> {
+  late RuntimeTaskSnapshot _task;
+  List<RuntimeTaskSnapshot> _tasks = const [];
+  bool _loading = false;
+  bool _retrying = false;
+  bool _stopping = false;
+  String _status = 'Task detail is ready.';
+  DateTime? _lastRefresh;
+  Timer? _poller;
+
+  @override
+  void initState() {
+    super.initState();
+    _task = widget.initialTask;
+    _tasks = [_task];
+    unawaited(_refresh());
+    _poller = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+      if (_task.running || _tasks.any((task) => task.running)) {
+        unawaited(_refresh(silent: true));
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _poller?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh({bool silent = false}) async {
+    if (!silent && mounted) {
+      setState(() {
+        _loading = true;
+        _status = 'Refreshing task ${_task.taskId}...';
+      });
+    }
+    try {
+      final tasks = await widget.runtimeManager.taskHistory(limit: 24);
+      var selected = _task;
+      for (final candidate in tasks) {
+        if (candidate.taskId == _task.taskId) {
+          selected = candidate;
+          break;
+        }
+      }
+      var logs = selected.logs;
+      if (selected.taskId.trim().isNotEmpty) {
+        final recoveredLogs = await widget.runtimeManager.taskLogs(selected.taskId, limit: 300);
+        if (recoveredLogs.isNotEmpty) logs = recoveredLogs;
+      }
+      if (!mounted) return;
+      setState(() {
+        _tasks = tasks;
+        _task = selected.copyWith(logs: logs);
+        _lastRefresh = DateTime.now();
+        _status = 'Task ${_task.taskId} is ${_task.status.name}.';
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _status = 'Task refresh failed: ${_compact(error.toString(), limit: 160)}');
+    } finally {
+      if (!silent && mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _stopTask() async {
+    setState(() {
+      _stopping = true;
+      _status = 'Stopping task ${_task.taskId}...';
+    });
+    try {
+      await widget.runtimeManager.stopTask(_task.taskId);
+      await _refresh(silent: true);
+      widget.onLog('Runtime task stop requested', 'Task ${_task.taskId}', Icons.stop_circle_outlined, _amber);
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 160);
+      setState(() => _status = 'Stop failed: $message');
+      widget.onLog('Runtime task stop failed', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _stopping = false);
+    }
+  }
+
+  Future<void> _retryTask() async {
+    final command = _task.command.trim();
+    if (command.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Task has no command to retry.')));
+      return;
+    }
+    setState(() {
+      _retrying = true;
+      _status = 'Retrying task ${_task.taskId}...';
+    });
+    try {
+      final result = await widget.runtimeManager.execute(
+        command,
+        workingDir: _task.workingDir,
+        timeout: const Duration(minutes: 10),
+      );
+      final tasks = await widget.runtimeManager.taskHistory(limit: 24);
+      RuntimeTaskSnapshot? nextTask;
+      final nextTaskId = result.taskId;
+      if (nextTaskId != null && nextTaskId.isNotEmpty) {
+        for (final candidate in tasks) {
+          if (candidate.taskId == nextTaskId) {
+            nextTask = candidate;
+            break;
+          }
+        }
+      }
+      nextTask ??= tasks.isEmpty ? null : tasks.first;
+      final fallbackLogs = [
+        if (result.stdout.trim().isNotEmpty) ...result.stdout.trim().split('\n'),
+        if (result.stderr.trim().isNotEmpty) ...result.stderr.trim().split('\n'),
+      ];
+      if (!mounted) return;
+      setState(() {
+        _tasks = tasks;
+        _task = nextTask ??
+            _task.copyWith(
+              status: result.success ? RuntimeTaskStatus.succeeded : RuntimeTaskStatus.failed,
+              exitCode: result.exitCode,
+              duration: result.duration,
+              logs: fallbackLogs,
+              failureKind: result.failureKind,
+            );
+        _status = result.success ? 'Retry completed successfully.' : 'Retry failed with exit ${result.exitCode}.';
+      });
+      widget.onLog(
+        result.success ? 'Runtime task retry completed' : 'Runtime task retry failed',
+        'Original ${widget.initialTask.taskId} -> ${result.taskId ?? 'no task id'}',
+        result.success ? Icons.replay_circle_filled_outlined : Icons.error_outline,
+        result.success ? _mint : _rose,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 160);
+      setState(() => _status = 'Retry failed: $message');
+      widget.onLog('Runtime task retry error', message, Icons.error_outline, _rose);
+    } finally {
+      if (mounted) setState(() => _retrying = false);
+    }
+  }
+
+  Future<void> _copyFailureSummary() async {
+    await Clipboard.setData(ClipboardData(text: _failureSummary()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Task summary copied.')));
+    widget.onLog('Runtime failure summary copied', 'Task ${_task.taskId}', Icons.copy_outlined, _cyan);
+  }
+
+  String _failureSummary() {
+    final lines = <String>[
+      'Task: ${_task.taskId}',
+      'Status: ${_task.status.name}',
+      'Command: ${_task.command.isEmpty ? '(empty)' : _task.command}',
+      if (_task.workingDir != null && _task.workingDir!.isNotEmpty) 'cwd: ${_task.workingDir}',
+      if (_task.startedAt != null) 'Started: ${_task.startedAt!.toIso8601String()}',
+      if (_task.duration != null) 'Duration: ${_durationLabel(_task.duration!)}',
+      if (_task.exitCode != null) 'Exit code: ${_task.exitCode}',
+      if (_task.failureKind != RuntimeTaskFailureKind.none) 'Failure kind: ${_task.failureKind.name}',
+      if (_task.error != null && _task.error!.isNotEmpty) 'Error: ${_task.error}',
+      if (runtimeFailureKindHint(_task.failureKind) != null) 'Recovery: ${runtimeFailureKindHint(_task.failureKind)!}',
+    ];
+    final logs = _recentLogLines(_task.logs, limit: 24);
+    if (logs.isNotEmpty) {
+      lines
+        ..add('Recent logs:')
+        ..addAll(logs);
+    }
+    return lines.join('\n');
+  }
+
+  Color _statusColor(RuntimeTaskSnapshot task) {
+    if (task.running) return _amber;
+    return task.status == RuntimeTaskStatus.succeeded ? _mint : _rose;
+  }
+
+  void _selectTask(RuntimeTaskSnapshot task) {
+    setState(() {
+      _task = task;
+      _status = 'Selected task ${task.taskId}.';
+    });
+    unawaited(_refresh(silent: true));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _statusColor(_task);
+    final queuedTasks = _tasks.where((task) => task.status == RuntimeTaskStatus.queued).toList();
+    final logs = _recentLogLines(_task.logs, limit: 120);
+    final detailChips = [
+      _task.status.name,
+      if (_task.startedAt != null) 'started ${_timeLabel(_task.startedAt!)} ago',
+      if (_task.duration != null) 'duration ${_durationLabel(_task.duration!)}',
+      if (_task.exitCode != null) 'exit ${_task.exitCode}',
+      if (_task.failureKind != RuntimeTaskFailureKind.none) _task.failureKind.name,
+    ];
+    return _SheetScaffold(
+      icon: Icons.subject_outlined,
+      title: 'Runtime Task Detail',
+      subtitle: 'Live logs, task retry, failure summary, and queue visibility.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.bolt_outlined, color: color, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('Task ${_task.taskId}', style: const TextStyle(color: _text, fontWeight: FontWeight.w900))),
+                    Text(_lastRefresh == null ? 'not synced' : 'synced ${_timeLabel(_lastRefresh!)} ago', style: const TextStyle(color: _faint, fontSize: 11)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(_status, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final detail in detailChips) _TaskDetailChip(label: detail, color: color),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SelectableText(_task.command.isEmpty ? 'No command recorded.' : _task.command, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+                if (_task.workingDir != null && _task.workingDir!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  SelectableText(_task.workingDir!, style: const TextStyle(color: _faint, fontSize: 11, height: 1.3)),
+                ],
+                if (_task.error != null && _task.error!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(_task.error!, style: const TextStyle(color: _rose, fontSize: 11, height: 1.3)),
+                ],
+                if (runtimeFailureKindHint(_task.failureKind) != null) ...[
+                  const SizedBox(height: 6),
+                  Text('Recovery: ${runtimeFailureKindHint(_task.failureKind)!}', style: const TextStyle(color: _amber, fontSize: 11, height: 1.3)),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _RuntimeActionButton(icon: Icons.refresh_outlined, label: _loading ? 'Refreshing' : 'Refresh', disabled: _loading, onTap: () => unawaited(_refresh())),
+              _RuntimeActionButton(icon: Icons.stop_circle_outlined, label: _stopping ? 'Stopping' : 'Stop', disabled: _stopping || !_task.canCancel, onTap: () => unawaited(_stopTask())),
+              _RuntimeActionButton(icon: Icons.replay_outlined, label: _retrying ? 'Retrying' : 'Retry taskId', disabled: _retrying || _task.command.trim().isEmpty, onTap: () => unawaited(_retryTask())),
+              _RuntimeActionButton(icon: Icons.copy_outlined, label: 'Copy failure', disabled: false, onTap: () => unawaited(_copyFailureSummary())),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Queue', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                if (queuedTasks.isEmpty)
+                  const Text('No queued runtime tasks.', style: TextStyle(color: _muted, fontSize: 12, height: 1.35))
+                else
+                  for (final task in queuedTasks) ...[
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.pending_actions_outlined, color: _amber),
+                      title: Text('Task ${task.taskId}', style: const TextStyle(color: _text, fontWeight: FontWeight.w800)),
+                      subtitle: Text(_compact(task.command, limit: 96), style: const TextStyle(color: _muted, fontSize: 12)),
+                      trailing: IconButton(
+                        tooltip: 'Inspect queued task',
+                        onPressed: () => _selectTask(task),
+                        icon: const Icon(Icons.open_in_new_outlined, size: 18),
+                      ),
+                    ),
+                  ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Live logs', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      logs.isEmpty ? 'No logs recovered for this task yet.' : logs.join('\n'),
+                      style: const TextStyle(color: _faint, fontSize: 11, height: 1.3),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -5959,6 +6624,9 @@ class _ChatPanelState extends State<_ChatPanel> {
   bool _loading = true;
   bool _sending = false;
   bool _agentRunning = false;
+  bool _agentStopping = false;
+  bool _agentCancelRequested = false;
+  HttpClient? _agentProviderClient;
   bool _voiceAvailable = false;
   VoiceState _voiceState = VoiceState.idle;
   StreamSubscription<String>? _voiceTranscriptSub;
@@ -5981,6 +6649,7 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   @override
   void dispose() {
+    _agentProviderClient?.close(force: true);
     _voiceTranscriptSub?.cancel();
     _voiceStateSub?.cancel();
     _voiceService.dispose();
@@ -6101,7 +6770,9 @@ class _ChatPanelState extends State<_ChatPanel> {
       _sessions.insert(0, session);
       _activeSessionId = session.id;
       _error = null;
+      _promptController.clear();
     });
+    _notifySessionsChanged();
     await _persist();
   }
 
@@ -6110,6 +6781,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       _activeSessionId = id;
       _error = null;
     });
+    _notifySessionsChanged();
     await _persist();
   }
 
@@ -6162,24 +6834,47 @@ class _ChatPanelState extends State<_ChatPanel> {
 
     try {
       final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
-      final answer = await _callProvider(
+      final assistantStarted = DateTime.now();
+      final answerBuffer = StringBuffer();
+      var lastPaintAt = DateTime.fromMillisecondsSinceEpoch(0);
+      var lastPaintLength = 0;
+      await for (final chunk in _streamProvider(
         history,
         systemPrompt:
             'You are MobileCode, a mobile AI development assistant. Use the saved multi-turn chat context, answer concisely, and prefer executable mobile development steps.',
+        responseTimeout: const Duration(minutes: 2),
+      )) {
+        answerBuffer.write(chunk);
+        final answer = answerBuffer.toString();
+        final now = DateTime.now();
+        if (now.difference(lastPaintAt).inMilliseconds <= 220 &&
+            answer.length - lastPaintLength < 120) {
+          continue;
+        }
+        lastPaintAt = now;
+        lastPaintLength = answer.length;
+        _replaceAssistantTurn(
+          sessionId: pending.id,
+          assistantIndex: history.length,
+          content: answer,
+          time: assistantStarted,
+        );
+      }
+
+      final answer = answerBuffer.toString().trim();
+      if (answer.isEmpty) {
+        throw Exception('Provider stream completed without text.');
+      }
+      _replaceAssistantTurn(
+        sessionId: pending.id,
+        assistantIndex: history.length,
+        content: answer,
+        time: assistantStarted,
       );
       if (!mounted) return;
-      final current = _sessions.firstWhere((session) => session.id == pending.id, orElse: () => pending);
-      final next = current.copyWith(
-        updatedAt: DateTime.now(),
-        turns: [
-          ...current.turns,
-          _ChatTurn(role: 'assistant', content: answer, time: DateTime.now()),
-        ],
-      );
-      setState(() => _storeSession(next));
       _scrollConversationToEnd();
       await _persist();
-      widget.onLog('AI response received', '${_flavorLabel(flavor)} - ${widget.model}', Icons.forum_outlined, _mint);
+      widget.onLog('AI response streamed', '${_flavorLabel(flavor)} - ${widget.model} - ${answer.length} chars', Icons.forum_outlined, _mint);
     } on Object catch (error) {
       if (!mounted) return;
       final message = error.toString().replaceFirst('Exception: ', '');
@@ -6190,6 +6885,31 @@ class _ChatPanelState extends State<_ChatPanel> {
         setState(() => _sending = false);
       }
     }
+  }
+
+  void _replaceAssistantTurn({
+    required String sessionId,
+    required int assistantIndex,
+    required String content,
+    required DateTime time,
+  }) {
+    if (!mounted) return;
+    final sessionIndex = _sessions.indexWhere((item) => item.id == sessionId);
+    if (sessionIndex == -1) return;
+    final session = _sessions[sessionIndex];
+    final turns = [...session.turns];
+    final replacement = _ChatTurn(role: 'assistant', content: content, time: time);
+    if (assistantIndex >= 0 &&
+        assistantIndex < turns.length &&
+        turns[assistantIndex].role == 'assistant') {
+      turns[assistantIndex] = replacement;
+    } else {
+      turns.add(replacement);
+    }
+    setState(() {
+      _storeSession(session.copyWith(updatedAt: DateTime.now(), turns: turns));
+    });
+    _scrollConversationToEnd();
   }
 
   Future<void> _toggleVoiceInput() async {
@@ -6228,6 +6948,9 @@ class _ChatPanelState extends State<_ChatPanel> {
     List<_ChatTurn> history, {
     required String systemPrompt,
     int maxTokens = 1024,
+    Duration responseTimeout = const Duration(seconds: 120),
+    bool trackAgentRequest = false,
+    bool Function()? isCancelled,
   }) async {
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
@@ -6235,15 +6958,24 @@ class _ChatPanelState extends State<_ChatPanel> {
     if (widget.apiKey.trim().isEmpty) {
       throw Exception('Provider is not configured: API key is empty.');
     }
+    if (isCancelled?.call() == true) {
+      throw Exception('Agent run stopped by user.');
+    }
 
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
+    if (trackAgentRequest) {
+      _agentProviderClient = client;
+    }
     try {
       final request = await client
           .postUrl(flavor == _ApiFlavor.anthropic
               ? _anthropicMessagesUri(widget.baseUrl)
               : _openAiChatUri(widget.baseUrl))
           .timeout(const Duration(seconds: 12));
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
       request.headers.contentType = ContentType.json;
       if (flavor == _ApiFlavor.anthropic) {
         request.headers.set('anthropic-version', '2023-06-01');
@@ -6257,9 +6989,13 @@ class _ChatPanelState extends State<_ChatPanel> {
         history,
         systemPrompt: systemPrompt,
         maxTokens: maxTokens,
+        stream: false,
       )));
 
-      final response = await request.close().timeout(const Duration(seconds: 60));
+      final response = await request.close().timeout(responseTimeout);
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
       final body = await utf8.decodeStream(response);
       if (response.statusCode < 200 || response.statusCode >= 300) {
         throw Exception('Provider HTTP ${response.statusCode}: ${_compact(body)}');
@@ -6270,10 +7006,128 @@ class _ChatPanelState extends State<_ChatPanel> {
       }
       return answer;
     } on SocketException catch (error) {
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
       throw Exception('Provider network error: ${_friendlySocketError(error)}');
+    } on HttpException catch (error) {
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
+      throw Exception('Provider HTTP error: ${error.message}');
     } on TimeoutException {
-      throw Exception('Provider timed out while waiting for a model response.');
+      throw Exception('Provider timed out after ${responseTimeout.inSeconds}s while waiting for a model response. Try a shorter prompt/model output or stop and retry.');
     } finally {
+      if (identical(_agentProviderClient, client)) {
+        _agentProviderClient = null;
+      }
+      client.close(force: true);
+    }
+  }
+
+  Stream<String> _streamProvider(
+    List<_ChatTurn> history, {
+    required String systemPrompt,
+    int maxTokens = 1024,
+    Duration responseTimeout = const Duration(seconds: 180),
+    bool trackAgentRequest = false,
+    bool Function()? isCancelled,
+  }) async* {
+    if (widget.baseUrl.trim().isEmpty) {
+      throw Exception('Provider is not configured: Base URL is empty.');
+    }
+    if (widget.apiKey.trim().isEmpty) {
+      throw Exception('Provider is not configured: API key is empty.');
+    }
+    if (isCancelled?.call() == true) {
+      throw Exception('Agent run stopped by user.');
+    }
+
+    final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
+    if (trackAgentRequest) {
+      _agentProviderClient = client;
+    }
+
+    try {
+      final request = await client
+          .postUrl(flavor == _ApiFlavor.anthropic
+              ? _anthropicMessagesUri(widget.baseUrl)
+              : _openAiChatUri(widget.baseUrl))
+          .timeout(const Duration(seconds: 12));
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
+
+      request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
+      if (flavor == _ApiFlavor.anthropic) {
+        request.headers.set('anthropic-version', '2023-06-01');
+        request.headers.set('x-api-key', widget.apiKey);
+      }
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
+      request.write(jsonEncode(_requestBody(
+        flavor,
+        history,
+        systemPrompt: systemPrompt,
+        maxTokens: maxTokens,
+        stream: true,
+      )));
+
+      final response = await request.close().timeout(responseTimeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final body = await utf8.decodeStream(response);
+        throw Exception('Provider HTTP ${response.statusCode}: ${_compact(body)}');
+      }
+
+      await for (final line in response
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .timeout(responseTimeout)) {
+        if (isCancelled?.call() == true) {
+          throw Exception('Agent run stopped by user.');
+        }
+        final trimmed = line.trim();
+        if (trimmed.isEmpty || trimmed.startsWith('event:')) continue;
+        if (trimmed == 'data: [DONE]') break;
+
+        final payload = trimmed.startsWith('data: ') ? trimmed.substring(6).trim() : trimmed;
+        if (payload.isEmpty || payload == '[DONE]') break;
+
+        try {
+          final decoded = jsonDecode(payload);
+          if (decoded is Map<String, dynamic>) {
+            if (decoded['type'] == 'message_stop') break;
+            final delta = _extractStreamDelta(decoded, flavor);
+            if (delta != null && delta.isNotEmpty) {
+              yield delta;
+            }
+            continue;
+          }
+        } catch (_) {
+          if (payload.startsWith('{')) {
+            final fallback = _extractAssistantText(payload);
+            if (fallback.trim().isNotEmpty) yield fallback.trim();
+            break;
+          }
+        }
+      }
+    } on SocketException catch (error) {
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
+      throw Exception('Provider network error: ${_friendlySocketError(error)}');
+    } on HttpException catch (error) {
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
+      throw Exception('Provider HTTP error: ${error.message}');
+    } on TimeoutException {
+      throw Exception('Provider stream timed out after ${responseTimeout.inSeconds}s. Use Pause to stop long runs or reduce requested output.');
+    } finally {
+      if (identical(_agentProviderClient, client)) {
+        _agentProviderClient = null;
+      }
       client.close(force: true);
     }
   }
@@ -6307,6 +7161,8 @@ class _ChatPanelState extends State<_ChatPanel> {
 
     setState(() {
       _agentRunning = true;
+      _agentStopping = false;
+      _agentCancelRequested = false;
       _error = null;
       _promptController.clear();
       _agentTrace
@@ -6322,19 +7178,59 @@ class _ChatPanelState extends State<_ChatPanel> {
     String? generatedPath;
     try {
       await _completeAgentRunStep(0);
+      if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
       await _completeAgentRunStep(1);
-      _setAgentRunStep(2, _AgentStepState.running, detail: 'Calling ${_flavorLabel(_detectApiFlavor(widget.baseUrl, widget.model))} provider...');
-      modelAnswer = await _callProvider(
+      if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
+      final providerStarted = DateTime.now();
+      _setAgentRunStep(
+        2,
+        _AgentStepState.running,
+        detail: 'Streaming ${_flavorLabel(_detectApiFlavor(widget.baseUrl, widget.model))} provider response. Use Pause to stop this run.',
+      );
+      final streamBuffer = StringBuffer();
+      var lastPreviewAt = DateTime.fromMillisecondsSinceEpoch(0);
+      var lastPreviewLength = 0;
+      await for (final chunk in _streamProvider(
         pending.turns,
         systemPrompt: _agentSystemPrompt(toolName),
         maxTokens: 4096,
-      );
-      _setAgentRunStep(2, _AgentStepState.done, detail: 'Model response received from ${_flavorLabel(_detectApiFlavor(widget.baseUrl, widget.model))}.');
+        responseTimeout: const Duration(minutes: 3),
+        trackAgentRequest: true,
+        isCancelled: () => _agentCancelRequested,
+      )) {
+        if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
+        streamBuffer.write(chunk);
+        final currentText = streamBuffer.toString();
+        final now = DateTime.now();
+        if (now.difference(lastPreviewAt).inMilliseconds > 350 ||
+            currentText.length - lastPreviewLength >= 240) {
+          lastPreviewAt = now;
+          lastPreviewLength = currentText.length;
+          final tailStart = currentText.length > 240 ? currentText.length - 240 : 0;
+          final previewTail = currentText.substring(tailStart);
+          final elapsed = now.difference(providerStarted).inSeconds;
+          _setAgentRunStep(
+            2,
+            _AgentStepState.running,
+            detail: 'Streaming ${currentText.length} chars in ${elapsed}s...\n${_compact(previewTail, limit: 240)}',
+          );
+        }
+      }
+      final streamedAnswer = streamBuffer.toString();
+      if (streamedAnswer.trim().isEmpty) {
+        throw Exception('Provider stream completed without text.');
+      }
+      modelAnswer = streamedAnswer;
+      if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
+      final elapsed = DateTime.now().difference(providerStarted).inSeconds;
+      _setAgentRunStep(2, _AgentStepState.done, detail: 'Streamed ${streamedAnswer.length} chars from ${_flavorLabel(_detectApiFlavor(widget.baseUrl, widget.model))} in ${elapsed}s.');
       generatedPath = await _persistAgentGeneratedArtifact(toolName, modelAnswer);
+      if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
       await _completeAgentRunStep(
         3,
         detail: generatedPath == null ? 'No file artifact required for this tool.' : 'Saved generated artifact to $generatedPath',
       );
+      if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
       await _completeAgentRunStep(4);
     } on Object catch (error) {
       failure = error.toString();
@@ -6343,9 +7239,12 @@ class _ChatPanelState extends State<_ChatPanel> {
 
     if (!mounted) return;
     final current = _sessions.firstWhere((session) => session.id == pending.id, orElse: () => pending);
+    final stopped = failure != null && failure!.toLowerCase().contains('stopped by user');
     final assistantText = failure == null
         ? _agentProviderCompletionMessage(toolName, modelAnswer ?? '', generatedPath)
-        : 'Agent run failed while using `$toolName`.\n\n${_compact(failure, limit: 300)}';
+        : stopped
+            ? 'Agent run stopped before writing more output for `$toolName`.'
+            : 'Agent run failed while using `$toolName`.\n\n${_compact(failure!, limit: 300)}';
     final next = current.copyWith(
       updatedAt: DateTime.now(),
       turns: [
@@ -6356,8 +7255,10 @@ class _ChatPanelState extends State<_ChatPanel> {
 
     setState(() {
       _agentRunning = false;
+      _agentStopping = false;
+      _agentCancelRequested = false;
       _storeSession(next);
-      if (failure != null) _error = failure;
+      if (failure != null && !stopped) _error = failure;
     });
     _scrollConversationToEnd();
     await _persist();
@@ -6365,9 +7266,22 @@ class _ChatPanelState extends State<_ChatPanel> {
     if (failure == null) {
       widget.onLog('Agent run completed', toolName, Icons.psychology_alt_outlined, _violet);
       await widget.onAgentPrompt(prompt);
+    } else if (stopped) {
+      widget.onLog('Agent run stopped', toolName, Icons.pause_circle_outline, _amber);
     } else {
       widget.onLog('Agent run failed', _compact(failure, limit: 140), Icons.error_outline, _rose);
     }
+  }
+
+  void _cancelAgentRun() {
+    if (!_agentRunning || _agentStopping) return;
+    setState(() {
+      _agentCancelRequested = true;
+      _agentStopping = true;
+    });
+    _agentProviderClient?.close(force: true);
+    _failAgentRunStep('Stopped by user.');
+    widget.onLog('Agent pause requested', 'Current provider request will be closed and no more files will be written.', Icons.pause_circle_outline, _amber);
   }
 
   void _setAgentRunStep(int index, _AgentStepState state, {String? detail}) {
@@ -6384,9 +7298,11 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   Future<void> _completeAgentRunStep(int index, {String? detail}) async {
     if (!mounted || index < 0 || index >= _agentTrace.length) return;
+    if (_agentCancelRequested) return;
     _setAgentRunStep(index, _AgentStepState.running);
     await Future<void>.delayed(const Duration(milliseconds: 240));
     if (!mounted || index < 0 || index >= _agentTrace.length) return;
+    if (_agentCancelRequested) return;
     _setAgentRunStep(index, _AgentStepState.done, detail: detail);
   }
 
@@ -6491,6 +7407,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     List<_ChatTurn> turns, {
     required String systemPrompt,
     int maxTokens = 1024,
+    bool stream = false,
   }) {
     final model = widget.model.isEmpty
         ? (flavor == _ApiFlavor.anthropic ? _defaultModel : 'gpt-4o-mini')
@@ -6501,6 +7418,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         'model': model,
         'system': systemPrompt,
         'max_tokens': maxTokens,
+        'stream': stream,
         'messages': messages,
       };
     }
@@ -6510,7 +7428,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         {'role': 'system', 'content': systemPrompt},
         ...messages,
       ],
-      'stream': false,
+      'stream': stream,
     };
   }
 
@@ -6573,6 +7491,51 @@ class _ChatPanelState extends State<_ChatPanel> {
     return _compact(body);
   }
 
+  String? _extractStreamDelta(Map<String, dynamic> decoded, _ApiFlavor flavor) {
+    if (flavor == _ApiFlavor.anthropic) {
+      final delta = decoded['delta'];
+      if (delta is Map<String, dynamic>) {
+        final text = delta['text'];
+        if (text is String && text.isNotEmpty) return text;
+      }
+      final contentBlock = decoded['content_block'];
+      if (contentBlock is Map<String, dynamic>) {
+        final text = contentBlock['text'];
+        if (text is String && text.isNotEmpty) return text;
+      }
+      final content = decoded['content'];
+      if (content is List && content.isNotEmpty) {
+        final parts = <String>[];
+        for (final item in content) {
+          if (item is Map<String, dynamic>) {
+            final text = item['text'];
+            if (text is String && text.isNotEmpty) parts.add(text);
+          }
+        }
+        if (parts.isNotEmpty) return parts.join('\n\n');
+      }
+      return null;
+    }
+
+    final choices = decoded['choices'];
+    if (choices is List && choices.isNotEmpty) {
+      final first = choices.first;
+      if (first is Map<String, dynamic>) {
+        final delta = first['delta'];
+        if (delta is Map<String, dynamic>) {
+          final content = delta['content'];
+          if (content is String && content.isNotEmpty) return content;
+        }
+        final message = first['message'];
+        if (message is Map<String, dynamic>) {
+          final content = message['content'];
+          if (content is String && content.isNotEmpty) return content;
+        }
+      }
+    }
+    return null;
+  }
+
   String _chatTitle(String prompt) {
     final compact = _compact(prompt, limit: 36);
     return compact.isEmpty ? 'New chat' : compact;
@@ -6604,7 +7567,7 @@ class _ChatPanelState extends State<_ChatPanel> {
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                '${active?.turns.length ?? 0} saved turns · context sent with each request',
+                active == null ? 'Conversation loading · context will be sent with each request' : '${_sessionTurnLabel(active)} · context sent with each request',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
@@ -6710,10 +7673,18 @@ class _ChatPanelState extends State<_ChatPanel> {
                 ),
                 const SizedBox(width: 6),
                 IconButton.outlined(
-                  tooltip: _agentRunning ? 'Agent running' : 'Run agent',
-                  onPressed: _sending || _agentRunning ? null : _runAgent,
+                  tooltip: _agentRunning
+                      ? (_agentStopping ? 'Stopping agent' : 'Pause agent run')
+                      : 'Run agent',
+                  onPressed: _sending
+                      ? null
+                      : _agentRunning
+                          ? (_agentStopping ? null : _cancelAgentRun)
+                          : _runAgent,
                   icon: _agentRunning
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? _agentStopping
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.pause_circle_outline)
                       : const Icon(Icons.psychology_alt_outlined),
                 ),
               ],
@@ -6817,7 +7788,7 @@ class _ChatSessionChip extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              '${session.turns.length} turns',
+              _sessionTurnLabel(session),
               style: TextStyle(color: selected ? _mint : _faint, fontSize: 11),
             ),
           ],
@@ -7525,6 +8496,12 @@ class _DeepDiveConsoleSheetState extends State<_DeepDiveConsoleSheet> {
               _TaskSnapshotPanel(
                 task: task,
                 onStop: task.canCancel ? () => _cancelTask(task.taskId) : null,
+                onOpenDetails: () => _showRuntimeTaskDetailsSheet(
+                  context: context,
+                  runtimeManager: widget.runtimeManager,
+                  task: task,
+                  onLog: widget.onLog,
+                ),
               ),
               const SizedBox(height: 8),
             ],
@@ -8297,7 +9274,7 @@ String _focusTitle(_HomeTab tab) {
 
 String _focusSubtitle(_HomeTab tab) {
   return switch (tab) {
-    _HomeTab.control => 'Provider, mini agent, GitHub, Termux, and local demo surfaces stay one tap away.',
+    _HomeTab.control => 'Provider, mini agent, GitHub, Runtime, and local demo surfaces stay one tap away.',
     _HomeTab.ai => 'Persistent chat plus visible tool traces for phone-first coding.',
     _HomeTab.ship => 'GitHub Release, Android APK, iOS simulator build, Pages, and preview paths.',
     _HomeTab.guard => 'Provider health, tool probes, install checks, and local storage checks.',
@@ -8581,20 +9558,20 @@ final List<_CapabilityLayer> _capabilityLayers = [
         icon: Icons.terminal_outlined,
         status: _CapabilityStatus.preview,
         services: ['terminal_service.dart', 'terminal_controller.dart', 'terminal_provider.dart'],
-        actions: ['Prepare command session', 'Inspect output stream', 'Bridge to SSH or Termux'],
+        actions: ['Prepare command session', 'Inspect output stream', 'Bridge to SSH or Runtime'],
         primaryAction: _ModuleAction.terminal,
       ),
     ],
   ),
   _CapabilityLayer(
     name: 'Remote',
-    subtitle: 'SSH, Termux, build orchestration, previews, GitHub, Gist, Pages, and WeChat publishing.',
+    subtitle: 'SSH, Runtime, build orchestration, previews, GitHub, Gist, Pages, and WeChat publishing.',
     icon: Icons.cloud_sync_outlined,
     color: _amber,
     capabilities: [
       _Capability(
         title: 'Remote Dev',
-        subtitle: 'SSH, SFTP, port forwarding, Termux commands, and mobile Linux workflows.',
+        subtitle: 'SSH, SFTP, port forwarding, Runtime commands, and mobile Linux workflows.',
         icon: Icons.dns_outlined,
         status: _CapabilityStatus.needsConfig,
         services: ['ssh_service.dart', 'termux_service.dart', 'ssh_provider.dart'],

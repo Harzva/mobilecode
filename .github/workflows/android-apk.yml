@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag to upload the APK to
         required: false
-        default: v0.1.0
+        default: v0.1.1
   push:
     tags:
       - 'v*'
@@ -91,19 +91,24 @@ jobs:
           fi
 
       - name: Stage APK
+        id: stage_apk
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.1' }}
         run: |
           mkdir -p artifacts
-          cp mobile_agent/build/app/outputs/flutter-apk/app-release.apk artifacts/mobilecode-v0.1.0.apk
+          APK_PATH="artifacts/mobilecode-${RELEASE_TAG}.apk"
+          cp mobile_agent/build/app/outputs/flutter-apk/app-release.apk "$APK_PATH"
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: mobilecode-apk
-          path: artifacts/mobilecode-v0.1.0.apk
+          path: ${{ steps.stage_apk.outputs.apk_path }}
 
       - name: Upload APK to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
         run: |
-          gh release upload "$RELEASE_TAG" artifacts/mobilecode-v0.1.0.apk --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" "${{ steps.stage_apk.outputs.apk_path }}" --clobber --repo "$GITHUB_REPOSITORY"

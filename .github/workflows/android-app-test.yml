@@ -76,12 +76,7 @@ jobs:
             ! grep -q "Splash Screen com.mobilecode.mobile_agent" artifacts/window-focus.txt
             adb shell am start -n com.mobilecode.mobile_agent/.MainActivity --ez mobilecode_start_helper true
             adb forward tcp:18765 tcp:8765
-            for attempt in $(seq 1 20); do
-              if curl -fsS http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then
-                break
-              fi
-              sleep 1
-            done
+            helper_ready=0; for attempt in $(seq 1 20); do if curl -fsS http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then helper_ready=1; break; fi; sleep 1; done; test "$helper_ready" = 1
             curl -fsS http://127.0.0.1:18765/v1/health | tee artifacts/android-helper-health.json
             curl -fsS \
               -H 'Content-Type: application/json' \

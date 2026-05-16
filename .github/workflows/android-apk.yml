@@ -106,9 +106,25 @@ jobs:
           name: mobilecode-apk
           path: ${{ steps.stage_apk.outputs.apk_path }}
 
+      - name: Ensure GitHub Release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.1' }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+          else
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "MobileCode $RELEASE_TAG" \
+              --notes "Automated MobileCode Android APK build." \
+              --prerelease \
+              --repo "$GITHUB_REPOSITORY"
+          fi
+
       - name: Upload APK to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.1' }}
         run: |
           gh release upload "$RELEASE_TAG" "${{ steps.stage_apk.outputs.apk_path }}" --clobber --repo "$GITHUB_REPOSITORY"

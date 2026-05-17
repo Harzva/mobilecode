@@ -2704,10 +2704,6 @@ class _SideloadStatusPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final completed = steps.where((step) => step.state == _AgentStepState.done).length;
-    final failed = steps.where((step) => step.state == _AgentStepState.failed).length;
-    final running = steps.where((step) => step.state == _AgentStepState.running).length;
-    final progress = steps.isEmpty ? 0.0 : (completed + failed) / steps.length;
     return _Panel(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -11053,6 +11049,10 @@ class _AgentTracePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final completed = steps.where((step) => step.state == _AgentStepState.done).length;
+    final failed = steps.where((step) => step.state == _AgentStepState.failed).length;
+    final running = steps.where((step) => step.state == _AgentStepState.running).length;
+    final progress = steps.isEmpty ? 0.0 : (completed + failed) / steps.length;
     return _Panel(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -11081,7 +11081,7 @@ class _AgentTracePanel extends StatelessWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 6,
-              backgroundColor: _chip,
+              backgroundColor: _panelSoft,
               valueColor: AlwaysStoppedAnimation<Color>(failed > 0 ? _rose : _mint),
             ),
           ),
@@ -11132,7 +11132,7 @@ class _AgentTraceRow extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: step.state == _AgentStepState.running ? color.withOpacity(0.08) : _chip.withOpacity(0.55),
+            color: step.state == _AgentStepState.running ? color.withOpacity(0.08) : _panelSoft.withOpacity(0.55),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: color.withOpacity(step.state == _AgentStepState.queued ? 0.18 : 0.35)),
           ),

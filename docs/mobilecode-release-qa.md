@@ -28,18 +28,18 @@ Required GitHub Actions before publishing:
 Release candidate:
 
 - Branch: `v011-streaming-fix`
-- App/build content commit: pending latest PR branch update.
+- App/build content commit: `1e53204`
 - Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.2`
 - APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.2/mobilecode-v0.1.2.apk`
-- APK SHA256: pending latest Android APK build.
+- APK SHA256: `69295185daa8f07af5d3d9145e85d961993a4ee80432acbff104961ef19c9f4f`
 
 Required CI evidence:
 
 | Gate | Run | Result |
 | --- | --- | --- |
-| Mobile Runtime CI | pending latest PR branch update | Pending |
-| Build Android APK | pending latest PR branch update | Pending |
-| Android App Smoke Test | pending latest PR branch update | Pending |
+| Mobile Runtime CI | `https://github.com/Harzva/mobilecode/actions/runs/25980342388` | Passed |
+| Build Android APK | `https://github.com/Harzva/mobilecode/actions/runs/25980342638` | Passed |
+| Android App Smoke Test | `https://github.com/Harzva/mobilecode/actions/runs/25980342398` | Passed |
 
 Validated coverage:
 

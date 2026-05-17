@@ -20,7 +20,8 @@ import '../services/skill_manager_service.dart';
 /// final service = ref.read(skillManagerServiceProvider);
 /// final skills = ref.watch(allSkillsProvider);
 /// ```
-final skillManagerServiceProvider = Provider<SkillManagerService>((ref) {
+final Provider<SkillManagerService> skillManagerServiceProvider =
+    Provider<SkillManagerService>((ref) {
   final service = SkillManagerService.instance;
 
   // Listen to ChangeNotifier and invalidate downstream providers

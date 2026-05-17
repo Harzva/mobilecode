@@ -35,6 +35,25 @@ Required for V1:
 - Hook Registry read-only entry with hook point, owner, enabled state, and safety level.
 - GitHub repository import for skill packages, with manifest preview before installation.
 - MCP server registration from reviewed configuration only; registry discovery must not auto-run commands.
+- Default installed HTML/UI skills can be disabled or uninstalled by the user; their built-in state must persist across restarts.
+
+## Built-In HTML Skill Line
+
+MobileCode's current primary artifact is HTML, so the most useful public skill ideas should become product-native defaults instead of only optional external packages.
+
+Default installed built-ins:
+
+| Skill | Internalized Advantage | Provenance |
+| --- | --- | --- |
+| `frontend_design` | Strong visual direction, typography, color, layout, and non-generic UI review | `https://github.com/anthropics/skills` |
+| `ui_ux_pro_max` | Mobile UX flow, information hierarchy, and complete UI states | `https://github.com/nextlevelbuilder/ui-ux-pro-max-skill` |
+| `shadcn_ui` | Owned component patterns, variants, dialogs, forms, and registry thinking | `https://github.com/giuseppe-trisciuoglio/developer-kit` |
+| `stitch_html_design` | Prompt-to-interface structure and high-fidelity HTML screen generation | `https://github.com/google-labs-code/stitch-skills` |
+| `web_accessibility` | Semantic HTML, focus order, contrast, labels, and reduced-motion defaults | `https://github.com/supercent-io/skills-template` |
+| `web_design_guidelines` | Responsive composition, deployable web quality, and performance-aware UI | `https://github.com/vercel-labs/agent-skills` |
+| `ui_animation` | CSS-first motion, micro-interactions, and reduced-motion fallback | `https://github.com/mblode/agent-skills` |
+| `figma_implement_design` | Design-context extraction, token translation, visual parity discipline | `https://github.com/figma/mcp-server-guide` |
+| `tailwind_design_system` | Tokenized spacing, typography, color, and reusable design-system rules | `https://github.com/wshobson/agents` |
 
 ## External Registry Direction
 

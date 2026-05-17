@@ -48,7 +48,7 @@ Validated coverage:
 Manual device coverage:
 
 - Physical-device validation remains required before promoting `v0.1.3` beyond prerelease.
-- Verify Tools -> Agent/Skills/MCP/Memory open the real manager pages, Hook shows read-only status, provider/base URL settings persist, generated artifact browser preview opens externally, trace-step detail sheets work, and chat cancellation is visible while a response is in flight.
+- Verify Tools -> Agent/Skills/MCP/Memory open the real manager pages, Hook shows read-only status, default HTML/UI skills are installed and can be uninstalled, provider/base URL settings persist, generated artifact browser preview opens externally, trace-step detail sheets work, and chat cancellation is visible while a response is in flight.
 
 ## v0.1.2 Release Evidence
 

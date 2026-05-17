@@ -77,6 +77,7 @@ class SkillManagerService extends ChangeNotifier {
   static const String _mcpServersKey = 'skill_manager_mcp_servers';
   static const String _logsKey = 'skill_manager_install_logs';
   static const String _enabledSkillsKey = 'skill_manager_enabled_skills';
+  static const String _builtInSkillStateKey = 'skill_manager_builtin_skill_state';
 
   // ── Internal State ─────────────────────────────
 
@@ -123,6 +124,9 @@ class SkillManagerService extends ChangeNotifier {
 
     // Load persisted installed skills
     await _loadPersistedSkills();
+
+    // Apply persisted built-in uninstall/enable overrides after defaults register.
+    await _loadPersistedBuiltInSkillState();
 
     // Load persisted MCP servers
     await _loadPersistedMcpServers();
@@ -898,10 +902,236 @@ class SkillManagerService extends ChangeNotifier {
       installedAt: DateTime.now(),
     ));
 
+    _registerBuiltInHtmlDesignSkills();
+
     // Add built-in skills to main registry
     for (final skill in _builtInSkills) {
       _skills[skill.id] = skill;
     }
+  }
+
+  void _registerBuiltInHtmlDesignSkills() {
+    final now = DateTime.now();
+    final skills = [
+      Skill(
+        id: 'frontend_design',
+        name: 'Frontend Design',
+        version: '1.0.0',
+        description: 'HTML-first visual direction, typography, color, layout, motion, and non-generic product UI guidance internalized for MobileCode artifacts.',
+        author: 'mobilecode-team',
+        tags: const ['html', 'frontend', 'design', 'built-in', 'default'],
+        actions: const [
+          'html.choose_visual_direction',
+          'html.compose_responsive_layout',
+          'html.refine_visual_system',
+        ],
+        prompts: const [
+          'frontend_design_brief',
+          'html_visual_quality_checklist',
+          'mobile_preview_polish',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/anthropics/skills',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'ui_ux_pro_max',
+        name: 'UI UX Pro Max',
+        version: '1.0.0',
+        description: 'Product-grade UX flow, information hierarchy, interaction states, and mobile-first polish for generated HTML experiences.',
+        author: 'mobilecode-team',
+        tags: const ['ux', 'mobile-ui', 'html', 'built-in', 'default'],
+        actions: const [
+          'ux.map_user_flow',
+          'ux.design_empty_loading_error_states',
+          'ux.audit_touch_targets',
+        ],
+        prompts: const [
+          'mobile_ux_flow_review',
+          'ui_state_completeness',
+          'tap_target_accessibility',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/nextlevelbuilder/ui-ux-pro-max-skill',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'shadcn_ui',
+        name: 'shadcn/ui Pattern Kit',
+        version: '1.0.0',
+        description: 'Ownership-oriented component patterns, variants, dialogs, forms, cards, and registry thinking adapted to plain HTML/CSS and future React exports.',
+        author: 'mobilecode-team',
+        tags: const ['components', 'shadcn', 'html', 'built-in', 'default'],
+        actions: const [
+          'ui.compose_component_variants',
+          'ui.design_dialog_form_controls',
+          'ui.normalize_component_tokens',
+        ],
+        prompts: const [
+          'component_variant_matrix',
+          'html_component_contract',
+          'registry_component_review',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/giuseppe-trisciuoglio/developer-kit',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'stitch_html_design',
+        name: 'Stitch HTML Design',
+        version: '1.0.0',
+        description: 'Prompt-to-interface structure, screenshot-inspired design translation, and high-fidelity HTML screen generation for MobileCode previews.',
+        author: 'mobilecode-team',
+        tags: const ['stitch', 'html', 'design-system', 'built-in', 'default'],
+        actions: const [
+          'html.translate_design_prompt',
+          'html.extract_design_tokens',
+          'html.generate_preview_screen',
+        ],
+        prompts: const [
+          'stitch_style_html_prompt',
+          'design_token_extraction',
+          'mobile_webview_screen_spec',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/google-labs-code/stitch-skills',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'web_accessibility',
+        name: 'Web Accessibility',
+        version: '1.0.0',
+        description: 'Accessibility defaults for generated HTML: semantic structure, focus order, contrast, motion reduction, labels, and keyboard affordances.',
+        author: 'mobilecode-team',
+        tags: const ['accessibility', 'wcag', 'html', 'built-in', 'default'],
+        actions: const [
+          'a11y.audit_semantics',
+          'a11y.check_focus_order',
+          'a11y.enforce_motion_preferences',
+        ],
+        prompts: const [
+          'html_accessibility_checklist',
+          'semantic_markup_review',
+          'keyboard_navigation_review',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/supercent-io/skills-template',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'web_design_guidelines',
+        name: 'Web Design Guidelines',
+        version: '1.0.0',
+        description: 'Vercel-style web craft guidance for responsive composition, performance-aware UI, hierarchy, and deployable web artifact quality.',
+        author: 'mobilecode-team',
+        tags: const ['web', 'guidelines', 'performance', 'built-in', 'default'],
+        actions: const [
+          'web.audit_visual_hierarchy',
+          'web.check_responsive_breakpoints',
+          'web.review_deployable_quality',
+        ],
+        prompts: const [
+          'web_design_review',
+          'responsive_artifact_gate',
+          'deployable_html_quality',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/vercel-labs/agent-skills',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'ui_animation',
+        name: 'UI Animation',
+        version: '1.0.0',
+        description: 'CSS-first motion patterns, micro-interactions, page reveal timing, and reduced-motion fallbacks for HTML previews.',
+        author: 'mobilecode-team',
+        tags: const ['animation', 'css', 'motion', 'built-in', 'default'],
+        actions: const [
+          'motion.plan_page_reveal',
+          'motion.add_micro_interactions',
+          'motion.add_reduced_motion_fallback',
+        ],
+        prompts: const [
+          'css_motion_direction',
+          'micro_interaction_review',
+          'reduced_motion_gate',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/mblode/agent-skills',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'figma_implement_design',
+        name: 'Figma Implement Design',
+        version: '1.0.0',
+        description: 'Figma-to-code discipline internalized as design context, asset fidelity, token translation, visual parity, and responsive validation.',
+        author: 'mobilecode-team',
+        tags: const ['figma', 'design-implementation', 'html', 'built-in', 'default'],
+        actions: const [
+          'figma.extract_design_context',
+          'figma.translate_tokens_to_html',
+          'figma.validate_visual_parity',
+        ],
+        prompts: const [
+          'figma_to_html_plan',
+          'design_asset_fidelity',
+          'visual_parity_checklist',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/figma/mcp-server-guide',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'tailwind_design_system',
+        name: 'Tailwind Design System',
+        version: '1.0.0',
+        description: 'Tokenized spacing, typography, color, utility naming, and reusable design-system rules adapted for generated HTML/CSS.',
+        author: 'mobilecode-team',
+        tags: const ['tailwind', 'design-system', 'tokens', 'built-in', 'default'],
+        actions: const [
+          'design_system.define_tokens',
+          'design_system.normalize_spacing',
+          'design_system.audit_consistency',
+        ],
+        prompts: const [
+          'tailwind_token_plan',
+          'html_css_tokenization',
+          'design_system_consistency_review',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/wshobson/agents',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+    ];
+
+    _builtInSkills.addAll(skills);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -913,6 +1143,7 @@ class SkillManagerService extends ChangeNotifier {
       final installed = _skills.values.where((s) => s.isInstalled && s.source != SkillSource.builtIn).toList();
       final jsonList = installed.map((s) => jsonEncode(s.toJson())).toList();
       await _prefs?.setStringList(_skillsKey, jsonList);
+      await _persistBuiltInSkillState();
     } catch (e) {
       debugPrint('[SkillManager] Failed to persist skills: $e');
     }
@@ -970,8 +1201,42 @@ class SkillManagerService extends ChangeNotifier {
     try {
       final enabled = _skills.values.where((s) => s.isEnabled).map((s) => s.id).toList();
       await _prefs?.setStringList(_enabledSkillsKey, enabled);
+      await _persistBuiltInSkillState();
     } catch (e) {
       debugPrint('[SkillManager] Failed to persist enabled skills: $e');
+    }
+  }
+
+  Future<void> _persistBuiltInSkillState() async {
+    final builtInState = <String, dynamic>{};
+    for (final skill in _skills.values.where((s) => s.source == SkillSource.builtIn)) {
+      builtInState[skill.id] = {
+        'isInstalled': skill.isInstalled,
+        'isEnabled': skill.isEnabled,
+      };
+    }
+    await _prefs?.setString(_builtInSkillStateKey, jsonEncode(builtInState));
+  }
+
+  Future<void> _loadPersistedBuiltInSkillState() async {
+    try {
+      final raw = _prefs?.getString(_builtInSkillStateKey);
+      if (raw == null || raw.isEmpty) return;
+
+      final state = jsonDecode(raw) as Map<String, dynamic>;
+      for (final entry in state.entries) {
+        final skill = _skills[entry.key];
+        final value = entry.value;
+        if (skill == null || skill.source != SkillSource.builtIn || value is! Map<String, dynamic>) {
+          continue;
+        }
+        _skills[entry.key] = skill.copyWith(
+          isInstalled: value['isInstalled'] as bool? ?? skill.isInstalled,
+          isEnabled: value['isEnabled'] as bool? ?? skill.isEnabled,
+        );
+      }
+    } catch (e) {
+      debugPrint('[SkillManager] Failed to load built-in skill state: $e');
     }
   }
 

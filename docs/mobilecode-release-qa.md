@@ -28,22 +28,26 @@ Required GitHub Actions before publishing:
 Release candidate:
 
 - Branch: `v011-streaming-fix`
-- App/build content commit: pending CI
-- Release: pending
-- APK asset: pending
-- APK SHA256: pending
+- App/build content commit: `1f266ca3c85810efdc0e609f8db6a99947898acf`
+- Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.3`
+- APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.3/mobilecode-v0.1.3.apk`
+- APK SHA256: `50e53bd2fb820aa3658bc6e6ff0fc3afab1a6c1ec69722013f4247a027561390`
 
 Required CI evidence:
 
 | Gate | Run | Result |
 | --- | --- | --- |
-| Mobile Runtime CI | pending | Pending |
-| Build Android APK | pending | Pending |
-| Android App Smoke Test | pending | Pending |
+| Mobile Runtime CI | `https://github.com/Harzva/mobilecode/actions/runs/25982172509` | Passed |
+| Build Android APK | `https://github.com/Harzva/mobilecode/actions/runs/25982172502` | Passed |
+| Android App Smoke Test | `https://github.com/Harzva/mobilecode/actions/runs/25982172557` | Passed |
 
 Validated coverage:
 
-- Pending after real management pages are reconnected from Tools.
+- Flutter scoped analyzer passed for runtime and Home entry surfaces.
+- RuntimeProvider tests passed.
+- Helper daemon protocol smoke passed for health, execute, stream, task history, task logs, cancel, and project preflight.
+- Android release APK build passed and uploaded the v0.1.3 release asset.
+- Android emulator smoke built the debug APK, installed and launched the app, captured screenshot/logcat artifacts, and checked common crash signatures.
 
 Manual device coverage:
 

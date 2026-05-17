@@ -9,10 +9,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
-import 'agent_dashboard_screen.dart';
-import 'mcp_manager_screen.dart';
-import 'memory_manager_screen.dart';
-import 'skill_manager_screen.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
@@ -1598,9 +1594,15 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _openManagementScreen(Widget screen, String label) {
-    _addLog('Opened $label', 'Management surface', Icons.dashboard_customize_outlined, _cyan);
-    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+  void _openManagementStatus(String label, IconData icon, List<String> items) {
+    _addLog('Opened $label', 'Management surface status', Icons.dashboard_customize_outlined, _cyan);
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+      builder: (context) => _ManagementStatusSheet(title: label, icon: icon, items: items),
+    );
   }
 
   void _openGitHubTestSheet() {
@@ -2066,11 +2068,31 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 12),
         _ManagementSurfacePanel(
-          onOpenAgent: () => _openManagementScreen(const AgentDashboardScreen(), 'Agent Manager'),
-          onOpenSkills: () => _openManagementScreen(const SkillManagerScreen(), 'Skill Manager'),
-          onOpenMcp: () => _openManagementScreen(const McpManagerScreen(), 'MCP Manager'),
-          onOpenMemory: () => _openManagementScreen(const MemoryManagerScreen(), 'Memory Manager'),
-          onOpenHooks: () => _showMessage('Hook Manager is planned for the extension management pass.'),
+          onOpenAgent: () => _openManagementStatus('Agent Manager', Icons.psychology_alt_outlined, const [
+            'V1 route: mobile-ui-designer, web-preview-engineer, android-runtime-engineer, release-qa-reviewer, extension-manager.',
+            'Current status: lightweight role routing spec is documented; full Agent Dashboard is not wired into release build yet.',
+            'Next gate: compile-safe Agent Manager page with role selection, prompt contract, and run evidence.',
+          ]),
+          onOpenSkills: () => _openManagementStatus('Skill Manager', Icons.extension_outlined, const [
+            'Current status: legacy Skill Manager code exists but is not release-wired because Android build found compile issues.',
+            'V1 expectation: list installed skills, enable/disable, show source/provenance, and expose prompts/actions safely.',
+            'Next gate: repair Skill Manager build errors before routing it from Home.',
+          ]),
+          onOpenMcp: () => _openManagementStatus('MCP Manager', Icons.account_tree_outlined, const [
+            'Current status: legacy MCP Manager code exists but needs build hardening before release wiring.',
+            'V1 expectation: show servers, status, tools, connection errors, and permission boundary.',
+            'Next gate: compile-safe MCP status page with no implicit tool execution.',
+          ]),
+          onOpenMemory: () => _openManagementStatus('Memory Manager', Icons.memory_outlined, const [
+            'Current status: memory services/screens exist, but Home exposes only a lightweight status entry for this release.',
+            'V1 expectation: conversation/project memory visibility, delete controls, and storage boundary.',
+            'Next gate: release-safe Memory Manager route after build verification.',
+          ]),
+          onOpenHooks: () => _openManagementStatus('Hook Manager', Icons.link_outlined, const [
+            'Current status: planned, not implemented in v0.1.2.',
+            'V1 expectation: show lifecycle hook points and whether each hook is enabled; no arbitrary script runtime.',
+            'Next gate: hook registry model plus read-only UI before any execution support.',
+          ]),
         ),
         const SizedBox(height: 12),
         for (final tool in tools) ...[
@@ -8527,6 +8549,48 @@ class _ManagementSurfacePanel extends StatelessWidget {
               _MiniArtifactButton(icon: Icons.link_outlined, label: 'Hooks', onTap: onOpenHooks, color: _faint),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ManagementStatusSheet extends StatelessWidget {
+  const _ManagementStatusSheet({
+    required this.title,
+    required this.icon,
+    required this.items,
+  });
+
+  final String title;
+  final IconData icon;
+  final List<String> items;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: icon,
+      title: title,
+      subtitle: 'Release-safe management status',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final item in items) ...[
+            _Panel(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.check_circle_outline, color: _mint, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(item, style: const TextStyle(color: _muted, fontSize: 12, height: 1.38)),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
         ],
       ),
     );

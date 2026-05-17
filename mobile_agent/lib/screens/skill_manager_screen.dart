@@ -11,6 +11,8 @@ import '../providers/skill_provider.dart';
 import '../services/skill_manager_service.dart';
 import 'mcp_manager_screen.dart';
 
+enum _SkillDiscoverySource { github, skillhub }
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Skill Manager Screen
 // ═══════════════════════════════════════════════════════════════════════════
@@ -41,6 +43,7 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _githubUrlController = TextEditingController();
+  _SkillDiscoverySource _discoverySource = _SkillDiscoverySource.github;
   bool _isSearching = false;
 
   @override
@@ -225,9 +228,28 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
 
   Widget _buildDiscoverTab() {
     final searchQuery = ref.watch(skillSearchQueryProvider);
+    final sourceLabel = _discoverySource == _SkillDiscoverySource.github ? 'GitHub' : 'SkillHub';
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Row(
+            children: [
+              _SourceChip(
+                label: 'GitHub',
+                selected: _discoverySource == _SkillDiscoverySource.github,
+                onTap: () => setState(() => _discoverySource = _SkillDiscoverySource.github),
+              ),
+              const SizedBox(width: 8),
+              _SourceChip(
+                label: 'SkillHub',
+                selected: _discoverySource == _SkillDiscoverySource.skillhub,
+                onTap: () => setState(() => _discoverySource = _SkillDiscoverySource.skillhub),
+              ),
+            ],
+          ),
+        ),
         // Search bar
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -242,7 +264,7 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
               color: AppTheme.textPrimary,
             ),
             decoration: InputDecoration(
-              hintText: '搜索 GitHub 技能...',
+              hintText: '搜索 $sourceLabel 技能...',
               hintStyle: const TextStyle(
                 fontFamily: AppTheme.fontBody,
                 fontSize: 14,
@@ -288,7 +310,9 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
   }
 
   Widget _buildTrendingSkills() {
-    final trendingAsync = ref.watch(trendingSkillsProvider);
+    final AsyncValue<List<Skill>> trendingAsync = _discoverySource == _SkillDiscoverySource.skillhub
+        ? ref.watch(skillHubSearchProvider((query: null, limit: 12)))
+        : ref.watch(trendingSkillsProvider);
 
     return trendingAsync.when(
       data: (skills) {
@@ -311,7 +335,7 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
                 skill: skill,
                 showActions: true,
                 isInstalled: isInstalled,
-                onInstall: () => _installSkill(skill),
+                onInstall: () => _previewOrInstallDiscoveredSkill(skill),
               ),
             );
           },
@@ -325,7 +349,9 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
   }
 
   Widget _buildSearchResults(String query) {
-    final searchAsync = ref.watch(skillSearchProvider(query));
+    final AsyncValue<List<Skill>> searchAsync = _discoverySource == _SkillDiscoverySource.skillhub
+        ? ref.watch(skillHubSearchProvider((query: query, limit: 12)))
+        : ref.watch(skillSearchProvider(query));
 
     return searchAsync.when(
       data: (skills) {
@@ -346,7 +372,7 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
               child: SkillCard(
                 skill: skill,
                 showActions: true,
-                onInstall: () => _installSkill(skill),
+                onInstall: () => _previewOrInstallDiscoveredSkill(skill),
               ),
             );
           },
@@ -782,6 +808,41 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
         SnackBar(
           content: Text('安装失败: $e'),
           backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _previewOrInstallDiscoveredSkill(Skill skill) async {
+    final shouldPreviewManifest =
+        skill.githubUrl != null && (skill.actions.isEmpty && skill.prompts.isEmpty && skill.mcpServers.isEmpty);
+    if (!shouldPreviewManifest) {
+      await _installSkill(skill);
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppTheme.primary),
+      ),
+    );
+
+    try {
+      final preview = await ref.read(skillManagerServiceProvider).importFromGitHub(skill.githubUrl!);
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      _showSkillPreviewDialog(preview);
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      _showSkillPreviewDialog(skill);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('未找到 skill.yaml，已改为仓库元数据预览: $e'),
+          backgroundColor: AppTheme.warning,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -1241,6 +1302,41 @@ class SkillCard extends StatelessWidget {
 }
 
 // ── Tag Chip ─────────────────────────────────────
+
+class _SourceChip extends StatelessWidget {
+  const _SourceChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      onPressed: onTap,
+      backgroundColor: selected ? AppTheme.primary.withOpacity(0.16) : AppTheme.surfaceHover,
+      side: BorderSide(color: selected ? AppTheme.primary.withOpacity(0.45) : AppTheme.border),
+      avatar: Icon(
+        selected ? Icons.check_circle_outline : Icons.travel_explore_outlined,
+        size: 16,
+        color: selected ? AppTheme.primary : AppTheme.textTertiary,
+      ),
+      label: Text(
+        label,
+        style: TextStyle(
+          fontFamily: AppTheme.fontBody,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: selected ? AppTheme.primary : AppTheme.textSecondary,
+        ),
+      ),
+    );
+  }
+}
 
 class _TagChip extends StatelessWidget {
   final String label;

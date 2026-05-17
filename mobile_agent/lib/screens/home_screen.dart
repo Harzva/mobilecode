@@ -17,6 +17,7 @@ import 'skill_manager_screen.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
+import '../services/skill_manager_service.dart';
 import '../services/termux_service.dart';
 import '../services/voice_service.dart';
 
@@ -90,10 +91,10 @@ const _managedModel = String.fromEnvironment(
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.3';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.4';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.3+22';
+const _releaseBuildLabel = 'v0.1.4+23';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 
 String? runtimeFailureKindHint(RuntimeTaskFailureKind kind) {
@@ -7479,6 +7480,16 @@ class _ChatPanelState extends State<_ChatPanel> {
       if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
       await _completeAgentRunStep(1);
       if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
+      final skillContext = toolName.startsWith('mobile_coding.generate_')
+          ? await SkillManagerService.instance.buildHtmlGenerationSkillContext()
+          : '';
+      if (skillContext.isNotEmpty) {
+        _setAgentRunStep(
+          1,
+          _AgentStepState.done,
+          detail: 'Selected $toolName and injected enabled HTML/UI skills into the provider prompt.',
+        );
+      }
       final providerStarted = DateTime.now();
       _setAgentRunStep(
         2,
@@ -7490,7 +7501,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       var lastPreviewLength = 0;
       await for (final chunk in _streamProvider(
         pending.turns,
-        systemPrompt: _agentSystemPrompt(toolName),
+        systemPrompt: _agentSystemPrompt(toolName, skillContext: skillContext),
         maxTokens: 4096,
         responseTimeout: const Duration(minutes: 3),
         trackAgentRequest: true,
@@ -7619,15 +7630,20 @@ class _ChatPanelState extends State<_ChatPanel> {
     _scrollConversationToEnd();
   }
 
-  String _agentSystemPrompt(String toolName) {
+  String _agentSystemPrompt(String toolName, {String skillContext = ''}) {
     return [
       'You are MobileCode Android Mini Agent.',
       'You are running inside a mobile app, so be honest about what has actually happened.',
       'The selected tool is `$toolName`.',
       'You must generate original code from the user request. Do not use or mention a built-in demo fallback.',
       'Do not claim a file was written, previewed, pushed, or executed unless the app reports that after your response.',
+      if (skillContext.isNotEmpty) ...[
+        '',
+        'Enabled HTML/UI skill context:',
+        skillContext,
+      ],
       if (toolName.startsWith('mobile_coding.generate_'))
-        'For web game requests, return one complete self-contained HTML document inside a single ```html fenced block. It must be mobile-first, playable by touch, and not depend on network assets.',
+        'For web/html requests, return one complete self-contained HTML document inside a single ```html fenced block. It must be mobile-first, touch-friendly, accessible, visually intentional, and not depend on network assets.',
       if (toolName == 'mobile_coding.build_diary_demo')
         'For the diary app request, return the minimal implementable UI/data model plan and code snippets needed for a local APK diary experience.',
       if (toolName == 'mobile_tools.termux_probe')

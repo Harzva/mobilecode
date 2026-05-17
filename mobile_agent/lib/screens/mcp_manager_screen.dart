@@ -120,6 +120,26 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
                   color: AppTheme.success,
                 ),
                 const Spacer(),
+                OutlinedButton.icon(
+                  onPressed: _showMcpHubRegistrySheet,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: const BorderSide(color: AppTheme.border),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    minimumSize: const Size(0, 36),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  icon: const Icon(Icons.travel_explore_outlined, size: 16),
+                  label: const Text(
+                    'Registry',
+                    style: TextStyle(
+                      fontFamily: AppTheme.fontBody,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 // Add button
                 ElevatedButton.icon(
                   onPressed: _showAddServerDialog,
@@ -253,6 +273,172 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
   // ═══════════════════════════════════════════════════════════════════════
   // Add Server Dialog
   // ═══════════════════════════════════════════════════════════════════════
+
+  void _showMcpHubRegistrySheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.74,
+          minChildSize: 0.45,
+          maxChildSize: 0.92,
+          builder: (context, scrollController) {
+            return FutureBuilder<List<McpServer>>(
+              future: ref.read(skillManagerServiceProvider).searchMcpHubServers(limit: 10),
+              builder: (context, snapshot) {
+                final servers = snapshot.data ?? const <McpServer>[];
+                return ListView(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 36,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppTheme.textTertiary.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'MCPHub Registry',
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontBody,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Only metadata is imported. Servers are registered disabled until you review command, env, and permissions.',
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontBody,
+                        fontSize: 13,
+                        height: 1.35,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (snapshot.connectionState != ConnectionState.done)
+                      const Center(child: CircularProgressIndicator(color: AppTheme.primary))
+                    else if (servers.isEmpty)
+                      const Text(
+                        'No MCP candidates found.',
+                        style: TextStyle(color: AppTheme.textTertiary),
+                      )
+                    else
+                      for (final server in servers) ...[
+                        _RegistryMcpTile(
+                          server: server,
+                          onTap: () => _showMcpRegistryPreview(server),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showMcpRegistryPreview(McpServer server) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppTheme.border),
+        ),
+        title: Text(server.name, style: const TextStyle(color: AppTheme.textPrimary)),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                server.description ?? 'No description provided.',
+                style: const TextStyle(
+                  fontFamily: AppTheme.fontBody,
+                  fontSize: 13,
+                  height: 1.4,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _PreviewLine(label: 'Type', value: server.type),
+              _PreviewLine(label: 'Command', value: server.command.isEmpty ? 'Review upstream docs before running.' : server.command),
+              if (server.env.isNotEmpty) _PreviewLine(label: 'Env', value: server.env.keys.join(', ')),
+              const SizedBox(height: 10),
+              const Text(
+                'Safety: registering does not start this MCP server. Enable it later only after reviewing secrets and workspace scope.',
+                style: TextStyle(
+                  fontFamily: AppTheme.fontBody,
+                  fontSize: 12,
+                  height: 1.35,
+                  color: AppTheme.warning,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await _registerMcpRegistryCandidate(server);
+            },
+            icon: const Icon(Icons.add_link_outlined, size: 16),
+            label: const Text('Register disabled'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _registerMcpRegistryCandidate(McpServer server) async {
+    final candidate = server.copyWith(
+      isEnabled: false,
+      status: McpServerStatus.stopped,
+      registeredAt: DateTime.now(),
+    );
+    try {
+      await ref.read(skillManagerServiceProvider).addCustomMcpServer(candidate);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已注册但未启用: ${candidate.name}'),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('注册失败: $e'),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
 
   void _showAddServerDialog() {
     _nameController.clear();
@@ -1072,6 +1258,154 @@ class _StatusLegend extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _RegistryMcpTile extends StatelessWidget {
+  const _RegistryMcpTile({
+    required this.server,
+    required this.onTap,
+  });
+
+  final McpServer server;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTheme.backgroundElevated,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.border),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Icon(Icons.account_tree_outlined, color: AppTheme.primary, size: 18),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    server.name,
+                    style: const TextStyle(
+                      fontFamily: AppTheme.fontBody,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    server.description ?? server.command,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: AppTheme.fontBody,
+                      fontSize: 12,
+                      height: 1.35,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      _TypeBadge(type: server.type),
+                      const _RegistryPill(label: 'disabled preview'),
+                      if (server.env.isNotEmpty) const _RegistryPill(label: 'env required'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right, color: AppTheme.textTertiary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RegistryPill extends StatelessWidget {
+  const _RegistryPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppTheme.warning.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: AppTheme.warning.withOpacity(0.22)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontFamily: AppTheme.fontBody,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.warning,
+        ),
+      ),
+    );
+  }
+}
+
+class _PreviewLine extends StatelessWidget {
+  const _PreviewLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 76,
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontFamily: AppTheme.fontBody,
+                fontSize: 12,
+                color: AppTheme.textTertiary,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontFamily: AppTheme.fontCode,
+                fontSize: 12,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

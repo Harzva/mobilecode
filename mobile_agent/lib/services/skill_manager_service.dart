@@ -42,6 +42,13 @@ class McpServerException implements Exception {
   String toString() => 'McpServerException[$serverId]: $message';
 }
 
+class RegistrySourceException implements Exception {
+  final String message;
+  RegistrySourceException(this.message);
+  @override
+  String toString() => 'RegistrySourceException: $message';
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Skill Manager Service
 // ═══════════════════════════════════════════════════════════════════════════
@@ -197,6 +204,53 @@ class SkillManagerService extends ChangeNotifier {
     return getSkillsByInstallStatus(installed: false);
   }
 
+  /// Build a compact prompt context from enabled HTML/UI skills.
+  ///
+  /// This is the bridge from Skill Manager state into the mini-agent loop. It
+  /// intentionally returns guidance, not executable plugin code.
+  Future<String> buildHtmlGenerationSkillContext() async {
+    if (!_initialized) {
+      await initialize();
+    }
+
+    final active = _skills.values
+        .where((skill) => skill.isInstalled && skill.isEnabled)
+        .where((skill) =>
+            skill.tags.any((tag) {
+              final lower = tag.toLowerCase();
+              return lower == 'html' ||
+                  lower == 'ui' ||
+                  lower == 'ux' ||
+                  lower == 'accessibility' ||
+                  lower == 'animation' ||
+                  lower == 'design-system';
+            }) ||
+            skill.actions.any((action) => action.startsWith('html.') || action.startsWith('a11y.') || action.startsWith('motion.')))
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+
+    if (active.isEmpty) {
+      return 'No optional HTML/UI skills are enabled. Use the baseline mobile-first HTML requirements only.';
+    }
+
+    final buffer = StringBuffer()
+      ..writeln('Active MobileCode HTML/UI skills:')
+      ..writeln('- Apply these as product-native guidance, not as external tool execution.');
+
+    for (final skill in active.take(8)) {
+      buffer.writeln('- ${skill.id}: ${skill.description}');
+      if (skill.actions.isNotEmpty) {
+        buffer.writeln('  Actions: ${skill.actions.take(3).join(', ')}');
+      }
+      if (skill.prompts.isNotEmpty) {
+        buffer.writeln('  Prompt gates: ${skill.prompts.take(3).join(', ')}');
+      }
+    }
+
+    buffer.writeln('Required HTML output gates: mobile-first layout, semantic HTML, touch-friendly controls, accessible labels/focus states, reduced-motion fallback, cohesive visual system, no remote assets unless explicitly requested.');
+    return buffer.toString().trim();
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // GitHub Skill Discovery
   // ═══════════════════════════════════════════════════════════════════════
@@ -270,6 +324,89 @@ class SkillManagerService extends ChangeNotifier {
   /// Get trending/popular skills from GitHub.
   Future<List<Skill>> getTrendingSkills() async {
     return searchGitHubSkills(query: 'stars:>5');
+  }
+
+  /// Search SkillHub as a discovery source, then normalize results to GitHub-backed skills.
+  ///
+  /// MobileCode never runs install commands from SkillHub directly. A result is usable
+  /// only when it can resolve to a GitHub provenance URL that can be previewed through
+  /// [importFromGitHub] before installation.
+  Future<List<Skill>> searchSkillHubSkills({String? query, int limit = 12}) async {
+    if (!_initialized) {
+      await initialize();
+    }
+    final searchQuery = (query == null || query.trim().isEmpty) ? 'html ui design mobile' : query.trim();
+
+    try {
+      final uri = Uri.https('www.skillhub.club', '/api/v1/skills/search');
+      final response = await http.post(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'query': searchQuery,
+          'limit': limit,
+          'method': 'hybrid',
+        }),
+      ).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode != 200) {
+        throw RegistrySourceException('SkillHub search returned HTTP ${response.statusCode}');
+      }
+
+      final decoded = jsonDecode(response.body);
+      final items = _extractRegistryItems(decoded);
+      final results = <Skill>[];
+      for (final item in items) {
+        final skill = _skillFromSkillHubItem(item);
+        if (skill != null) results.add(skill);
+      }
+      if (results.isNotEmpty) return List.unmodifiable(results.take(limit));
+    } catch (e) {
+      debugPrint('[SkillManager] SkillHub search fallback: $e');
+    }
+
+    return _getCuratedSkillHubSkills(searchQuery, limit: limit);
+  }
+
+  /// Search MCPHub-compatible sources and return disabled MCP server candidates.
+  ///
+  /// MCPHub gateway/registry entries are treated as metadata only. The returned
+  /// servers are not started or enabled until the user reviews and registers them.
+  Future<List<McpServer>> searchMcpHubServers({String? query, int limit = 12}) async {
+    if (!_initialized) {
+      await initialize();
+    }
+    final searchQuery = (query == null || query.trim().isEmpty) ? 'github fetch browser filesystem' : query.trim();
+
+    try {
+      final uri = Uri.https(
+        'api.github.com',
+        '/search/repositories',
+        {
+          'q': 'mcp server $searchQuery in:name,description,topics',
+          'sort': 'stars',
+          'order': 'desc',
+          'per_page': '$limit',
+        },
+      );
+      final response = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) {
+        throw RegistrySourceException('MCP registry search returned HTTP ${response.statusCode}');
+      }
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      final items = decoded['items'] as List<dynamic>? ?? const [];
+      final results = <McpServer>[];
+      for (final item in items) {
+        if (item is! Map<String, dynamic>) continue;
+        final server = _mcpServerFromGitHubRepo(item);
+        if (server != null) results.add(server);
+      }
+      if (results.isNotEmpty) return List.unmodifiable(results.take(limit));
+    } catch (e) {
+      debugPrint('[SkillManager] MCPHub search fallback: $e');
+    }
+
+    return _getCuratedMcpHubServers(searchQuery, limit: limit);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1372,6 +1509,280 @@ class SkillManagerService extends ChangeNotifier {
       return trimmed.substring(1, trimmed.length - 1);
     }
     return trimmed;
+  }
+
+  List<Map<String, dynamic>> _extractRegistryItems(dynamic decoded) {
+    if (decoded is List) {
+      return decoded.whereType<Map<String, dynamic>>().toList();
+    }
+    if (decoded is! Map<String, dynamic>) return const [];
+    for (final key in ['results', 'skills', 'items', 'data']) {
+      final value = decoded[key];
+      if (value is List) return value.whereType<Map<String, dynamic>>().toList();
+      if (value is Map<String, dynamic>) {
+        final nested = _extractRegistryItems(value);
+        if (nested.isNotEmpty) return nested;
+      }
+    }
+    return const [];
+  }
+
+  Skill? _skillFromSkillHubItem(Map<String, dynamic> item) {
+    final githubUrl = _extractGitHubUrl(item);
+    if (githubUrl == null) return null;
+
+    final name = _stringField(item, const ['name', 'title', 'skillName']) ?? _repoNameFromGitHubUrl(githubUrl);
+    final author = _stringField(item, const ['author', 'owner', 'publisher']) ?? _repoOwnerFromGitHubUrl(githubUrl);
+    final description = _stringField(item, const ['description', 'summary', 'readme']) ??
+        'Imported from SkillHub discovery source: $githubUrl';
+    final id = 'skillhub_${_repoSlugFromGitHubUrl(githubUrl)}';
+
+    return Skill(
+      id: id,
+      name: name,
+      version: _stringField(item, const ['version']) ?? '1.0.0',
+      description: description,
+      author: author,
+      tags: const ['skillhub', 'github', 'external-registry'],
+      actions: const [],
+      prompts: const [],
+      mcpServers: const [],
+      source: SkillSource.github,
+      githubUrl: githubUrl,
+      installCount: _intField(item, const ['downloads', 'installCount', 'stars']) ?? 0,
+    );
+  }
+
+  McpServer? _mcpServerFromGitHubRepo(Map<String, dynamic> repo) {
+    final url = repo['html_url'] as String?;
+    final fullName = repo['full_name'] as String?;
+    if (url == null || fullName == null) return null;
+    final name = repo['name'] as String? ?? fullName.split('/').last;
+    final description = repo['description'] as String?;
+    final packageName = _guessNpmPackageName(fullName, name);
+    return McpServer(
+      id: 'mcphub_${fullName.replaceAll(RegExp(r'[^A-Za-z0-9_]+'), '_')}',
+      name: name,
+      type: 'stdio',
+      command: packageName == null ? '' : 'npx -y $packageName',
+      description: description == null ? 'MCP server discovered from MCPHub-compatible GitHub provenance: $url' : '$description\n\nSource: $url',
+      version: 'registry-preview',
+      isEnabled: false,
+      status: McpServerStatus.stopped,
+      logs: const [
+        'Imported as disabled metadata. Review command, environment variables, and permissions before enabling.',
+      ],
+    );
+  }
+
+  List<Skill> _getCuratedSkillHubSkills(String query, {int limit = 12}) {
+    final curated = [
+      _curatedSkill(
+        id: 'skillhub_frontend_design',
+        name: 'Frontend Design',
+        description: 'HTML/UI design direction, typography, layout, visual quality, and mobile preview polish.',
+        githubUrl: 'https://github.com/anthropics/skills',
+      ),
+      _curatedSkill(
+        id: 'skillhub_ui_ux_pro_max',
+        name: 'UI UX Pro Max',
+        description: 'Mobile UX flow, interface state coverage, and product-grade UI hierarchy.',
+        githubUrl: 'https://github.com/nextlevelbuilder/ui-ux-pro-max-skill',
+      ),
+      _curatedSkill(
+        id: 'skillhub_shadcn_ui',
+        name: 'shadcn/ui Pattern Kit',
+        description: 'Owned component patterns, variants, dialogs, forms, and registry-style component thinking.',
+        githubUrl: 'https://github.com/giuseppe-trisciuoglio/developer-kit',
+      ),
+      _curatedSkill(
+        id: 'skillhub_stitch_html_design',
+        name: 'Stitch HTML Design',
+        description: 'Prompt-to-interface structure and high-fidelity HTML screen generation.',
+        githubUrl: 'https://github.com/google-labs-code/stitch-skills',
+      ),
+      _curatedSkill(
+        id: 'skillhub_web_accessibility',
+        name: 'Web Accessibility',
+        description: 'Semantic HTML, focus order, contrast, labels, and reduced-motion defaults.',
+        githubUrl: 'https://github.com/supercent-io/skills-template',
+      ),
+      _curatedSkill(
+        id: 'skillhub_web_design_guidelines',
+        name: 'Web Design Guidelines',
+        description: 'Responsive composition, deployable HTML quality, and performance-aware web UI.',
+        githubUrl: 'https://github.com/vercel-labs/agent-skills',
+      ),
+      _curatedSkill(
+        id: 'skillhub_ui_animation',
+        name: 'UI Animation',
+        description: 'CSS-first motion, micro-interactions, page reveals, and reduced-motion fallback.',
+        githubUrl: 'https://github.com/mblode/agent-skills',
+      ),
+      _curatedSkill(
+        id: 'skillhub_figma_implement_design',
+        name: 'Figma Implement Design',
+        description: 'Design context extraction, token translation, asset fidelity, and visual parity discipline.',
+        githubUrl: 'https://github.com/figma/mcp-server-guide',
+      ),
+      _curatedSkill(
+        id: 'skillhub_tailwind_design_system',
+        name: 'Tailwind Design System',
+        description: 'Tokenized spacing, typography, color, and reusable design-system rules.',
+        githubUrl: 'https://github.com/wshobson/agents',
+      ),
+    ];
+
+    final lower = query.toLowerCase();
+    final filtered = curated
+        .where((skill) =>
+            lower.trim().isEmpty ||
+            skill.name.toLowerCase().contains(lower) ||
+            skill.description.toLowerCase().contains(lower) ||
+            skill.tags.any((tag) => tag.toLowerCase().contains(lower)))
+        .toList();
+    return List.unmodifiable((filtered.isEmpty ? curated : filtered).take(limit));
+  }
+
+  Skill _curatedSkill({
+    required String id,
+    required String name,
+    required String description,
+    required String githubUrl,
+  }) {
+    return Skill(
+      id: id,
+      name: name,
+      version: '1.0.0',
+      description: description,
+      author: _repoOwnerFromGitHubUrl(githubUrl),
+      tags: const ['skillhub', 'github', 'html', 'ui', 'external-registry'],
+      actions: const [],
+      prompts: const [],
+      mcpServers: const [],
+      source: SkillSource.github,
+      githubUrl: githubUrl,
+    );
+  }
+
+  List<McpServer> _getCuratedMcpHubServers(String query, {int limit = 12}) {
+    final servers = [
+      McpServer(
+        id: 'mcphub_github',
+        name: 'GitHub MCP Server',
+        type: 'stdio',
+        command: 'npx -y @modelcontextprotocol/server-github',
+        description: 'Repository, issue, and pull request tools. Requires a reviewed GitHub token in env.',
+        version: 'registry-preview',
+        env: const {'GITHUB_TOKEN': '<required>'},
+      ),
+      McpServer(
+        id: 'mcphub_fetch',
+        name: 'Fetch MCP Server',
+        type: 'stdio',
+        command: 'npx -y @modelcontextprotocol/server-fetch',
+        description: 'HTTP fetch tools for documentation and public web content. Review network access before enabling.',
+        version: 'registry-preview',
+      ),
+      McpServer(
+        id: 'mcphub_filesystem',
+        name: 'Filesystem MCP Server',
+        type: 'stdio',
+        command: 'npx -y @modelcontextprotocol/server-filesystem <workspace>',
+        description: 'Workspace-bounded file access. Must be restricted to the MobileCode project directory.',
+        version: 'registry-preview',
+      ),
+      McpServer(
+        id: 'mcphub_playwright',
+        name: 'Browser/Playwright MCP Server',
+        type: 'stdio',
+        command: 'npx -y @playwright/mcp',
+        description: 'Browser automation for local preview QA. Keep disabled until the user confirms browser automation.',
+        version: 'registry-preview',
+      ),
+    ];
+    final lower = query.toLowerCase();
+    final filtered = servers
+        .where((server) =>
+            lower.trim().isEmpty ||
+            server.name.toLowerCase().contains(lower) ||
+            (server.description ?? '').toLowerCase().contains(lower) ||
+            server.command.toLowerCase().contains(lower))
+        .toList();
+    return List.unmodifiable((filtered.isEmpty ? servers : filtered).take(limit));
+  }
+
+  String? _extractGitHubUrl(Map<String, dynamic> item) {
+    for (final key in ['githubUrl', 'github_url', 'repository', 'repo', 'url', 'sourceUrl', 'homepage']) {
+      final value = item[key];
+      if (value is String && value.contains('github.com/')) {
+        return _normalizeGitHubUrl(value);
+      }
+      if (value is Map<String, dynamic>) {
+        final nested = _extractGitHubUrl(value);
+        if (nested != null) return nested;
+      }
+    }
+    final encoded = jsonEncode(item);
+    final match = RegExp(r'https?://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+').firstMatch(encoded);
+    return match == null ? null : _normalizeGitHubUrl(match.group(0)!);
+  }
+
+  String? _stringField(Map<String, dynamic> item, List<String> keys) {
+    for (final key in keys) {
+      final value = item[key];
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+    return null;
+  }
+
+  int? _intField(Map<String, dynamic> item, List<String> keys) {
+    for (final key in keys) {
+      final value = item[key];
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      if (value is String) return int.tryParse(value);
+    }
+    return null;
+  }
+
+  String _normalizeGitHubUrl(String value) {
+    final uri = Uri.tryParse(value.startsWith('http') ? value : 'https://$value');
+    if (uri == null || !uri.host.contains('github.com') || uri.pathSegments.length < 2) {
+      return value;
+    }
+    return 'https://github.com/${uri.pathSegments[0]}/${uri.pathSegments[1].replaceAll('.git', '')}';
+  }
+
+  String _repoOwnerFromGitHubUrl(String githubUrl) {
+    final uri = Uri.tryParse(githubUrl);
+    if (uri == null || uri.pathSegments.isEmpty) return 'unknown';
+    return uri.pathSegments[0];
+  }
+
+  String _repoNameFromGitHubUrl(String githubUrl) {
+    final uri = Uri.tryParse(githubUrl);
+    if (uri == null || uri.pathSegments.length < 2) return githubUrl;
+    return uri.pathSegments[1].replaceAll('.git', '');
+  }
+
+  String _repoSlugFromGitHubUrl(String githubUrl) {
+    final uri = Uri.tryParse(githubUrl);
+    if (uri == null || uri.pathSegments.length < 2) {
+      return githubUrl.replaceAll(RegExp(r'[^A-Za-z0-9_]+'), '_');
+    }
+    return '${uri.pathSegments[0]}_${uri.pathSegments[1].replaceAll('.git', '')}'
+        .replaceAll(RegExp(r'[^A-Za-z0-9_]+'), '_');
+  }
+
+  String? _guessNpmPackageName(String fullName, String name) {
+    final lower = name.toLowerCase();
+    if (!lower.contains('mcp')) return null;
+    if (lower.startsWith('@')) return name;
+    if (lower.startsWith('server-') || lower.startsWith('mcp-server-')) {
+      return name;
+    }
+    return null;
   }
 
   /// Compare two semantic versions.

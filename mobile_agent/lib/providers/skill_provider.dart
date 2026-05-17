@@ -180,6 +180,20 @@ final trendingSkillsProvider = FutureProvider<List<Skill>>((ref) async {
   return service.getTrendingSkills();
 });
 
+/// Async provider for SkillHub-backed discovery.
+final skillHubSearchProvider =
+    FutureProvider.family<List<Skill>, ({String? query, int limit})>((ref, params) async {
+  final service = ref.read(skillManagerServiceProvider);
+  return service.searchSkillHubSkills(query: params.query, limit: params.limit);
+});
+
+/// Async provider for MCPHub-compatible discovery.
+final mcpHubSearchProvider =
+    FutureProvider.family<List<McpServer>, ({String? query, int limit})>((ref, params) async {
+  final service = ref.read(skillManagerServiceProvider);
+  return service.searchMcpHubServers(query: params.query, limit: params.limit);
+});
+
 /// Async provider for checking skill updates.
 final skillUpdateCheckProvider = FutureProvider.family<Skill?, String>((ref, skillId) async {
   final service = ref.read(skillManagerServiceProvider);

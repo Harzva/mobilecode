@@ -21,7 +21,34 @@ Required GitHub Actions before publishing:
 - `.github/workflows/android-apk.yml`
   - Builds the release APK.
   - Uses stable signing when release keystore secrets are configured.
-  - Uploads `mobilecode-v0.1.3.apk` as an artifact and GitHub Release asset.
+  - Uploads `mobilecode-v0.1.4.apk` as an artifact and GitHub Release asset.
+
+## v0.1.4 Release Evidence
+
+Release candidate:
+
+- Branch: `v011-streaming-fix`
+- App/build content commit: pending CI
+- Release: pending
+- APK asset: pending
+- APK SHA256: pending
+
+Required CI evidence:
+
+| Gate | Run | Result |
+| --- | --- | --- |
+| Mobile Runtime CI | pending | Pending |
+| Build Android APK | pending | Pending |
+| Android App Smoke Test | pending | Pending |
+
+Validated coverage:
+
+- Pending after HTML/UI skill prompt injection, SkillHub/MCPHub source adapter, and Node 24 Actions updates pass CI.
+
+Manual device coverage:
+
+- Physical-device validation remains required before promoting `v0.1.4` beyond prerelease.
+- Verify Tools -> Agent/Skills/MCP/Memory open the real manager pages, Hook shows read-only status, default HTML/UI skills are installed and can be uninstalled, provider/base URL settings persist, generated artifact browser preview opens externally, trace-step detail sheets work, and chat cancellation is visible while a response is in flight.
 
 ## v0.1.3 Release Evidence
 
@@ -48,11 +75,6 @@ Validated coverage:
 - Helper daemon protocol smoke passed for health, execute, stream, task history, task logs, cancel, and project preflight.
 - Android release APK build passed and uploaded the v0.1.3 release asset.
 - Android emulator smoke built the debug APK, installed and launched the app, captured screenshot/logcat artifacts, and checked common crash signatures.
-
-Manual device coverage:
-
-- Physical-device validation remains required before promoting `v0.1.3` beyond prerelease.
-- Verify Tools -> Agent/Skills/MCP/Memory open the real manager pages, Hook shows read-only status, default HTML/UI skills are installed and can be uninstalled, provider/base URL settings persist, generated artifact browser preview opens externally, trace-step detail sheets work, and chat cancellation is visible while a response is in flight.
 
 ## v0.1.2 Release Evidence
 
@@ -158,7 +180,7 @@ Expected result:
 After downloading the release APK:
 
 ```bash
-adb install -r mobilecode-v0.1.3.apk
+adb install -r mobilecode-v0.1.4.apk
 adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
 adb shell pidof com.mobilecode.mobile_agent
 adb logcat -d -t 1200 > android-logcat.txt

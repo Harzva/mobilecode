@@ -21,7 +21,34 @@ Required GitHub Actions before publishing:
 - `.github/workflows/android-apk.yml`
   - Builds the release APK.
   - Uses stable signing when release keystore secrets are configured.
-  - Uploads `mobilecode-v0.1.5.apk` as an artifact and GitHub Release asset.
+  - Uploads `mobilecode-v0.1.6.apk` as an artifact and GitHub Release asset.
+
+## v0.1.6 Release Evidence
+
+Release candidate:
+
+- Branch: `v011-streaming-fix`
+- App/build content commit: pending CI
+- Release: pending
+- APK asset: pending
+- APK SHA256: pending
+
+Required CI evidence:
+
+| Gate | Run | Result |
+| --- | --- | --- |
+| Mobile Runtime CI | pending | Pending |
+| Build Android APK | pending | Pending |
+| Android App Smoke Test | pending | Pending |
+
+Validated coverage:
+
+- Pending after agent process role avatars, Claude Yellow / Codex Blue theme options, and release artifact version alignment pass CI.
+
+Manual device coverage:
+
+- Physical-device validation remains required before promoting `v0.1.6` beyond prerelease.
+- Verify generated HTML can pass/fail the pre-publish check, GitHub Pages errors explain token/permission recovery, the published work card opens Pages/repo and shows a live thumbnail, Lark CLI structured actions remain dry-run unless explicitly reviewed, and the new theme/avatar polish does not create small-screen overflow.
 
 ## v0.1.5 Release Evidence
 
@@ -44,11 +71,6 @@ Required CI evidence:
 Validated coverage:
 
 - Pending after GitHub Pages pre-publish checks, published work cards with live Pages thumbnail, and Lark CLI structured dry-run actions pass CI.
-
-Manual device coverage:
-
-- Physical-device validation remains required before promoting `v0.1.5` beyond prerelease.
-- Verify generated HTML can pass/fail the pre-publish check, GitHub Pages errors explain token/permission recovery, the published work card opens Pages/repo and shows a live thumbnail, and Lark CLI structured actions remain dry-run unless explicitly reviewed.
 
 ## v0.1.4 Release Evidence
 
@@ -202,7 +224,7 @@ Expected result:
 After downloading the release APK:
 
 ```bash
-adb install -r mobilecode-v0.1.5.apk
+adb install -r mobilecode-v0.1.6.apk
 adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
 adb shell pidof com.mobilecode.mobile_agent
 adb logcat -d -t 1200 > android-logcat.txt

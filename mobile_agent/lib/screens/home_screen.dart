@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -99,11 +100,15 @@ const _managedModel = String.fromEnvironment(
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.4';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.6';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.4+23';
+const _releaseBuildLabel = 'v0.1.6+25';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
+
+String _normalizeBrandTheme(String value) {
+  return value == 'claudeYellow' ? 'claudeYellow' : 'codexBlue';
+}
 
 String? runtimeFailureKindHint(RuntimeTaskFailureKind kind) {
   switch (kind) {
@@ -399,6 +404,7 @@ class _AgentTraceStep {
     required this.title,
     required this.detail,
     required this.icon,
+    this.avatarAsset,
     this.toolName,
     this.details = const {},
     this.state = _AgentStepState.queued,
@@ -408,6 +414,7 @@ class _AgentTraceStep {
   final String title;
   final String detail;
   final IconData icon;
+  final String? avatarAsset;
   final String? toolName;
   final Map<String, String> details;
   final _AgentStepState state;
@@ -417,6 +424,7 @@ class _AgentTraceStep {
     String? title,
     String? detail,
     IconData? icon,
+    String? avatarAsset,
     String? toolName,
     Map<String, String>? details,
     _AgentStepState? state,
@@ -426,6 +434,7 @@ class _AgentTraceStep {
       title: title ?? this.title,
       detail: detail ?? this.detail,
       icon: icon ?? this.icon,
+      avatarAsset: avatarAsset ?? this.avatarAsset,
       toolName: toolName ?? this.toolName,
       details: details ?? this.details,
       state: state ?? this.state,
@@ -839,6 +848,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       title: 'Parse instruction',
       detail: 'Read the user request and decide whether this is chat, coding, preview, GitHub, or device tooling.',
       icon: Icons.manage_search_outlined,
+      avatarAsset: 'assets/role_avatars/agent-magic.svg',
       details: {
         'Input': _compact(prompt, limit: 420),
         'Decision rule': 'Classify the prompt before any provider call or file write.',
@@ -848,6 +858,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       title: 'Select tool',
       detail: '$tool · tap for call details',
       icon: Icons.psychology_alt_outlined,
+      avatarAsset: 'assets/role_avatars/agent-coder.svg',
       toolName: tool,
       details: _agentToolCallDetails(tool, prompt),
     ),
@@ -855,6 +866,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       title: 'Call model provider',
       detail: 'Send the prompt and chat context to the configured provider. If this fails, the agent must stop.',
       icon: Icons.cloud_sync_outlined,
+      avatarAsset: 'assets/role_avatars/agent-codex-blue.svg',
       details: {
         'Provider call': 'Uses the configured Base URL, model, API flavor, and current chat context.',
         'Streaming': 'Tokens are streamed into this trace while the provider responds.',
@@ -865,6 +877,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       title: 'Write generated artifact',
       detail: 'Persist model-generated code only after the provider returns real output.',
       icon: Icons.account_tree_outlined,
+      avatarAsset: 'assets/role_avatars/agent-rocket.svg',
       details: {
         'Write rule': 'Generated files are written only after provider text is received and validated.',
         'Web validation': 'HTML tools require a complete HTML document before index.html is replaced.',
@@ -875,6 +888,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       title: 'Report in chat',
       detail: 'Keep the process, generated content, paths, and failure state in this conversation.',
       icon: Icons.play_arrow_outlined,
+      avatarAsset: 'assets/role_avatars/agent-wave.svg',
       details: {
         'Chat report': 'The final assistant message includes the selected tool, saved path, and generated content.',
         'Artifact actions': 'Generated artifacts can be opened as code, previewed in WebView, copied, or opened in a browser when HTML.',
@@ -1071,7 +1085,14 @@ String _agent2048Html() {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.brandTheme = 'codexBlue',
+    this.onBrandThemeChanged,
+  });
+
+  final String brandTheme;
+  final ValueChanged<String>? onBrandThemeChanged;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -1082,6 +1103,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _apiKeyKey = 'mobilecode.apiKey';
   static const _modelKey = 'mobilecode.model';
   static const _providerModeKey = 'mobilecode.providerMode';
+  static const _brandThemeKey = 'mobilecode.brandTheme';
 
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _chatPanelKey = GlobalKey<_ChatPanelState>();
@@ -1097,6 +1119,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showCapabilityMap = false;
   bool _runtimeChecking = false;
   bool _customProviderOverride = false;
+  String _brandTheme = 'codexBlue';
   bool? _termuxInstalled;
   bool? _termuxApiInstalled;
   bool? _rootAvailable;
@@ -1173,8 +1196,17 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _brandTheme = _normalizeBrandTheme(widget.brandTheme);
     _loadConfig();
     unawaited(_checkRuntime(silent: true));
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.brandTheme != widget.brandTheme) {
+      _brandTheme = _normalizeBrandTheme(widget.brandTheme);
+    }
   }
 
   @override
@@ -1192,6 +1224,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _customProviderOverride = prefs.getString(_providerModeKey) == 'custom';
+        _brandTheme = _normalizeBrandTheme(
+          prefs.getString(_brandThemeKey) ?? widget.brandTheme,
+        );
         if (_managedProviderActive) {
           _baseUrlController.text = '';
           _apiKeyController.text = '';
@@ -1236,6 +1271,21 @@ class _HomeScreenState extends State<HomeScreen> {
       useCustom ? 'Base URL, API key, and model fields are editable.' : 'Bundled managed provider credentials are active.',
       Icons.tune_outlined,
       useCustom ? _cyan : _mint,
+    );
+  }
+
+  Future<void> _setBrandTheme(String value) async {
+    final normalized = _normalizeBrandTheme(value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_brandThemeKey, normalized);
+    if (!mounted) return;
+    setState(() => _brandTheme = normalized);
+    widget.onBrandThemeChanged?.call(normalized);
+    _addLog(
+      normalized == 'claudeYellow' ? 'Claude Yellow theme enabled' : 'Codex Blue theme enabled',
+      'Theme preference saved on this device.',
+      Icons.palette_outlined,
+      normalized == 'claudeYellow' ? _amber : _blue,
     );
   }
 
@@ -2206,6 +2256,11 @@ class _HomeScreenState extends State<HomeScreen> {
           onCheck: _checkHealth,
         ),
         const SizedBox(height: 12),
+        _ThemePreferenceCard(
+          selectedTheme: _brandTheme,
+          onChanged: (value) => unawaited(_setBrandTheme(value)),
+        ),
+        const SizedBox(height: 12),
         _SideloadStatusPanel(
           managedProviderActive: _managedProviderActive,
           onOpenRelease: () => _openUrl(_releaseUrl, 'GitHub Release'),
@@ -2684,6 +2739,152 @@ class _RuntimePermissionBanner extends StatelessWidget {
                 : const Icon(Icons.refresh_outlined, size: 18),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ThemePreferenceCard extends StatelessWidget {
+  const _ThemePreferenceCard({
+    required this.selectedTheme,
+    required this.onChanged,
+  });
+
+  final String selectedTheme;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = selectedTheme == 'claudeYellow' ? 'claudeYellow' : 'codexBlue';
+    return _SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: _blue.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _line),
+                ),
+                child: const Icon(Icons.palette_outlined, color: _blue, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '视觉主题',
+                      style: TextStyle(
+                        color: _text,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      'Codex Blue 默认适合构建，Claude Yellow 适合阅读和复盘。',
+                      style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _ThemeChoiceChip(
+                id: 'codexBlue',
+                label: 'Codex Blue',
+                colors: const [Color(0xFF2555FF), Color(0xFF16B9C7)],
+                selected: selected == 'codexBlue',
+                onTap: onChanged,
+              ),
+              _ThemeChoiceChip(
+                id: 'claudeYellow',
+                label: 'Claude Yellow',
+                colors: const [Color(0xFFD97706), Color(0xFFFFB86B)],
+                selected: selected == 'claudeYellow',
+                onTap: onChanged,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ThemeChoiceChip extends StatelessWidget {
+  const _ThemeChoiceChip({
+    required this.id,
+    required this.label,
+    required this.colors,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String id;
+  final String label;
+  final List<Color> colors;
+  final bool selected;
+  final ValueChanged<String> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = colors.first;
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => onTap(id),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? primary.withOpacity(0.10) : _panel,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: selected ? primary.withOpacity(0.55) : _line),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(colors: colors),
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: primary.withOpacity(0.22),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 9),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? primary : _text,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            if (selected) ...[
+              const SizedBox(width: 7),
+              Icon(Icons.check_circle, color: primary, size: 16),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -11149,7 +11350,11 @@ class _AgentTraceRow extends StatelessWidget {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: color.withOpacity(0.42)),
                     ),
-                    child: Icon(icon, color: color, size: 16),
+                    child: _AgentTraceAvatar(
+                      assetPath: step.avatarAsset,
+                      fallbackIcon: icon,
+                      color: color,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -11202,6 +11407,39 @@ class _AgentTraceRow extends StatelessWidget {
               Icon(Icons.chevron_right, color: color.withOpacity(0.8), size: 18),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+}
+
+class _AgentTraceAvatar extends StatelessWidget {
+  const _AgentTraceAvatar({
+    required this.assetPath,
+    required this.fallbackIcon,
+    required this.color,
+  });
+
+  final String? assetPath;
+  final IconData fallbackIcon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final path = assetPath;
+    if (path == null || path.isEmpty) {
+      return Icon(fallbackIcon, color: color, size: 16);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(3),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: SvgPicture.asset(
+          path,
+          fit: BoxFit.contain,
+          placeholderBuilder: (_) => Icon(fallbackIcon, color: color, size: 16),
         ),
       ),
     );

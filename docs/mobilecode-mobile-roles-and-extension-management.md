@@ -22,7 +22,7 @@ When MobileCode later supports role-routed or multi-agent execution, show progre
 
 - Each role card shows avatar, role name, assigned step, status, and a short progress meter.
 - Cards are evidence-backed: a role appears only when that role owns a real action or review gate.
-- The first version should reuse static local avatar assets from `D:\study\code\0ai\产品\14-personal_knowledgebase\svg`, especially `claude-pets-svg` and `portrait-assets`.
+- The first visible polish already reuses copied local avatar assets under `mobile_agent/assets/role_avatars/`, sourced from `D:\study\code\0ai\产品\14-personal_knowledgebase\svg`.
 - SVG/animated avatars are visual identity only; execution state must still come from task IDs, step status, logs, and review results.
 - Keep this deferred until the single-agent trace, result card, GitHub Pages publish flow, and release QA are stable.
 

@@ -26,6 +26,8 @@ enum AppTheme {
   midnightForest,
   cyberSunset,
   monochromeGeek,
+  claudeYellow,
+  codexBlue,
 }
 
 /// Per-theme personality: human-readable labels, descriptions,
@@ -43,6 +45,10 @@ extension AppThemeMetadata on AppTheme {
         return 'Cyber Sunset';
       case AppTheme.monochromeGeek:
         return 'Monochrome Geek';
+      case AppTheme.claudeYellow:
+        return 'Claude Yellow';
+      case AppTheme.codexBlue:
+        return 'Codex Blue';
     }
   }
 
@@ -58,6 +64,10 @@ extension AppThemeMetadata on AppTheme {
         return 'Neon-soaked sunset on a distant cyberpunk horizon.';
       case AppTheme.monochromeGeek:
         return 'Distraction-free monochrome for the focused developer.';
+      case AppTheme.claudeYellow:
+        return 'Warm Claude-style amber for calm reading, planning, and review.';
+      case AppTheme.codexBlue:
+        return 'Clean Codex-style blue for focused builds, previews, and release work.';
     }
   }
 
@@ -73,6 +83,10 @@ extension AppThemeMetadata on AppTheme {
         return '🌇';
       case AppTheme.monochromeGeek:
         return '🖥️';
+      case AppTheme.claudeYellow:
+        return '☀️';
+      case AppTheme.codexBlue:
+        return '🔷';
     }
   }
 
@@ -89,6 +103,10 @@ extension AppThemeMetadata on AppTheme {
         return const Color(0xFFFF7B54);
       case AppTheme.monochromeGeek:
         return const Color(0xFFFFFFFF);
+      case AppTheme.claudeYellow:
+        return const Color(0xFFD97706);
+      case AppTheme.codexBlue:
+        return const Color(0xFF2555FF);
     }
   }
 
@@ -105,6 +123,10 @@ extension AppThemeMetadata on AppTheme {
         return const Color(0xFF9B59B6);
       case AppTheme.monochromeGeek:
         return const Color(0xFF888888);
+      case AppTheme.claudeYellow:
+        return const Color(0xFFFFB86B);
+      case AppTheme.codexBlue:
+        return const Color(0xFF16B9C7);
     }
   }
 }
@@ -221,6 +243,50 @@ class _MonochromeGeekColors {
   static const Color warning = Color(0xFFFFBB33);
   static const Color success = Color(0xFF33CC33);
   static const Color glass = Color(0x10FFFFFF);
+}
+
+/// Warm Claude-inspired palette for reading, planning, and review surfaces.
+class _ClaudeYellowColors {
+  static const Color bgPrimary = Color(0xFF19110A);
+  static const Color bgSecondary = Color(0xFF24170C);
+  static const Color bgTertiary = Color(0xFF33200F);
+  static const Color primary = Color(0xFFD97706);
+  static const Color primaryLight = Color(0xFFFFB86B);
+  static const Color primaryDark = Color(0xFF9A4D00);
+  static const Color accent = Color(0xFFEF925B);
+  static const Color accentLight = Color(0xFFFFC18C);
+  static const Color accentDark = Color(0xFFB85F2D);
+  static const Color textPrimary = Color(0xFFFFF7ED);
+  static const Color textSecondary = Color(0xFFE9C9A7);
+  static const Color textMuted = Color(0xFFA9825B);
+  static const Color surface = Color(0xFF24170C);
+  static const Color surfaceLight = Color(0xFF3A250F);
+  static const Color error = Color(0xFFFF5C6C);
+  static const Color warning = Color(0xFFFFB020);
+  static const Color success = Color(0xFF48C774);
+  static const Color glass = Color(0x18FFB86B);
+}
+
+/// Crisp Codex-inspired blue palette for build, preview, and release work.
+class _CodexBlueColors {
+  static const Color bgPrimary = Color(0xFF071326);
+  static const Color bgSecondary = Color(0xFF0B1B33);
+  static const Color bgTertiary = Color(0xFF102544);
+  static const Color primary = Color(0xFF2555FF);
+  static const Color primaryLight = Color(0xFF6EA8FF);
+  static const Color primaryDark = Color(0xFF1536B8);
+  static const Color accent = Color(0xFF16B9C7);
+  static const Color accentLight = Color(0xFF6BE4EE);
+  static const Color accentDark = Color(0xFF0E7F8A);
+  static const Color textPrimary = Color(0xFFF4F8FF);
+  static const Color textSecondary = Color(0xFFB4C8E8);
+  static const Color textMuted = Color(0xFF7187A8);
+  static const Color surface = Color(0xFF0B1B33);
+  static const Color surfaceLight = Color(0xFF122A4D);
+  static const Color error = Color(0xFFFF5C7A);
+  static const Color warning = Color(0xFFFFC857);
+  static const Color success = Color(0xFF22C55E);
+  static const Color glass = Color(0x182555FF);
 }
 
 // ============================================================
@@ -879,6 +945,62 @@ class MobileThemeFactory {
           microDuration: const Duration(milliseconds: 150),
           microCurve: Curves.easeOut,
         );
+
+      case AppTheme.claudeYellow:
+        return _ThemeBuilder.build(
+          id: id,
+          name: 'Claude Yellow',
+          bgPrimary: _ClaudeYellowColors.bgPrimary,
+          bgSecondary: _ClaudeYellowColors.bgSecondary,
+          bgTertiary: _ClaudeYellowColors.bgTertiary,
+          primary: _ClaudeYellowColors.primary,
+          primaryLight: _ClaudeYellowColors.primaryLight,
+          primaryDark: _ClaudeYellowColors.primaryDark,
+          accent: _ClaudeYellowColors.accent,
+          accentLight: _ClaudeYellowColors.accentLight,
+          accentDark: _ClaudeYellowColors.accentDark,
+          textPrimary: _ClaudeYellowColors.textPrimary,
+          textSecondary: _ClaudeYellowColors.textSecondary,
+          textMuted: _ClaudeYellowColors.textMuted,
+          surface: _ClaudeYellowColors.surface,
+          surfaceLight: _ClaudeYellowColors.surfaceLight,
+          error: _ClaudeYellowColors.error,
+          warning: _ClaudeYellowColors.warning,
+          success: _ClaudeYellowColors.success,
+          glassBase: _ClaudeYellowColors.glass,
+          transitionDuration: const Duration(milliseconds: 420),
+          transitionCurve: Curves.easeInOutCubic,
+          microDuration: const Duration(milliseconds: 180),
+          microCurve: Curves.easeOutQuart,
+        );
+
+      case AppTheme.codexBlue:
+        return _ThemeBuilder.build(
+          id: id,
+          name: 'Codex Blue',
+          bgPrimary: _CodexBlueColors.bgPrimary,
+          bgSecondary: _CodexBlueColors.bgSecondary,
+          bgTertiary: _CodexBlueColors.bgTertiary,
+          primary: _CodexBlueColors.primary,
+          primaryLight: _CodexBlueColors.primaryLight,
+          primaryDark: _CodexBlueColors.primaryDark,
+          accent: _CodexBlueColors.accent,
+          accentLight: _CodexBlueColors.accentLight,
+          accentDark: _CodexBlueColors.accentDark,
+          textPrimary: _CodexBlueColors.textPrimary,
+          textSecondary: _CodexBlueColors.textSecondary,
+          textMuted: _CodexBlueColors.textMuted,
+          surface: _CodexBlueColors.surface,
+          surfaceLight: _CodexBlueColors.surfaceLight,
+          error: _CodexBlueColors.error,
+          warning: _CodexBlueColors.warning,
+          success: _CodexBlueColors.success,
+          glassBase: _CodexBlueColors.glass,
+          transitionDuration: const Duration(milliseconds: 380),
+          transitionCurve: Curves.easeInOutCubic,
+          microDuration: const Duration(milliseconds: 160),
+          microCurve: Curves.easeOutQuart,
+        );
     }
   }
 }
@@ -1209,6 +1331,28 @@ extension SyntaxColors on MobileTheme {
           'type': const Color(0xFFCCCCCC),
           'variable': const Color(0xFFFFFFFF),
           'operator': const Color(0xFF999999),
+        };
+      case AppTheme.claudeYellow:
+        return {
+          'keyword': const Color(0xFFFFB86B),
+          'string': const Color(0xFFEF925B),
+          'comment': const Color(0xFFA9825B),
+          'number': const Color(0xFFFFC857),
+          'function': const Color(0xFFD97706),
+          'type': const Color(0xFFFFC18C),
+          'variable': const Color(0xFFFFF7ED),
+          'operator': const Color(0xFFFFB86B),
+        };
+      case AppTheme.codexBlue:
+        return {
+          'keyword': const Color(0xFF6EA8FF),
+          'string': const Color(0xFF16B9C7),
+          'comment': const Color(0xFF7187A8),
+          'number': const Color(0xFFFFC857),
+          'function': const Color(0xFF2555FF),
+          'type': const Color(0xFF6BE4EE),
+          'variable': const Color(0xFFF4F8FF),
+          'operator': const Color(0xFF6EA8FF),
         };
     }
   }

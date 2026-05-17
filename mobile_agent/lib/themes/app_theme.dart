@@ -17,6 +17,15 @@ class AppTheme {
   static const Color auroraBlue = Color(0xFF2555FF);
   static const Color auroraCyan = Color(0xFF16B9C7);
   static const Color auroraViolet = Color(0xFF7557E8);
+  static const Color claudeBackground = Color(0xFFFFFAF3);
+  static const Color claudeSurface = Color(0xFFFFFFFF);
+  static const Color claudeSurfaceSoft = Color(0xFFFFF1DD);
+  static const Color claudeBorder = Color(0xFFEEDCC6);
+  static const Color claudeText = Color(0xFF1B130A);
+  static const Color claudeTextMuted = Color(0xFF755C43);
+  static const Color claudeTextFaint = Color(0xFFA48767);
+  static const Color claudeAmber = Color(0xFFD97706);
+  static const Color claudeCoral = Color(0xFFEF925B);
 
   static const Color deepSpace = Color(0xFF030508);
   static const Color surfaceDark = Color(0xFF0A0E1A);
@@ -257,6 +266,118 @@ class AppTheme {
           textStyle: const TextStyle(color: Colors.white, fontSize: 12),
         ),
       );
+
+  static ThemeData get codexBlueLightTheme => auroraLightTheme;
+
+  static ThemeData get claudeYellowLightTheme {
+    final base = auroraLightTheme;
+    return base.copyWith(
+      scaffoldBackgroundColor: claudeBackground,
+      colorScheme: const ColorScheme.light(
+        primary: claudeAmber,
+        onPrimary: Colors.white,
+        secondary: claudeCoral,
+        onSecondary: Colors.white,
+        tertiary: auroraBlue,
+        surface: claudeSurface,
+        surfaceContainerHighest: claudeSurfaceSoft,
+        error: error,
+        onError: Colors.white,
+        onSurface: claudeText,
+        outline: claudeBorder,
+      ),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: claudeSurface,
+        foregroundColor: claudeText,
+        elevation: 0,
+        centerTitle: true,
+        systemOverlayStyle: SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: claudeSurface,
+        indicatorColor: claudeAmber.withOpacity(0.12),
+        labelTextStyle: WidgetStateProperty.resolveWith(
+          (states) => TextStyle(
+            color: states.contains(WidgetState.selected) ? claudeAmber : claudeTextFaint,
+            fontSize: 11,
+            fontWeight: states.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w600,
+          ),
+        ),
+        iconTheme: WidgetStateProperty.resolveWith(
+          (states) => IconThemeData(
+            color: states.contains(WidgetState.selected) ? claudeAmber : claudeTextFaint,
+          ),
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: claudeAmber,
+        foregroundColor: Colors.white,
+        elevation: 2,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: claudeSurfaceSoft,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: claudeBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: claudeBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: claudeAmber, width: 1.6),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        labelStyle: const TextStyle(color: claudeTextMuted),
+        hintStyle: const TextStyle(color: claudeTextFaint),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: claudeAmber,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: claudeAmber,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(foregroundColor: claudeAmber),
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: claudeSurface,
+        selectedColor: claudeAmber.withOpacity(0.12),
+        labelStyle: const TextStyle(
+          color: claudeTextMuted,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(999),
+          side: const BorderSide(color: claudeBorder),
+        ),
+      ),
+      dividerTheme: const DividerThemeData(color: claudeBorder, thickness: 1, space: 1),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: claudeText,
+        contentTextStyle: const TextStyle(color: Colors.white),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
 
   // ── Dark Theme ───────────────────────────────────────────────
   static ThemeData get darkTheme => ThemeData(

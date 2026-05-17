@@ -21,26 +21,25 @@ Required GitHub Actions before publishing:
 - `.github/workflows/android-apk.yml`
   - Builds the release APK.
   - Uses stable signing when release keystore secrets are configured.
-  - Uploads `mobilecode-v0.1.1.apk` as an artifact and GitHub Release asset.
+  - Uploads `mobilecode-v0.1.2.apk` as an artifact and GitHub Release asset.
 
-## v0.1.1 Release Evidence
+## v0.1.2 Release Evidence
 
 Release candidate:
 
 - Branch: `v011-streaming-fix`
-- App/build content commit: `4b12d54`
-- Later commits on this branch only record QA evidence unless noted otherwise.
-- Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.1`
-- APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.1/mobilecode-v0.1.1.apk`
-- APK SHA256: `b0421825e4e589d3a30217cbc76ad0ebe053b61a6de0eb05fc4500c9091cb98a`
+- App/build content commit: pending latest PR branch update.
+- Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.2`
+- APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.2/mobilecode-v0.1.2.apk`
+- APK SHA256: pending latest Android APK build.
 
 Required CI evidence:
 
 | Gate | Run | Result |
 | --- | --- | --- |
-| Mobile Runtime CI | `https://github.com/Harzva/mobilecode/actions/runs/25967178068` | Passed |
-| Build Android APK | `https://github.com/Harzva/mobilecode/actions/runs/25967178065` | Passed |
-| Android App Smoke Test | `https://github.com/Harzva/mobilecode/actions/runs/25966860458` | Passed |
+| Mobile Runtime CI | pending latest PR branch update | Pending |
+| Build Android APK | pending latest PR branch update | Pending |
+| Android App Smoke Test | pending latest PR branch update | Pending |
 
 Validated coverage:
 
@@ -53,7 +52,7 @@ Validated coverage:
 Manual device coverage:
 
 - Local `adb devices` showed no online device on 2026-05-17, so physical-device validation remains a manual release step.
-- Before promoting `v0.1.1` beyond prerelease, verify provider/base URL settings, normal chat streaming, agent pause, new chat creation, recent chat turn counts, and Runtime Diagnostics on a real Android device.
+- Before promoting `v0.1.2` beyond prerelease, verify provider/base URL settings, normal chat streaming, agent pause, new chat creation, recent chat turn counts, generated artifact browser preview, trace-step detail sheets, and Runtime Diagnostics on a real Android device.
 
 ## Android Release Signing
 
@@ -128,7 +127,7 @@ Expected result:
 After downloading the release APK:
 
 ```bash
-adb install -r mobilecode-v0.1.1.apk
+adb install -r mobilecode-v0.1.2.apk
 adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
 adb shell pidof com.mobilecode.mobile_agent
 adb logcat -d -t 1200 > android-logcat.txt

@@ -9,6 +9,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import 'agent_dashboard_screen.dart';
+import 'mcp_manager_screen.dart';
+import 'memory_manager_screen.dart';
+import 'skill_manager_screen.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
@@ -385,6 +389,8 @@ class _AgentTraceStep {
     required this.title,
     required this.detail,
     required this.icon,
+    this.toolName,
+    this.details = const {},
     this.state = _AgentStepState.queued,
     this.finishedAt,
   });
@@ -392,6 +398,8 @@ class _AgentTraceStep {
   final String title;
   final String detail;
   final IconData icon;
+  final String? toolName;
+  final Map<String, String> details;
   final _AgentStepState state;
   final DateTime? finishedAt;
 
@@ -399,6 +407,8 @@ class _AgentTraceStep {
     String? title,
     String? detail,
     IconData? icon,
+    String? toolName,
+    Map<String, String>? details,
     _AgentStepState? state,
     DateTime? finishedAt,
   }) {
@@ -406,6 +416,8 @@ class _AgentTraceStep {
       title: title ?? this.title,
       detail: detail ?? this.detail,
       icon: icon ?? this.icon,
+      toolName: toolName ?? this.toolName,
+      details: details ?? this.details,
       state: state ?? this.state,
       finishedAt: finishedAt ?? this.finishedAt,
     );
@@ -670,6 +682,13 @@ String? _artifactPathFromContent(String content) {
 
 bool _isWebArtifactPath(String path) => path.toLowerCase().endsWith('.html') || path.toLowerCase().endsWith('.htm');
 
+bool _isAgentResultTurn(String content) {
+  final trimmed = content.trimLeft();
+  return trimmed.startsWith('Agent run completed via provider:') ||
+      trimmed.startsWith('Agent run failed while using') ||
+      trimmed.startsWith('Agent run stopped before writing');
+}
+
 bool _promptTargets2048(String prompt) {
   final lower = prompt.toLowerCase();
   return lower.contains('2048') || prompt.contains('二零四八');
@@ -702,33 +721,108 @@ String _agentToolNameForPrompt(String prompt) {
   return 'mobile_tools.core_probe';
 }
 
+String _agentToolSelectionReason(String tool, String prompt) {
+  if (tool == 'mobile_coding.generate_snake_preview') {
+    return 'The prompt asks for a snake game, so MobileCode selects the local web-game generator and expects one self-contained HTML file.';
+  }
+  if (tool == 'mobile_coding.generate_2048_preview') {
+    return 'The prompt asks for a 2048 game, so MobileCode selects the local web-game generator and expects one self-contained HTML file.';
+  }
+  if (tool == 'mobile_coding.generate_web_preview') {
+    return 'The prompt targets a web/html/preview workflow, so MobileCode selects the local WebView preview artifact path.';
+  }
+  if (tool == 'mobile_coding.build_diary_demo') {
+    return 'The prompt asks for an app feature plan, so MobileCode keeps the result as a generated Markdown implementation note.';
+  }
+  if (tool == 'mobile_tools.termux_probe') {
+    return 'The prompt mentions shell/Termux/runtime, so MobileCode selects a runtime diagnostics tool instead of pretending full shell execution happened.';
+  }
+  if (tool == 'github.connectivity_test') {
+    return 'The prompt mentions GitHub/repo checks, so MobileCode selects the GitHub connectivity tester path.';
+  }
+  return 'No specialized coding target was detected, so MobileCode selects the core mobile tool probe.';
+}
+
+String _agentToolExpectedOutput(String tool) {
+  if (tool.startsWith('mobile_coding.generate_')) {
+    return 'Provider response -> complete HTML code -> app writes index.html -> WebView preview and browser-open actions become available.';
+  }
+  if (tool == 'mobile_coding.build_diary_demo') {
+    return 'Provider response -> app writes agent_response.md so the user can inspect or copy the implementation plan.';
+  }
+  if (tool == 'mobile_tools.termux_probe') {
+    return 'Runtime status explanation only. It should not claim that a shell command ran unless the runtime provider reports it.';
+  }
+  if (tool == 'github.connectivity_test') {
+    return 'Provider-guided connectivity checklist and failure explanation for token/repository access.';
+  }
+  return 'Provider response is reported in chat without writing a project artifact.';
+}
+
+Map<String, String> _agentToolCallDetails(String tool, String prompt) {
+  final writesFile = tool.startsWith('mobile_coding.');
+  final isWeb = tool == 'mobile_coding.generate_snake_preview' ||
+      tool == 'mobile_coding.generate_2048_preview' ||
+      tool == 'mobile_coding.generate_web_preview';
+  return {
+    'Tool': tool,
+    'Why selected': _agentToolSelectionReason(tool, prompt),
+    'Input': _compact(prompt, limit: 420),
+    'Expected output': _agentToolExpectedOutput(tool),
+    'Write target': writesFile
+        ? (isWeb ? 'App documents/mobilecode_projects/<tool_slug>/index.html' : 'App documents/mobilecode_projects/<tool_slug>/agent_response.md')
+        : 'No file write for this tool selection step.',
+    'Safety boundary': 'No arbitrary shell is executed during tool selection. File writes stay inside MobileCode app documents.',
+  };
+}
+
 List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
   final tool = _agentToolNameForPrompt(prompt);
   return [
-    const _AgentTraceStep(
+    _AgentTraceStep(
       title: 'Parse instruction',
       detail: 'Read the user request and decide whether this is chat, coding, preview, GitHub, or device tooling.',
       icon: Icons.manage_search_outlined,
+      details: {
+        'Input': _compact(prompt, limit: 420),
+        'Decision rule': 'Classify the prompt before any provider call or file write.',
+      },
     ),
     _AgentTraceStep(
       title: 'Select tool',
-      detail: tool,
+      detail: '$tool · tap for call details',
       icon: Icons.psychology_alt_outlined,
+      toolName: tool,
+      details: _agentToolCallDetails(tool, prompt),
     ),
-    const _AgentTraceStep(
+    _AgentTraceStep(
       title: 'Call model provider',
       detail: 'Send the prompt and chat context to the configured provider. If this fails, the agent must stop.',
       icon: Icons.cloud_sync_outlined,
+      details: {
+        'Provider call': 'Uses the configured Base URL, model, API flavor, and current chat context.',
+        'Streaming': 'Tokens are streamed into this trace while the provider responds.',
+        'Cancel behavior': 'Pause closes the current provider request and prevents additional file writes.',
+      },
     ),
-    const _AgentTraceStep(
+    _AgentTraceStep(
       title: 'Write generated artifact',
       detail: 'Persist model-generated code only after the provider returns real output.',
       icon: Icons.account_tree_outlined,
+      details: {
+        'Write rule': 'Generated files are written only after provider text is received and validated.',
+        'Web validation': 'HTML tools require a complete HTML document before index.html is replaced.',
+        'Atomicity': 'Web artifacts use a temp file followed by rename to avoid partial index.html output.',
+      },
     ),
-    const _AgentTraceStep(
+    _AgentTraceStep(
       title: 'Report in chat',
       detail: 'Keep the process, generated content, paths, and failure state in this conversation.',
       icon: Icons.play_arrow_outlined,
+      details: {
+        'Chat report': 'The final assistant message includes the selected tool, saved path, and generated content.',
+        'Artifact actions': 'Generated artifacts can be opened as code, previewed in WebView, copied, or opened in a browser when HTML.',
+      },
     ),
   ];
 }
@@ -1504,6 +1598,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  void _openManagementScreen(Widget screen, String label) {
+    _addLog('Opened $label', 'Management surface', Icons.dashboard_customize_outlined, _cyan);
+    Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+  }
+
   void _openGitHubTestSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -1964,6 +2063,14 @@ class _HomeScreenState extends State<HomeScreen> {
           message: _runtimeMessage,
           onCheck: () => _checkRuntime(),
           onOpenRuntime: _openTermuxSheet,
+        ),
+        const SizedBox(height: 12),
+        _ManagementSurfacePanel(
+          onOpenAgent: () => _openManagementScreen(const AgentDashboardScreen(), 'Agent Manager'),
+          onOpenSkills: () => _openManagementScreen(const SkillManagerScreen(), 'Skill Manager'),
+          onOpenMcp: () => _openManagementScreen(const McpManagerScreen(), 'MCP Manager'),
+          onOpenMemory: () => _openManagementScreen(const MemoryManagerScreen(), 'Memory Manager'),
+          onOpenHooks: () => _showMessage('Hook Manager is planned for the extension management pass.'),
         ),
         const SizedBox(height: 12),
         for (final tool in tools) ...[
@@ -3801,6 +3908,27 @@ class _WebPreviewSheet extends StatefulWidget {
   State<_WebPreviewSheet> createState() => _WebPreviewSheetState();
 }
 
+Future<bool> _launchHtmlInExternalBrowser(String html) async {
+  final dataUri = Uri.dataFromString(html, mimeType: 'text/html', encoding: utf8);
+  if (await launchUrl(dataUri, mode: LaunchMode.externalApplication)) {
+    return true;
+  }
+  return launchUrl(dataUri, mode: LaunchMode.platformDefault);
+}
+
+Future<void> _openHtmlInBrowser(BuildContext context, String html) async {
+  try {
+    final opened = await _launchHtmlInExternalBrowser(html);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(opened ? 'Opened generated HTML in browser.' : 'No browser accepted this generated HTML.')),
+    );
+  } on Object catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_compact(error.toString(), limit: 140))));
+  }
+}
+
 class _WebPreviewSheetState extends State<_WebPreviewSheet> {
   late final WebViewController _controller;
   int _progress = 0;
@@ -3874,8 +4002,30 @@ class _WebPreviewSheetState extends State<_WebPreviewSheet> {
             ),
           ],
           const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _RuntimeActionButton(
+                icon: Icons.open_in_browser_outlined,
+                label: '浏览器打开',
+                disabled: false,
+                onTap: () => unawaited(_openHtmlInBrowser(context, widget.html)),
+              ),
+              _RuntimeActionButton(
+                icon: Icons.copy_outlined,
+                label: 'Copy HTML',
+                disabled: false,
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: widget.html));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generated HTML copied.')));
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           const Text(
-            'Preview mode runs generated HTML inside the app through Android WebView. JavaScript is enabled for local demos.',
+            'Preview mode runs generated HTML inside the app through Android WebView. Browser open uses a generated data URL because Android app-private files are not directly readable by other apps.',
             style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
           ),
         ],
@@ -7495,7 +7645,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         'Saved generated artifact: `$generatedPath`',
         'Phone file path: `$generatedPath`',
         'Code file: `$generatedPath`',
-        if (isWebArtifact) 'Web preview: tap the “网页预览” button below to open it inside MobileCode WebView.',
+        if (isWebArtifact) 'Web preview: tap “网页预览” for in-app WebView or “浏览器打开” for the external browser.',
       ],
       '',
       modelAnswer.trim(),
@@ -7787,6 +7937,23 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
   }
 
+  Future<void> _openArtifactInBrowser(String path) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) {
+        _showMessage('Generated web file was not found on this phone.');
+        return;
+      }
+      final html = await file.readAsString();
+      final opened = await _launchHtmlInExternalBrowser(html);
+      if (!mounted) return;
+      _showMessage(opened ? 'Opened generated HTML in browser.' : 'No browser accepted this generated HTML.');
+    } on Object catch (error) {
+      if (!mounted) return;
+      _showMessage(_compact(error.toString(), limit: 140));
+    }
+  }
+
   Future<void> _copyArtifactPath(String path) async {
     await Clipboard.setData(ClipboardData(text: path));
     if (!mounted) return;
@@ -7794,6 +7961,11 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   Widget _buildConversationBody(_ChatSession? active) {
+    final allTurns = active?.turns ?? const <_ChatTurn>[];
+    final agentResultTurn = _agentTrace.isNotEmpty && allTurns.isNotEmpty && _isAgentResultTurn(allTurns.last.content)
+        ? allTurns.last
+        : null;
+    final conversationTurns = agentResultTurn == null ? allTurns : allTurns.sublist(0, allTurns.length - 1);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -7801,18 +7973,19 @@ class _ChatPanelState extends State<_ChatPanel> {
           padding: const EdgeInsets.all(12),
           child: ConstrainedBox(
             constraints: const BoxConstraints(minHeight: 220),
-            child: active == null || active.turns.isEmpty
+            child: active == null || conversationTurns.isEmpty
                 ? const _EmptyChatState()
                 : Column(
                     children: [
-                      for (var index = 0; index < active.turns.length; index++) ...[
+                      for (var index = 0; index < conversationTurns.length; index++) ...[
                         _ChatBubble(
-                          turn: active.turns[index],
+                          turn: conversationTurns[index],
                           onOpenArtifactCode: _openArtifactCode,
                           onPreviewArtifact: _previewArtifact,
+                          onOpenArtifactBrowser: _openArtifactInBrowser,
                           onCopyArtifactPath: _copyArtifactPath,
                         ),
-                        if (index != active.turns.length - 1) const SizedBox(height: 10),
+                        if (index != conversationTurns.length - 1) const SizedBox(height: 10),
                       ],
                     ],
                   ),
@@ -7823,6 +7996,34 @@ class _ChatPanelState extends State<_ChatPanel> {
           _AgentTracePanel(
             title: _agentRunning ? 'Agent is writing code' : 'Last agent process',
             steps: _agentTrace,
+          ),
+        ],
+        if (agentResultTurn != null) ...[
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.flag_outlined, color: _mint, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text('Agent result', style: TextStyle(color: _text, fontSize: 15, fontWeight: FontWeight.w900)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _ChatBubble(
+                  turn: agentResultTurn,
+                  onOpenArtifactCode: _openArtifactCode,
+                  onPreviewArtifact: _previewArtifact,
+                  onOpenArtifactBrowser: _openArtifactInBrowser,
+                  onCopyArtifactPath: _copyArtifactPath,
+                ),
+              ],
+            ),
           ),
         ],
       ],
@@ -8015,12 +8216,14 @@ class _ChatBubble extends StatelessWidget {
     required this.turn,
     required this.onOpenArtifactCode,
     required this.onPreviewArtifact,
+    required this.onOpenArtifactBrowser,
     required this.onCopyArtifactPath,
   });
 
   final _ChatTurn turn;
   final ValueChanged<String> onOpenArtifactCode;
   final ValueChanged<String> onPreviewArtifact;
+  final ValueChanged<String> onOpenArtifactBrowser;
   final ValueChanged<String> onCopyArtifactPath;
 
   @override
@@ -8057,6 +8260,7 @@ class _ChatBubble extends StatelessWidget {
                 path: artifactPath,
                 onOpenCode: () => onOpenArtifactCode(artifactPath),
                 onPreview: _isWebArtifactPath(artifactPath) ? () => onPreviewArtifact(artifactPath) : null,
+                onOpenBrowser: _isWebArtifactPath(artifactPath) ? () => onOpenArtifactBrowser(artifactPath) : null,
                 onCopyPath: () => onCopyArtifactPath(artifactPath),
               ),
             ],
@@ -8072,12 +8276,14 @@ class _GeneratedArtifactActions extends StatelessWidget {
     required this.path,
     required this.onOpenCode,
     required this.onPreview,
+    required this.onOpenBrowser,
     required this.onCopyPath,
   });
 
   final String path;
   final VoidCallback onOpenCode;
   final VoidCallback? onPreview;
+  final VoidCallback? onOpenBrowser;
   final VoidCallback onCopyPath;
 
   @override
@@ -8111,6 +8317,7 @@ class _GeneratedArtifactActions extends StatelessWidget {
             children: [
               _MiniArtifactButton(icon: Icons.code_outlined, label: '代码文件', onTap: onOpenCode, color: _blue),
               if (onPreview != null) _MiniArtifactButton(icon: Icons.preview_outlined, label: '网页预览', onTap: onPreview!, color: _violet),
+              if (onOpenBrowser != null) _MiniArtifactButton(icon: Icons.open_in_browser_outlined, label: '浏览器打开', onTap: onOpenBrowser!, color: _amber),
               _MiniArtifactButton(icon: Icons.copy_outlined, label: '复制路径', onTap: onCopyPath, color: _cyan),
             ],
           ),
@@ -8269,6 +8476,55 @@ class _PromptLaunchPanel extends StatelessWidget {
                 color: _amber,
                 onTap: () => onPrompt('帮我做一个最小日记 App：本地保存、列表、编辑、删除和空状态都要能在 APK 里体验。'),
               ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ManagementSurfacePanel extends StatelessWidget {
+  const _ManagementSurfacePanel({
+    required this.onOpenAgent,
+    required this.onOpenSkills,
+    required this.onOpenMcp,
+    required this.onOpenMemory,
+    required this.onOpenHooks,
+  });
+
+  final VoidCallback onOpenAgent;
+  final VoidCallback onOpenSkills;
+  final VoidCallback onOpenMcp;
+  final VoidCallback onOpenMemory;
+  final VoidCallback onOpenHooks;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.dashboard_customize_outlined, color: _cyan, size: 19),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('MobileCode control center', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MiniArtifactButton(icon: Icons.psychology_alt_outlined, label: 'Agent', onTap: onOpenAgent, color: _violet),
+              _MiniArtifactButton(icon: Icons.extension_outlined, label: 'Skills', onTap: onOpenSkills, color: _mint),
+              _MiniArtifactButton(icon: Icons.account_tree_outlined, label: 'MCP', onTap: onOpenMcp, color: _cyan),
+              _MiniArtifactButton(icon: Icons.memory_outlined, label: 'Memory', onTap: onOpenMemory, color: _amber),
+              _MiniArtifactButton(icon: Icons.link_outlined, label: 'Hooks', onTap: onOpenHooks, color: _faint),
             ],
           ),
         ],
@@ -9409,63 +9665,154 @@ class _AgentTraceRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = _agentStepColor(step.state);
     final icon = _agentStepStatusIcon(step.state);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Column(
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: color.withOpacity(0.42)),
-              ),
-              child: Icon(icon, color: color, size: 16),
-            ),
-            if (!isLast)
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => _showAgentTraceStepDetails(context, step),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            children: [
               Container(
-                width: 1,
-                height: 42,
-                margin: const EdgeInsets.symmetric(vertical: 4),
-                color: _line,
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: color.withOpacity(0.42)),
+                ),
+                child: Icon(icon, color: color, size: 16),
               ),
-          ],
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(step.icon, color: color, size: 15),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        step.title,
-                        style: const TextStyle(color: _text, fontWeight: FontWeight.w800, fontSize: 13),
+              if (!isLast)
+                Container(
+                  width: 1,
+                  height: 42,
+                  margin: const EdgeInsets.symmetric(vertical: 4),
+                  color: _line,
+                ),
+            ],
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(step.icon, color: color, size: 15),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          step.title,
+                          style: const TextStyle(color: _text, fontWeight: FontWeight.w800, fontSize: 13),
+                        ),
                       ),
-                    ),
-                    Text(
-                      _agentStepLabel(step.state),
-                      style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 11),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  step.detail,
-                  style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
-                ),
-              ],
+                      if (step.details.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.info_outline, color: color, size: 14),
+                      ],
+                      const SizedBox(width: 6),
+                      Text(
+                        _agentStepLabel(step.state),
+                        style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    step.detail,
+                    style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+void _showAgentTraceStepDetails(BuildContext context, _AgentTraceStep step) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: _panel,
+    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+    builder: (context) => _AgentTraceDetailSheet(step: step),
+  );
+}
+
+class _AgentTraceDetailSheet extends StatelessWidget {
+  const _AgentTraceDetailSheet({required this.step});
+
+  final _AgentTraceStep step;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _agentStepColor(step.state);
+    final details = step.details.isEmpty
+        ? {
+            'Detail': step.detail,
+          }
+        : step.details;
+    return _SheetScaffold(
+      icon: step.icon,
+      title: step.title,
+      subtitle: step.toolName ?? _agentStepLabel(step.state),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _Pill(label: _agentStepLabel(step.state), icon: _agentStepStatusIcon(step.state), color: color),
+              if (step.finishedAt != null) _Pill(label: _clockLabel(step.finishedAt!), icon: Icons.schedule_outlined, color: _cyan),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: SelectableText(
+              step.detail,
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.38),
+            ),
+          ),
+          const SizedBox(height: 12),
+          for (final entry in details.entries) ...[
+            _TraceDetailItem(label: entry.key, value: entry.value),
+            const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TraceDetailItem extends StatelessWidget {
+  const _TraceDetailItem({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          SelectableText(
+            value,
+            style: const TextStyle(color: _muted, fontSize: 12, height: 1.38),
+          ),
+        ],
+      ),
     );
   }
 }

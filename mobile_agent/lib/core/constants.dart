@@ -22,7 +22,7 @@ class AppStrings {
   static const String appSloganAlt = '让手机发烫的除了游戏，还有你写的每一行代码';
   static const String deepDiveName = '深潜模式';
   static const String deepDiveSlogan = 'AI深潜，代码浮现';
-  static const String appVersion = '0.1.1';
+  static const String appVersion = '0.1.2';
 
   // Navigation labels
   static const String navHome = 'Home';

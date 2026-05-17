@@ -2756,7 +2756,7 @@ class _ThemePreferenceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final selected = selectedTheme == 'claudeYellow' ? 'claudeYellow' : 'codexBlue';
-    return _SurfaceCard(
+    return _Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

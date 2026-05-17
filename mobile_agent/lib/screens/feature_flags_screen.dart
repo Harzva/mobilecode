@@ -562,6 +562,8 @@ class _FeatureFlagsScreenState extends State<FeatureFlagsScreen> {
         return Icons.terminal;
       case 'github_pages_deploy':
         return Icons.rocket_launch;
+      case 'lark_cli':
+        return Icons.business_center;
       case 'team_collaboration':
         return Icons.groups;
       case 'offline_ai':
@@ -658,6 +660,8 @@ class FeatureQuickToggle extends StatelessWidget {
         return Icons.terminal;
       case 'github_pages_deploy':
         return Icons.rocket_launch;
+      case 'lark_cli':
+        return Icons.business_center;
       case 'team_collaboration':
         return Icons.groups;
       case 'offline_ai':

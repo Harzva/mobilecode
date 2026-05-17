@@ -269,6 +269,13 @@ class FeatureFlagsService extends ChangeNotifier {
       category: FeatureCategory.advanced,
       defaultValue: true,
     ),
+    'lark_cli': FeatureFlag(
+      id: 'lark_cli',
+      name: 'Lark CLI 连接器',
+      description: '通过 RuntimeProvider 受控检测 lark-cli、授权状态和后续飞书/Lark结构化动作',
+      category: FeatureCategory.advanced,
+      defaultValue: false,
+    ),
     'advanced_ai_settings': FeatureFlag(
       id: 'advanced_ai_settings',
       name: '高级AI设置',

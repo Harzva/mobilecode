@@ -61,9 +61,13 @@ jobs:
             lib/services/mobile_code_helper_provider.dart \
             lib/services/external_termux_provider.dart \
             lib/services/build_orchestrator.dart \
+            lib/services/github_pages_service.dart \
+            lib/services/html_publish_readiness_service.dart \
             lib/widgets/flutter_web_preview.dart \
             test/services/runtime_manager_test.dart \
             test/services/mobile_code_helper_provider_test.dart \
+            test/services/github_pages_service_test.dart \
+            test/services/html_publish_readiness_service_test.dart \
             --no-fatal-infos \
             --no-fatal-warnings
 
@@ -72,7 +76,9 @@ jobs:
         run: |
           flutter test \
             test/services/runtime_manager_test.dart \
-            test/services/mobile_code_helper_provider_test.dart
+            test/services/mobile_code_helper_provider_test.dart \
+            test/services/github_pages_service_test.dart \
+            test/services/html_publish_readiness_service_test.dart
 
   helper-daemon-smoke:
     runs-on: ubuntu-latest

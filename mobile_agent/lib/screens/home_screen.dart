@@ -4,16 +4,23 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'agent_dashboard_screen.dart';
+import 'github_screen.dart';
 import 'hook_registry_screen.dart';
 import 'memory_manager_screen.dart';
 import 'mcp_manager_screen.dart';
 import 'skill_manager_screen.dart';
+import '../services/feature_flags_service.dart';
+import '../services/github_deep_service.dart';
+import '../services/github_pages_service.dart';
+import '../services/html_publish_readiness_service.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
@@ -60,6 +67,7 @@ enum _ModuleAction {
   terminal,
   deepDive,
   build,
+  larkCli,
   inspect,
 }
 
@@ -680,6 +688,52 @@ String? _artifactPathFromContent(String content) {
     if (path != null && path.isNotEmpty) return path;
   }
   return null;
+}
+
+String? _backtickedValue(String content, String label) {
+  final escaped = RegExp.escape(label);
+  return RegExp('$escaped:\\s*`([^`]+)`').firstMatch(content)?.group(1)?.trim();
+}
+
+class _PublishedArtifactInfo {
+  const _PublishedArtifactInfo({
+    required this.pagesUrl,
+    required this.repositoryUrl,
+    required this.artifactPath,
+    required this.publishedAt,
+    this.readinessSummary,
+    this.screenshotPath,
+  });
+
+  final String pagesUrl;
+  final String repositoryUrl;
+  final String artifactPath;
+  final DateTime publishedAt;
+  final String? readinessSummary;
+  final String? screenshotPath;
+
+  String get title {
+    final file = artifactPath.split(RegExp(r'[\\/]')).last;
+    if (file.isEmpty) return 'Published web page';
+    return file;
+  }
+}
+
+_PublishedArtifactInfo? _pagesDeploymentFromContent(String content, DateTime fallbackTime) {
+  if (!content.contains('GitHub Pages deployment completed.')) return null;
+  final pagesUrl = _backtickedValue(content, 'Web URL');
+  final repositoryUrl = _backtickedValue(content, 'Repository');
+  final artifactPath = _backtickedValue(content, 'Code file');
+  if (pagesUrl == null || repositoryUrl == null || artifactPath == null) return null;
+  final publishedAtRaw = _backtickedValue(content, 'Published at');
+  return _PublishedArtifactInfo(
+    pagesUrl: pagesUrl,
+    repositoryUrl: repositoryUrl,
+    artifactPath: artifactPath,
+    publishedAt: DateTime.tryParse(publishedAtRaw ?? '') ?? fallbackTime,
+    readinessSummary: _backtickedValue(content, 'Pre-publish check'),
+    screenshotPath: _backtickedValue(content, 'Screenshot'),
+  );
 }
 
 bool _isWebArtifactPath(String path) => path.toLowerCase().endsWith('.html') || path.toLowerCase().endsWith('.htm');
@@ -1509,6 +1563,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case _ModuleAction.build:
         _openBuildSheet();
         break;
+      case _ModuleAction.larkCli:
+        _openLarkCliSheet();
+        break;
       case _ModuleAction.inspect:
         if (capability != null) _openCapabilitySheet(capability);
         break;
@@ -1787,6 +1844,22 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openLarkCliSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => _LarkCliDiagnosticsSheet(
+        runtimeManager: _runtimeManager,
+        onOpenDocs: () => _openUrl('https://github.com/larksuite/cli', 'Lark CLI docs'),
+        onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
+      ),
+    );
+  }
+
   void _addLog(String title, String detail, IconData icon, Color color) {
     setState(() {
       _activity.insert(
@@ -2032,6 +2105,13 @@ class _HomeScreenState extends State<HomeScreen> {
         subtitle: '填写 GitHub token 后验证 /user、repo、Pages 能否联通。',
         color: _violet,
         action: _ModuleAction.githubTest,
+      ),
+      _CommandShortcut(
+        icon: Icons.business_center_outlined,
+        title: 'Lark CLI connector',
+        subtitle: '受控检测 lark-cli、auth status 和推荐登录命令。',
+        color: _lime,
+        action: _ModuleAction.larkCli,
       ),
       _CommandShortcut(
         icon: Icons.rocket_launch_outlined,
@@ -3931,6 +4011,941 @@ Future<void> _openHtmlInBrowser(BuildContext context, String html) async {
   }
 }
 
+Future<void> _openExternalUrl(BuildContext context, String url, {String label = 'URL'}) async {
+  try {
+    final uri = Uri.parse(url);
+    var opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened) {
+      opened = await launchUrl(uri, mode: LaunchMode.platformDefault);
+    }
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(opened ? 'Opened $label.' : 'Could not open $label.')),
+    );
+  } on Object catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_compact(error.toString(), limit: 140))));
+  }
+}
+
+Future<void> _copyText(BuildContext context, String value, String label) async {
+  await Clipboard.setData(ClipboardData(text: value));
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label copied.')));
+}
+
+class _PagesDeploymentSummary {
+  const _PagesDeploymentSummary({
+    required this.url,
+    required this.repositoryUrl,
+    required this.artifactPath,
+    required this.publishedAt,
+    required this.readinessSummary,
+  });
+
+  final String url;
+  final String repositoryUrl;
+  final String artifactPath;
+  final DateTime publishedAt;
+  final String readinessSummary;
+}
+
+class _GitHubPagesArtifactDeploySheet extends StatefulWidget {
+  const _GitHubPagesArtifactDeploySheet({
+    required this.artifactPath,
+    required this.onDeployed,
+  });
+
+  final String artifactPath;
+  final Future<void> Function(_PagesDeploymentSummary summary) onDeployed;
+
+  @override
+  State<_GitHubPagesArtifactDeploySheet> createState() => _GitHubPagesArtifactDeploySheetState();
+}
+
+class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDeploySheet> {
+  late final GitHubDeepService _github;
+  late final TextEditingController _repoController;
+  late final TextEditingController _descriptionController;
+  final _readinessService = HtmlPublishReadinessService();
+  GitHubPagesService? _pages;
+  bool _loading = true;
+  bool _checkingReadiness = true;
+  bool _deploying = false;
+  bool _privateRepo = false;
+  bool _tokenValid = false;
+  bool _allowRemoteAssets = false;
+  bool _warningsAccepted = false;
+  String? _user;
+  String? _error;
+  HtmlPublishReadinessReport? _readiness;
+  DeploymentResult? _result;
+  final List<String> _steps = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _github = GitHubDeepService();
+    final projectName = p.basename(p.dirname(widget.artifactPath));
+    _repoController = TextEditingController(text: _sanitizeRepoName('mobilecode-$projectName'));
+    _descriptionController = TextEditingController(
+      text: 'Generated and deployed from MobileCode mobile AI workspace.',
+    );
+    unawaited(_runReadinessCheck());
+    unawaited(_initialize());
+  }
+
+  @override
+  void dispose() {
+    _repoController.dispose();
+    _descriptionController.dispose();
+    _pages?.dispose();
+    _github.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initialize() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await _github.initialize();
+      var valid = false;
+      if (_github.isAuthenticated) {
+        valid = await _github.validateToken();
+      }
+      if (!mounted) return;
+      _pages ??= GitHubPagesService(_github);
+      setState(() {
+        _tokenValid = valid;
+        _user = _github.currentUser;
+        _loading = false;
+        if (!valid && _github.isAuthenticated) {
+          _error = 'GitHub session expired or token scope is insufficient. Please sign in again.';
+        }
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _tokenValid = false;
+        _error = _compact(error.toString(), limit: 160);
+      });
+    }
+  }
+
+  Future<void> _runReadinessCheck() async {
+    setState(() {
+      _checkingReadiness = true;
+      _warningsAccepted = false;
+    });
+    try {
+      final report = await _readinessService.checkFile(
+        widget.artifactPath,
+        allowRemoteAssets: _allowRemoteAssets,
+      );
+      if (!mounted) return;
+      setState(() {
+        _readiness = report;
+        _checkingReadiness = false;
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _readiness = HtmlPublishReadinessReport(
+          sourcePath: widget.artifactPath,
+          checkedAt: DateTime.now(),
+          allowRemoteAssets: _allowRemoteAssets,
+          issues: [
+            HtmlPublishIssue(
+              code: 'check_failed',
+              title: 'Pre-publish check failed',
+              detail: _compact(error.toString(), limit: 180),
+              severity: HtmlPublishIssueSeverity.blocking,
+            ),
+          ],
+        );
+        _checkingReadiness = false;
+      });
+    }
+  }
+
+  Future<void> _openGitHubLogin() async {
+    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const GitHubScreen()));
+    if (!mounted) return;
+    await _initialize();
+  }
+
+  Future<void> _deploy() async {
+    if (_deploying) return;
+    final readiness = _readiness;
+    if (_checkingReadiness) {
+      setState(() => _error = 'Wait for the HTML pre-publish check to finish.');
+      return;
+    }
+    if (readiness == null) {
+      await _runReadinessCheck();
+      if (!mounted) return;
+      if (_readiness == null) {
+        setState(() => _error = 'HTML pre-publish check did not complete.');
+        return;
+      }
+    }
+    if (_readiness?.blocked == true) {
+      setState(() => _error = 'Fix the blocking HTML publish checks before deploying.');
+      return;
+    }
+    if (_readiness?.hasWarnings == true && !_warningsAccepted) {
+      final confirmed = await _confirmWarningPublish(_readiness!);
+      if (!confirmed) return;
+      _warningsAccepted = true;
+    }
+
+    final repoName = _sanitizeRepoName(_repoController.text);
+    if (repoName.isEmpty) {
+      setState(() => _error = 'Repository name is required.');
+      return;
+    }
+    final owner = _github.currentUser;
+    final pages = _pages;
+    if (!_tokenValid || owner == null || pages == null) {
+      setState(() => _error = 'Please sign in to GitHub before deploying.');
+      return;
+    }
+
+    final artifact = File(widget.artifactPath);
+    if (!await artifact.exists()) {
+      setState(() => _error = 'Generated HTML file was not found on this phone.');
+      return;
+    }
+
+    setState(() {
+      _deploying = true;
+      _error = null;
+      _result = null;
+      _steps
+        ..clear()
+        ..add('Using GitHub account: $owner')
+        ..add('Project folder: ${p.dirname(widget.artifactPath)}')
+        ..add('Target repo: $owner/$repoName');
+    });
+
+    try {
+      var createdRepo = false;
+      try {
+        await _github.getRepoDetails(owner, repoName);
+        _addStep('Repository exists. Reusing $owner/$repoName.');
+      } on GitHubDeepException catch (error) {
+        if (error.statusCode != 404) rethrow;
+        _addStep('Repository does not exist. Creating $owner/$repoName...');
+        await _github.createRepo(
+          repoName,
+          description: _descriptionController.text.trim(),
+          isPrivate: _privateRepo,
+          autoInit: true,
+        );
+        createdRepo = true;
+        _addStep('Repository created.');
+      }
+
+      _addStep('Uploading static HTML to gh-pages...');
+      final result = await pages.deploy(
+        localProjectPath: p.dirname(widget.artifactPath),
+        owner: owner,
+        repo: repoName,
+        buildType: BuildType.staticHtml,
+      );
+
+      if (!mounted) return;
+      setState(() {
+        _result = result;
+        _deploying = false;
+        _steps
+          ..addAll(result.steps)
+          ..add(createdRepo ? 'New repository flow completed.' : 'Existing repository flow completed.');
+        if (!result.success) {
+          final lines = <String>[
+            result.error ?? 'GitHub Pages deployment failed.',
+            if (result.recoveryHint != null) result.recoveryHint!,
+            if (result.statusCode != null) 'HTTP ${result.statusCode} - ${result.failureKind ?? 'github_api_failed'}',
+          ];
+          _error = lines.join('\n');
+        }
+      });
+
+      if (result.success && result.url != null) {
+        await widget.onDeployed(_PagesDeploymentSummary(
+          url: result.url!,
+          repositoryUrl: 'https://github.com/$owner/$repoName',
+          artifactPath: widget.artifactPath,
+          publishedAt: result.deployedAt,
+          readinessSummary: (_readiness ?? readiness)?.toAgentSummary(maxIssues: 3) ?? 'HTML publish readiness: not checked',
+        ));
+      }
+    } on Object catch (error) {
+      final failure = GitHubPagesService.describeFailure(error);
+      if (!mounted) return;
+      setState(() {
+        _deploying = false;
+        _error = '${failure.message}\n${failure.recoveryHint}';
+      });
+    }
+  }
+
+  Future<bool> _confirmWarningPublish(HtmlPublishReadinessReport report) async {
+    final warnings = report.warningIssues.take(5).toList(growable: false);
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Publish with warnings?'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('The HTML can be published, but MobileCode found quality warnings:'),
+                  const SizedBox(height: 12),
+                  for (final issue in warnings)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text('${issue.title}\n${issue.detail}', style: const TextStyle(fontSize: 13, height: 1.3)),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Review first')),
+              FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Publish anyway')),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  void _addStep(String step) {
+    if (!mounted) return;
+    setState(() => _steps.add(step));
+  }
+
+  Future<void> _openUrl(String url) async {
+    await _openExternalUrl(context, url, label: 'GitHub Pages URL');
+  }
+
+  Future<void> _copy(String value, String label) async {
+    await _copyText(context, value, label);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final projectDir = p.dirname(widget.artifactPath);
+    final repoName = _sanitizeRepoName(_repoController.text);
+    final owner = _user;
+    final previewUrl = owner == null || repoName.isEmpty ? null : 'https://$owner.github.io/$repoName';
+    final repositoryUrl = owner == null || repoName.isEmpty ? null : 'https://github.com/$owner/$repoName';
+
+    return _SheetScaffold(
+      icon: Icons.rocket_launch_outlined,
+      title: 'Deploy to GitHub Pages',
+      subtitle: widget.artifactPath,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _PublishReadinessPanel(
+            report: _readiness,
+            checking: _checkingReadiness,
+            allowRemoteAssets: _allowRemoteAssets,
+            onAllowRemoteAssetsChanged: (value) {
+              setState(() => _allowRemoteAssets = value);
+              unawaited(_runReadinessCheck());
+            },
+            onRefresh: () => unawaited(_runReadinessCheck()),
+          ),
+          const SizedBox(height: 12),
+          if (_loading)
+            const _Panel(
+              padding: EdgeInsets.all(18),
+              child: Row(
+                children: [
+                  SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 10),
+                  Expanded(child: Text('Checking GitHub session...', style: TextStyle(color: _muted))),
+                ],
+              ),
+            )
+          else if (!_tokenValid)
+            _Panel(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.lock_outline, color: _amber, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text('GitHub login required', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Sign in once with a GitHub token that can create repositories, write contents, and configure Pages. Fine-grained tokens need Repository contents read/write, Pages read/write, and Administration read/write. Classic PATs need the repo scope.',
+                    style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                  ),
+                  const SizedBox(height: 12),
+                  _RuntimeActionButton(
+                    icon: Icons.login_outlined,
+                    label: 'Open GitHub login',
+                    disabled: false,
+                    onTap: () => unawaited(_openGitHubLogin()),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            _Panel(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.verified_outlined, color: _mint, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Ready as ${owner ?? 'GitHub user'}',
+                          style: const TextStyle(color: _text, fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _repoController,
+                    enabled: !_deploying,
+                    decoration: const InputDecoration(
+                      labelText: 'Repository name',
+                      prefixIcon: Icon(Icons.source_outlined),
+                    ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _descriptionController,
+                    enabled: !_deploying,
+                    minLines: 1,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: 'Repository description',
+                      prefixIcon: Icon(Icons.notes_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile.adaptive(
+                    value: _privateRepo,
+                    onChanged: _deploying ? null : (value) => setState(() => _privateRepo = value),
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Private repository', style: TextStyle(color: _text, fontSize: 13, fontWeight: FontWeight.w800)),
+                    subtitle: const Text(
+                      'Public is recommended for Pages demos. Private Pages may depend on your GitHub plan.',
+                      style: TextStyle(color: _muted, fontSize: 11, height: 1.25),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  _DeployPreviewLine(label: 'Local folder', value: projectDir),
+                  if (repositoryUrl != null) _DeployPreviewLine(label: 'Repository', value: repositoryUrl),
+                  if (previewUrl != null) _DeployPreviewLine(label: 'Pages URL', value: previewUrl),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: _deploying || _checkingReadiness || (_readiness?.blocked ?? false) ? null : _deploy,
+                      icon: _deploying
+                          ? const SizedBox(width: 17, height: 17, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.rocket_launch_outlined),
+                      label: Text(_deploying ? 'Deploying...' : 'One-click deploy'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (_steps.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _Panel(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Deployment log', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  for (final step in _steps.take(14))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 5),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.check_circle_outline, color: _mint, size: 14),
+                          const SizedBox(width: 6),
+                          Expanded(child: Text(step, style: const TextStyle(color: _muted, fontSize: 11, height: 1.25))),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            _Panel(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.error_outline, color: _rose, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_error!, style: const TextStyle(color: _rose, fontSize: 12, height: 1.35))),
+                ],
+              ),
+            ),
+          ],
+          if (_result?.success == true && _result?.url != null) ...[
+            const SizedBox(height: 12),
+            _PublishedWorkCard(
+              info: _PublishedArtifactInfo(
+                pagesUrl: _result!.url!,
+                repositoryUrl: repositoryUrl ?? '',
+                artifactPath: widget.artifactPath,
+                publishedAt: _result!.deployedAt,
+                readinessSummary: _readiness?.toAgentSummary(maxIssues: 3),
+              ),
+              onOpenPages: () => unawaited(_openUrl(_result!.url!)),
+              onOpenRepo: repositoryUrl == null ? null : () => unawaited(_openUrl(repositoryUrl)),
+              onOpenCode: null,
+              onRedeploy: _deploying ? null : () => unawaited(_deploy()),
+              onCopyPath: () => unawaited(_copy(widget.artifactPath, 'Phone file path')),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DeployPreviewLine extends StatelessWidget {
+  const _DeployPreviewLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 86,
+            child: Text(label, style: const TextStyle(color: _faint, fontSize: 11)),
+          ),
+          Expanded(
+            child: SelectableText(
+              value,
+              maxLines: 2,
+              style: const TextStyle(color: _muted, fontSize: 11, height: 1.25),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PublishReadinessPanel extends StatelessWidget {
+  const _PublishReadinessPanel({
+    required this.report,
+    required this.checking,
+    required this.allowRemoteAssets,
+    required this.onAllowRemoteAssetsChanged,
+    required this.onRefresh,
+  });
+
+  final HtmlPublishReadinessReport? report;
+  final bool checking;
+  final bool allowRemoteAssets;
+  final ValueChanged<bool> onAllowRemoteAssetsChanged;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = checking ? 'Checking' : (report?.statusLabel ?? 'Not checked');
+    final blocked = report?.blocked ?? false;
+    final warnings = report?.hasWarnings ?? false;
+    final color = checking
+        ? _cyan
+        : blocked
+            ? _rose
+            : warnings
+                ? _amber
+                : _mint;
+    final icon = checking
+        ? Icons.sync_outlined
+        : blocked
+            ? Icons.block_outlined
+            : warnings
+                ? Icons.warning_amber_outlined
+                : Icons.verified_outlined;
+    final issues = report?.issues.take(5).toList(growable: false) ?? const <HtmlPublishIssue>[];
+
+    return _Panel(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Pre-publish check - $status',
+                  style: const TextStyle(color: _text, fontWeight: FontWeight.w900),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: checking ? null : onRefresh,
+                icon: const Icon(Icons.refresh_outlined, size: 16),
+                label: const Text('Recheck'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            checking
+                ? 'Checking title, viewport, private paths, external assets, mobile touch targets, and basic accessibility.'
+                : report == null
+                    ? 'Run the readiness check before publishing.'
+                    : '${report!.blockingIssues.length} blockers, ${report!.warningIssues.length} warnings. Blockers must be fixed before GitHub Pages deploy.',
+            style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile.adaptive(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            value: allowRemoteAssets,
+            onChanged: checking ? null : onAllowRemoteAssetsChanged,
+            title: const Text('Allow remote assets', style: TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w800)),
+            subtitle: const Text(
+              'Keep this off for fully self-contained HTML. Turn on only when external links/CDNs are intentional.',
+              style: TextStyle(color: _muted, fontSize: 11, height: 1.25),
+            ),
+          ),
+          if (issues.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            for (final issue in issues)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      issue.severity == HtmlPublishIssueSeverity.blocking ? Icons.error_outline : Icons.info_outline,
+                      color: issue.severity == HtmlPublishIssueSeverity.blocking ? _rose : _amber,
+                      size: 15,
+                    ),
+                    const SizedBox(width: 7),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(issue.title, style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 2),
+                          Text(issue.detail, style: const TextStyle(color: _muted, fontSize: 11, height: 1.25)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            if ((report?.issues.length ?? 0) > issues.length)
+              Text('${report!.issues.length - issues.length} more checks hidden.', style: const TextStyle(color: _faint, fontSize: 11)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PublishedWorkCard extends StatelessWidget {
+  const _PublishedWorkCard({
+    required this.info,
+    required this.onOpenPages,
+    required this.onOpenRepo,
+    required this.onOpenCode,
+    required this.onRedeploy,
+    required this.onCopyPath,
+  });
+
+  final _PublishedArtifactInfo info;
+  final VoidCallback onOpenPages;
+  final VoidCallback? onOpenRepo;
+  final VoidCallback? onOpenCode;
+  final VoidCallback? onRedeploy;
+  final VoidCallback onCopyPath;
+
+  @override
+  Widget build(BuildContext context) {
+    final shareText = [
+      'MobileCode published web page',
+      info.pagesUrl,
+      if (info.repositoryUrl.isNotEmpty) info.repositoryUrl,
+    ].join('\n');
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _mint.withOpacity(0.32)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: _mint.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _mint.withOpacity(0.22)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: _panel,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _mint.withOpacity(0.24)),
+                  ),
+                  child: const Icon(Icons.public_outlined, color: _mint, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('作品已发布', style: const TextStyle(color: _text, fontSize: 15, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${info.title} - ${_timeLabel(info.publishedAt)}',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          _PublishedPagesThumbnail(url: info.pagesUrl),
+          const SizedBox(height: 10),
+          _PublishedLinkLine(label: 'Pages', value: info.pagesUrl, color: _blue),
+          if (info.repositoryUrl.isNotEmpty) _PublishedLinkLine(label: 'Repo', value: info.repositoryUrl, color: _violet),
+          _PublishedLinkLine(label: 'File', value: info.artifactPath, color: _muted),
+          if (info.readinessSummary != null && info.readinessSummary!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(info.readinessSummary!, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _faint, fontSize: 11, height: 1.3)),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MiniArtifactButton(icon: Icons.open_in_browser_outlined, label: '打开网页', onTap: onOpenPages, color: _blue),
+              if (onOpenRepo != null) _MiniArtifactButton(icon: Icons.code_outlined, label: '打开仓库', onTap: onOpenRepo!, color: _violet),
+              if (onOpenCode != null) _MiniArtifactButton(icon: Icons.description_outlined, label: '代码文件', onTap: onOpenCode!, color: _mint),
+              if (onRedeploy != null) _MiniArtifactButton(icon: Icons.rocket_launch_outlined, label: '重新发布', onTap: onRedeploy!, color: _amber),
+              _MiniArtifactButton(
+                icon: Icons.ios_share_outlined,
+                label: '复制分享',
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: info.pagesUrl));
+                  await Share.share(shareText, subject: 'MobileCode published page');
+                },
+                color: _cyan,
+              ),
+              _MiniArtifactButton(icon: Icons.folder_copy_outlined, label: '复制路径', onTap: onCopyPath, color: _faint),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PublishedPagesThumbnail extends StatefulWidget {
+  const _PublishedPagesThumbnail({required this.url});
+
+  final String url;
+
+  @override
+  State<_PublishedPagesThumbnail> createState() => _PublishedPagesThumbnailState();
+}
+
+class _PublishedPagesThumbnailState extends State<_PublishedPagesThumbnail> {
+  late final WebViewController _controller;
+  int _progress = 0;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setBackgroundColor(_panel)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onProgress: (progress) {
+            if (mounted) setState(() => _progress = progress);
+          },
+          onWebResourceError: (error) {
+            if (mounted) {
+              setState(() => _error = _compact(error.description, limit: 90));
+            }
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse(widget.url));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        height: 138,
+        decoration: BoxDecoration(
+          color: _panelSoft,
+          border: Border.all(color: _line),
+        ),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: Transform.scale(
+                scale: 0.72,
+                alignment: Alignment.topLeft,
+                child: SizedBox(
+                  width: MediaQuery.of(context).size.width / 0.72,
+                  height: 190,
+                  child: IgnorePointer(child: WebViewWidget(controller: _controller)),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: AnimatedOpacity(
+                opacity: _progress < 100 ? 1 : 0,
+                duration: const Duration(milliseconds: 180),
+                child: LinearProgressIndicator(value: _progress / 100),
+              ),
+            ),
+            if (_error != null)
+              Positioned.fill(
+                child: Container(
+                  color: _panelSoft,
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.image_not_supported_outlined, color: _amber),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Live Pages thumbnail unavailable: $_error',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: _muted, fontSize: 11, height: 1.25),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            Positioned(
+              left: 8,
+              bottom: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: _text.withOpacity(0.72),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text('GitHub Pages live preview', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PublishedLinkLine extends StatelessWidget {
+  const _PublishedLinkLine({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 44, child: Text(label, style: const TextStyle(color: _faint, fontSize: 11, fontWeight: FontWeight.w800))),
+          Expanded(
+            child: SelectableText(
+              value,
+              maxLines: 2,
+              style: TextStyle(color: color, fontSize: 11, height: 1.25),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _sanitizeRepoName(String value) {
+  final normalized = value
+      .trim()
+      .replaceAll(RegExp(r'\s+'), '-')
+      .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '-')
+      .replaceAll(RegExp(r'-{2,}'), '-')
+      .replaceAll(RegExp(r'^[-.]+|[-.]+$'), '');
+  if (normalized.isEmpty) return 'mobilecode-site';
+  return normalized.length <= 80 ? normalized : normalized.substring(0, 80);
+}
+
 class _WebPreviewSheetState extends State<_WebPreviewSheet> {
   late final WebViewController _controller;
   int _progress = 0;
@@ -4682,7 +5697,9 @@ class _GitHubTestSheetState extends State<_GitHubTestSheet> {
           ..add('${pages.statusCode == 200 ? 'OK' : 'WARN'} pages HTTP ${pages.statusCode}');
         if (user.body.contains('"login"')) _lines.add('Identity response received.');
         if (repoRes.statusCode != 200) _lines.add('Repo test failed: missing token scope or repo access.');
-        if (pages.statusCode == 404) _lines.add('Pages not enabled yet or token cannot read Pages settings.');
+        if (pages.statusCode == 403) _lines.add('Pages permission missing: fine-grained tokens need Pages write + Administration write; classic PATs need repo.');
+        if (pages.statusCode == 404) _lines.add('Pages not enabled yet, repo is private/invisible, or token cannot read Pages settings.');
+        if (pages.statusCode == 422) _lines.add('GitHub rejected the Pages settings. Check repo name, branch, and visibility.');
       });
       widget.onLog(
         repoRes.statusCode == 200 ? 'GitHub connected' : 'GitHub test failed',
@@ -4761,6 +5778,301 @@ class _GitHubTestSheetState extends State<_GitHubTestSheet> {
               _lines.join('\n'),
               style: const TextStyle(color: _muted, height: 1.45),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LarkCliDiagnosticsSheet extends StatefulWidget {
+  const _LarkCliDiagnosticsSheet({
+    required this.runtimeManager,
+    required this.onOpenDocs,
+    required this.onLog,
+  });
+
+  final RuntimeManager runtimeManager;
+  final VoidCallback onOpenDocs;
+  final void Function(String title, String detail, IconData icon, Color color) onLog;
+
+  @override
+  State<_LarkCliDiagnosticsSheet> createState() => _LarkCliDiagnosticsSheetState();
+}
+
+class _LarkCliDiagnosticsSheetState extends State<_LarkCliDiagnosticsSheet> {
+  final _query = TextEditingController(text: 'MobileCode');
+  final _title = TextEditingController(text: 'MobileCode draft');
+  final _content = TextEditingController(text: 'Generated from MobileCode. Review before publishing.');
+  final _target = TextEditingController();
+  String _selectedAction = 'docs_search';
+  bool _checking = false;
+  bool _runningAction = false;
+  final List<String> _lines = [
+    'Lark CLI connector is opt-in. MobileCode only runs fixed diagnostic commands through RuntimeProvider.',
+    'Install official larksuite/cli, then run config init and auth login --recommend in your runtime.',
+  ];
+
+  @override
+  void dispose() {
+    _query.dispose();
+    _title.dispose();
+    _content.dispose();
+    _target.dispose();
+    super.dispose();
+  }
+
+  Future<void> _runDiagnostics() async {
+    setState(() {
+      _checking = true;
+      _lines
+        ..clear()
+        ..add('Checking active RuntimeProvider...');
+    });
+
+    try {
+      await widget.runtimeManager.initialize();
+      final capabilities = await widget.runtimeManager.capabilities();
+      if (!capabilities.shell) {
+        _finish(false, 'Active runtime has no shell capability. Start MobileCode Helper or External Termux before using lark-cli.');
+        return;
+      }
+
+      final version = await widget.runtimeManager.execute(
+        'lark-cli --version || lark --version',
+        timeout: const Duration(seconds: 10),
+      );
+      if (!version.success) {
+        _finish(
+          false,
+          'lark-cli is not available in the active runtime.\nInstall: https://github.com/larksuite/cli\nThen run: lark-cli config init && lark-cli auth login --recommend',
+        );
+        return;
+      }
+
+      final auth = await widget.runtimeManager.execute(
+        'lark-cli auth status --output json || lark-cli auth status || lark auth status --output json || lark auth status',
+        timeout: const Duration(seconds: 12),
+      );
+      final authOutput = (auth.stdout.trim().isNotEmpty ? auth.stdout : auth.stderr).trim();
+      _finish(
+        auth.success,
+        [
+          'lark-cli detected: ${(version.stdout.trim().isEmpty ? version.stderr : version.stdout).trim()}',
+          if (authOutput.isNotEmpty) 'auth status: ${_compact(authOutput, limit: 320)}' else 'auth status returned no output.',
+          'Next structured actions will stay opt-in: docs search, task creation, wiki draft, and dry-run message compose.',
+        ].join('\n'),
+      );
+    } on Object catch (error) {
+      _finish(false, _compact(error.toString(), limit: 360));
+    }
+  }
+
+  void _finish(bool ok, String message) {
+    if (!mounted) return;
+    setState(() {
+      _checking = false;
+      _lines
+        ..clear()
+        ..add(message);
+    });
+    widget.onLog(
+      ok ? 'Lark CLI ready' : 'Lark CLI needs setup',
+      _compact(message, limit: 120),
+      ok ? Icons.business_center_outlined : Icons.info_outline,
+      ok ? _mint : _amber,
+    );
+  }
+
+  Future<void> _runStructuredAction() async {
+    final command = _buildStructuredCommand();
+    if (command == null) {
+      setState(() {
+        _lines
+          ..clear()
+          ..add('Fill the required fields before running this structured action.');
+      });
+      return;
+    }
+
+    setState(() {
+      _runningAction = true;
+      _lines
+        ..clear()
+        ..add('Running structured Lark action:')
+        ..add(command);
+    });
+
+    try {
+      final result = await widget.runtimeManager.execute(command, timeout: const Duration(seconds: 30));
+      final output = (result.stdout.trim().isNotEmpty ? result.stdout : result.stderr).trim();
+      if (!mounted) return;
+      setState(() {
+        _runningAction = false;
+        _lines
+          ..clear()
+          ..add(result.success ? 'Structured action completed.' : 'Structured action failed.')
+          ..add('Command: $command')
+          ..add(output.isEmpty ? 'No output returned.' : _compact(output, limit: 1200));
+      });
+      widget.onLog(
+        result.success ? 'Lark action completed' : 'Lark action failed',
+        _compact(output.isEmpty ? command : output, limit: 120),
+        result.success ? Icons.business_center_outlined : Icons.error_outline,
+        result.success ? _mint : _rose,
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _runningAction = false;
+        _lines
+          ..clear()
+          ..add('Structured action failed.')
+          ..add(_compact(error.toString(), limit: 800));
+      });
+    }
+  }
+
+  String? _buildStructuredCommand() {
+    final title = _title.text.trim();
+    final content = _content.text.trim();
+    final query = _query.text.trim();
+    final target = _target.text.trim();
+    return switch (_selectedAction) {
+      'docs_search' when query.isNotEmpty =>
+        'lark-cli docs +search --query ${_quoteCommandArg(query)} --format json || lark-cli drive +search --query ${_quoteCommandArg(query)} --format json',
+      'task_create' when title.isNotEmpty =>
+        'lark-cli task +create --title ${_quoteCommandArg(title)} --notes ${_quoteCommandArg(content)} --dry-run --format json',
+      'wiki_draft' when title.isNotEmpty && content.isNotEmpty =>
+        'lark-cli docs +create --api-version v2 --doc-format markdown --title ${_quoteCommandArg(title)} --content ${_quoteCommandArg('# $title\n\n$content')} --dry-run --format json',
+      'message_dry_run' when target.isNotEmpty && content.isNotEmpty =>
+        'lark-cli im +messages-send --chat-id ${_quoteCommandArg(target)} --text ${_quoteCommandArg(content)} --dry-run --format json',
+      _ => null,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.business_center_outlined,
+      title: 'Lark CLI Connector',
+      subtitle: 'Opt-in first-party connector: diagnostics and auth guidance only in v1.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Panel(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text('Controlled connector boundary', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                SizedBox(height: 8),
+                Text(
+                  'MobileCode does not expose arbitrary Lark shell execution. This connector first checks the official CLI, auth status, and missing setup. Write actions will stay structured and confirm-before-send.',
+                  style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _RuntimeActionButton(
+                icon: Icons.health_and_safety_outlined,
+                label: _checking ? 'Checking' : 'Run diagnostics',
+                disabled: _checking,
+                onTap: _runDiagnostics,
+              ),
+              _RuntimeActionButton(
+                icon: Icons.open_in_browser_outlined,
+                label: 'Official CLI',
+                disabled: false,
+                onTap: widget.onOpenDocs,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Structured actions', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                const Text(
+                  'These are fixed Lark CLI flows. Task, wiki, and message actions default to --dry-run so the user can review before any write.',
+                  style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  value: _selectedAction,
+                  decoration: const InputDecoration(labelText: 'Action', prefixIcon: Icon(Icons.route_outlined)),
+                  items: const [
+                    DropdownMenuItem(value: 'docs_search', child: Text('Document search')),
+                    DropdownMenuItem(value: 'task_create', child: Text('Create task dry-run')),
+                    DropdownMenuItem(value: 'wiki_draft', child: Text('Wiki/doc draft dry-run')),
+                    DropdownMenuItem(value: 'message_dry_run', child: Text('Message dry-run')),
+                  ],
+                  onChanged: _runningAction ? null : (value) => setState(() => _selectedAction = value ?? 'docs_search'),
+                ),
+                const SizedBox(height: 10),
+                if (_selectedAction == 'docs_search')
+                  TextField(
+                    controller: _query,
+                    enabled: !_runningAction,
+                    decoration: const InputDecoration(labelText: 'Search query', prefixIcon: Icon(Icons.search_outlined)),
+                  )
+                else ...[
+                  TextField(
+                    controller: _title,
+                    enabled: !_runningAction,
+                    decoration: const InputDecoration(labelText: 'Title', prefixIcon: Icon(Icons.title_outlined)),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _content,
+                    enabled: !_runningAction,
+                    minLines: 3,
+                    maxLines: 6,
+                    decoration: const InputDecoration(labelText: 'Content', alignLabelWithHint: true, prefixIcon: Icon(Icons.notes_outlined)),
+                  ),
+                  if (_selectedAction == 'message_dry_run') ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _target,
+                      enabled: !_runningAction,
+                      decoration: const InputDecoration(labelText: 'Chat ID', prefixIcon: Icon(Icons.alternate_email_outlined)),
+                    ),
+                  ],
+                ],
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _runningAction ? null : _runStructuredAction,
+                    icon: _runningAction
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.play_arrow_outlined),
+                    label: Text(_runningAction ? 'Running action' : 'Run structured action'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: SelectableText(
+              _lines.join('\n\n'),
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Setup commands inside the active runtime: lark-cli config init, then lark-cli auth login --recommend. MobileCode will show missing scopes before any future write action.',
+            style: TextStyle(color: _faint, fontSize: 11, height: 1.35),
           ),
         ],
       ),
@@ -7643,7 +8955,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         skillContext,
       ],
       if (toolName.startsWith('mobile_coding.generate_'))
-        'For web/html requests, return one complete self-contained HTML document inside a single ```html fenced block. It must be mobile-first, touch-friendly, accessible, visually intentional, and not depend on network assets.',
+        'For web/html requests, return one complete self-contained HTML document inside a single ```html fenced block. It must be mobile-first, touch-friendly, accessible, visually intentional, GitHub Pages deployable, and not depend on network assets. Use relative links only; never reference app-private local paths inside the HTML.',
       if (toolName == 'mobile_coding.build_diary_demo')
         'For the diary app request, return the minimal implementable UI/data model plan and code snippets needed for a local APK diary experience.',
       if (toolName == 'mobile_tools.termux_probe')
@@ -7977,6 +9289,64 @@ class _ChatPanelState extends State<_ChatPanel> {
     _showMessage('Phone file path copied.');
   }
 
+  Future<void> _deployArtifactToGitHubPages(String path) async {
+    try {
+      final flags = FeatureFlagsService();
+      await flags.initialize();
+      if (!await flags.isEnabled('github_pages_deploy')) {
+        _showMessage('GitHub Pages publishing is disabled in feature flags.');
+        return;
+      }
+      final file = File(path);
+      if (!await file.exists()) {
+        _showMessage('Generated web file was not found on this phone.');
+        return;
+      }
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: _panel,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+        builder: (context) => _GitHubPagesArtifactDeploySheet(
+          artifactPath: path,
+          onDeployed: _recordPagesDeployment,
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      _showMessage(_compact(error.toString(), limit: 140));
+    }
+  }
+
+  Future<void> _recordPagesDeployment(_PagesDeploymentSummary summary) async {
+    if (!mounted) return;
+    final active = _activeSession;
+    if (active == null) return;
+    final now = DateTime.now();
+    final turn = _ChatTurn(
+      role: 'assistant',
+      content: [
+        'GitHub Pages deployment completed.',
+        'Web URL: `${summary.url}`',
+        'Repository: `${summary.repositoryUrl}`',
+        'Code file: `${summary.artifactPath}`',
+        'Published at: `${summary.publishedAt.toIso8601String()}`',
+        'Pre-publish check: `${summary.readinessSummary}`',
+        'Screenshot: `pending`',
+      ].join('\n'),
+      time: now,
+    );
+    setState(() {
+      _storeSession(active.copyWith(
+        updatedAt: now,
+        turns: [...active.turns, turn],
+      ));
+    });
+    await _persist();
+    _scrollConversationToEnd();
+  }
+
   Widget _buildConversationBody(_ChatSession? active) {
     final allTurns = active?.turns ?? const <_ChatTurn>[];
     final agentResultTurn = _agentTrace.isNotEmpty && allTurns.isNotEmpty && _isAgentResultTurn(allTurns.last.content)
@@ -8000,6 +9370,7 @@ class _ChatPanelState extends State<_ChatPanel> {
                           onOpenArtifactCode: _openArtifactCode,
                           onPreviewArtifact: _previewArtifact,
                           onOpenArtifactBrowser: _openArtifactInBrowser,
+                          onDeployArtifactPages: _deployArtifactToGitHubPages,
                           onCopyArtifactPath: _copyArtifactPath,
                         ),
                         if (index != conversationTurns.length - 1) const SizedBox(height: 10),
@@ -8037,6 +9408,7 @@ class _ChatPanelState extends State<_ChatPanel> {
                   onOpenArtifactCode: _openArtifactCode,
                   onPreviewArtifact: _previewArtifact,
                   onOpenArtifactBrowser: _openArtifactInBrowser,
+                  onDeployArtifactPages: _deployArtifactToGitHubPages,
                   onCopyArtifactPath: _copyArtifactPath,
                 ),
               ],
@@ -8234,6 +9606,7 @@ class _ChatBubble extends StatelessWidget {
     required this.onOpenArtifactCode,
     required this.onPreviewArtifact,
     required this.onOpenArtifactBrowser,
+    required this.onDeployArtifactPages,
     required this.onCopyArtifactPath,
   });
 
@@ -8241,17 +9614,19 @@ class _ChatBubble extends StatelessWidget {
   final ValueChanged<String> onOpenArtifactCode;
   final ValueChanged<String> onPreviewArtifact;
   final ValueChanged<String> onOpenArtifactBrowser;
+  final ValueChanged<String> onDeployArtifactPages;
   final ValueChanged<String> onCopyArtifactPath;
 
   @override
   Widget build(BuildContext context) {
     final isUser = turn.role == 'user';
     final color = isUser ? _cyan : _mint;
+    final published = isUser ? null : _pagesDeploymentFromContent(turn.content, turn.time);
     final artifactPath = isUser ? null : _artifactPathFromContent(turn.content);
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.76),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * (isUser ? 0.78 : 0.92)),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: isUser ? _blue.withOpacity(0.11) : _mint.withOpacity(0.10),
@@ -8267,17 +9642,28 @@ class _ChatBubble extends StatelessWidget {
               style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 6),
-            SelectableText(
-              turn.content,
-              style: const TextStyle(color: _text, height: 1.42, fontSize: 13),
-            ),
-            if (artifactPath != null) ...[
+            if (published != null)
+              _PublishedWorkCard(
+                info: published,
+                onOpenPages: () => unawaited(_openExternalUrl(context, published.pagesUrl, label: 'Pages URL')),
+                onOpenRepo: published.repositoryUrl.isEmpty ? null : () => unawaited(_openExternalUrl(context, published.repositoryUrl, label: 'repository')),
+                onOpenCode: () => onOpenArtifactCode(published.artifactPath),
+                onRedeploy: () => onDeployArtifactPages(published.artifactPath),
+                onCopyPath: () => onCopyArtifactPath(published.artifactPath),
+              )
+            else
+              SelectableText(
+                turn.content,
+                style: const TextStyle(color: _text, height: 1.42, fontSize: 13),
+              ),
+            if (published == null && artifactPath != null) ...[
               const SizedBox(height: 10),
               _GeneratedArtifactActions(
                 path: artifactPath,
                 onOpenCode: () => onOpenArtifactCode(artifactPath),
                 onPreview: _isWebArtifactPath(artifactPath) ? () => onPreviewArtifact(artifactPath) : null,
                 onOpenBrowser: _isWebArtifactPath(artifactPath) ? () => onOpenArtifactBrowser(artifactPath) : null,
+                onDeployPages: _isWebArtifactPath(artifactPath) ? () => onDeployArtifactPages(artifactPath) : null,
                 onCopyPath: () => onCopyArtifactPath(artifactPath),
               ),
             ],
@@ -8294,6 +9680,7 @@ class _GeneratedArtifactActions extends StatelessWidget {
     required this.onOpenCode,
     required this.onPreview,
     required this.onOpenBrowser,
+    required this.onDeployPages,
     required this.onCopyPath,
   });
 
@@ -8301,6 +9688,7 @@ class _GeneratedArtifactActions extends StatelessWidget {
   final VoidCallback onOpenCode;
   final VoidCallback? onPreview;
   final VoidCallback? onOpenBrowser;
+  final VoidCallback? onDeployPages;
   final VoidCallback onCopyPath;
 
   @override
@@ -8326,7 +9714,31 @@ class _GeneratedArtifactActions extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 6),
-          SelectableText(path, style: const TextStyle(color: _muted, fontSize: 11, height: 1.25)),
+          SelectableText(
+            path,
+            maxLines: 2,
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.25),
+          ),
+          if (onDeployPages != null) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: onDeployPages,
+                icon: const Icon(Icons.rocket_launch_outlined, size: 17),
+                label: const Text(
+                  '发布 GitHub Pages',
+                  style: TextStyle(fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,

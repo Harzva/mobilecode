@@ -255,70 +255,120 @@ class SkillManagerService extends ChangeNotifier {
   // GitHub Skill Discovery
   // ═══════════════════════════════════════════════════════════════════════
 
-  /// Search GitHub for repositories tagged as mobilecode skills.
+  /// Search GitHub for public skill/MCP repositories.
   ///
-  /// Uses GitHub search API to find repositories with topic "mobilecode-skill".
+  /// This borrows the GitMarket-style discovery pattern (query + category-like
+  /// provenance + stars/recency ranking) but adapts it to skills instead of APKs.
+  /// Results are GitHub metadata only; installation still requires manifest
+  /// preview through [importFromGitHub].
   Future<List<Skill>> searchGitHubSkills({String? query, String language = ''}) async {
     _ensureInitialized();
 
     try {
-      final q = StringBuffer('topic:mobilecode-skill');
-      if (query != null && query.isNotEmpty) {
-        q.write(' $query');
-      }
-      if (language.isNotEmpty) {
-        q.write(' language:$language');
-      }
+      final queries = _githubSkillDiscoveryQueries(query: query, language: language);
+      final byId = <String, Skill>{};
 
-      final uri = Uri.https(
-        'api.github.com',
-        '/search/repositories',
-        {'q': q.toString(), 'sort': 'stars', 'order': 'desc', 'per_page': '30'},
-      );
-
-      debugPrint('[SkillManager] Searching GitHub: ${uri.toString()}');
-      final response = await http.get(uri);
-
-      if (response.statusCode != 200) {
-        throw SkillException('GitHub API error: ${response.statusCode}');
-      }
-
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final items = data['items'] as List<dynamic>? ?? [];
-
-      final results = <Skill>[];
-      for (final item in items) {
-        final repo = item as Map<String, dynamic>;
-        final fullName = repo['full_name'] as String? ?? '';
-        final stars = repo['stargazers_count'] as int? ?? 0;
-
-        // Construct a Skill from GitHub repo metadata
-        // (Detailed skill.yaml will be fetched during import)
-        final skill = Skill(
-          id: fullName.replaceAll('/', '_'),
-          name: repo['name'] as String? ?? 'Unknown',
-          version: '1.0.0',
-          description: repo['description'] as String? ?? 'No description',
-          author: fullName.split('/').first,
-          tags: ['github', ...(repo['topics'] as List<dynamic>?)?.cast<String>() ?? []],
-          actions: const [],
-          prompts: const [],
-          mcpServers: const [],
-          source: SkillSource.github,
-          githubUrl: repo['html_url'] as String?,
-          rating: 0.0,
-          installCount: stars,
+      for (final q in queries) {
+        final uri = Uri.https(
+          'api.github.com',
+          '/search/repositories',
+          {'q': q, 'sort': 'stars', 'order': 'desc', 'per_page': '12'},
         );
-        results.add(skill);
+
+        debugPrint('[SkillManager] Searching GitHub skills: ${uri.toString()}');
+        final response = await http.get(uri).timeout(const Duration(seconds: 12));
+        if (response.statusCode != 200) {
+          debugPrint('[SkillManager] GitHub skill query failed HTTP ${response.statusCode}: $q');
+          continue;
+        }
+
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final items = data['items'] as List<dynamic>? ?? [];
+        for (final item in items) {
+          if (item is! Map<String, dynamic>) continue;
+          final skill = _skillFromGitHubRepo(item, queryText: query);
+          byId.putIfAbsent(skill.id, () => skill);
+        }
       }
 
+      final results = byId.values.toList(growable: false)
+        ..sort((a, b) {
+          final byRating = b.rating.compareTo(a.rating);
+          if (byRating != 0) return byRating;
+          return b.installCount.compareTo(a.installCount);
+        });
+      if (results.isEmpty) {
+        throw SkillException('GitHub skill discovery returned no public candidates');
+      }
       debugPrint('[SkillManager] Found ${results.length} skills on GitHub');
-      return results;
+      return List.unmodifiable(results.take(30));
     } catch (e) {
       debugPrint('[SkillManager] GitHub search failed: $e');
       // Return demo data if API fails
       return _getDemoGitHubSkills();
     }
+  }
+
+  List<String> _githubSkillDiscoveryQueries({String? query, String language = ''}) {
+    final trimmed = query?.trim();
+    final userQuery = trimmed == null || trimmed.isEmpty ? '' : ' $trimmed';
+    final languageFilter = language.trim().isEmpty ? '' : ' language:${language.trim()}';
+    final baseQueries = [
+      'topic:mobilecode-skill$userQuery',
+      'topic:codex-skill$userQuery',
+      'topic:agent-skill$userQuery',
+      'SKILL.md$userQuery in:readme,description',
+      'mcp server$userQuery in:name,description,topics',
+    ];
+    return baseQueries.map((q) => '$q archived:false$languageFilter').toList(growable: false);
+  }
+
+  Skill _skillFromGitHubRepo(Map<String, dynamic> repo, {String? queryText}) {
+    final fullName = repo['full_name'] as String? ?? '';
+    final topics = ((repo['topics'] as List<dynamic>?) ?? const []).whereType<String>().toList(growable: false);
+    final stars = repo['stargazers_count'] as int? ?? 0;
+    final description = repo['description'] as String? ?? 'No description';
+    final score = _githubSkillScore(
+      name: repo['name'] as String? ?? '',
+      description: description,
+      topics: topics,
+      stars: stars,
+      queryText: queryText,
+    );
+
+    return Skill(
+      id: fullName.replaceAll('/', '_'),
+      name: repo['name'] as String? ?? 'Unknown',
+      version: '1.0.0',
+      description: description,
+      author: fullName.split('/').first,
+      tags: ['github', 'public-provenance', ...topics],
+      actions: const [],
+      prompts: const ['Preview manifest before install', 'Verify GitHub provenance'],
+      mcpServers: const [],
+      source: SkillSource.github,
+      githubUrl: repo['html_url'] as String?,
+      rating: score,
+      installCount: stars,
+    );
+  }
+
+  double _githubSkillScore({
+    required String name,
+    required String description,
+    required List<String> topics,
+    required int stars,
+    String? queryText,
+  }) {
+    var score = 0.0;
+    final haystack = '$name $description ${topics.join(' ')}'.toLowerCase();
+    for (final signal in const ['mobilecode-skill', 'codex-skill', 'agent-skill', 'skill', 'mcp', 'prompt']) {
+      if (haystack.contains(signal)) score += 1.5;
+    }
+    final query = queryText?.trim().toLowerCase();
+    if (query != null && query.isNotEmpty && haystack.contains(query)) score += 2;
+    score += stars.clamp(0, 5000) / 1000.0;
+    return double.parse(score.toStringAsFixed(2));
   }
 
   /// Get trending/popular skills from GitHub.

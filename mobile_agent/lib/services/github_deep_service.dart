@@ -686,7 +686,13 @@ class GitHubDeepService {
       if (ref != null && ref.isNotEmpty) 'ref': ref,
     };
 
-    final data = await _getJson(url, query: query.isNotEmpty ? query : null);
+    final response = await _request(
+      'GET',
+      url,
+      query: query.isNotEmpty ? query : null,
+    );
+    if (response.body.isEmpty) return [];
+    final data = jsonDecode(response.body);
     if (data == null) return [];
     if (data is List) return data;
     // Single file.

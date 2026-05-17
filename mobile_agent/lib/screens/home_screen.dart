@@ -654,6 +654,22 @@ String _sessionTurnLabel(_ChatSession session) {
   return messages == 1 ? '1 message' : '$messages messages';
 }
 
+String? _artifactPathFromContent(String content) {
+  final patterns = [
+    RegExp(r'Saved generated artifact:\s*`([^`]+)`'),
+    RegExp(r'Code file:\s*`([^`]+)`'),
+    RegExp(r'代码文件:\s*`([^`]+)`'),
+  ];
+  for (final pattern in patterns) {
+    final match = pattern.firstMatch(content);
+    final path = match?.group(1)?.trim();
+    if (path != null && path.isNotEmpty) return path;
+  }
+  return null;
+}
+
+bool _isWebArtifactPath(String path) => path.toLowerCase().endsWith('.html') || path.toLowerCase().endsWith('.htm');
+
 bool _promptTargets2048(String prompt) {
   final lower = prompt.toLowerCase();
   return lower.contains('2048') || prompt.contains('二零四八');
@@ -1750,7 +1766,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _showMessage('Chat panel is still loading');
       return;
     }
-    chat.setPromptFromShell(prompt, runAgent: runAgent);
+    await chat.setPromptFromShell(prompt, runAgent: runAgent);
   }
 
   int get _simpleTabIndex {
@@ -2305,9 +2321,12 @@ class _MobileCodeDrawer extends StatelessWidget {
             ),
             Expanded(
               child: sessions.isEmpty
-                  ? const Padding(
+                  ? Padding(
                       padding: EdgeInsets.all(18),
-                      child: Text('No chat history yet', style: TextStyle(color: _muted)),
+                      child: Text(
+                        activeSessionId == null ? 'Loading chat history...' : 'No chat history yet',
+                        style: const TextStyle(color: _muted),
+                      ),
                     )
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
@@ -3858,6 +3877,72 @@ class _WebPreviewSheetState extends State<_WebPreviewSheet> {
           const Text(
             'Preview mode runs generated HTML inside the app through Android WebView. JavaScript is enabled for local demos.',
             style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CodeFileSheet extends StatelessWidget {
+  const _CodeFileSheet({required this.path, required this.code});
+
+  final String path;
+  final String code;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.code_outlined,
+      title: 'Generated Code',
+      subtitle: path,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _RuntimeActionButton(
+                icon: Icons.copy_outlined,
+                label: 'Copy code',
+                disabled: false,
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: code));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generated code copied.')));
+                },
+              ),
+              _RuntimeActionButton(
+                icon: Icons.folder_copy_outlined,
+                label: 'Copy path',
+                disabled: false,
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: path));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone file path copied.')));
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: SelectableText(
+              path,
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: SelectableText(
+              code,
+              style: const TextStyle(
+                color: _text,
+                fontFamily: 'monospace',
+                fontSize: 11,
+                height: 1.35,
+              ),
+            ),
           ),
         ],
       ),
@@ -6645,6 +6730,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   final _chatScrollController = ScrollController();
   final _voiceService = VoiceService();
   final List<_ChatSession> _sessions = [];
+  Future<void>? _sessionLoadFuture;
   String? _activeSessionId;
   bool _loading = true;
   bool _sending = false;
@@ -6668,7 +6754,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   @override
   void initState() {
     super.initState();
-    _loadSessions();
+    _sessionLoadFuture = _loadSessions();
     _initVoiceInput();
   }
 
@@ -6702,9 +6788,16 @@ class _ChatPanelState extends State<_ChatPanel> {
     });
   }
 
+  Future<void> _ensureSessionsLoaded() async {
+    final pendingLoad = _sessionLoadFuture;
+    if (!_loading || pendingLoad == null) return;
+    await pendingLoad;
+  }
+
   Future<void> _loadSessions() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_sessionsKey);
+    final savedActiveId = prefs.getString(_activeSessionKey);
     final loaded = <_ChatSession>[];
 
     if (raw != null && raw.isNotEmpty) {
@@ -6715,7 +6808,11 @@ class _ChatPanelState extends State<_ChatPanel> {
             decoded
                 .whereType<Map>()
                 .map((item) => _ChatSession.fromJson(Map<String, dynamic>.from(item)))
-                .where((session) => session.turns.isNotEmpty || session.title.trim().isNotEmpty),
+                .where((session) {
+                  if (session.turns.isNotEmpty) return true;
+                  if (session.id == savedActiveId) return true;
+                  return session.title.trim().isNotEmpty && session.title.trim() != 'New chat';
+                }),
           );
         }
       } catch (_) {
@@ -6731,7 +6828,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       _sessions
         ..clear()
         ..addAll(loaded.take(20));
-      _activeSessionId = prefs.getString(_activeSessionKey);
+      _activeSessionId = savedActiveId;
       if (_sessions.every((session) => session.id != _activeSessionId)) {
         _activeSessionId = _sessions.first.id;
       }
@@ -6742,8 +6839,13 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   Future<void> _persist() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_sessionsKey, jsonEncode(_sessions.map((session) => session.toJson()).toList()));
     final activeId = _activeSessionId;
+    final persistedSessions = _sessions.where((session) {
+      if (session.turns.isNotEmpty) return true;
+      if (session.id == activeId) return true;
+      return session.title.trim().isNotEmpty && session.title.trim() != 'New chat';
+    }).take(20).toList();
+    await prefs.setString(_sessionsKey, jsonEncode(persistedSessions.map((session) => session.toJson()).toList()));
     if (activeId != null) {
       await prefs.setString(_activeSessionKey, activeId);
     }
@@ -6758,10 +6860,11 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   Future<void> selectSessionFromShell(String id) => _selectSession(id);
 
-  void setPromptFromShell(String prompt, {bool runAgent = false}) {
+  Future<void> setPromptFromShell(String prompt, {bool runAgent = false}) async {
+    await _ensureSessionsLoaded();
+    if (!mounted) return;
     _promptController.text = prompt;
     _promptController.selection = TextSelection.collapsed(offset: prompt.length);
-    if (!mounted) return;
     setState(() {});
     if (runAgent) {
       unawaited(_runAgentWithTrace());
@@ -6790,6 +6893,19 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   Future<void> _createSession() async {
+    await _ensureSessionsLoaded();
+    if (!mounted) return;
+    final active = _activeSession;
+    if (active != null && active.turns.isEmpty && active.title == 'New chat') {
+      setState(() {
+        _activeSessionId = active.id;
+        _error = null;
+        _promptController.clear();
+      });
+      _notifySessionsChanged();
+      await _persist();
+      return;
+    }
     final session = _newSessionObject();
     setState(() {
       _sessions.insert(0, session);
@@ -6802,6 +6918,8 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   Future<void> _selectSession(String id) async {
+    await _ensureSessionsLoaded();
+    if (!mounted) return;
     setState(() {
       _activeSessionId = id;
       _error = null;
@@ -6828,6 +6946,8 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   Future<void> _send() async {
+    await _ensureSessionsLoaded();
+    if (!mounted) return;
     final prompt = _promptController.text.trim();
     if (prompt.isEmpty) {
       _showMessage('Enter a prompt first');
@@ -7158,6 +7278,8 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   Future<void> _runAgentWithTrace() async {
+    await _ensureSessionsLoaded();
+    if (!mounted) return;
     if (_agentRunning) {
       _showMessage('Agent is still running');
       return;
@@ -7366,9 +7488,15 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   String _agentProviderCompletionMessage(String toolName, String modelAnswer, String? generatedPath) {
+    final isWebArtifact = generatedPath != null && _isWebArtifactPath(generatedPath);
     return [
       'Agent run completed via provider: `$toolName`',
-      if (generatedPath != null) 'Saved generated artifact: `$generatedPath`',
+      if (generatedPath != null) ...[
+        'Saved generated artifact: `$generatedPath`',
+        'Phone file path: `$generatedPath`',
+        'Code file: `$generatedPath`',
+        if (isWebArtifact) 'Web preview: tap the “网页预览” button below to open it inside MobileCode WebView.',
+      ],
       '',
       modelAnswer.trim(),
     ].join('\n');
@@ -7611,6 +7739,60 @@ class _ChatPanelState extends State<_ChatPanel> {
     );
   }
 
+  Future<void> _openArtifactCode(String path) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) {
+        _showMessage('Generated code file was not found on this phone.');
+        return;
+      }
+      final code = await file.readAsString();
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: _panel,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+        builder: (context) => _CodeFileSheet(path: path, code: code),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      _showMessage(_compact(error.toString(), limit: 140));
+    }
+  }
+
+  Future<void> _previewArtifact(String path) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) {
+        _showMessage('Generated web file was not found on this phone.');
+        return;
+      }
+      final html = await file.readAsString();
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: _panel,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+        builder: (context) => _WebPreviewSheet(
+          title: 'Generated web preview',
+          subtitle: path,
+          html: html,
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      _showMessage(_compact(error.toString(), limit: 140));
+    }
+  }
+
+  Future<void> _copyArtifactPath(String path) async {
+    await Clipboard.setData(ClipboardData(text: path));
+    if (!mounted) return;
+    _showMessage('Phone file path copied.');
+  }
+
   Widget _buildConversationBody(_ChatSession? active) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -7624,7 +7806,12 @@ class _ChatPanelState extends State<_ChatPanel> {
                 : Column(
                     children: [
                       for (var index = 0; index < active.turns.length; index++) ...[
-                        _ChatBubble(turn: active.turns[index]),
+                        _ChatBubble(
+                          turn: active.turns[index],
+                          onOpenArtifactCode: _openArtifactCode,
+                          onPreviewArtifact: _previewArtifact,
+                          onCopyArtifactPath: _copyArtifactPath,
+                        ),
                         if (index != active.turns.length - 1) const SizedBox(height: 10),
                       ],
                     ],
@@ -7656,7 +7843,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            _ChatModeStrip(onPrompt: (prompt, {runAgent = false}) => setPromptFromShell(prompt, runAgent: runAgent)),
+            _ChatModeStrip(onPrompt: (prompt, {runAgent = false}) => unawaited(setPromptFromShell(prompt, runAgent: runAgent))),
             const SizedBox(height: 6),
             Text(
               status,
@@ -7824,14 +8011,23 @@ class _ChatSessionChip extends StatelessWidget {
 }
 
 class _ChatBubble extends StatelessWidget {
-  const _ChatBubble({required this.turn});
+  const _ChatBubble({
+    required this.turn,
+    required this.onOpenArtifactCode,
+    required this.onPreviewArtifact,
+    required this.onCopyArtifactPath,
+  });
 
   final _ChatTurn turn;
+  final ValueChanged<String> onOpenArtifactCode;
+  final ValueChanged<String> onPreviewArtifact;
+  final ValueChanged<String> onCopyArtifactPath;
 
   @override
   Widget build(BuildContext context) {
     final isUser = turn.role == 'user';
     final color = isUser ? _cyan : _mint;
+    final artifactPath = isUser ? null : _artifactPathFromContent(turn.content);
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -7855,9 +8051,99 @@ class _ChatBubble extends StatelessWidget {
               turn.content,
               style: const TextStyle(color: _text, height: 1.42, fontSize: 13),
             ),
+            if (artifactPath != null) ...[
+              const SizedBox(height: 10),
+              _GeneratedArtifactActions(
+                path: artifactPath,
+                onOpenCode: () => onOpenArtifactCode(artifactPath),
+                onPreview: _isWebArtifactPath(artifactPath) ? () => onPreviewArtifact(artifactPath) : null,
+                onCopyPath: () => onCopyArtifactPath(artifactPath),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _GeneratedArtifactActions extends StatelessWidget {
+  const _GeneratedArtifactActions({
+    required this.path,
+    required this.onOpenCode,
+    required this.onPreview,
+    required this.onCopyPath,
+  });
+
+  final String path;
+  final VoidCallback onOpenCode;
+  final VoidCallback? onPreview;
+  final VoidCallback onCopyPath;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _panel,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.folder_open_outlined, color: _mint, size: 16),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: Text('Generated artifact on this phone', style: TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          SelectableText(path, style: const TextStyle(color: _muted, fontSize: 11, height: 1.25)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MiniArtifactButton(icon: Icons.code_outlined, label: '代码文件', onTap: onOpenCode, color: _blue),
+              if (onPreview != null) _MiniArtifactButton(icon: Icons.preview_outlined, label: '网页预览', onTap: onPreview!, color: _violet),
+              _MiniArtifactButton(icon: Icons.copy_outlined, label: '复制路径', onTap: onCopyPath, color: _cyan),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniArtifactButton extends StatelessWidget {
+  const _MiniArtifactButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        side: BorderSide(color: color.withValues(alpha: 0.35)),
+        visualDensity: VisualDensity.compact,
+      ),
+      onPressed: onTap,
+      icon: Icon(icon, size: 15),
+      label: Text(label),
     );
   }
 }

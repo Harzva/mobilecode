@@ -1063,8 +1063,7 @@ class SkillManagerService extends ChangeNotifier {
       // Check if it's a list item
       if (trimmed.startsWith('- ')) {
         final value = trimmed.substring(2).trim();
-        // Remove quotes if present
-        currentList.add(value.replaceAll(RegExp(r"^['"""'"]|["'""'"]$"), ''));
+        currentList.add(_stripYamlQuotes(value));
         continue;
       }
 
@@ -1085,9 +1084,7 @@ class SkillManagerService extends ChangeNotifier {
           // This key likely has a list below it
           currentListKey = key;
         } else {
-          // Remove quotes
-          final cleanValue = value.replaceAll(RegExp(r"^['"""'"]|["'""'"]$"), '');
-          result[key] = cleanValue;
+          result[key] = _stripYamlQuotes(value);
         }
       }
     }
@@ -1098,6 +1095,18 @@ class SkillManagerService extends ChangeNotifier {
     }
 
     return result;
+  }
+
+  String _stripYamlQuotes(String value) {
+    final trimmed = value.trim();
+    if (trimmed.length < 2) return trimmed;
+
+    final first = trimmed[0];
+    final last = trimmed[trimmed.length - 1];
+    if ((first == "'" && last == "'") || (first == '"' && last == '"')) {
+      return trimmed.substring(1, trimmed.length - 1);
+    }
+    return trimmed;
   }
 
   /// Compare two semantic versions.

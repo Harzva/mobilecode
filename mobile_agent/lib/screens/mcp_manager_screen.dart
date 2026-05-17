@@ -155,22 +155,22 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
               children: [
                 _StatusLegend(
                   label: '运行中',
-                  color: const Color(McpServerStatus.running.colorHex),
+                  color: Color(McpServerStatus.running.colorHex),
                 ),
                 const SizedBox(width: 12),
                 _StatusLegend(
                   label: '已停止',
-                  color: const Color(McpServerStatus.stopped.colorHex),
+                  color: Color(McpServerStatus.stopped.colorHex),
                 ),
                 const SizedBox(width: 12),
                 _StatusLegend(
                   label: '启动中',
-                  color: const Color(McpServerStatus.starting.colorHex),
+                  color: Color(McpServerStatus.starting.colorHex),
                 ),
                 const SizedBox(width: 12),
                 _StatusLegend(
                   label: '错误',
-                  color: const Color(McpServerStatus.error.colorHex),
+                  color: Color(McpServerStatus.error.colorHex),
                 ),
               ],
             ),

@@ -2,7 +2,8 @@
 // Skill Provider - Riverpod providers for skill state management
 // 技能管理 Riverpod 状态管理
 
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/skill_model.dart';
@@ -318,7 +319,7 @@ class SkillLifecycleNotifier extends AsyncNotifier<void> {
   }
 
   /// Update a skill.
-  Future<void> update(String skillId) async {
+  Future<void> updateSkill(String skillId) async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _service.update(skillId));
   }

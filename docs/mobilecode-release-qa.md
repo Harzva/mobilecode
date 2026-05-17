@@ -28,22 +28,27 @@ Required GitHub Actions before publishing:
 Release candidate:
 
 - Branch: `v011-streaming-fix`
-- App/build content commit: pending CI
-- Release: pending
-- APK asset: pending
-- APK SHA256: pending
+- App/build content commit: `f1a6381abbc9912c35d8ff712ef7ac0e9d0edd89`
+- Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.6`
+- APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.6/mobilecode-v0.1.6.apk`
+- APK SHA256: `4dd3a7e6fd266874b54d4ed060b27172e915716061ce16ff5ef6e2bb03641622`
 
 Required CI evidence:
 
 | Gate | Run | Result |
 | --- | --- | --- |
-| Mobile Runtime CI | pending | Pending |
-| Build Android APK | pending | Pending |
-| Android App Smoke Test | pending | Pending |
+| Mobile Runtime CI | `https://github.com/Harzva/mobilecode/actions/runs/25986990236` | Passed |
+| Build Android APK | `https://github.com/Harzva/mobilecode/actions/runs/25986990949` | Passed |
+| Android App Smoke Test | `https://github.com/Harzva/mobilecode/actions/runs/25986991684` | Passed |
 
 Validated coverage:
 
-- Pending after agent process role avatars, Claude Yellow / Codex Blue theme options, and release artifact version alignment pass CI.
+- Flutter scoped analyzer passed for runtime and Home entry surfaces.
+- RuntimeProvider tests passed.
+- Helper daemon protocol smoke passed.
+- Android release APK built and uploaded as the v0.1.6 release asset.
+- Android emulator smoke installed and launched the debug APK, captured screenshot/logcat artifacts, and checked common crash signatures.
+- GitHub Pages deploy passed for the demo Pages site.
 
 Manual device coverage:
 

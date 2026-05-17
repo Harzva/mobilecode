@@ -2704,6 +2704,10 @@ class _SideloadStatusPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final completed = steps.where((step) => step.state == _AgentStepState.done).length;
+    final failed = steps.where((step) => step.state == _AgentStepState.failed).length;
+    final running = steps.where((step) => step.state == _AgentStepState.running).length;
+    final progress = steps.isEmpty ? 0.0 : (completed + failed) / steps.length;
     return _Panel(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -11065,15 +11069,39 @@ class _AgentTracePanel extends StatelessWidget {
                 ),
               ),
               _Pill(
-                label: '${steps.where((step) => step.state == _AgentStepState.done).length}/${steps.length}',
+                label: '$completed/${steps.length}',
                 icon: Icons.task_alt_outlined,
                 color: _violet,
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 6,
+              backgroundColor: _chip,
+              valueColor: AlwaysStoppedAnimation<Color>(failed > 0 ? _rose : _mint),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _Pill(label: '$completed done', icon: Icons.check_circle_outline, color: _mint),
+              if (running > 0) _Pill(label: '$running running', icon: Icons.sync_outlined, color: _amber),
+              if (failed > 0) _Pill(label: '$failed failed', icon: Icons.error_outline, color: _rose),
+            ],
+          ),
           const SizedBox(height: 12),
           for (var index = 0; index < steps.length; index++) ...[
-            _AgentTraceRow(step: steps[index], isLast: index == steps.length - 1),
+            _AgentTraceRow(
+              step: steps[index],
+              index: index,
+              isLast: index == steps.length - 1,
+            ),
           ],
         ],
       ),
@@ -11084,81 +11112,97 @@ class _AgentTracePanel extends StatelessWidget {
 class _AgentTraceRow extends StatelessWidget {
   const _AgentTraceRow({
     required this.step,
+    required this.index,
     required this.isLast,
   });
 
   final _AgentTraceStep step;
+  final int index;
   final bool isLast;
 
   @override
   Widget build(BuildContext context) {
     final color = _agentStepColor(step.state);
     final icon = _agentStepStatusIcon(step.state);
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () => _showAgentTraceStepDetails(context, step),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Column(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: color.withOpacity(0.42)),
-                ),
-                child: Icon(icon, color: color, size: 16),
-              ),
-              if (!isLast)
-                Container(
-                  width: 1,
-                  height: 42,
-                  margin: const EdgeInsets.symmetric(vertical: 4),
-                  color: _line,
-                ),
-            ],
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () => _showAgentTraceStepDetails(context, step),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: step.state == _AgentStepState.running ? color.withOpacity(0.08) : _chip.withOpacity(0.55),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withOpacity(step.state == _AgentStepState.queued ? 0.18 : 0.35)),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Column(
                 children: [
-                  Row(
-                    children: [
-                      Icon(step.icon, color: color, size: 15),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          step.title,
-                          style: const TextStyle(color: _text, fontWeight: FontWeight.w800, fontSize: 13),
-                        ),
-                      ),
-                      if (step.details.isNotEmpty) ...[
-                        const SizedBox(width: 6),
-                        Icon(Icons.info_outline, color: color, size: 14),
-                      ],
-                      const SizedBox(width: 6),
-                      Text(
-                        _agentStepLabel(step.state),
-                        style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 11),
-                      ),
-                    ],
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: color.withOpacity(0.42)),
+                    ),
+                    child: Icon(icon, color: color, size: 16),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
-                    step.detail,
-                    style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                    (index + 1).toString().padLeft(2, '0'),
+                    style: const TextStyle(color: _faint, fontSize: 10, fontWeight: FontWeight.w900),
                   ),
                 ],
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(step.icon, color: color, size: 15),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            step.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _Pill(label: _agentStepLabel(step.state), icon: icon, color: color),
+                      ],
+                    ),
+                    if (step.toolName != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        step.toolName!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800),
+                      ),
+                    ],
+                    const SizedBox(height: 6),
+                    Text(
+                      step.detail,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(Icons.chevron_right, color: color.withOpacity(0.8), size: 18),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

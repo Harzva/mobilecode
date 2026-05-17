@@ -94,10 +94,6 @@ class _GlassCardWidgetState extends State<GlassCardWidget>
             offset: const Offset(0, 2),
           ),
         ],
-        // Transform for press effect
-        transform: _isPressed
-            ? (Matrix4.identity()..scale(0.98))
-            : null,
       ),
       child: widget.child,
     );
@@ -117,6 +113,8 @@ class _GlassCardWidgetState extends State<GlassCardWidget>
           child: AnimatedContainer(
             duration: AppTheme.animFast,
             curve: Curves.easeInOut,
+            transform: _isPressed ? (Matrix4.identity()..scale(0.98)) : null,
+            transformAlignment: Alignment.center,
             child: card,
           ),
         ),

@@ -14,6 +14,18 @@ MobileCode should use roles only when they change execution behavior, evidence r
 | `release-qa-reviewer` | Version bump, APK artifact, CI, smoke test, release docs | Version line, build number, CI links, artifact hash, manual QA checklist | Exact release commit has Mobile Runtime CI, Android APK build, and Android smoke evidence |
 | `extension-manager` | Skills, MCP, agents, hooks, memory, marketplace/import | Management entry point, enable/disable state, provenance, permission summary | User can find and inspect extension state without leaving the mobile app |
 
+## Future Role Progress Cards
+
+This is a TODO, not a v1 implementation requirement. The current app still runs a single visible agent trace; do not add multi-agent orchestration just for decoration.
+
+When MobileCode later supports role-routed or multi-agent execution, show progress as compact role cards under the task trace:
+
+- Each role card shows avatar, role name, assigned step, status, and a short progress meter.
+- Cards are evidence-backed: a role appears only when that role owns a real action or review gate.
+- The first version should reuse static local avatar assets from `D:\study\code\0ai\产品\14-personal_knowledgebase\svg`, especially `claude-pets-svg` and `portrait-assets`.
+- SVG/animated avatars are visual identity only; execution state must still come from task IDs, step status, logs, and review results.
+- Keep this deferred until the single-agent trace, result card, GitHub Pages publish flow, and release QA are stable.
+
 ## Routing Rules
 
 - Use `mobile-ui-designer` before changing Home, chat, drawer, settings, generated app cards, or preview layout.

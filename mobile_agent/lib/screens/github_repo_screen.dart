@@ -19,7 +19,7 @@ final Map<String, IconData> _fileIconMap = {
   '.java': Icons.coffee,
   '.cpp': Icons.computer,
   '.c': Icons.computer,
-  '.h': Icons.header_outlined,
+  '.h': Icons.code,
   '.swift': Icons.apple,
   '.kt': Icons.android,
   '.rb': Icons.diamond,
@@ -52,6 +52,20 @@ final Map<String, Color> _fileIconColors = {
   '.html': Color(0xFFE34C26),
   '.css': Color(0xFF563D7C),
   '.md': Color(0xFF083FA1),
+};
+
+final Map<String, Color> _languageColors = {
+  'Dart': Color(0xFF00B4AB),
+  'JavaScript': Color(0xFFF1E05A),
+  'TypeScript': Color(0xFF3178C6),
+  'Python': Color(0xFF3572A5),
+  'Java': Color(0xFFB07219),
+  'Kotlin': Color(0xFFA97BFF),
+  'Swift': Color(0xFFFFAC45),
+  'Go': Color(0xFF00ADD8),
+  'Rust': Color(0xFFDEA584),
+  'HTML': Color(0xFFE34C26),
+  'CSS': Color(0xFF563D7C),
 };
 
 // ── File Item Model ──────────────────────────────────────────────────────────
@@ -1584,8 +1598,7 @@ flutter run
   }
 
   Widget _buildLanguageBar(String primaryLanguage) {
-    final colors = _GitHubRepoScreenState._languageColors;
-    final primaryColor = colors[primaryLanguage] ?? AppTheme.primary;
+    final primaryColor = _languageColors[primaryLanguage] ?? AppTheme.primary;
     // Simulated language distribution
     final langSegments = [
       (primaryLanguage, 0.65, primaryColor),

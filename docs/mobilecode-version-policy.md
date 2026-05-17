@@ -29,7 +29,7 @@ Examples:
 - `0.1.1+20`: provider settings, chat session, pause/streaming, and diagnostics fixes.
 - `0.1.2+21`: follow-up QA fix for chat persistence, generated artifact actions, browser preview, and tool-call detail UX.
 - `0.1.3+22`: real Skill/MCP/Memory/Agent management routes, read-only Hook Registry, default HTML/UI skills, and extension source hardening.
-- `0.1.4+23`: HTML/UI skill prompt injection, SkillHub/MCPHub safe source adapters, and Node 24 GitHub Actions updates.
+- `0.1.4+23`: HTML/UI skill prompt injection, account-free curated GitHub skill/MCP source adapters, and Node 24 GitHub Actions updates.
 - `0.2.0+30`: Helper APK/runtime capability expansion starts.
 
 ## Stop Rules

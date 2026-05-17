@@ -11,7 +11,7 @@ import '../providers/skill_provider.dart';
 import '../services/skill_manager_service.dart';
 import 'mcp_manager_screen.dart';
 
-enum _SkillDiscoverySource { github, skillhub }
+enum _SkillDiscoverySource { github, curated }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Skill Manager Screen
@@ -228,7 +228,7 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
 
   Widget _buildDiscoverTab() {
     final searchQuery = ref.watch(skillSearchQueryProvider);
-    final sourceLabel = _discoverySource == _SkillDiscoverySource.github ? 'GitHub' : 'SkillHub';
+    final sourceLabel = _discoverySource == _SkillDiscoverySource.github ? 'GitHub' : 'Curated GitHub';
 
     return Column(
       children: [
@@ -243,9 +243,9 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
               ),
               const SizedBox(width: 8),
               _SourceChip(
-                label: 'SkillHub',
-                selected: _discoverySource == _SkillDiscoverySource.skillhub,
-                onTap: () => setState(() => _discoverySource = _SkillDiscoverySource.skillhub),
+                label: 'Curated',
+                selected: _discoverySource == _SkillDiscoverySource.curated,
+                onTap: () => setState(() => _discoverySource = _SkillDiscoverySource.curated),
               ),
             ],
           ),
@@ -310,8 +310,8 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
   }
 
   Widget _buildTrendingSkills() {
-    final AsyncValue<List<Skill>> trendingAsync = _discoverySource == _SkillDiscoverySource.skillhub
-        ? ref.watch(skillHubSearchProvider((query: null, limit: 12)))
+    final AsyncValue<List<Skill>> trendingAsync = _discoverySource == _SkillDiscoverySource.curated
+        ? ref.watch(curatedSkillSearchProvider((query: null, limit: 12)))
         : ref.watch(trendingSkillsProvider);
 
     return trendingAsync.when(
@@ -349,8 +349,8 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
   }
 
   Widget _buildSearchResults(String query) {
-    final AsyncValue<List<Skill>> searchAsync = _discoverySource == _SkillDiscoverySource.skillhub
-        ? ref.watch(skillHubSearchProvider((query: query, limit: 12)))
+    final AsyncValue<List<Skill>> searchAsync = _discoverySource == _SkillDiscoverySource.curated
+        ? ref.watch(curatedSkillSearchProvider((query: query, limit: 12)))
         : ref.watch(skillSearchProvider(query));
 
     return searchAsync.when(

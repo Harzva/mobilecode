@@ -290,7 +290,7 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
           maxChildSize: 0.92,
           builder: (context, scrollController) {
             return FutureBuilder<List<McpServer>>(
-              future: ref.read(skillManagerServiceProvider).searchMcpHubServers(limit: 10),
+              future: ref.read(skillManagerServiceProvider).searchMcpRegistryServers(limit: 10),
               builder: (context, snapshot) {
                 final servers = snapshot.data ?? const <McpServer>[];
                 return ListView(
@@ -309,7 +309,7 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
                     ),
                     const SizedBox(height: 16),
                     const Text(
-                      'MCPHub Registry',
+                      'MCP Registry',
                       style: TextStyle(
                         fontFamily: AppTheme.fontBody,
                         fontSize: 18,
@@ -319,7 +319,7 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
                     ),
                     const SizedBox(height: 6),
                     const Text(
-                      'Only metadata is imported. Servers are registered disabled until you review command, env, and permissions.',
+                      'Only public GitHub metadata is imported. No registry account is required. Servers are registered disabled until you review command, env, and permissions.',
                       style: TextStyle(
                         fontFamily: AppTheme.fontBody,
                         fontSize: 13,

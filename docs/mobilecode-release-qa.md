@@ -43,7 +43,7 @@ Required CI evidence:
 
 Validated coverage:
 
-- Pending after HTML/UI skill prompt injection, SkillHub/MCPHub source adapter, and Node 24 Actions updates pass CI.
+- Pending after HTML/UI skill prompt injection, account-free curated GitHub skill/MCP source adapter, and Node 24 Actions updates pass CI.
 
 Manual device coverage:
 

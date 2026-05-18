@@ -9,7 +9,10 @@
     "render:readme": "remotion render src/index.ts MobileCodeReadmeCover ../../docs/assets/mobilecode-readme-cover.mp4 --codec h264 --crf 28 --pixel-format yuv420p",
     "render:principle": "remotion render src/index.ts MobileCodePrincipleExplainer ../../docs/assets/mobilecode-principle-remotion.mp4 --codec h264 --crf 28 --pixel-format yuv420p",
     "render:principle:poster": "remotion still src/index.ts MobileCodePrincipleExplainer ../../docs/assets/mobilecode-principle-poster.png --frame=90",
-    "render": "npm run render:vertical && npm run render:readme && npm run render:principle && npm run render:principle:poster"
+    "render:short": "remotion render src/index.ts MobileCodeShortTeaser ../../docs/assets/mobilecode-short-teaser.mp4 --codec h264 --crf 28 --pixel-format yuv420p",
+    "render:short:poster": "remotion still src/index.ts MobileCodeShortTeaser ../../docs/assets/mobilecode-short-poster.png --frame=60",
+    "voiceover": "powershell -ExecutionPolicy Bypass -File scripts/generate-voiceover.ps1",
+    "render": "npm run render:vertical && npm run render:readme && npm run render:principle && npm run render:principle:poster && npm run render:short && npm run render:short:poster"
   },
   "dependencies": {
     "@remotion/cli": "4.0.462",

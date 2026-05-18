@@ -47,6 +47,7 @@ jobs:
           cp docs/mobilecode-principle-video.html app/dist/
           cp docs/mobilecode-principle-video-script.md app/dist/
           cp docs/assets/mobilecode-principle-* app/dist/assets/
+          cp docs/assets/mobilecode-short-* app/dist/assets/
       - name: Configure Pages
         uses: actions/configure-pages@v6
       - name: Upload artifact

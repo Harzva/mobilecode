@@ -4,6 +4,7 @@ import {
   MobileCodePrincipleExplainer,
   principleDurationInFrames,
 } from './MobileCodePrincipleExplainer';
+import {MobileCodeShortTeaser, shortTeaserDurationInFrames} from './MobileCodeShortTeaser';
 
 export const Root = () => {
   return (
@@ -30,6 +31,14 @@ export const Root = () => {
         id="MobileCodePrincipleExplainer"
         component={MobileCodePrincipleExplainer}
         durationInFrames={principleDurationInFrames}
+        fps={30}
+        width={1920}
+        height={1080}
+      />
+      <Composition
+        id="MobileCodeShortTeaser"
+        component={MobileCodeShortTeaser}
+        durationInFrames={shortTeaserDurationInFrames}
         fps={30}
         width={1920}
         height={1080}

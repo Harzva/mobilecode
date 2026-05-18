@@ -17,6 +17,8 @@
 </p>
 
 <p align="center">
+  <a href="docs/assets/mobilecode-short-teaser.mp4"><strong>Watch 15s Short</strong></a>
+  ·
   <a href="docs/assets/mobilecode-promo-vertical.mp4"><strong>Watch 9:16 Promo Video</strong></a>
   ·
   <a href="docs/assets/mobilecode-readme-cover.mp4">README Motion Cover</a>
@@ -48,10 +50,10 @@
 
 <p align="center">
   <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">
-    <img src="docs/assets/mobilecode-principle-poster.png" alt="MobileCode Remotion principle video cover" width="960">
+    <img src="docs/assets/mobilecode-short-poster.png" alt="MobileCode 15-second Remotion teaser cover" width="960">
   </a>
   <br>
-  <sub>Remotion explainer: demand, pain, phone-native harness, RuntimeProvider, GitHub-first shipping.</sub>
+  <sub>15-second Remotion teaser with voiceover. Full explainer covers demand, pain, RuntimeProvider, and GitHub-first shipping.</sub>
 </p>
 
 | Runs on the phone | Remote by choice | GitHub-first shipping |

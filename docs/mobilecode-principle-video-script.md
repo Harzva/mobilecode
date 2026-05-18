@@ -2,6 +2,15 @@
 
 This script matches `docs/assets/mobilecode-principle-remotion.mp4`. The video is rendered with Remotion and hosted by the HTML player at `docs/mobilecode-principle-video.html`.
 
+Audio source: `promo/mobilecode-remotion/public/audio/mobilecode-principle-voiceover.wav`.
+
+Generate audio locally:
+
+```powershell
+cd promo/mobilecode-remotion
+npm run voiceover
+```
+
 ## Voiceover
 
 ### 1. Why MobileCode Exists
@@ -39,3 +48,11 @@ Subtitle: GitHub 负责仓库、Pages、Actions 和产物，MobileCode 负责手
 A phone can become the AI coding control room. Not because it compiles everything locally, but because it keeps the user-facing harness, state, explanations, previews, and shipping decisions close to the user.
 
 Subtitle: 最终目标：在手机上生成、预览、解释、发布，而不是伪装成桌面环境。
+
+## 15-Second Social Cut
+
+Audio source: `promo/mobilecode-remotion/public/audio/mobilecode-short-voiceover.wav`.
+
+Voiceover:
+
+MobileCode 不是远程 IDE 外壳。它是真正运行在手机上的 AI coding harness。手机负责生成、预览和解释。Helper、Termux、GitHub Actions 负责执行和构建。从一句话到 HTML，从 WebView 到 GitHub Pages。MobileCode，让手机成为 AI coding 控制室。

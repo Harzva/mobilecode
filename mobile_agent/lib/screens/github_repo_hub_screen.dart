@@ -23,6 +23,26 @@ const _amber = Color(0xFFB7791F);
 const _rose = Color(0xFFE0526E);
 const _violet = Color(0xFF7557E8);
 
+class GitHubRepoChatRequest {
+  const GitHubRepoChatRequest({
+    required this.repoFullName,
+    required this.repoUrl,
+    required this.workspaceMode,
+    required this.prompt,
+    this.pagesUrl,
+    this.actionsUrl,
+    this.workspacePath,
+  });
+
+  final String repoFullName;
+  final String repoUrl;
+  final String workspaceMode;
+  final String prompt;
+  final String? pagesUrl;
+  final String? actionsUrl;
+  final String? workspacePath;
+}
+
 class GitHubRepoHubScreen extends StatefulWidget {
   const GitHubRepoHubScreen({super.key});
 
@@ -42,6 +62,7 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
   String _filter = 'all';
   String _languageFilter = 'all';
   String _sort = 'pushed';
+  String _source = 'owner';
   List<GitHubRepoHubItem> _items = const [];
 
   @override
@@ -99,10 +120,16 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
         });
         return;
       }
-      final items = await _hub.loadHubItems(
-        owner: _ownerController.text,
-        sort: _sort,
-      );
+      final items = _source == 'owner'
+          ? await _hub.loadHubItems(
+              owner: _ownerController.text,
+              sort: _sort,
+            )
+          : await _hub.searchHubItems(
+              query: _ownerController.text,
+              source: _source,
+              sort: _sort,
+            );
       if (!mounted) return;
       final keepLanguageFilter = _languageFilter == 'all' ||
           items.any((item) => (item.repo.language ?? '').toLowerCase() == _languageFilter);
@@ -161,6 +188,24 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
     final opened = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     if (!mounted) return;
     _toast(opened ? 'Opened $label.' : 'Could not open $label.', isError: !opened);
+  }
+
+  Future<void> _openPages(GitHubRepo repo) async {
+    await _openUrl(_pagesUrlFor(repo), 'GitHub Pages');
+  }
+
+  void _openRepoChat(GitHubRepoHubItem item) {
+    Navigator.of(context).pop(
+      GitHubRepoChatRequest(
+        repoFullName: item.repo.fullName,
+        repoUrl: item.repo.webUrl,
+        pagesUrl: item.repo.hasPages ? _pagesUrlFor(item.repo) : null,
+        actionsUrl: '${item.repo.webUrl}/actions',
+        workspaceMode: _repoWorkspaceModeLabel(item.localState),
+        workspacePath: item.localState.exists ? item.localState.path : null,
+        prompt: _repoChatPrompt(item),
+      ),
+    );
   }
 
   Future<void> _copy(String value, String label) async {
@@ -239,6 +284,14 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
           if (!_authenticated && !_loading)
             _AuthPanel(onLogin: _openLogin)
           else ...[
+            _HubAccountPanel(
+              hub: _hub,
+              currentUser: _hub.currentUser,
+              accounts: _hub.accountList,
+              source: _source,
+              onSwitch: (username) => unawaited(_switchAccount(username)),
+            ),
+            const SizedBox(height: 12),
             _HubPanel(
               child: Column(
                 children: [
@@ -247,21 +300,40 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
                     textInputAction: TextInputAction.search,
                     onSubmitted: (_) => unawaited(_refresh()),
                     decoration: InputDecoration(
-                      labelText: 'GitHub user / org',
-                      hintText: _hub.currentUser == null ? 'Leave blank for current login' : 'Blank = ${_hub.currentUser}',
-                      prefixIcon: const Icon(Icons.account_circle_outlined),
+                      labelText: _source == 'owner' ? 'GitHub user / org' : _sourceSearchLabel(_source),
+                      hintText: _source == 'owner'
+                          ? (_hub.currentUser == null ? 'Leave blank for current login' : 'Blank = ${_hub.currentUser}')
+                          : _sourceSearchHint(_source),
+                      prefixIcon: Icon(_source == 'owner' ? Icons.account_circle_outlined : Icons.public_outlined),
                       suffixIcon: IconButton(
-                        tooltip: 'Load repos',
+                        tooltip: _source == 'owner' ? 'Load repos' : 'Search GitHub',
                         onPressed: _loading ? null : _refresh,
                         icon: const Icon(Icons.travel_explore_outlined),
                       ),
                     ),
                   ),
                   const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _FilterChip(label: 'Owner repos', value: 'owner', selected: _source == 'owner', onSelected: _setSource),
+                      _FilterChip(label: 'Any repo', value: 'repo', selected: _source == 'repo', onSelected: _setSource),
+                      _FilterChip(label: 'Skill', value: 'skill', selected: _source == 'skill', onSelected: _setSource),
+                      _FilterChip(label: 'MCP', value: 'mcp', selected: _source == 'mcp', onSelected: _setSource),
+                      _FilterChip(label: 'Release', value: 'release', selected: _source == 'release', onSelected: _setSource),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _sourceScopeCopy(_source),
+                    style: const TextStyle(color: _muted, fontSize: 11.5, height: 1.35),
+                  ),
+                  const SizedBox(height: 10),
                   TextField(
                     controller: _searchController,
                     decoration: const InputDecoration(
-                      labelText: 'Search watched repos',
+                      labelText: 'Filter loaded cards',
                       hintText: 'name, description, language',
                       prefixIcon: Icon(Icons.search_outlined),
                     ),
@@ -331,9 +403,16 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
               for (final item in visible) ...[
                 _RepoHubCard(
                   item: item,
+                  hub: _hub,
+                  currentUser: _hub.currentUser,
+                  source: _source,
                   onWatched: (value) => unawaited(_setWatched(item, value)),
                   onLinkWorkspace: () => unawaited(_linkWorkspace(item)),
                   onOpenRepo: () => unawaited(_openUrl(item.repo.webUrl, 'repository')),
+                  onOpenPages: item.repo.hasPages ? () => unawaited(_openPages(item.repo)) : null,
+                  onOpenChat: () => _openRepoChat(item),
+                  onOpenUrl: (url, label) => unawaited(_openUrl(url, label)),
+                  onCopyRepoUrl: () => unawaited(_copy(item.repo.webUrl, 'GitHub URL')),
                   onCopyPath: () => unawaited(_copy(item.localState.path, 'Workspace path')),
                   onActions: () => _showActions(item.repo),
                   onWorkspace: () => _showWorkspace(item.repo),
@@ -348,6 +427,23 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
 
   void _setFilter(String value) {
     setState(() => _filter = value);
+  }
+
+  void _setSource(String value) {
+    setState(() {
+      _source = value;
+      _filter = 'all';
+      _languageFilter = 'all';
+    });
+    unawaited(_refresh());
+  }
+
+  Future<void> _switchAccount(String username) async {
+    if (username == _hub.currentUser) return;
+    final ok = await _hub.switchAccount(username);
+    if (!mounted) return;
+    _toast(ok ? 'Switched GitHub account to $username.' : 'Could not switch GitHub account.', isError: !ok);
+    if (ok) await _refresh();
   }
 }
 
@@ -427,6 +523,89 @@ class _AuthPanel extends StatelessWidget {
   }
 }
 
+class _HubAccountPanel extends StatelessWidget {
+  const _HubAccountPanel({
+    required this.hub,
+    required this.currentUser,
+    required this.accounts,
+    required this.source,
+    required this.onSwitch,
+  });
+
+  final GitHubRepoHubService hub;
+  final String? currentUser;
+  final List<String> accounts;
+  final String source;
+  final ValueChanged<String> onSwitch;
+
+  @override
+  Widget build(BuildContext context) {
+    final active = currentUser;
+    return _HubPanel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.switch_account_outlined, color: _blue, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  active == null ? 'GitHub account not selected' : 'Operations use @$active',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _text, fontSize: 14, fontWeight: FontWeight.w900),
+                ),
+              ),
+              _HubPill(
+                label: source == 'owner' ? 'Managed lane' : 'Discovery lane',
+                icon: source == 'owner' ? Icons.verified_user_outlined : Icons.travel_explore_outlined,
+                color: source == 'owner' ? _mint : _amber,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Repo writes, Pages, and Actions always run through the active account. External search results stay read-only until the token has write access or you fork the repo.',
+            style: TextStyle(color: _muted, fontSize: 11.5, height: 1.35),
+          ),
+          if (active != null) ...[
+            const SizedBox(height: 8),
+            FutureBuilder<List<String>>(
+              future: hub.loadTokenScopes(username: active),
+              builder: (context, snapshot) {
+                final scopes = snapshot.data ?? const <String>[];
+                final label = snapshot.connectionState == ConnectionState.waiting
+                    ? 'checking scopes'
+                    : scopes.isEmpty
+                        ? 'scopes hidden or fine-grained'
+                        : scopes.take(4).join(', ');
+                return _HubPill(label: label, icon: Icons.key_outlined, color: scopes.isEmpty ? _faint : _violet);
+              },
+            ),
+          ],
+          if (accounts.length > 1) ...[
+            const SizedBox(height: 9),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final account in accounts)
+                  ChoiceChip(
+                    selected: account == active,
+                    label: Text('@$account'),
+                    avatar: Icon(account == active ? Icons.check_circle_outline : Icons.account_circle_outlined, size: 16),
+                    onSelected: account == active ? null : (_) => onSwitch(account),
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _HubStats extends StatelessWidget {
   const _HubStats({required this.total, required this.visible});
 
@@ -445,29 +624,89 @@ class _HubStats extends StatelessWidget {
   }
 }
 
+class _RepoRelation {
+  const _RepoRelation({
+    required this.label,
+    required this.detail,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String detail;
+  final IconData icon;
+  final Color color;
+}
+
+_RepoRelation _repoRelation(GitHubRepo repo, String? currentUser, String source) {
+  final activeOwner = currentUser?.trim().toLowerCase();
+  final repoOwner = repo.owner.trim().toLowerCase();
+  if (activeOwner != null && activeOwner.isNotEmpty && activeOwner == repoOwner) {
+    return const _RepoRelation(
+      label: 'Your account',
+      detail: 'Managed with the active GitHub account; commit, Pages, and Actions are expected to work when scopes are valid.',
+      icon: Icons.verified_user_outlined,
+      color: _mint,
+    );
+  }
+  if (source == 'owner') {
+    return const _RepoRelation(
+      label: 'Owner/org',
+      detail: 'Listed from the chosen owner or organization. Write actions require collaborator or organization permission.',
+      icon: Icons.groups_2_outlined,
+      color: _blue,
+    );
+  }
+  return const _RepoRelation(
+    label: 'External',
+    detail: 'Discovered from GitHub search. Treat as read-only unless you fork it or the active token has write access.',
+    icon: Icons.travel_explore_outlined,
+    color: _amber,
+  );
+}
+
 class _RepoHubCard extends StatelessWidget {
   const _RepoHubCard({
     required this.item,
+    required this.hub,
+    required this.currentUser,
+    required this.source,
     required this.onWatched,
     required this.onLinkWorkspace,
     required this.onOpenRepo,
+    required this.onOpenChat,
+    required this.onOpenUrl,
+    required this.onCopyRepoUrl,
     required this.onCopyPath,
     required this.onActions,
     required this.onWorkspace,
+    this.onOpenPages,
   });
 
   final GitHubRepoHubItem item;
+  final GitHubRepoHubService hub;
+  final String? currentUser;
+  final String source;
   final ValueChanged<bool> onWatched;
   final VoidCallback onLinkWorkspace;
   final VoidCallback onOpenRepo;
+  final VoidCallback onOpenChat;
+  final void Function(String url, String label) onOpenUrl;
+  final VoidCallback onCopyRepoUrl;
   final VoidCallback onCopyPath;
   final VoidCallback onActions;
   final VoidCallback onWorkspace;
+  final VoidCallback? onOpenPages;
 
   @override
   Widget build(BuildContext context) {
     final repo = item.repo;
     final local = item.localState;
+    final relation = _repoRelation(repo, currentUser, source);
+    final hasPhoneWorkspace = local.exists || local.remoteLinked || local.hasGit;
+    final localDetail = hasPhoneWorkspace
+        ? 'Pushed ${_timeAgo(repo.pushedAt)} · ${local.statusLabel} · ${local.path}'
+        : 'Pushed ${_timeAgo(repo.pushedAt)} · No phone workspace yet';
     final localColor = local.hasGit
         ? _mint
         : local.remoteLinked
@@ -511,17 +750,35 @@ class _RepoHubCard extends StatelessWidget {
               if (repo.language != null) _HubPill(label: repo.language!, icon: Icons.code_outlined, color: _violet),
               _HubPill(label: '${repo.stars} stars', icon: Icons.star_border_outlined, color: _amber),
               _HubPill(label: repo.defaultBranch, icon: Icons.account_tree_outlined, color: _blue),
-              if (repo.hasPages) const _HubPill(label: 'Pages', icon: Icons.web_outlined, color: _mint),
+              _HubPill(label: relation.label, icon: relation.icon, color: relation.color),
+              if (repo.hasPages) _HubPill(label: 'Pages', icon: Icons.web_outlined, color: _mint, onTap: onOpenPages),
               _HubPill(label: local.statusLabel, icon: local.hasGit ? Icons.call_split_outlined : Icons.folder_open_outlined, color: localColor),
             ],
           ),
           const SizedBox(height: 9),
           Text(
-            'Pushed ${_timeAgo(repo.pushedAt)} · ${local.path}',
+            localDetail,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: _faint, fontSize: 11, height: 1.3),
           ),
+          if (!local.hasGit) ...[
+            const SizedBox(height: 5),
+            Text(
+              '${relation.detail} ${local.modeDescription}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted, fontSize: 11, height: 1.3),
+            ),
+          ],
+          if (source == 'release') ...[
+            const SizedBox(height: 10),
+            _ReleaseAssetsPreview(
+              hub: hub,
+              repo: repo,
+              onOpenUrl: onOpenUrl,
+            ),
+          ],
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
@@ -530,7 +787,12 @@ class _RepoHubCard extends StatelessWidget {
               OutlinedButton.icon(
                 onPressed: onLinkWorkspace,
                 icon: const Icon(Icons.add_to_drive_outlined, size: 16),
-                label: Text(local.exists ? '刷新本机链接' : '加入手机工作区'),
+                label: Text(local.exists ? '刷新本机链接' : '创建手机工作区'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onOpenChat,
+                icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                label: const Text('Open chat'),
               ),
               OutlinedButton.icon(
                 onPressed: onActions,
@@ -548,14 +810,190 @@ class _RepoHubCard extends StatelessWidget {
                 label: const Text('仓库'),
               ),
               OutlinedButton.icon(
-                onPressed: onCopyPath,
+                onPressed: onCopyRepoUrl,
+                icon: const Icon(Icons.link_outlined, size: 16),
+                label: const Text('复制地址'),
+              ),
+              OutlinedButton.icon(
+                onPressed: hasPhoneWorkspace ? onCopyPath : null,
                 icon: const Icon(Icons.copy_outlined, size: 16),
-                label: const Text('路径'),
+                label: Text(hasPhoneWorkspace ? '路径' : '未创建路径'),
               ),
             ],
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ReleaseAssetsPreview extends StatelessWidget {
+  const _ReleaseAssetsPreview({
+    required this.hub,
+    required this.repo,
+    required this.onOpenUrl,
+  });
+
+  final GitHubRepoHubService hub;
+  final GitHubRepo repo;
+  final void Function(String url, String label) onOpenUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<GitHubReleaseSummary?>(
+      future: hub.loadLatestReleaseSummary(repo),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const _InlineInfoBox(
+            icon: Icons.new_releases_outlined,
+            color: _blue,
+            title: 'Reading latest release...',
+            detail: 'Checking GitHub Releases for APK/zip assets.',
+          );
+        }
+        if (snapshot.hasError) {
+          return _InlineInfoBox(
+            icon: Icons.error_outline,
+            color: _rose,
+            title: 'Release assets unavailable',
+            detail: _compact(snapshot.error.toString(), 130),
+          );
+        }
+        final release = snapshot.data;
+        if (release == null) {
+          return const _InlineInfoBox(
+            icon: Icons.inventory_2_outlined,
+            color: _faint,
+            title: 'No releases yet',
+            detail: 'This repo has no GitHub Releases visible to the active account.',
+          );
+        }
+        final assets = release.buildAssets;
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: _blue.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: _blue.withOpacity(0.18)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.new_releases_outlined, color: _blue, size: 16),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      '${release.tagName} · ${assets.length} APK/zip assets',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                  if (release.releaseUrl.isNotEmpty)
+                    TextButton(
+                      onPressed: () => onOpenUrl(release.releaseUrl, 'release'),
+                      child: const Text('Release'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              if (assets.isEmpty)
+                const Text(
+                  'Latest release exists, but no APK/zip artifact is attached.',
+                  style: TextStyle(color: _muted, fontSize: 11.5, height: 1.3),
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final asset in assets.take(4))
+                      _ReleaseAssetChip(
+                        asset: asset,
+                        onTap: () => onOpenUrl(asset.downloadUrl, asset.name),
+                      ),
+                  ],
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _InlineInfoBox extends StatelessWidget {
+  const _InlineInfoBox({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.detail,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.20)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 17),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 2),
+                Text(detail, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _muted, fontSize: 11, height: 1.25)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReleaseAssetChip extends StatelessWidget {
+  const _ReleaseAssetChip({
+    required this.asset,
+    required this.onTap,
+  });
+
+  final GitHubReleaseAsset asset;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final size = asset.sizeBytes == null ? null : _bytesLabel(asset.sizeBytes!);
+    final downloads = asset.downloadCount == null ? null : '${asset.downloadCount} dl';
+    return ActionChip(
+      avatar: const Icon(Icons.download_outlined, color: _blue, size: 16),
+      label: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 240),
+        child: Text(
+          [asset.name, if (size != null) size, if (downloads != null) downloads].join(' · '),
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+      side: BorderSide(color: _blue.withOpacity(0.25)),
+      backgroundColor: _panel,
+      labelStyle: const TextStyle(color: _text, fontSize: 11.5, fontWeight: FontWeight.w800),
+      onPressed: onTap,
     );
   }
 }
@@ -1411,15 +1849,17 @@ class _HubPill extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.color,
+    this.onTap,
   });
 
   final String label;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final pill = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: color.withOpacity(0.10),
@@ -1435,7 +1875,94 @@ class _HubPill extends StatelessWidget {
         ],
       ),
     );
+    if (onTap == null) return pill;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: pill,
+      ),
+    );
   }
+}
+
+String _pagesUrlFor(GitHubRepo repo) {
+  final homepage = repo.homepage?.trim();
+  if (homepage != null && homepage.startsWith(RegExp(r'https?://'))) {
+    return homepage;
+  }
+  final owner = repo.owner.toLowerCase();
+  final repoName = repo.name.toLowerCase();
+  if (repoName == '$owner.github.io') {
+    return 'https://$owner.github.io/';
+  }
+  return 'https://$owner.github.io/${repo.name}/';
+}
+
+String _repoChatPrompt(GitHubRepoHubItem item) {
+  final repo = item.repo;
+  final local = item.localState;
+  final pages = repo.hasPages ? _pagesUrlFor(repo) : 'No GitHub Pages detected';
+  final workspace = local.exists ? local.path : 'No phone workspace created yet';
+  final mode = local.hasGit
+      ? 'Git clone workspace (.git exists)'
+      : local.remoteLinked
+          ? 'Remote-linked GitHub API workspace (not a git clone)'
+          : local.exists
+              ? 'Phone folder without GitHub marker'
+              : 'Not on phone';
+  return '''
+我想围绕 GitHub 仓库 ${repo.fullName} 进行 MobileCode 对话。
+
+仓库信息：
+- Repo URL: ${repo.webUrl}
+- Pages URL: $pages
+- 默认分支: ${repo.defaultBranch}
+- 主要语言: ${repo.language ?? 'unknown'}
+- 手机工作区状态: $mode
+- 手机本地路径: $workspace
+
+请先基于这个仓库上下文回答。若需要修改文件：
+- Remote-linked 模式优先通过 GitHub API 读取/提交文件。
+- Git clone 模式才使用本机 git 命令。
+- Not on phone 时先建议创建手机工作区或使用 GitHub API。
+'''.trim();
+}
+
+String _repoWorkspaceModeLabel(GitHubRepoLocalState local) {
+  if (local.hasGit) return 'Git clone';
+  if (local.remoteLinked) return 'Remote-linked';
+  if (local.exists) return 'Phone folder';
+  return 'Not on phone';
+}
+
+String _sourceSearchLabel(String source) {
+  return switch (source) {
+    'skill' => 'Search GitHub skills',
+    'mcp' => 'Search GitHub MCP',
+    'release' => 'Search release repos',
+    _ => 'Search any GitHub repo',
+  };
+}
+
+String _sourceSearchHint(String source) {
+  return switch (source) {
+    'skill' => 'frontend design skill, codex skill, SKILL.md...',
+    'mcp' => 'github mcp server, lark mcp, filesystem mcp...',
+    'release' => 'flutter apk, android release, github pages...',
+    _ => 'owner/repo keywords, topic, language, product name...',
+  };
+}
+
+String _sourceScopeCopy(String source) {
+  return switch (source) {
+    'owner' => 'Owner repos is the managed lane: your own account is smoothest; org repos still need collaborator permissions.',
+    'skill' => 'Skill search is a discovery lane. Install only after reviewing source, manifest, and trust signals.',
+    'mcp' => 'MCP search is a discovery lane. Connectors should stay sandboxed and reviewed before use.',
+    'release' => 'Release search finds repos with downloadable builds; publishing or pushing still requires repo permission.',
+    _ => 'Any repo search is discovery-first. Open, copy, chat, or link read-only; push requires fork or write access.',
+  };
 }
 
 String _timeAgo(DateTime value) {

@@ -176,7 +176,9 @@ class SkillManagerService extends ChangeNotifier {
 
   /// Search skills by query (matches name, description, tags, author).
   Future<List<Skill>> searchSkills(String query) async {
-    _ensureInitialized();
+    if (!_initialized) {
+      await initialize();
+    }
     final lowerQuery = query.toLowerCase();
     return List.unmodifiable(
       _skills.values.where((skill) {
@@ -262,7 +264,9 @@ class SkillManagerService extends ChangeNotifier {
   /// Results are GitHub metadata only; installation still requires manifest
   /// preview through [importFromGitHub].
   Future<List<Skill>> searchGitHubSkills({String? query, String language = ''}) async {
-    _ensureInitialized();
+    if (!_initialized) {
+      await initialize();
+    }
 
     try {
       final queries = _githubSkillDiscoveryQueries(query: query, language: language);

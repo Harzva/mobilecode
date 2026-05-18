@@ -25,10 +25,17 @@ class GitHubRepoLocalState {
   final bool remoteLinked;
 
   String get statusLabel {
-    if (hasGit) return 'Git on phone';
+    if (hasGit) return 'Git clone';
     if (remoteLinked) return 'Remote-linked';
-    if (exists) return 'Local folder';
+    if (exists) return 'Phone folder';
     return 'Not on phone';
+  }
+
+  String get modeDescription {
+    if (hasGit) return 'Real git clone with a .git folder on this phone.';
+    if (remoteLinked) return 'GitHub API workspace marker; files are remote-linked, not cloned.';
+    if (exists) return 'Phone folder exists, but it is not linked to GitHub yet.';
+    return 'No phone workspace has been created for this repo yet.';
   }
 }
 
@@ -80,6 +87,85 @@ class GitHubActionsSnapshot {
   Map<String, dynamic>? get latestRun {
     final first = runs.isEmpty ? null : runs.first;
     return first is Map<String, dynamic> ? first : null;
+  }
+}
+
+class GitHubReleaseAsset {
+  const GitHubReleaseAsset({
+    required this.name,
+    required this.downloadUrl,
+    this.contentType,
+    this.sizeBytes,
+    this.downloadCount,
+  });
+
+  final String name;
+  final String downloadUrl;
+  final String? contentType;
+  final int? sizeBytes;
+  final int? downloadCount;
+
+  bool get isBuildArtifact {
+    final lower = name.toLowerCase();
+    return lower.endsWith('.apk') ||
+        lower.endsWith('.aab') ||
+        lower.endsWith('.zip') ||
+        lower.endsWith('.ipa') ||
+        lower.endsWith('.tar.gz');
+  }
+
+  factory GitHubReleaseAsset.fromJson(Map<String, dynamic> json) {
+    return GitHubReleaseAsset(
+      name: json['name']?.toString() ?? 'asset',
+      downloadUrl: json['browser_download_url']?.toString() ?? '',
+      contentType: json['content_type']?.toString(),
+      sizeBytes: json['size'] is int ? json['size'] as int : null,
+      downloadCount: json['download_count'] is int ? json['download_count'] as int : null,
+    );
+  }
+}
+
+class GitHubReleaseSummary {
+  const GitHubReleaseSummary({
+    required this.tagName,
+    required this.title,
+    required this.releaseUrl,
+    required this.publishedAt,
+    required this.assets,
+    required this.prerelease,
+    required this.draft,
+  });
+
+  final String tagName;
+  final String title;
+  final String releaseUrl;
+  final DateTime? publishedAt;
+  final List<GitHubReleaseAsset> assets;
+  final bool prerelease;
+  final bool draft;
+
+  List<GitHubReleaseAsset> get buildAssets =>
+      assets.where((asset) => asset.isBuildArtifact && asset.downloadUrl.isNotEmpty).toList();
+
+  bool get hasBuildAssets => buildAssets.isNotEmpty;
+
+  factory GitHubReleaseSummary.fromJson(Map<String, dynamic> json) {
+    final rawAssets = (json['assets'] as List<dynamic>?) ?? const [];
+    final rawTitle = json['name']?.toString().trim();
+    final rawTag = json['tag_name']?.toString() ?? 'untagged';
+    return GitHubReleaseSummary(
+      tagName: rawTag,
+      title: rawTitle != null && rawTitle.isNotEmpty ? rawTitle : rawTag,
+      releaseUrl: json['html_url']?.toString() ?? '',
+      publishedAt: DateTime.tryParse(json['published_at']?.toString() ?? ''),
+      assets: rawAssets
+          .whereType<Map<String, dynamic>>()
+          .map(GitHubReleaseAsset.fromJson)
+          .where((asset) => asset.name.isNotEmpty)
+          .toList(),
+      prerelease: json['prerelease'] == true,
+      draft: json['draft'] == true,
+    );
   }
 }
 
@@ -179,6 +265,16 @@ class GitHubRepoHubService {
 
   String? get currentUser => github.currentUser;
 
+  List<String> get accountList => github.accountList;
+
+  Future<bool> switchAccount(String username) => github.switchAccount(username);
+
+  DateTime? authenticatedAtFor(String username) => github.authenticatedAtFor(username);
+
+  String? avatarUrlFor(String username) => github.avatarUrlFor(username);
+
+  Future<List<String>> loadTokenScopes({String? username}) => github.getTokenScopes(username: username);
+
   Future<List<GitHubRepoHubItem>> loadHubItems({
     String? owner,
     String sort = 'pushed',
@@ -200,10 +296,55 @@ class GitHubRepoHubService {
     return items;
   }
 
+  Future<List<GitHubRepoHubItem>> searchHubItems({
+    required String query,
+    required String source,
+    String sort = 'updated',
+  }) async {
+    await initialize();
+    final trimmed = query.trim();
+    final effectiveQuery = _searchQueryForSource(trimmed, source);
+    final watchlist = await loadWatchlist();
+    final rawRepos = await github.searchRepositories(
+      effectiveQuery,
+      sort: _searchSort(sort),
+      perPage: 50,
+    );
+    final items = <GitHubRepoHubItem>[];
+    final seen = <String>{};
+    for (final raw in rawRepos) {
+      if (raw is! Map<String, dynamic>) continue;
+      final repo = GitHubRepo.fromGitHubApi(raw);
+      if (!seen.add(repoKey(repo))) continue;
+      items.add(GitHubRepoHubItem(
+        repo: repo,
+        localState: await localStateFor(repo),
+        watched: watchlist.contains(repoKey(repo)),
+      ));
+    }
+    return items;
+  }
+
   Future<Set<String>> loadWatchlist() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(_watchlistKey) ?? const <String>[];
     return raw.where((item) => item.trim().isNotEmpty).toSet();
+  }
+
+  String _searchQueryForSource(String query, String source) {
+    final userQuery = query.isEmpty ? '' : '$query ';
+    return switch (source) {
+      'skill' => '${userQuery}(SKILL.md OR "agent skill" OR "codex skill" OR "claude skill") in:readme,description archived:false',
+      'mcp' => '${userQuery}("mcp server" OR "model context protocol") in:name,description,readme archived:false',
+      'release' => '${userQuery}(release OR apk OR android OR flutter) in:name,description,readme archived:false',
+      _ => '${query.isEmpty ? 'stars:>10' : query} archived:false',
+    };
+  }
+
+  String _searchSort(String sort) {
+    if (sort == 'pushed' || sort == 'updated' || sort == 'created') return 'updated';
+    if (sort == 'full_name') return '';
+    return sort;
   }
 
   Future<bool> setWatched(GitHubRepo repo, bool watched) async {
@@ -316,6 +457,21 @@ class GitHubRepoHubService {
       artifacts: artifacts,
       jobs: jobs,
     );
+  }
+
+  Future<List<GitHubReleaseSummary>> loadReleaseSummaries(GitHubRepo repo) async {
+    final releases = await github.getReleases(repo.owner, repo.name);
+    return releases
+        .whereType<Map<String, dynamic>>()
+        .map(GitHubReleaseSummary.fromJson)
+        .where((release) => release.tagName.isNotEmpty || release.releaseUrl.isNotEmpty)
+        .toList();
+  }
+
+  Future<GitHubReleaseSummary?> loadLatestReleaseSummary(GitHubRepo repo) async {
+    final releases = await loadReleaseSummaries(repo);
+    if (releases.isEmpty) return null;
+    return releases.first;
   }
 
   Future<void> dispatchWorkflow(GitHubRepo repo, String workflowId) {

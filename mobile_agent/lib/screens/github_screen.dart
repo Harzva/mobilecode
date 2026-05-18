@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../core/theme.dart';
 import '../models/github_repo.dart';
 import '../services/github_deep_service.dart';
+import '../services/repo_intent_polish_service.dart';
 import '../widgets/glass_card_widget.dart';
 import 'github_repo_screen.dart';
 import 'github_issue_detail_screen.dart';
@@ -13,17 +14,6 @@ import 'github_pr_review_screen.dart';
 // ═════════════════════════════════════════════════════════════════════════════
 // GITHUB SCREEN — Deep Integration Hub (Enhanced UX)
 // ═════════════════════════════════════════════════════════════════════════════
-/// Tabbed GitHub interface: Repositories, Issues, Pull Requests, Notifications.
-/// Full auth (PAT + OAuth), repo CRUD, issue/PR management, code review,
-/// notifications, and repository search.
-///
-/// UX Enhancements:
-/// - Sorting & filtering on all tabs
-/// - Multi-account switching
-/// - Language color dots, CI status, review badges
-/// - Pull-to-refresh, FABs, empty states
-/// - Grouped notifications with swipe-to-dismiss
-/// - Persisted search across tab switches
 class GitHubScreen extends StatefulWidget {
   const GitHubScreen({super.key});
 
@@ -2446,11 +2436,15 @@ class _GitHubScreenState extends State<GitHubScreen>
   }
 
   void _showCreateRepoSheet() {
+    final intentCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     final descCtrl = TextEditingController();
     bool priv = false;
     bool initReadme = false;
+    bool polishing = false;
+    String? polishNote;
     String selectedLang = 'Dart';
+    final polishService = RepoIntentPolishService();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -2468,7 +2462,8 @@ class _GitHubScreenState extends State<GitHubScreen>
             left: 20,
             right: 20,
           ),
-          child: Column(
+          child: SingleChildScrollView(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2481,6 +2476,55 @@ class _GitHubScreenState extends State<GitHubScreen>
                         fontWeight: FontWeight.bold,
                         color: AppTheme.textPrimary)),
                 const SizedBox(height: 16),
+                TextField(
+                    controller: intentCtrl,
+                    style: const TextStyle(color: AppTheme.textPrimary),
+                    maxLines: 3,
+                    decoration: _inputDecoration('Repository intent').copyWith(
+                        labelText: 'Intent',
+                        hintText: 'Describe the repo in one sentence, then polish it into a clean GitHub draft.')),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: polishing
+                        ? null
+                        : () async {
+                      final intent = intentCtrl.text.trim();
+                      if (intent.isEmpty) {
+                        _toast('Describe the repository intent first.', isError: true);
+                        return;
+                      }
+                      setSt(() {
+                        polishing = true;
+                        polishNote = null;
+                      });
+                      final draft = await polishService.polish(intent);
+                      if (!mounted || !ctx.mounted) return;
+                      setSt(() {
+                        nameCtrl.text = draft.name;
+                        descCtrl.text = draft.description;
+                        selectedLang = draft.language;
+                        priv = draft.isPrivate;
+                        initReadme = draft.addReadme;
+                        polishing = false;
+                        polishNote = draft.usedProvider
+                            ? 'AI provider generated this draft.'
+                            : 'AI unavailable: ${draft.fallbackReason ?? 'using local fallback.'}';
+                      });
+                      _toast(draft.usedProvider ? 'Repository draft polished by AI provider.' : 'AI unavailable, used local fallback draft.');
+                    },
+                    icon: polishing
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.auto_fix_high_outlined, size: 16),
+                    label: Text(polishing ? '润色中...' : 'AI 润色填表'),
+                  ),
+                ),
+                if (polishNote != null) ...[
+                  const SizedBox(height: 6),
+                  Text(polishNote!, style: const TextStyle(color: AppTheme.textTertiary, fontSize: 12)),
+                ],
+                const SizedBox(height: 12),
                 TextField(
                     controller: nameCtrl,
                     style: const TextStyle(color: AppTheme.textPrimary),
@@ -2586,7 +2630,7 @@ class _GitHubScreenState extends State<GitHubScreen>
                           _toast('Repository "$n" created');
                           await _loadRepos();
                         } catch (e) {
-                          _toast('Failed to create repo: \$e', isError: true);
+                          _toast('Failed to create repo: $e', isError: true);
                         }
                       },
                       style: ElevatedButton.styleFrom(
@@ -2599,6 +2643,7 @@ class _GitHubScreenState extends State<GitHubScreen>
                           style: TextStyle(fontWeight: FontWeight.w600)),
                     )),
               ]),
+          ),
         ),
       ),
     );

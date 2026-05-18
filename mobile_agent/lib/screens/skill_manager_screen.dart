@@ -351,7 +351,7 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
   Widget _buildSearchResults(String query) {
     final AsyncValue<List<Skill>> searchAsync = _discoverySource == _SkillDiscoverySource.curated
         ? ref.watch(curatedSkillSearchProvider((query: query, limit: 12)))
-        : ref.watch(skillSearchProvider(query));
+        : ref.watch(githubSkillSearchProvider((query: query, language: '')));
 
     return searchAsync.when(
       data: (skills) {
@@ -672,6 +672,9 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
               ),
               const SizedBox(height: 16),
 
+              _buildManifestAuditSection(skill),
+              const SizedBox(height: 16),
+
               // Actions preview
               if (skill.hasActions) ...[
                 _buildPreviewSection('Actions', skill.actions, Icons.bolt),
@@ -713,6 +716,72 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
             label: const Text(
               '安装',
               style: TextStyle(fontFamily: AppTheme.fontBody, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildManifestAuditSection(Skill skill) {
+    final risks = _skillRiskLabels(skill);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.backgroundElevated,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.fact_check_outlined, size: 15, color: AppTheme.primary),
+              SizedBox(width: 6),
+              Text(
+                'Manifest review',
+                style: TextStyle(
+                  fontFamily: AppTheme.fontBody,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            skill.githubUrl ?? 'No GitHub provenance URL recorded.',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: AppTheme.fontBody,
+              fontSize: 11,
+              color: AppTheme.textSecondary,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _SkillRiskChip(label: '${skill.actions.length} actions', color: AppTheme.info, icon: Icons.bolt_outlined),
+              _SkillRiskChip(label: '${skill.prompts.length} prompts', color: AppTheme.primary, icon: Icons.chat_bubble_outline),
+              _SkillRiskChip(label: '${skill.mcpServers.length} MCP', color: skill.hasMcpServers ? AppTheme.warning : AppTheme.textTertiary, icon: Icons.dns_outlined),
+              for (final risk in risks) _SkillRiskChip(label: risk.label, color: risk.color, icon: risk.icon),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Install only after source, manifest, MCP commands, and permissions match what you expect.',
+            style: TextStyle(
+              fontFamily: AppTheme.fontBody,
+              fontSize: 11,
+              color: AppTheme.textTertiary,
+              height: 1.35,
             ),
           ),
         ],
@@ -1018,6 +1087,80 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
 // Skill Card Widget
 // ═══════════════════════════════════════════════════════════════════════════
 
+class _SkillRisk {
+  const _SkillRisk({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+}
+
+List<_SkillRisk> _skillRiskLabels(Skill skill) {
+  final risks = <_SkillRisk>[];
+  if (skill.githubUrl == null || skill.githubUrl!.trim().isEmpty) {
+    risks.add(const _SkillRisk(label: 'No provenance URL', icon: Icons.link_off_outlined, color: AppTheme.warning));
+  } else {
+    risks.add(const _SkillRisk(label: 'GitHub provenance', icon: Icons.verified_outlined, color: AppTheme.success));
+  }
+  if (!skill.hasActions && !skill.hasPrompts && !skill.hasMcpServers) {
+    risks.add(const _SkillRisk(label: 'Metadata-only manifest', icon: Icons.info_outline, color: AppTheme.textTertiary));
+  }
+  if (skill.hasMcpServers) {
+    risks.add(const _SkillRisk(label: 'MCP command review', icon: Icons.security_outlined, color: AppTheme.warning));
+  }
+  if (skill.tags.any((tag) => tag.toLowerCase().contains('external'))) {
+    risks.add(const _SkillRisk(label: 'External registry source', icon: Icons.travel_explore_outlined, color: AppTheme.warning));
+  }
+  if (skill.source == SkillSource.github && skill.readme == null) {
+    risks.add(const _SkillRisk(label: 'README not fetched', icon: Icons.article_outlined, color: AppTheme.info));
+  }
+  return risks;
+}
+
+class _SkillRiskChip extends StatelessWidget {
+  const _SkillRiskChip({
+    required this.label,
+    required this.color,
+    required this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: color.withOpacity(0.26)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 12),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontFamily: AppTheme.fontBody,
+              fontSize: 10.5,
+              color: color,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A card widget displaying a single skill with actions.
 class SkillCard extends StatelessWidget {
   final Skill skill;
@@ -1039,6 +1182,7 @@ class SkillCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final riskLabels = _skillRiskLabels(skill);
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.surface,
@@ -1158,8 +1302,8 @@ class SkillCard extends StatelessWidget {
                               borderRadius: BorderRadius.circular(8),
                             ),
                           ),
-                          child: const Text(
-                            '安装',
+                          child: Text(
+                            skill.source == SkillSource.github ? '审核' : '安装',
                             style: TextStyle(
                               fontFamily: AppTheme.fontBody,
                               fontSize: 12,
@@ -1196,6 +1340,17 @@ class SkillCard extends StatelessWidget {
                     return _TagChip(label: tag);
                   }).toList(),
                 ),
+                if (riskLabels.isNotEmpty && !skill.isInstalled) ...[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final risk in riskLabels.take(3))
+                        _SkillRiskChip(label: risk.label, color: risk.color, icon: risk.icon),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

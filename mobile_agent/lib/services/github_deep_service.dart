@@ -268,6 +268,18 @@ class GitHubDeepService {
   /// List of all logged-in account usernames.
   List<String> get accountList => _sessions.map((s) => s.username).toList();
 
+  DateTime? authenticatedAtFor(String username) {
+    final index = _sessions.indexWhere((s) => s.username == username);
+    final session = index < 0 ? null : _sessions[index];
+    return session?.authenticatedAt;
+  }
+
+  String? avatarUrlFor(String username) {
+    final index = _sessions.indexWhere((s) => s.username == username);
+    final session = index < 0 ? null : _sessions[index];
+    return session?.avatarUrl;
+  }
+
   // ---------------------------------------------------------------------------
   // INITIALIZATION
   // ---------------------------------------------------------------------------
@@ -400,6 +412,24 @@ class GitHubDeepService {
     } catch (e) {
       debugPrint('[GitHubDeepService] Refresh session failed: $e');
     }
+  }
+
+  Future<List<String>> getTokenScopes({String? username}) async {
+    final index = username == null ? -1 : _sessions.indexWhere((s) => s.username == username);
+    final session = username == null
+        ? activeSession
+        : index < 0
+            ? null
+            : _sessions[index];
+    if (session == null) return const [];
+    final response = await _request('GET', '/user', token: session.token);
+    final raw = response.headers['x-oauth-scopes'] ?? '';
+    return raw
+        .split(',')
+        .map((scope) => scope.trim())
+        .where((scope) => scope.isNotEmpty)
+        .toList()
+      ..sort();
   }
 
   // ---------------------------------------------------------------------------

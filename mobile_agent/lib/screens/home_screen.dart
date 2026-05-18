@@ -110,10 +110,10 @@ const _managedModel = String.fromEnvironment(
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.18';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.23';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.18+37';
+const _releaseBuildLabel = 'v0.1.23+42';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 const _mobileCodeProjectsFolderName = 'mobilecode_projects';
 const _browserOpenModeSystem = 'systemDefault';
@@ -1851,7 +1851,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _openBuildSheet();
         break;
       case _ModuleAction.githubRepoHub:
-        _openManagementScreen('GitHub Repo Hub', const GitHubRepoHubScreen());
+        unawaited(_openGitHubRepoHub());
         break;
       case _ModuleAction.larkCli:
         _openLarkCliSheet();
@@ -2005,6 +2005,28 @@ class _HomeScreenState extends State<HomeScreen> {
   void _openManagementScreen(String label, Widget screen) {
     _addLog('Opened $label', 'Management surface route', Icons.dashboard_customize_outlined, _cyan);
     Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => screen));
+  }
+
+  Future<void> _openGitHubRepoHub() async {
+    _addLog('Opened GitHub Repo Hub', 'Management surface route', Icons.dashboard_customize_outlined, _cyan);
+    final request = await Navigator.of(context).push<GitHubRepoChatRequest>(
+      MaterialPageRoute<GitHubRepoChatRequest>(builder: (_) => const GitHubRepoHubScreen()),
+    );
+    if (!mounted || request == null) return;
+    final chat = await _focusChatPanel();
+    if (chat == null) {
+      _showMessage('Chat panel is still loading');
+      return;
+    }
+    await chat.createSessionFromShell();
+    await chat.bindRepoFromShell(request);
+    await chat.setPromptFromShell(request.prompt);
+    _addLog(
+      'Repo chat ready',
+      'Chat opened for ${request.repoFullName}.',
+      Icons.chat_bubble_outline,
+      _blue,
+    );
   }
 
   void _openGitHubTestSheet() {
@@ -2306,20 +2328,13 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-          child: _SimpleHeader(
+          padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
+          child: _MobileChatTopBar(
             title: 'MobileCode',
-            subtitle: 'Ask, build, preview on phone',
-            leading: IconButton.filledTonal(
-              tooltip: 'Open conversations',
-              onPressed: _openDrawer,
-              icon: const Icon(Icons.menu_rounded),
-            ),
-            trailing: _Pill(
-              label: _managedProviderActive ? 'Managed' : _flavorLabel(_flavor),
-              icon: Icons.auto_awesome_outlined,
-              color: _managedProviderActive ? _mint : (_flavor == _ApiFlavor.anthropic ? _amber : _cyan),
-            ),
+            subtitle: _managedProviderActive ? 'Managed model ready' : '${_flavorLabel(_flavor)} provider',
+            providerLabel: _managedProviderActive ? 'Managed' : _flavorLabel(_flavor),
+            providerColor: _managedProviderActive ? _mint : (_flavor == _ApiFlavor.anthropic ? _amber : _cyan),
+            onMenu: _openDrawer,
           ),
         ),
         Padding(
@@ -2803,6 +2818,63 @@ class _SimpleHeader extends StatelessWidget {
           const SizedBox(width: 10),
           trailing!,
         ],
+      ],
+    );
+  }
+}
+
+class _MobileChatTopBar extends StatelessWidget {
+  const _MobileChatTopBar({
+    required this.title,
+    required this.subtitle,
+    required this.providerLabel,
+    required this.providerColor,
+    required this.onMenu,
+  });
+
+  final String title;
+  final String subtitle;
+  final String providerLabel;
+  final Color providerColor;
+  final VoidCallback onMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Open conversations',
+          onPressed: onMenu,
+          icon: const Icon(Icons.menu_rounded, color: _text, size: 28),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _text, fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 1),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _muted, fontSize: 11.5),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 6),
+        _Pill(
+          label: providerLabel,
+          icon: Icons.auto_awesome_outlined,
+          color: providerColor,
+        ),
       ],
     );
   }
@@ -6729,15 +6801,57 @@ class _GitHubTestSheetState extends State<_GitHubTestSheet> {
           ),
           const SizedBox(height: 14),
           _Panel(
-            child: Text(
-              _lines.join('\n'),
-              style: const TextStyle(color: _muted, height: 1.45),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final line in _lines) _GitHubConnectivityLine(line: line),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _GitHubConnectivityLine extends StatelessWidget {
+  const _GitHubConnectivityLine({required this.line});
+
+  final String line;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _githubConnectivityColor(line);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 9,
+            height: 9,
+            margin: const EdgeInsets.only(top: 6),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              line,
+              style: TextStyle(color: color == _faint ? _muted : color, height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Color _githubConnectivityColor(String line) {
+  final lower = line.toLowerCase();
+  if (lower.startsWith('ok') || lower.contains('identity response')) return _mint;
+  if (lower.startsWith('fail') || lower.startsWith('network error') || lower.contains('failed')) return _rose;
+  if (lower.startsWith('warn') || lower.contains('permission missing') || lower.contains('not enabled') || lower.contains('rejected')) return _amber;
+  return _faint;
 }
 
 class _LarkCliDiagnosticsSheet extends StatefulWidget {
@@ -9167,6 +9281,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   StreamSubscription<String>? _voiceTranscriptSub;
   StreamSubscription<VoiceState>? _voiceStateSub;
   String? _error;
+  GitHubRepoChatRequest? _repoBinding;
   List<MobileCodeRole> _roleRecruitRoles = RoleLibraryService.instance.recruitmentRoles;
   List<MobileCodeRole>? _activeRunRoles;
   RoleProposal? _activeRunProposal;
@@ -9302,6 +9417,13 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   Future<void> selectSessionFromShell(String id) => _selectSession(id);
 
+  Future<void> bindRepoFromShell(GitHubRepoChatRequest request) async {
+    await _ensureSessionsLoaded();
+    if (!mounted) return;
+    setState(() => _repoBinding = request);
+    _scrollConversationToEnd(force: true);
+  }
+
   Future<void> setPromptFromShell(String prompt, {bool runAgent = false}) async {
     await _ensureSessionsLoaded();
     if (!mounted) return;
@@ -9342,6 +9464,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       setState(() {
         _activeSessionId = active.id;
         _error = null;
+        _repoBinding = null;
         _promptController.clear();
       });
       _notifySessionsChanged();
@@ -9353,6 +9476,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       _sessions.insert(0, session);
       _activeSessionId = session.id;
       _error = null;
+      _repoBinding = null;
       _promptController.clear();
     });
     _notifySessionsChanged();
@@ -9365,6 +9489,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     setState(() {
       _activeSessionId = id;
       _error = null;
+      _repoBinding = null;
     });
     _notifySessionsChanged();
     await _persist();
@@ -9420,8 +9545,14 @@ class _ChatPanelState extends State<_ChatPanel> {
     await _persist();
 
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
-    const systemPrompt =
-        'You are MobileCode, a mobile AI development assistant. Use the saved multi-turn chat context, answer concisely, and prefer executable mobile development steps.';
+    final repoContext = _repoBindingContext();
+    final systemPrompt = [
+      'You are MobileCode, a mobile AI development assistant. Use the saved multi-turn chat context, answer concisely, and prefer executable mobile development steps.',
+      if (repoContext.isNotEmpty) ...[
+        '',
+        repoContext,
+      ],
+    ].join('\n');
     final runId = 'chat_${DateTime.now().microsecondsSinceEpoch}';
     final usageAccumulator = TokenUsageAccumulator(providerKind: _usageProviderKind(flavor));
     final usageStarted = DateTime.now();
@@ -10085,11 +10216,31 @@ class _ChatPanelState extends State<_ChatPanel> {
     return lines.join('\n\n');
   }
 
+  String _repoBindingContext() {
+    final binding = _repoBinding;
+    if (binding == null) return '';
+    return [
+      'Active GitHub repository binding:',
+      '- Repository: ${binding.repoFullName}',
+      '- Repository URL: ${binding.repoUrl}',
+      if (binding.pagesUrl != null) '- GitHub Pages URL: ${binding.pagesUrl}',
+      if (binding.actionsUrl != null) '- GitHub Actions URL: ${binding.actionsUrl}',
+      '- Workspace mode: ${binding.workspaceMode}',
+      if (binding.workspacePath != null) '- Phone workspace path: ${binding.workspacePath}',
+      '- Remote-linked means GitHub API workspace, not a git clone. Use git commands only when workspace mode is Git clone.',
+    ].join('\n');
+  }
+
   String _agentSystemPrompt(String toolName, {String skillContext = '', String roleContext = ''}) {
+    final repoContext = _repoBindingContext();
     return [
       'You are MobileCode Android Mini Agent.',
       'You are running inside a mobile app, so be honest about what has actually happened.',
       'The selected tool is `$toolName`.',
+      if (repoContext.isNotEmpty) ...[
+        '',
+        repoContext,
+      ],
       'You must generate original code from the user request. Do not use or mention a built-in demo fallback.',
       'Do not claim a file was written, previewed, pushed, or executed unless the app reports that after your response.',
       if (roleContext.isNotEmpty) ...[
@@ -10361,29 +10512,49 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   Widget _buildChatHeader(_ChatSession? active) {
+    final repoBinding = _repoBinding;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: _Panel(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.memory_outlined, color: _blue, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                active == null ? 'Conversation loading · context will be sent with each request' : '${_sessionTurnLabel(active)} · context sent with each request',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
+            Row(
+              children: [
+                const Icon(Icons.memory_outlined, color: _blue, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    active == null ? 'Conversation loading · context will be sent with each request' : '${_sessionTurnLabel(active)} · context sent with each request',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'New chat',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: _sending || _agentRunning ? null : _createSession,
+                  icon: const Icon(Icons.add_comment_outlined, size: 18),
+                ),
+              ],
+            ),
+            if (repoBinding != null) ...[
+              const SizedBox(height: 8),
+              _RepoChatBindingBar(
+                binding: repoBinding,
+                onOpenRepo: () => unawaited(_openExternalUrl(context, repoBinding.repoUrl, label: 'repository', browserOpenMode: widget.browserOpenMode)),
+                onOpenPages: repoBinding.pagesUrl == null
+                    ? null
+                    : () => unawaited(_openExternalUrl(context, repoBinding.pagesUrl!, label: 'GitHub Pages', browserOpenMode: widget.browserOpenMode)),
+                onOpenActions: repoBinding.actionsUrl == null
+                    ? null
+                    : () => unawaited(_openExternalUrl(context, repoBinding.actionsUrl!, label: 'GitHub Actions', browserOpenMode: widget.browserOpenMode)),
+                onClear: () => setState(() => _repoBinding = null),
               ),
-            ),
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-              tooltip: 'New chat',
-              visualDensity: VisualDensity.compact,
-              onPressed: _sending || _agentRunning ? null : _createSession,
-              icon: const Icon(Icons.add_comment_outlined, size: 18),
-            ),
+            ],
           ],
         ),
       ),
@@ -10643,83 +10814,114 @@ class _ChatPanelState extends State<_ChatPanel> {
   Widget _buildComposer(_ApiFlavor flavor) {
     final status = _voiceHelperText(flavor, widget.model, _voiceState);
     return Container(
-      decoration: const BoxDecoration(
-        color: _bg,
-        border: Border(top: BorderSide(color: _line)),
+      decoration: BoxDecoration(
+        color: _panel,
+        border: const Border(top: BorderSide(color: _line)),
+        boxShadow: [
+          BoxShadow(
+            color: _blue.withOpacity(0.06),
+            blurRadius: 18,
+            offset: const Offset(0, -8),
+          ),
+        ],
       ),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-      child: _Panel(
-        padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.fromLTRB(12, 7, 12, 10),
+      child: SafeArea(
+        top: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            _AgentModeToggle(
-              enabled: _agentModeEnabled,
-              running: _agentRunning,
-              onChanged: (value) => setState(() => _agentModeEnabled = value),
+            Row(
+              children: [
+                Expanded(
+                  child: _ChatModeStrip(onPrompt: (prompt, {runAgent = false}) => unawaited(setPromptFromShell(prompt, runAgent: runAgent))),
+                ),
+                const SizedBox(width: 8),
+                _CompactAgentModeToggle(
+                  enabled: _agentModeEnabled,
+                  running: _agentRunning,
+                  onChanged: (value) => setState(() => _agentModeEnabled = value),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            _ChatModeStrip(onPrompt: (prompt, {runAgent = false}) => unawaited(setPromptFromShell(prompt, runAgent: runAgent))),
-            const SizedBox(height: 6),
+            const SizedBox(height: 5),
             Text(
               status,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _muted, fontSize: 11),
+              style: const TextStyle(color: _faint, fontSize: 10.5),
             ),
             const SizedBox(height: 6),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _promptController,
-                    minLines: 1,
-                    maxLines: 3,
-                    textInputAction: TextInputAction.newline,
-                    decoration: InputDecoration(
-                      labelText: _voiceService.isListening ? 'Listening...' : 'Message',
-                      hintText: 'Ask MobileCode, or tap a task shortcut.',
-                      alignLabelWithHint: true,
+            Container(
+              padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+              decoration: BoxDecoration(
+                color: _panelSoft,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: _line),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _promptController,
+                      minLines: 1,
+                      maxLines: 2,
+                      textInputAction: TextInputAction.newline,
+                      style: const TextStyle(color: _text, fontSize: 14.5, height: 1.25),
+                      decoration: InputDecoration.collapsed(
+                        hintText: _voiceService.isListening ? '正在听...' : '发消息或描述要构建的网页...',
+                        hintStyle: const TextStyle(color: _faint, fontSize: 14.5),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                _VoiceInputButton(
-                  enabled: !_sending && !_agentRunning,
-                  available: _voiceAvailable,
-                  state: _voiceState,
-                  onTap: _toggleVoiceInput,
-                ),
-                const SizedBox(width: 6),
-                IconButton.filled(
-                  tooltip: _sending ? 'Sending' : 'Send chat',
-                  onPressed: _sending || _agentRunning ? null : _send,
-                  icon: _sending
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.send_outlined),
-                ),
-                const SizedBox(width: 6),
-                IconButton.outlined(
-                  tooltip: _agentRunning
-                      ? (_agentStopping ? 'Stopping agent' : 'Pause agent run')
-                      : 'Run agent',
-                  onPressed: _sending
-                      ? null
-                      : _agentRunning
-                          ? (_agentStopping ? null : _cancelAgentRun)
-                          : _runAgent,
-                  icon: _agentRunning
-                      ? _agentStopping
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Icon(Icons.pause_circle_outline)
-                      : const Icon(Icons.psychology_alt_outlined),
-                ),
-              ],
+                  const SizedBox(width: 6),
+                  _VoiceInputButton(
+                    enabled: !_sending && !_agentRunning,
+                    available: _voiceAvailable,
+                    state: _voiceState,
+                    onTap: _toggleVoiceInput,
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton.filled(
+                    tooltip: _sending ? 'Sending' : 'Send chat',
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(42, 42),
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: _sending || _agentRunning ? null : _send,
+                    icon: _sending
+                        ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.send_outlined, size: 20),
+                  ),
+                  const SizedBox(width: 4),
+                  IconButton.outlined(
+                    tooltip: _agentRunning
+                        ? (_agentStopping ? 'Stopping agent' : 'Pause agent run')
+                        : 'Run agent',
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(42, 42),
+                      padding: EdgeInsets.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: _sending
+                        ? null
+                        : _agentRunning
+                            ? (_agentStopping ? null : _cancelAgentRun)
+                            : _runAgent,
+                    icon: _agentRunning
+                        ? _agentStopping
+                            ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.pause_circle_outline, size: 20)
+                        : const Icon(Icons.psychology_alt_outlined, size: 20),
+                  ),
+                ],
+              ),
             ),
             if (_error != null) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Text(
                 _error!,
                 style: const TextStyle(color: _rose, fontSize: 12, height: 1.35),
@@ -10869,6 +11071,140 @@ class _ChatSessionChip extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _RepoChatBindingBar extends StatelessWidget {
+  const _RepoChatBindingBar({
+    required this.binding,
+    required this.onOpenRepo,
+    required this.onOpenPages,
+    required this.onOpenActions,
+    required this.onClear,
+  });
+
+  final GitHubRepoChatRequest binding;
+  final VoidCallback onOpenRepo;
+  final VoidCallback? onOpenPages;
+  final VoidCallback? onOpenActions;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final workspacePath = binding.workspacePath;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _blue.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _blue.withOpacity(0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.account_tree_outlined, color: _blue, size: 17),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  binding.repoFullName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Clear repo binding',
+                visualDensity: VisualDensity.compact,
+                onPressed: onClear,
+                icon: const Icon(Icons.close_outlined, size: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              _RepoBindingChip(icon: Icons.folder_open_outlined, label: binding.workspaceMode, color: _mint),
+              if (workspacePath != null) _RepoBindingChip(icon: Icons.phone_android_outlined, label: 'On phone', color: _cyan),
+              _RepoBindingAction(icon: Icons.open_in_new_outlined, label: 'Repo', onTap: onOpenRepo, color: _violet),
+              _RepoBindingAction(icon: Icons.web_outlined, label: 'Pages', onTap: onOpenPages, color: _mint),
+              _RepoBindingAction(icon: Icons.play_circle_outline, label: 'Actions', onTap: onOpenActions, color: _blue),
+            ],
+          ),
+          if (workspacePath != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              workspacePath,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _faint, fontSize: 10),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RepoBindingChip extends StatelessWidget {
+  const _RepoBindingChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 13),
+          const SizedBox(width: 5),
+          Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+}
+
+class _RepoBindingAction extends StatelessWidget {
+  const _RepoBindingAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Opacity(
+        opacity: onTap == null ? 0.45 : 1,
+        child: _RepoBindingChip(icon: icon, label: label, color: color),
       ),
     );
   }
@@ -11447,6 +11783,64 @@ class _AgentModeToggle extends StatelessWidget {
   }
 }
 
+class _CompactAgentModeToggle extends StatelessWidget {
+  const _CompactAgentModeToggle({
+    required this.enabled,
+    required this.running,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final bool running;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = enabled ? _violet : _faint;
+    return Tooltip(
+      message: enabled ? 'RR mode on: role personalities guide the run' : 'Plain chat mode',
+      child: InkWell(
+        onTap: running ? null : () => onChanged(!enabled),
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: color.withOpacity(enabled ? 0.12 : 0.06),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: color.withOpacity(enabled ? 0.42 : 0.20)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(enabled ? Icons.groups_2_outlined : Icons.person_outline, color: color, size: 16),
+              const SizedBox(width: 5),
+              Text(
+                enabled ? 'RR' : 'Chat',
+                style: TextStyle(color: enabled ? _text : _muted, fontSize: 11.5, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(width: 5),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: running
+                      ? _amber
+                      : enabled
+                          ? _violet
+                          : _line,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ChatModeStrip extends StatelessWidget {
   const _ChatModeStrip({required this.onPrompt});
 
@@ -11636,7 +12030,7 @@ class _PromptShortcutChip extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
         decoration: BoxDecoration(
           color: item.color.withOpacity(0.10),
           borderRadius: BorderRadius.circular(999),
@@ -11645,9 +12039,9 @@ class _PromptShortcutChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(item.icon, color: item.color, size: 16),
-            const SizedBox(width: 6),
-            Text(item.label, style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w800)),
+            Icon(item.icon, color: item.color, size: 15),
+            const SizedBox(width: 5),
+            Text(item.label, style: const TextStyle(color: _text, fontSize: 11.5, fontWeight: FontWeight.w800)),
           ],
         ),
       ),
@@ -11705,17 +12099,19 @@ class _VoiceInputButton extends StatelessWidget {
     return Tooltip(
       message: listening ? 'Stop voice input' : 'Voice input',
       child: SizedBox(
-        width: 54,
-        height: 54,
+        width: 42,
+        height: 42,
         child: FilledButton(
           style: FilledButton.styleFrom(
             padding: EdgeInsets.zero,
             backgroundColor: color.withOpacity(listening ? 0.92 : 0.16),
             foregroundColor: listening ? _bg : color,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            minimumSize: const Size(42, 42),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
           onPressed: enabled ? onTap : null,
-          child: Icon(listening ? Icons.stop_rounded : Icons.mic_none_outlined),
+          child: Icon(listening ? Icons.stop_rounded : Icons.mic_none_outlined, size: 20),
         ),
       ),
     );

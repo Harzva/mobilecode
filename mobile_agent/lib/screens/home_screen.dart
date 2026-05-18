@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'agent_dashboard_screen.dart';
+import 'github_repo_hub_screen.dart';
 import 'github_screen.dart';
 import 'hook_registry_screen.dart';
 import 'memory_manager_screen.dart';
@@ -21,6 +22,7 @@ import 'skill_manager_screen.dart';
 import '../services/feature_flags_service.dart';
 import '../services/github_deep_service.dart';
 import '../services/github_pages_service.dart';
+import '../services/github_repo_hub_service.dart';
 import '../services/html_publish_readiness_service.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
@@ -68,6 +70,7 @@ enum _ModuleAction {
   terminal,
   deepDive,
   build,
+  githubRepoHub,
   larkCli,
   inspect,
 }
@@ -100,10 +103,10 @@ const _managedModel = String.fromEnvironment(
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.7';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.9';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.7+26';
+const _releaseBuildLabel = 'v0.1.9+28';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 const _mobileCodeProjectsFolderName = 'mobilecode_projects';
 const _browserOpenModeSystem = 'systemDefault';
@@ -1692,6 +1695,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case _ModuleAction.build:
         _openBuildSheet();
         break;
+      case _ModuleAction.githubRepoHub:
+        _openManagementScreen('GitHub Repo Hub', const GitHubRepoHubScreen());
+        break;
       case _ModuleAction.larkCli:
         _openLarkCliSheet();
         break;
@@ -2288,6 +2294,13 @@ class _HomeScreenState extends State<HomeScreen> {
         subtitle: '填写 GitHub token 后验证 /user、repo、Pages 能否联通。',
         color: _violet,
         action: _ModuleAction.githubTest,
+      ),
+      _CommandShortcut(
+        icon: Icons.account_tree_outlined,
+        title: 'GitHub Repo Hub',
+        subtitle: '列出仓库、关注名单、本机工作区、Pages 和 Actions 状态。',
+        color: _blue,
+        action: _ModuleAction.githubRepoHub,
       ),
       _CommandShortcut(
         icon: Icons.business_center_outlined,
@@ -4577,6 +4590,7 @@ class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDep
   bool _allowRemoteAssets = false;
   bool _warningsAccepted = false;
   String? _user;
+  GitHubRemoteWorkspaceLink? _remoteLink;
   String? _error;
   HtmlPublishReadinessReport? _readiness;
   DeploymentResult? _result;
@@ -4591,6 +4605,7 @@ class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDep
     _descriptionController = TextEditingController(
       text: 'Generated and deployed from MobileCode mobile AI workspace.',
     );
+    unawaited(_loadRemoteLinkDefault());
     unawaited(_runReadinessCheck());
     unawaited(_initialize());
   }
@@ -4633,6 +4648,16 @@ class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDep
         _error = _compact(error.toString(), limit: 160);
       });
     }
+  }
+
+  Future<void> _loadRemoteLinkDefault() async {
+    final link = await GitHubRepoHubService.findRemoteLinkForPath(widget.artifactPath);
+    if (!mounted || link == null) return;
+    setState(() {
+      _remoteLink = link;
+      _repoController.text = _sanitizeRepoName(link.name);
+      _descriptionController.text = 'Generated and deployed from MobileCode for ${link.fullName}.';
+    });
   }
 
   Future<void> _runReadinessCheck() async {
@@ -4707,9 +4732,10 @@ class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDep
       setState(() => _error = 'Repository name is required.');
       return;
     }
-    final owner = _github.currentUser;
+    final signedInOwner = _github.currentUser;
+    final owner = _remoteLink?.owner ?? signedInOwner;
     final pages = _pages;
-    if (!_tokenValid || owner == null || pages == null) {
+    if (!_tokenValid || signedInOwner == null || owner == null || pages == null) {
       setState(() => _error = 'Please sign in to GitHub before deploying.');
       return;
     }
@@ -4720,15 +4746,20 @@ class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDep
       return;
     }
 
+    final deploySteps = <String>[
+      'Using GitHub account: $signedInOwner',
+      'Project folder: ${p.dirname(widget.artifactPath)}',
+      if (_remoteLink != null) 'Bound workspace: ${_remoteLink!.fullName}',
+      'Target repo: $owner/$repoName',
+    ];
+
     setState(() {
       _deploying = true;
       _error = null;
       _result = null;
       _steps
         ..clear()
-        ..add('Using GitHub account: $owner')
-        ..add('Project folder: ${p.dirname(widget.artifactPath)}')
-        ..add('Target repo: $owner/$repoName');
+        ..addAll(deploySteps);
     });
 
     try {
@@ -4738,6 +4769,14 @@ class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDep
         _addStep('Repository exists. Reusing $owner/$repoName.');
       } on GitHubDeepException catch (error) {
         if (error.statusCode != 404) rethrow;
+        if (_remoteLink != null && owner != signedInOwner) {
+          setState(() {
+            _deploying = false;
+            _error =
+                'Bound repository $owner/$repoName is not visible to this token. Reconnect GitHub with access to that owner or create the repo on GitHub first.';
+          });
+          return;
+        }
         _addStep('Repository does not exist. Creating $owner/$repoName...');
         await _github.createRepo(
           repoName,
@@ -4888,7 +4927,7 @@ class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDep
   Widget build(BuildContext context) {
     final projectDir = p.dirname(widget.artifactPath);
     final repoName = _sanitizeRepoName(_repoController.text);
-    final owner = _user;
+    final owner = _remoteLink?.owner ?? _user;
     final previewUrl = owner == null || repoName.isEmpty ? null : 'https://$owner.github.io/$repoName';
     final repositoryUrl = owner == null || repoName.isEmpty ? null : 'https://github.com/$owner/$repoName';
 
@@ -5005,6 +5044,7 @@ class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDep
                   _DeployPreviewLine(label: 'Local folder', value: projectDir),
                   if (repositoryUrl != null) _DeployPreviewLine(label: 'Repository', value: repositoryUrl),
                   if (previewUrl != null) _DeployPreviewLine(label: 'Pages URL', value: previewUrl),
+                  if (_remoteLink != null) _DeployPreviewLine(label: 'Bound repo', value: _remoteLink!.fullName),
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,

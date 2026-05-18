@@ -442,6 +442,21 @@ class GitHubDeepService {
     return data.map((item) => GitHubRepo.fromGitHubApi(item)).toList();
   }
 
+  /// List public repositories for a specific GitHub user or organization.
+  Future<List<GitHubRepo>> getUserRepos(
+    String owner, {
+    String sort = 'pushed',
+    int perPage = 100,
+  }) async {
+    final query = <String, String>{
+      'per_page': '$perPage',
+      'sort': sort,
+      'type': 'all',
+    };
+    final List<dynamic> data = await _getJsonList('/users/$owner/repos', query: query);
+    return data.map((item) => GitHubRepo.fromGitHubApi(item)).toList();
+  }
+
   /// Create a new repository.
   Future<GitHubRepo> createRepo(
     String name, {
@@ -508,6 +523,65 @@ class GitHubDeepService {
   /// Get repository details.
   Future<Map<String, dynamic>> getRepoDetails(String owner, String repo) async {
     return await _getJson('/repos/$owner/$repo') ?? {};
+  }
+
+  /// List GitHub Actions workflows for a repository.
+  Future<List<dynamic>> getWorkflows(String owner, String repo, {int perPage = 30}) async {
+    final data = await _getJson(
+          '/repos/$owner/$repo/actions/workflows',
+          query: {'per_page': '$perPage'},
+        ) ??
+        {};
+    return (data['workflows'] as List<dynamic>?) ?? const [];
+  }
+
+  /// List recent GitHub Actions runs for a repository.
+  Future<List<dynamic>> getWorkflowRuns(String owner, String repo, {int perPage = 5}) async {
+    final data = await _getJson(
+          '/repos/$owner/$repo/actions/runs',
+          query: {'per_page': '$perPage'},
+        ) ??
+        {};
+    return (data['workflow_runs'] as List<dynamic>?) ?? const [];
+  }
+
+  /// List artifacts for a workflow run.
+  Future<List<dynamic>> getWorkflowRunArtifacts(String owner, String repo, int runId) async {
+    final data = await _getJson('/repos/$owner/$repo/actions/runs/$runId/artifacts') ?? {};
+    return (data['artifacts'] as List<dynamic>?) ?? const [];
+  }
+
+  /// List jobs and step status for a workflow run.
+  Future<List<dynamic>> getWorkflowRunJobs(String owner, String repo, int runId) async {
+    final data = await _getJson('/repos/$owner/$repo/actions/runs/$runId/jobs') ?? {};
+    return (data['jobs'] as List<dynamic>?) ?? const [];
+  }
+
+  /// Download a workflow artifact as a zip archive.
+  Future<List<int>> downloadWorkflowArtifactZip(String owner, String repo, int artifactId) async {
+    final response = await _request(
+      'GET',
+      '/repos/$owner/$repo/actions/artifacts/$artifactId/zip',
+      extraHeaders: {'Accept': 'application/vnd.github+json'},
+    );
+    return response.bodyBytes;
+  }
+
+  /// Trigger a workflow_dispatch run. The workflow identifier can be an id or file name.
+  Future<void> dispatchWorkflow(
+    String owner,
+    String repo,
+    String workflowId, {
+    required String ref,
+    Map<String, String> inputs = const {},
+  }) async {
+    await _postJson(
+      '/repos/$owner/$repo/actions/workflows/$workflowId/dispatches',
+      body: {
+        'ref': ref,
+        if (inputs.isNotEmpty) 'inputs': inputs,
+      },
+    );
   }
 
   // ---------------------------------------------------------------------------

@@ -21,9 +21,9 @@ Required GitHub Actions before publishing:
 - `.github/workflows/android-apk.yml`
   - Builds the release APK.
   - Uses stable signing when release keystore secrets are configured.
-  - Uploads `mobilecode-v0.1.7.apk` as an artifact and GitHub Release asset.
+  - Uploads `mobilecode-v0.1.9.apk` as an artifact and GitHub Release asset.
 
-## v0.1.7 Release Candidate
+## v0.1.9 Release Candidate
 
 Release candidate:
 
@@ -43,7 +43,15 @@ Required CI evidence:
 
 Validated coverage:
 
-- Pending after browser-open preference, MobileCode Projects workspace browser, artifact project-folder action, Git badge, and official GitHub icon asset pass analyzer/build checks.
+- Pending after GitHub Repo Hub, repo watchlist persistence, `mobilecode_projects/github/<owner>/<repo>` workspace mapping, Git/remote-linked local status, Actions polling/artifact download, API-backed file tree/read/edit/commit, and repo-bound Pages defaults pass analyzer/build checks.
+
+Manual device coverage:
+
+- Verify GitHub Repo Hub with a signed-in account: current-user repos load, search/language/Pages/local filters work, watchlist survives app restart, and a repo can be added to the phone workspace.
+- Verify repo cards show public/private, stars, language, Pages, default branch, recent push time, and local status without overflowing on a 360dp-wide screen.
+- Verify an artifact stored under a remote-linked repo folder defaults the GitHub Pages deploy target to that bound owner/repo and explains token visibility errors.
+- Verify Actions sheet refreshes workflow jobs, can dispatch a workflow, downloads artifact zip to the app-owned workspace, records it in Recent downloads, opens the zip/folder when Android allows it, and copies the local zip path.
+- Verify Files sheet can browse repository folders, open a text file, edit it, commit through the GitHub Contents API with an explicit commit message, and recover from SHA conflicts by reloading the remote file.
 
 ## v0.1.6 Release Evidence
 
@@ -251,7 +259,7 @@ Expected result:
 After downloading the release APK:
 
 ```bash
-adb install -r mobilecode-v0.1.7.apk
+adb install -r mobilecode-v0.1.9.apk
 adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
 adb shell pidof com.mobilecode.mobile_agent
 adb logcat -d -t 1200 > android-logcat.txt

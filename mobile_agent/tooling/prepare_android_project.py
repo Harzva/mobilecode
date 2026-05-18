@@ -67,6 +67,12 @@ def main() -> None:
         '            android:theme="@android:style/Theme.NoDisplay" />'
     )
     text = ensure_application_child(text, helper_launcher, 'android:name=".MobileCodeHelperLauncherActivity"')
+    impeller_opt_out = (
+        '        <meta-data\n'
+        '            android:name="io.flutter.embedding.android.EnableImpeller"\n'
+        '            android:value="false" />'
+    )
+    text = ensure_application_child(text, impeller_opt_out, 'io.flutter.embedding.android.EnableImpeller')
     manifest.write_text(text)
 
     gradle = Path('android/app/build.gradle.kts')

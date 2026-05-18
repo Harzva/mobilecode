@@ -2,7 +2,7 @@ import React from 'react';
 import {AbsoluteFill, Audio, Easing, Sequence, interpolate, staticFile, useCurrentFrame} from 'remotion';
 
 const fps = 30;
-const sceneFrames = 300;
+const sceneFrames = 375;
 
 const colors = {
   bg: '#F7FAFF',

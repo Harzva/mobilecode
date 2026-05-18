@@ -1,6 +1,7 @@
 param(
   [string]$VoiceName = "Microsoft Huihui Desktop",
-  [int]$Rate = 5
+  [int]$PrincipleRate = 3,
+  [int]$ShortRate = 6
 )
 
 Add-Type -AssemblyName System.Speech
@@ -51,12 +52,12 @@ Save-Voiceover `
   -Path (Join-Path $audioDir "mobilecode-principle-voiceover.wav") `
   -Text $principleText `
   -VoiceName $VoiceName `
-  -Rate $Rate
+  -Rate $PrincipleRate
 
 Save-Voiceover `
   -Path (Join-Path $audioDir "mobilecode-short-voiceover.wav") `
   -Text $shortText `
   -VoiceName $VoiceName `
-  -Rate ($Rate + 1)
+  -Rate $ShortRate
 
 Write-Host "Generated voiceovers in $audioDir"

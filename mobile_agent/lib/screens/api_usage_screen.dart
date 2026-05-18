@@ -135,7 +135,7 @@ class _ApiUsageScreenState extends State<ApiUsageScreen> {
           const SizedBox(height: 12),
           _PricingPanel(
             catalog: catalog,
-            prices: _pricingService.snapshotPrices.take(8).toList(growable: false),
+            prices: _pricingService.snapshotPrices,
             overrides: _pricingService.overrides,
             checkingUpdate: _checkingPricingUpdate,
             onCheckUpdate: () => unawaited(_checkLiteLlmUpdate()),
@@ -170,6 +170,26 @@ Map<String, int> _breakdownByProviderModel(List<TokenUsageEvent> events) {
   }
   final entries = breakdown.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
   return Map<String, int>.fromEntries(entries.take(12));
+}
+
+List<TokenPrice> _combinedPrices({
+  required List<TokenPrice> prices,
+  required List<TokenPrice> overrides,
+}) {
+  final combined = <String, TokenPrice>{};
+  for (final price in prices) {
+    combined[price.key] = price;
+  }
+  for (final price in overrides) {
+    combined[price.key] = price;
+  }
+  final values = combined.values.toList(growable: false)
+    ..sort((a, b) {
+      final provider = a.provider.compareTo(b.provider);
+      if (provider != 0) return provider;
+      return a.model.compareTo(b.model);
+    });
+  return values;
 }
 
 class _UsageHero extends StatelessWidget {
@@ -389,6 +409,8 @@ class _PricingPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final previewPrices = prices.take(8).toList(growable: false);
+    final totalVisible = _combinedPrices(prices: prices, overrides: overrides).length;
     return _UsagePanel(
       title: 'Pricing table',
       icon: Icons.price_change_outlined,
@@ -421,6 +443,11 @@ class _PricingPanel extends StatelessWidget {
                 icon: const Icon(Icons.add_outlined, size: 16),
                 label: const Text('Override'),
               ),
+              TextButton.icon(
+                onPressed: totalVisible == 0 ? null : () => _openPriceBrowser(context),
+                icon: const Icon(Icons.search_outlined, size: 16),
+                label: const Text('Search all'),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -437,13 +464,43 @@ class _PricingPanel extends StatelessWidget {
           ],
           const Text('Current snapshot', style: TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900)),
           const SizedBox(height: 8),
-          for (final price in prices)
-            _PriceRow(
-              price: price,
-              onEdit: () => onEdit(price),
-              onRemove: price.custom ? () => onRemove(price) : null,
-            ),
+          Text(
+            prices.length <= previewPrices.length
+                ? 'Showing all ${prices.length} snapshot models.'
+                : 'Showing ${previewPrices.length} of ${prices.length} snapshot models. Use Search all for the full table.',
+            style: const TextStyle(color: _usageFaint, fontSize: 10.5, height: 1.3),
+          ),
+          const SizedBox(height: 8),
+          if (previewPrices.isEmpty)
+            const _EmptyUsageText(text: 'No snapshot prices loaded yet. Check LiteLLM update or add an override.')
+          else
+            for (final price in previewPrices)
+              _PriceRow(
+                price: price,
+                onEdit: () => onEdit(price),
+                onRemove: price.custom ? () => onRemove(price) : null,
+              ),
         ],
+      ),
+    );
+  }
+
+  void _openPriceBrowser(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _usagePanel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.92,
+        child: _PricingCatalogSearchSheet(
+          catalog: catalog,
+          prices: prices,
+          overrides: overrides,
+          onAdd: onAdd,
+          onEdit: onEdit,
+          onRemove: onRemove,
+        ),
       ),
     );
   }
@@ -508,6 +565,156 @@ class _PriceRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _PricingCatalogSearchSheet extends StatefulWidget {
+  const _PricingCatalogSearchSheet({
+    required this.catalog,
+    required this.prices,
+    required this.overrides,
+    required this.onAdd,
+    required this.onEdit,
+    required this.onRemove,
+  });
+
+  final TokenPricingCatalog catalog;
+  final List<TokenPrice> prices;
+  final List<TokenPrice> overrides;
+  final VoidCallback onAdd;
+  final ValueChanged<TokenPrice> onEdit;
+  final ValueChanged<TokenPrice> onRemove;
+
+  @override
+  State<_PricingCatalogSearchSheet> createState() => _PricingCatalogSearchSheetState();
+}
+
+class _PricingCatalogSearchSheetState extends State<_PricingCatalogSearchSheet> {
+  final _query = TextEditingController();
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final prices = _filteredPrices;
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.manage_search_outlined, color: _usageAmber, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Pricing table · ${_formatInt(prices.length)} / ${_formatInt(_allPrices.length)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _usageText, fontSize: 16, fontWeight: FontWeight.w900),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_outlined),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${widget.catalog.sourceName} · updated ${_dateLabel(widget.catalog.updatedAt)}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.35),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _query,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search_outlined),
+                suffixIcon: _query.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () => setState(_query.clear),
+                        icon: const Icon(Icons.close_outlined),
+                      ),
+                hintText: 'Search provider, model, source...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _UsageBadge(label: '${_formatInt(widget.prices.length)} snapshot', color: _usageCyan),
+                _UsageBadge(label: '${_formatInt(widget.overrides.length)} overrides', color: _usageAmber),
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    widget.onAdd();
+                  },
+                  icon: const Icon(Icons.add_outlined, size: 16),
+                  label: const Text('Add override'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: prices.isEmpty
+                  ? const Center(child: _EmptyUsageText(text: 'No pricing rows match this search.'))
+                  : ListView.builder(
+                      itemCount: prices.length,
+                      itemBuilder: (context, index) {
+                        final price = prices[index];
+                        return _PriceRow(
+                          price: price,
+                          onEdit: () {
+                            Navigator.of(context).pop();
+                            widget.onEdit(price);
+                          },
+                          onRemove: price.custom
+                              ? () {
+                                  Navigator.of(context).pop();
+                                  widget.onRemove(price);
+                                }
+                              : null,
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<TokenPrice> get _allPrices => _combinedPrices(
+        prices: widget.prices,
+        overrides: widget.overrides,
+      );
+
+  List<TokenPrice> get _filteredPrices {
+    final needle = _query.text.trim().toLowerCase();
+    if (needle.isEmpty) return _allPrices;
+    return _allPrices.where((price) {
+      final haystack = '${price.provider} ${price.model} ${price.sourceName} ${price.notes}'.toLowerCase();
+      return haystack.contains(needle);
+    }).toList(growable: false);
   }
 }
 

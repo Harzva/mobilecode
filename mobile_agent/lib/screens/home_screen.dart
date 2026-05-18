@@ -100,14 +100,25 @@ const _managedModel = String.fromEnvironment(
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.6';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.7';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.6+25';
+const _releaseBuildLabel = 'v0.1.7+26';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
+const _mobileCodeProjectsFolderName = 'mobilecode_projects';
+const _browserOpenModeSystem = 'systemDefault';
+const _browserOpenModeInApp = 'inAppBrowser';
 
 String _normalizeBrandTheme(String value) {
   return value == 'claudeYellow' ? 'claudeYellow' : 'codexBlue';
+}
+
+String _normalizeBrowserOpenMode(String? value) {
+  return value == _browserOpenModeInApp ? _browserOpenModeInApp : _browserOpenModeSystem;
+}
+
+String _browserOpenModeLabel(String value) {
+  return _normalizeBrowserOpenMode(value) == _browserOpenModeInApp ? 'App 内浏览器优先' : '系统默认浏览器';
 }
 
 String? runtimeFailureKindHint(RuntimeTaskFailureKind kind) {
@@ -685,6 +696,57 @@ String _sessionTurnLabel(_ChatSession session) {
   return messages == 1 ? '1 message' : '$messages messages';
 }
 
+Future<Directory> _mobileCodeProjectsRootDirectory() async {
+  final directory = await getApplicationDocumentsDirectory();
+  final root = Directory(p.join(directory.path, _mobileCodeProjectsFolderName));
+  await root.create(recursive: true);
+  return root;
+}
+
+String _projectDirectoryForArtifact(String path) => p.dirname(path);
+
+Future<String?> _findGitRootForPath(String path) async {
+  var current = path;
+  try {
+    if (!await FileSystemEntity.isDirectory(current)) {
+      current = p.dirname(current);
+    }
+  } on Object {
+    current = p.dirname(current);
+  }
+
+  var directory = Directory(current);
+  for (var depth = 0; depth < 8; depth++) {
+    if (await Directory(p.join(directory.path, '.git')).exists()) {
+      return directory.path;
+    }
+    final parent = directory.parent;
+    if (p.equals(parent.path, directory.path)) break;
+    directory = parent;
+  }
+  return null;
+}
+
+String _workspaceRelativePath(String path, String workspaceRoot) {
+  try {
+    final relative = p.relative(path, from: workspaceRoot);
+    return relative.startsWith('..') ? path : relative;
+  } on Object {
+    return path;
+  }
+}
+
+Future<bool> _launchUrlWithBrowserMode(Uri uri, String browserOpenMode) async {
+  final prefersInApp = _normalizeBrowserOpenMode(browserOpenMode) == _browserOpenModeInApp &&
+      (uri.scheme == 'http' || uri.scheme == 'https');
+  final firstMode = prefersInApp ? LaunchMode.inAppWebView : LaunchMode.externalApplication;
+  if (await launchUrl(uri, mode: firstMode)) return true;
+  if (firstMode != LaunchMode.externalApplication && await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    return true;
+  }
+  return launchUrl(uri, mode: LaunchMode.platformDefault);
+}
+
 String? _artifactPathFromContent(String content) {
   final patterns = [
     RegExp(r'Saved generated artifact:\s*`([^`]+)`'),
@@ -1104,6 +1166,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _modelKey = 'mobilecode.model';
   static const _providerModeKey = 'mobilecode.providerMode';
   static const _brandThemeKey = 'mobilecode.brandTheme';
+  static const _browserOpenModeKey = 'mobilecode.browserOpenMode';
 
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _chatPanelKey = GlobalKey<_ChatPanelState>();
@@ -1120,6 +1183,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _runtimeChecking = false;
   bool _customProviderOverride = false;
   String _brandTheme = 'codexBlue';
+  String _browserOpenMode = _browserOpenModeSystem;
   bool? _termuxInstalled;
   bool? _termuxApiInstalled;
   bool? _rootAvailable;
@@ -1227,6 +1291,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _brandTheme = _normalizeBrandTheme(
           prefs.getString(_brandThemeKey) ?? widget.brandTheme,
         );
+        _browserOpenMode = _normalizeBrowserOpenMode(prefs.getString(_browserOpenModeKey));
         if (_managedProviderActive) {
           _baseUrlController.text = '';
           _apiKeyController.text = '';
@@ -1286,6 +1351,20 @@ class _HomeScreenState extends State<HomeScreen> {
       'Theme preference saved on this device.',
       Icons.palette_outlined,
       normalized == 'claudeYellow' ? _amber : _blue,
+    );
+  }
+
+  Future<void> _setBrowserOpenMode(String value) async {
+    final normalized = _normalizeBrowserOpenMode(value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_browserOpenModeKey, normalized);
+    if (!mounted) return;
+    setState(() => _browserOpenMode = normalized);
+    _addLog(
+      'Browser open mode saved',
+      _browserOpenModeLabel(normalized),
+      normalized == _browserOpenModeInApp ? Icons.web_asset_outlined : Icons.open_in_browser_outlined,
+      normalized == _browserOpenModeInApp ? _violet : _amber,
     );
   }
 
@@ -1602,13 +1681,13 @@ class _HomeScreenState extends State<HomeScreen> {
         _openSnippetSheet();
         break;
       case _ModuleAction.project:
-        _openProjectSheet();
+        unawaited(_openProjectSheet());
         break;
       case _ModuleAction.terminal:
         _openCommandSheet();
         break;
       case _ModuleAction.deepDive:
-        _openDeepDiveSheet();
+        unawaited(_openDeepDiveSheet());
         break;
       case _ModuleAction.build:
         _openBuildSheet();
@@ -1660,6 +1739,7 @@ class _HomeScreenState extends State<HomeScreen> {
         baseUrl: _effectiveBaseUrl,
         apiKey: _effectiveApiKey,
         model: _effectiveModel,
+        browserOpenMode: _browserOpenMode,
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
         onAgentPrompt: _handleAgentPrompt,
       ),
@@ -1691,10 +1771,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _openUrl(String url, String label) async {
     try {
       final uri = Uri.parse(url);
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final opened = await _launchUrlWithBrowserMode(uri, _browserOpenMode);
       _addLog(
         opened ? 'Opened $label' : 'Failed to open $label',
-        url,
+        '$url · ${_browserOpenModeLabel(_browserOpenMode)}',
         opened ? Icons.open_in_browser_outlined : Icons.error_outline,
         opened ? _mint : _rose,
       );
@@ -1704,6 +1784,54 @@ class _HomeScreenState extends State<HomeScreen> {
     } on Object catch (error) {
       _addLog('Open URL failed', _compact(error.toString(), limit: 120), Icons.error_outline, _rose);
       _showMessage('Could not open $label');
+    }
+  }
+
+  Future<void> _openWorkspaceFile(String path) async {
+    try {
+      final file = File(path);
+      if (!await file.exists()) {
+        _showMessage('File was not found on this phone');
+        return;
+      }
+      final code = await file.readAsString();
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: _panel,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+        builder: (context) => _CodeFileSheet(path: path, code: code),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      _showMessage(_compact(error.toString(), limit: 140));
+    }
+  }
+
+  Future<void> _openWorkspaceFolder(String path) async {
+    try {
+      final root = await _mobileCodeProjectsRootDirectory();
+      final folder = Directory(path);
+      if (!await folder.exists()) {
+        _showMessage('Project folder was not found on this phone');
+        return;
+      }
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: _panel,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+        builder: (context) => _ProjectFolderSheet(
+          initialPath: folder.path,
+          workspaceRoot: root.path,
+          onOpenFile: (filePath) => unawaited(_openWorkspaceFile(filePath)),
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      _showMessage(_compact(error.toString(), limit: 140));
     }
   }
 
@@ -1820,7 +1948,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openProjectSheet() {
+  Future<void> _openProjectSheet() async {
+    final workspaceRoot = (await _mobileCodeProjectsRootDirectory()).path;
+    if (!mounted) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1830,7 +1960,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       builder: (context) => _ProjectConsoleSheet(
         runtimeManager: _runtimeManager,
-        defaultProjectPath: '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime',
+        defaultProjectPath: workspaceRoot,
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
       ),
     );
@@ -1855,7 +1985,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _openDeepDiveSheet() {
+  Future<void> _openDeepDiveSheet() async {
+    final workspaceRoot = (await _mobileCodeProjectsRootDirectory()).path;
+    if (!mounted) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -1865,7 +1997,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       builder: (_) => _DeepDiveConsoleSheet(
         runtimeManager: _runtimeManager,
-        defaultProjectPath: '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime',
+        defaultProjectPath: workspaceRoot,
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
         onStartInChat: (prompt) {
           _addLog('Deep Dive started', 'Prompt sent to Chat Agent with RuntimeManager context', Icons.psychology_alt_outlined, _violet);
@@ -2041,6 +2173,7 @@ class _HomeScreenState extends State<HomeScreen> {
             baseUrl: _effectiveBaseUrl,
             apiKey: _effectiveApiKey,
             model: _effectiveModel,
+            browserOpenMode: _browserOpenMode,
             embedded: true,
             onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
             onAgentPrompt: _handleAgentPrompt,
@@ -2259,6 +2392,15 @@ class _HomeScreenState extends State<HomeScreen> {
         _ThemePreferenceCard(
           selectedTheme: _brandTheme,
           onChanged: (value) => unawaited(_setBrandTheme(value)),
+        ),
+        const SizedBox(height: 12),
+        _BrowserOpenPreferenceCard(
+          selectedMode: _browserOpenMode,
+          onChanged: (value) => unawaited(_setBrowserOpenMode(value)),
+        ),
+        const SizedBox(height: 12),
+        _WorkspaceRootCard(
+          onOpenFolder: (path) => unawaited(_openWorkspaceFolder(path)),
         ),
         const SizedBox(height: 12),
         _SideloadStatusPanel(
@@ -2818,6 +2960,159 @@ class _ThemePreferenceCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _BrowserOpenPreferenceCard extends StatelessWidget {
+  const _BrowserOpenPreferenceCard({
+    required this.selectedMode,
+    required this.onChanged,
+  });
+
+  final String selectedMode;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = _normalizeBrowserOpenMode(selectedMode);
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: _amber.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: _line),
+                ),
+                child: const Icon(Icons.open_in_browser_outlined, color: _amber, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '浏览器打开方式',
+                      style: TextStyle(color: _text, fontSize: 16, fontWeight: FontWeight.w900),
+                    ),
+                    SizedBox(height: 3),
+                    Text(
+                      '网页链接可用系统默认浏览器或 App 内浏览器；本地 HTML 仍可用 WebView 预览。',
+                      style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _ThemeChoiceChip(
+                id: _browserOpenModeSystem,
+                label: '系统默认浏览器',
+                colors: const [Color(0xFFB7791F), Color(0xFFFFB86B)],
+                selected: selected == _browserOpenModeSystem,
+                onTap: onChanged,
+              ),
+              _ThemeChoiceChip(
+                id: _browserOpenModeInApp,
+                label: 'App 内浏览器',
+                colors: const [Color(0xFF7557E8), Color(0xFF16B9C7)],
+                selected: selected == _browserOpenModeInApp,
+                onTap: onChanged,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WorkspaceRootCard extends StatelessWidget {
+  const _WorkspaceRootCard({required this.onOpenFolder});
+
+  final ValueChanged<String> onOpenFolder;
+
+  Future<void> _copyPath(BuildContext context, String path) async {
+    await Clipboard.setData(ClipboardData(text: path));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Workspace path copied.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Directory>(
+      future: _mobileCodeProjectsRootDirectory(),
+      builder: (context, snapshot) {
+        final path = snapshot.data?.path ?? 'Preparing MobileCode workspace...';
+        return _Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: _mint.withOpacity(0.10),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: _line),
+                    ),
+                    child: const Icon(Icons.folder_special_outlined, color: _mint, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('MobileCode Projects', style: TextStyle(color: _text, fontSize: 16, fontWeight: FontWeight.w900)),
+                        SizedBox(height: 3),
+                        Text(
+                          'Generated pages and GitHub clone/import projects should live under this app-owned workspace.',
+                          style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SelectableText(
+                path,
+                style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: snapshot.hasData ? () => onOpenFolder(snapshot.data!.path) : null,
+                    icon: const Icon(Icons.folder_open_outlined, size: 16),
+                    label: const Text('打开工程文件夹'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: snapshot.hasData ? () => unawaited(_copyPath(context, snapshot.data!.path)) : null,
+                    icon: const Icon(Icons.copy_outlined, size: 16),
+                    label: const Text('复制路径'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -3707,9 +4002,8 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
       _transcriptPath = null;
     });
     try {
-      final directory = await getApplicationDocumentsDirectory();
-      final rootDirectory = Directory('${directory.path}/mobilecode_projects');
-      final projectDirectory = Directory('${rootDirectory.path}/agent_2048');
+      final rootDirectory = await _mobileCodeProjectsRootDirectory();
+      final projectDirectory = Directory(p.join(rootDirectory.path, 'agent_2048'));
 
       await _emitAgentEvent(
         _MiniAgentEvent(
@@ -4191,9 +4485,12 @@ class _WebPreviewSheet extends StatefulWidget {
   State<_WebPreviewSheet> createState() => _WebPreviewSheetState();
 }
 
-Future<bool> _launchHtmlInExternalBrowser(String html) async {
+Future<bool> _launchHtmlInExternalBrowser(
+  String html, {
+  String browserOpenMode = _browserOpenModeSystem,
+}) async {
   final dataUri = Uri.dataFromString(html, mimeType: 'text/html', encoding: utf8);
-  if (await launchUrl(dataUri, mode: LaunchMode.externalApplication)) {
+  if (await _launchUrlWithBrowserMode(dataUri, browserOpenMode)) {
     return true;
   }
   return launchUrl(dataUri, mode: LaunchMode.platformDefault);
@@ -4212,16 +4509,18 @@ Future<void> _openHtmlInBrowser(BuildContext context, String html) async {
   }
 }
 
-Future<void> _openExternalUrl(BuildContext context, String url, {String label = 'URL'}) async {
+Future<void> _openExternalUrl(
+  BuildContext context,
+  String url, {
+  String label = 'URL',
+  String browserOpenMode = _browserOpenModeSystem,
+}) async {
   try {
     final uri = Uri.parse(url);
-    var opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened) {
-      opened = await launchUrl(uri, mode: LaunchMode.platformDefault);
-    }
+    final opened = await _launchUrlWithBrowserMode(uri, browserOpenMode);
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(opened ? 'Opened $label.' : 'Could not open $label.')),
+      SnackBar(content: Text(opened ? 'Opened $label with ${_browserOpenModeLabel(browserOpenMode)}.' : 'Could not open $label.')),
     );
   } on Object catch (error) {
     if (!context.mounted) return;
@@ -4537,6 +4836,54 @@ class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDep
     await _copyText(context, value, label);
   }
 
+  Future<void> _openArtifactCode() async {
+    try {
+      final file = File(widget.artifactPath);
+      if (!await file.exists()) {
+        setState(() => _error = 'Generated HTML file was not found on this phone.');
+        return;
+      }
+      final code = await file.readAsString();
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: _panel,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+        builder: (context) => _CodeFileSheet(path: widget.artifactPath, code: code),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _error = _compact(error.toString(), limit: 160));
+    }
+  }
+
+  Future<void> _openProjectFolder() async {
+    try {
+      final workspaceRoot = await _mobileCodeProjectsRootDirectory();
+      final folder = Directory(p.dirname(widget.artifactPath));
+      if (!await folder.exists()) {
+        setState(() => _error = 'Project folder was not found on this phone.');
+        return;
+      }
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: _panel,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+        builder: (context) => _ProjectFolderSheet(
+          initialPath: folder.path,
+          workspaceRoot: workspaceRoot.path,
+          onOpenFile: (filePath) => unawaited(_copy(filePath, 'File path')),
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() => _error = _compact(error.toString(), limit: 160));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final projectDir = p.dirname(widget.artifactPath);
@@ -4730,9 +5077,10 @@ class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDep
               ),
               onOpenPages: () => unawaited(_openUrl(_result!.url!)),
               onOpenRepo: repositoryUrl == null ? null : () => unawaited(_openUrl(repositoryUrl)),
-              onOpenCode: null,
+              onOpenCode: () => unawaited(_openArtifactCode()),
               onRedeploy: _deploying ? null : () => unawaited(_deploy()),
               onCopyPath: () => unawaited(_copy(widget.artifactPath, 'Phone file path')),
+              onOpenFolder: () => unawaited(_openProjectFolder()),
             ),
           ],
         ],
@@ -4894,6 +5242,7 @@ class _PublishedWorkCard extends StatelessWidget {
     required this.onOpenCode,
     required this.onRedeploy,
     required this.onCopyPath,
+    required this.onOpenFolder,
   });
 
   final _PublishedArtifactInfo info;
@@ -4902,6 +5251,7 @@ class _PublishedWorkCard extends StatelessWidget {
   final VoidCallback? onOpenCode;
   final VoidCallback? onRedeploy;
   final VoidCallback onCopyPath;
+  final VoidCallback onOpenFolder;
 
   @override
   Widget build(BuildContext context) {
@@ -4977,9 +5327,17 @@ class _PublishedWorkCard extends StatelessWidget {
             runSpacing: 8,
             children: [
               _MiniArtifactButton(icon: Icons.open_in_browser_outlined, label: '打开网页', onTap: onOpenPages, color: _blue),
-              if (onOpenRepo != null) _MiniArtifactButton(icon: Icons.code_outlined, label: '打开仓库', onTap: onOpenRepo!, color: _violet),
+              if (onOpenRepo != null)
+                _MiniArtifactButton(
+                  icon: Icons.code_outlined,
+                  leading: const _GitHubMarkIcon(size: 15, color: _violet),
+                  label: '打开仓库',
+                  onTap: onOpenRepo!,
+                  color: _violet,
+                ),
               if (onOpenCode != null) _MiniArtifactButton(icon: Icons.description_outlined, label: '代码文件', onTap: onOpenCode!, color: _mint),
               if (onRedeploy != null) _MiniArtifactButton(icon: Icons.rocket_launch_outlined, label: '重新发布', onTap: onRedeploy!, color: _amber),
+              _MiniArtifactButton(icon: Icons.folder_open_outlined, label: '工程文件夹', onTap: onOpenFolder, color: _mint),
               _MiniArtifactButton(
                 icon: Icons.ios_share_outlined,
                 label: '复制分享',
@@ -8369,6 +8727,7 @@ class _ChatPanel extends StatefulWidget {
     required this.baseUrl,
     required this.apiKey,
     required this.model,
+    required this.browserOpenMode,
     required this.onLog,
     required this.onAgentPrompt,
     this.onSessionsChanged,
@@ -8378,6 +8737,7 @@ class _ChatPanel extends StatefulWidget {
   final String baseUrl;
   final String apiKey;
   final String model;
+  final String browserOpenMode;
   final void Function(String title, String detail, IconData icon, Color color) onLog;
   final Future<void> Function(String prompt) onAgentPrompt;
   final void Function(List<_ChatSession> sessions, String? activeSessionId)? onSessionsChanged;
@@ -9186,14 +9546,14 @@ class _ChatPanelState extends State<_ChatPanel> {
     final isWebArtifact = toolName == 'mobile_coding.generate_snake_preview' ||
         toolName == 'mobile_coding.generate_2048_preview' ||
         toolName == 'mobile_coding.generate_web_preview';
-    final directory = await getApplicationDocumentsDirectory();
     final slug = switch (toolName) {
       'mobile_coding.generate_snake_preview' => 'agent_snake',
       'mobile_coding.generate_2048_preview' => 'agent_2048_from_model',
       'mobile_coding.build_diary_demo' => 'agent_diary',
       _ => 'agent_run',
     };
-    final projectDirectory = Directory('${directory.path}/mobilecode_projects/$slug');
+    final rootDirectory = await _mobileCodeProjectsRootDirectory();
+    final projectDirectory = Directory(p.join(rootDirectory.path, slug));
     await projectDirectory.create(recursive: true);
 
     if (isWebArtifact) {
@@ -9475,9 +9835,9 @@ class _ChatPanelState extends State<_ChatPanel> {
         return;
       }
       final html = await file.readAsString();
-      final opened = await _launchHtmlInExternalBrowser(html);
+      final opened = await _launchHtmlInExternalBrowser(html, browserOpenMode: widget.browserOpenMode);
       if (!mounted) return;
-      _showMessage(opened ? 'Opened generated HTML in browser.' : 'No browser accepted this generated HTML.');
+      _showMessage(opened ? 'Opened generated HTML with ${_browserOpenModeLabel(widget.browserOpenMode)}.' : 'No browser accepted this generated HTML.');
     } on Object catch (error) {
       if (!mounted) return;
       _showMessage(_compact(error.toString(), limit: 140));
@@ -9488,6 +9848,33 @@ class _ChatPanelState extends State<_ChatPanel> {
     await Clipboard.setData(ClipboardData(text: path));
     if (!mounted) return;
     _showMessage('Phone file path copied.');
+  }
+
+  Future<void> _openArtifactFolder(String path) async {
+    try {
+      final folderPath = _projectDirectoryForArtifact(path);
+      final folder = Directory(folderPath);
+      if (!await folder.exists()) {
+        _showMessage('Project folder was not found on this phone.');
+        return;
+      }
+      final workspaceRoot = await _mobileCodeProjectsRootDirectory();
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: _panel,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+        builder: (context) => _ProjectFolderSheet(
+          initialPath: folder.path,
+          workspaceRoot: workspaceRoot.path,
+          onOpenFile: (filePath) => unawaited(_openArtifactCode(filePath)),
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      _showMessage(_compact(error.toString(), limit: 140));
+    }
   }
 
   Future<void> _deployArtifactToGitHubPages(String path) async {
@@ -9573,6 +9960,8 @@ class _ChatPanelState extends State<_ChatPanel> {
                           onOpenArtifactBrowser: _openArtifactInBrowser,
                           onDeployArtifactPages: _deployArtifactToGitHubPages,
                           onCopyArtifactPath: _copyArtifactPath,
+                          onOpenArtifactFolder: _openArtifactFolder,
+                          browserOpenMode: widget.browserOpenMode,
                         ),
                         if (index != conversationTurns.length - 1) const SizedBox(height: 10),
                       ],
@@ -9611,6 +10000,8 @@ class _ChatPanelState extends State<_ChatPanel> {
                   onOpenArtifactBrowser: _openArtifactInBrowser,
                   onDeployArtifactPages: _deployArtifactToGitHubPages,
                   onCopyArtifactPath: _copyArtifactPath,
+                  onOpenArtifactFolder: _openArtifactFolder,
+                  browserOpenMode: widget.browserOpenMode,
                 ),
               ],
             ),
@@ -9809,6 +10200,8 @@ class _ChatBubble extends StatelessWidget {
     required this.onOpenArtifactBrowser,
     required this.onDeployArtifactPages,
     required this.onCopyArtifactPath,
+    required this.onOpenArtifactFolder,
+    required this.browserOpenMode,
   });
 
   final _ChatTurn turn;
@@ -9817,6 +10210,8 @@ class _ChatBubble extends StatelessWidget {
   final ValueChanged<String> onOpenArtifactBrowser;
   final ValueChanged<String> onDeployArtifactPages;
   final ValueChanged<String> onCopyArtifactPath;
+  final ValueChanged<String> onOpenArtifactFolder;
+  final String browserOpenMode;
 
   @override
   Widget build(BuildContext context) {
@@ -9846,11 +10241,12 @@ class _ChatBubble extends StatelessWidget {
             if (published != null)
               _PublishedWorkCard(
                 info: published,
-                onOpenPages: () => unawaited(_openExternalUrl(context, published.pagesUrl, label: 'Pages URL')),
-                onOpenRepo: published.repositoryUrl.isEmpty ? null : () => unawaited(_openExternalUrl(context, published.repositoryUrl, label: 'repository')),
+                onOpenPages: () => unawaited(_openExternalUrl(context, published.pagesUrl, label: 'Pages URL', browserOpenMode: browserOpenMode)),
+                onOpenRepo: published.repositoryUrl.isEmpty ? null : () => unawaited(_openExternalUrl(context, published.repositoryUrl, label: 'repository', browserOpenMode: browserOpenMode)),
                 onOpenCode: () => onOpenArtifactCode(published.artifactPath),
                 onRedeploy: () => onDeployArtifactPages(published.artifactPath),
                 onCopyPath: () => onCopyArtifactPath(published.artifactPath),
+                onOpenFolder: () => onOpenArtifactFolder(published.artifactPath),
               )
             else
               SelectableText(
@@ -9866,6 +10262,7 @@ class _ChatBubble extends StatelessWidget {
                 onOpenBrowser: _isWebArtifactPath(artifactPath) ? () => onOpenArtifactBrowser(artifactPath) : null,
                 onDeployPages: _isWebArtifactPath(artifactPath) ? () => onDeployArtifactPages(artifactPath) : null,
                 onCopyPath: () => onCopyArtifactPath(artifactPath),
+                onOpenFolder: () => onOpenArtifactFolder(artifactPath),
               ),
             ],
           ],
@@ -9883,6 +10280,7 @@ class _GeneratedArtifactActions extends StatelessWidget {
     required this.onOpenBrowser,
     required this.onDeployPages,
     required this.onCopyPath,
+    required this.onOpenFolder,
   });
 
   final String path;
@@ -9891,9 +10289,11 @@ class _GeneratedArtifactActions extends StatelessWidget {
   final VoidCallback? onOpenBrowser;
   final VoidCallback? onDeployPages;
   final VoidCallback onCopyPath;
+  final VoidCallback onOpenFolder;
 
   @override
   Widget build(BuildContext context) {
+    final projectPath = _projectDirectoryForArtifact(path);
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -9909,8 +10309,22 @@ class _GeneratedArtifactActions extends StatelessWidget {
             children: [
               const Icon(Icons.folder_open_outlined, color: _mint, size: 16),
               const SizedBox(width: 6),
-              const Expanded(
-                child: Text('Generated artifact on this phone', style: TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900)),
+              Expanded(
+                child: Text(
+                  'Generated artifact on this phone',
+                  style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              FutureBuilder<String?>(
+                future: _findGitRootForPath(projectPath),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2));
+                  }
+                  if (snapshot.data == null) return const SizedBox.shrink();
+                  return const _Pill(label: 'Git', icon: Icons.account_tree_outlined, color: _mint);
+                },
               ),
             ],
           ),
@@ -9919,6 +10333,21 @@ class _GeneratedArtifactActions extends StatelessWidget {
             path,
             maxLines: 2,
             style: const TextStyle(color: _muted, fontSize: 11, height: 1.25),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(Icons.folder_copy_outlined, color: _faint, size: 14),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Project folder: ${p.basename(projectPath)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _faint, fontSize: 11, height: 1.25),
+                ),
+              ),
+            ],
           ),
           if (onDeployPages != null) ...[
             const SizedBox(height: 10),
@@ -9932,7 +10361,7 @@ class _GeneratedArtifactActions extends StatelessWidget {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 onPressed: onDeployPages,
-                icon: const Icon(Icons.rocket_launch_outlined, size: 17),
+                icon: const _GitHubMarkIcon(size: 17, color: Colors.white),
                 label: const Text(
                   '发布 GitHub Pages',
                   style: TextStyle(fontWeight: FontWeight.w900),
@@ -9948,6 +10377,7 @@ class _GeneratedArtifactActions extends StatelessWidget {
               _MiniArtifactButton(icon: Icons.code_outlined, label: '代码文件', onTap: onOpenCode, color: _blue),
               if (onPreview != null) _MiniArtifactButton(icon: Icons.preview_outlined, label: '网页预览', onTap: onPreview!, color: _violet),
               if (onOpenBrowser != null) _MiniArtifactButton(icon: Icons.open_in_browser_outlined, label: '浏览器打开', onTap: onOpenBrowser!, color: _amber),
+              _MiniArtifactButton(icon: Icons.folder_open_outlined, label: '工程文件夹', onTap: onOpenFolder, color: _mint),
               _MiniArtifactButton(icon: Icons.copy_outlined, label: '复制路径', onTap: onCopyPath, color: _cyan),
             ],
           ),
@@ -9963,12 +10393,14 @@ class _MiniArtifactButton extends StatelessWidget {
     required this.label,
     required this.onTap,
     required this.color,
+    this.leading,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
   final Color color;
+  final Widget? leading;
 
   @override
   Widget build(BuildContext context) {
@@ -9979,8 +10411,262 @@ class _MiniArtifactButton extends StatelessWidget {
         visualDensity: VisualDensity.compact,
       ),
       onPressed: onTap,
-      icon: Icon(icon, size: 15),
+      icon: leading ?? Icon(icon, size: 15),
       label: Text(label),
+    );
+  }
+}
+
+class _GitHubMarkIcon extends StatelessWidget {
+  const _GitHubMarkIcon({required this.size, required this.color});
+
+  final double size;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return SvgPicture.asset(
+      'assets/icons/github-mark-24.svg',
+      width: size,
+      height: size,
+      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+      semanticsLabel: 'GitHub',
+    );
+  }
+}
+
+class _ProjectFolderSheet extends StatefulWidget {
+  const _ProjectFolderSheet({
+    required this.initialPath,
+    required this.workspaceRoot,
+    required this.onOpenFile,
+  });
+
+  final String initialPath;
+  final String workspaceRoot;
+  final ValueChanged<String> onOpenFile;
+
+  @override
+  State<_ProjectFolderSheet> createState() => _ProjectFolderSheetState();
+}
+
+class _ProjectFolderSheetState extends State<_ProjectFolderSheet> {
+  late String _currentPath;
+  late Future<_ProjectFolderSnapshot> _snapshot;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentPath = widget.initialPath;
+    _snapshot = _readFolder(_currentPath);
+  }
+
+  Future<_ProjectFolderSnapshot> _readFolder(String path) async {
+    final directory = Directory(path);
+    if (!await directory.exists()) {
+      throw Exception('Folder does not exist: $path');
+    }
+    final entries = await directory.list().toList();
+    entries.sort((a, b) {
+      final aDir = FileSystemEntity.isDirectorySync(a.path);
+      final bDir = FileSystemEntity.isDirectorySync(b.path);
+      if (aDir != bDir) return aDir ? -1 : 1;
+      return p.basename(a.path).toLowerCase().compareTo(p.basename(b.path).toLowerCase());
+    });
+    return _ProjectFolderSnapshot(
+      path: directory.path,
+      gitRoot: await _findGitRootForPath(directory.path),
+      entries: entries.take(120).toList(growable: false),
+    );
+  }
+
+  void _openFolder(String path) {
+    setState(() {
+      _currentPath = path;
+      _snapshot = _readFolder(path);
+    });
+  }
+
+  void _openParent() {
+    final parent = Directory(_currentPath).parent.path;
+    if (!_canOpenParent(_currentPath, parent)) return;
+    _openFolder(parent);
+  }
+
+  bool _canOpenParent(String currentPath, String parentPath) {
+    if (p.equals(parentPath, currentPath)) return false;
+    return p.equals(parentPath, widget.workspaceRoot) || p.isWithin(widget.workspaceRoot, parentPath);
+  }
+
+  Future<void> _copyPath(String path, String label) async {
+    await Clipboard.setData(ClipboardData(text: path));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label copied.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.folder_open_outlined,
+      title: 'Project files',
+      subtitle: _currentPath,
+      child: FutureBuilder<_ProjectFolderSnapshot>(
+        future: _snapshot,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            );
+          }
+          if (snapshot.hasError) {
+            return _Panel(
+              child: Text(
+                _compact(snapshot.error.toString(), limit: 220),
+                style: const TextStyle(color: _rose, height: 1.35),
+              ),
+            );
+          }
+          final data = snapshot.requireData;
+          final parentPath = Directory(data.path).parent.path;
+          final canGoUp = _canOpenParent(data.path, parentPath);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _Panel(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.home_work_outlined, color: _blue, size: 18),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'MobileCode workspace',
+                            style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        if (data.gitRoot != null) const _Pill(label: 'Git repository', icon: Icons.account_tree_outlined, color: _mint),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      data.path,
+                      style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Workspace relative: ${_workspaceRelativePath(data.path, widget.workspaceRoot)}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _faint, fontSize: 11, height: 1.3),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: canGoUp ? _openParent : null,
+                          icon: const Icon(Icons.arrow_upward_outlined, size: 16),
+                          label: const Text('上一级'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: () => unawaited(_copyPath(data.path, 'Folder path')),
+                          icon: const Icon(Icons.copy_outlined, size: 16),
+                          label: const Text('复制文件夹路径'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (data.entries.isEmpty)
+                const _Panel(
+                  child: Text('This project folder is empty.', style: TextStyle(color: _muted)),
+                )
+              else
+                _Panel(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      for (var index = 0; index < data.entries.length; index++) ...[
+                        _ProjectFileRow(
+                          entity: data.entries[index],
+                          onOpenFolder: _openFolder,
+                          onOpenFile: (path) {
+                            Navigator.of(context).pop();
+                            widget.onOpenFile(path);
+                          },
+                        ),
+                        if (index != data.entries.length - 1) const Divider(height: 1, color: _line),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ProjectFolderSnapshot {
+  const _ProjectFolderSnapshot({
+    required this.path,
+    required this.gitRoot,
+    required this.entries,
+  });
+
+  final String path;
+  final String? gitRoot;
+  final List<FileSystemEntity> entries;
+}
+
+class _ProjectFileRow extends StatelessWidget {
+  const _ProjectFileRow({
+    required this.entity,
+    required this.onOpenFolder,
+    required this.onOpenFile,
+  });
+
+  final FileSystemEntity entity;
+  final ValueChanged<String> onOpenFolder;
+  final ValueChanged<String> onOpenFile;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDirectory = FileSystemEntity.isDirectorySync(entity.path);
+    final name = p.basename(entity.path);
+    return ListTile(
+      dense: true,
+      visualDensity: VisualDensity.compact,
+      leading: Icon(
+        isDirectory ? Icons.folder_outlined : Icons.description_outlined,
+        color: isDirectory ? _amber : _cyan,
+      ),
+      title: Text(
+        name.isEmpty ? entity.path : name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: _text, fontWeight: FontWeight.w800),
+      ),
+      subtitle: Text(
+        entity.path,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: _faint, fontSize: 11),
+      ),
+      trailing: Icon(
+        isDirectory ? Icons.chevron_right_outlined : Icons.open_in_new_outlined,
+        color: _faint,
+        size: 18,
+      ),
+      onTap: () => isDirectory ? onOpenFolder(entity.path) : onOpenFile(entity.path),
     );
   }
 }

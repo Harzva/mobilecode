@@ -21,7 +21,29 @@ Required GitHub Actions before publishing:
 - `.github/workflows/android-apk.yml`
   - Builds the release APK.
   - Uses stable signing when release keystore secrets are configured.
-  - Uploads `mobilecode-v0.1.6.apk` as an artifact and GitHub Release asset.
+  - Uploads `mobilecode-v0.1.7.apk` as an artifact and GitHub Release asset.
+
+## v0.1.7 Release Candidate
+
+Release candidate:
+
+- Branch: `v011-streaming-fix`
+- App/build content commit: pending CI
+- Release: pending
+- APK asset: pending
+- APK SHA256: pending
+
+Required CI evidence:
+
+| Gate | Run | Result |
+| --- | --- | --- |
+| Mobile Runtime CI | pending | Pending |
+| Build Android APK | pending | Pending |
+| Android App Smoke Test | pending | Pending |
+
+Validated coverage:
+
+- Pending after browser-open preference, MobileCode Projects workspace browser, artifact project-folder action, Git badge, and official GitHub icon asset pass analyzer/build checks.
 
 ## v0.1.6 Release Evidence
 
@@ -229,7 +251,7 @@ Expected result:
 After downloading the release APK:
 
 ```bash
-adb install -r mobilecode-v0.1.6.apk
+adb install -r mobilecode-v0.1.7.apk
 adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
 adb shell pidof com.mobilecode.mobile_agent
 adb logcat -d -t 1200 > android-logcat.txt

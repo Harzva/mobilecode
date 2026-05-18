@@ -72,5 +72,6 @@ Release tags should match the product version:
 - Tag: `v0.1.23`
 - APK asset: `mobilecode-v0.1.23.apk`
 - iOS simulator asset: `mobilecode-ios-simulator-v0.1.23.zip`
+- Unsigned iOS archive asset: `mobilecode-ios-archive-v0.1.23.xcarchive.zip`
 
 If a release tag is supplied manually in GitHub Actions, artifact names should follow that tag.

@@ -1,0 +1,92 @@
+{
+  "snapshotId": "litellm-compatible-2026-05-18",
+  "sourceName": "LiteLLM model_prices_and_context_window.json",
+  "sourceUrl": "https://github.com/BerriAI/litellm/blob/main/model_prices_and_context_window.json",
+  "updatedAt": "2026-05-18",
+  "currency": "USD",
+  "unit": "per_token",
+  "notes": "Small built-in snapshot for offline MobileCode estimates. Users can override any provider/model price inside Token Usage.",
+  "prices": [
+    {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "input_cost_per_token": 0.00000015,
+      "output_cost_per_token": 0.0000006,
+      "cache_read_input_token_cost": 0.000000075
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "input_cost_per_token": 0.0000025,
+      "output_cost_per_token": 0.00001,
+      "cache_read_input_token_cost": 0.00000125
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4.1-mini",
+      "input_cost_per_token": 0.0000004,
+      "output_cost_per_token": 0.0000016,
+      "cache_read_input_token_cost": 0.0000001
+    },
+    {
+      "provider": "openai",
+      "model": "gpt-4.1",
+      "input_cost_per_token": 0.000002,
+      "output_cost_per_token": 0.000008,
+      "cache_read_input_token_cost": 0.0000005
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-3-5-haiku-latest",
+      "input_cost_per_token": 0.0000008,
+      "output_cost_per_token": 0.000004,
+      "cache_read_input_token_cost": 0.00000008,
+      "cache_creation_input_token_cost": 0.000001
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-latest",
+      "input_cost_per_token": 0.000003,
+      "output_cost_per_token": 0.000015,
+      "cache_read_input_token_cost": 0.0000003,
+      "cache_creation_input_token_cost": 0.00000375
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-3-7-sonnet-latest",
+      "input_cost_per_token": 0.000003,
+      "output_cost_per_token": 0.000015,
+      "cache_read_input_token_cost": 0.0000003,
+      "cache_creation_input_token_cost": 0.00000375
+    },
+    {
+      "provider": "anthropic",
+      "model": "claude-sonnet-4-0",
+      "input_cost_per_token": 0.000003,
+      "output_cost_per_token": 0.000015,
+      "cache_read_input_token_cost": 0.0000003,
+      "cache_creation_input_token_cost": 0.00000375
+    },
+    {
+      "provider": "anthropic",
+      "model": "mimo-v2.5-pro",
+      "input_cost_per_token": 0.000003,
+      "output_cost_per_token": 0.000015,
+      "cache_read_input_token_cost": 0.0000003,
+      "cache_creation_input_token_cost": 0.00000375,
+      "notes": "Managed MobileCode default. Override this if your gateway contract uses a different price."
+    },
+    {
+      "provider": "google",
+      "model": "gemini-1.5-flash",
+      "input_cost_per_token": 0.000000075,
+      "output_cost_per_token": 0.0000003
+    },
+    {
+      "provider": "google",
+      "model": "gemini-1.5-pro",
+      "input_cost_per_token": 0.00000125,
+      "output_cost_per_token": 0.000005
+    }
+  ]
+}

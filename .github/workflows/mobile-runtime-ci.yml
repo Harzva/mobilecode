@@ -59,6 +59,7 @@ jobs:
             lib/screens/device_telemetry_screen.dart \
             lib/services/role_library_service.dart \
             lib/services/token_usage_service.dart \
+            lib/services/token_pricing_service.dart \
             lib/services/device_telemetry_service.dart \
             lib/services/runtime_provider.dart \
             lib/services/runtime_manager.dart \
@@ -76,6 +77,7 @@ jobs:
             test/services/html_publish_readiness_service_test.dart \
             test/services/role_library_service_test.dart \
             test/services/token_usage_service_test.dart \
+            test/services/token_pricing_service_test.dart \
             test/services/device_telemetry_service_test.dart \
             --no-fatal-infos \
             --no-fatal-warnings
@@ -90,6 +92,7 @@ jobs:
             test/services/html_publish_readiness_service_test.dart \
             test/services/role_library_service_test.dart \
             test/services/token_usage_service_test.dart \
+            test/services/token_pricing_service_test.dart \
             test/services/device_telemetry_service_test.dart
 
   helper-daemon-smoke:

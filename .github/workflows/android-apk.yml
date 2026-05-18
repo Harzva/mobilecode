@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag to upload the APK to
         required: false
-        default: v0.1.12
+        default: v0.1.13
   push:
     tags:
       - 'v*'
@@ -47,7 +47,7 @@ jobs:
 
       - name: Analyze Flutter sources
         working-directory: mobile_agent
-        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/device_telemetry_service.dart --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart --no-fatal-infos --no-fatal-warnings
 
       - name: Configure stable Android release signing
         working-directory: mobile_agent
@@ -90,7 +90,7 @@ jobs:
       - name: Stage APK
         id: stage_apk
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.12' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.13' }}
         run: |
           mkdir -p artifacts
           APK_PATH="artifacts/mobilecode-${RELEASE_TAG}.apk"
@@ -106,7 +106,7 @@ jobs:
       - name: Ensure GitHub Release exists
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.12' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.13' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -122,6 +122,6 @@ jobs:
       - name: Upload APK to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.12' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.13' }}
         run: |
           gh release upload "$RELEASE_TAG" "${{ steps.stage_apk.outputs.apk_path }}" --clobber --repo "$GITHUB_REPOSITORY"

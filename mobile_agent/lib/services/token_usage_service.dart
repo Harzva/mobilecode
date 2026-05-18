@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'token_pricing_service.dart';
+
 class TokenUsageSnapshot {
   const TokenUsageSnapshot({
     required this.inputTokens,
@@ -87,6 +89,8 @@ class TokenUsageEvent {
     required this.cancelled,
     required this.usage,
     required this.costEstimate,
+    required this.pricingSource,
+    required this.pricingUpdatedAt,
     required this.createdAt,
   });
 
@@ -102,6 +106,8 @@ class TokenUsageEvent {
   final bool cancelled;
   final TokenUsageSnapshot usage;
   final double costEstimate;
+  final String pricingSource;
+  final DateTime pricingUpdatedAt;
   final DateTime createdAt;
 
   Map<String, dynamic> toJson() {
@@ -118,6 +124,8 @@ class TokenUsageEvent {
       'cancelled': cancelled,
       'usage': usage.toJson(),
       'costEstimate': costEstimate,
+      'pricingSource': pricingSource,
+      'pricingUpdatedAt': pricingUpdatedAt.toIso8601String(),
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -136,6 +144,8 @@ class TokenUsageEvent {
       cancelled: json['cancelled'] as bool? ?? false,
       usage: TokenUsageSnapshot.fromJson(Map<String, dynamic>.from(json['usage'] as Map? ?? const {})),
       costEstimate: (json['costEstimate'] as num?)?.toDouble() ?? 0,
+      pricingSource: json['pricingSource'] as String? ?? 'Legacy estimate',
+      pricingUpdatedAt: DateTime.tryParse(json['pricingUpdatedAt'] as String? ?? '') ?? DateTime(2026, 5, 18),
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
     );
   }
@@ -280,10 +290,19 @@ class TokenUsageService extends ChangeNotifier {
     final snapshot = usage?.hasProviderUsage == true
         ? usage!
         : estimateUsage(inputChars: inputChars, outputChars: outputChars);
+    final resolvedModel = model.isEmpty ? 'default' : model;
+    final costEstimate = await TokenPricingService.instance.estimateCost(
+      provider: provider,
+      model: resolvedModel,
+      inputTokens: snapshot.inputTokens,
+      outputTokens: snapshot.outputTokens,
+      cacheReadTokens: snapshot.cacheReadTokens,
+      cacheWriteTokens: snapshot.cacheWriteTokens,
+    );
     final event = TokenUsageEvent(
       id: 'usage_${DateTime.now().microsecondsSinceEpoch}',
       provider: provider,
-      model: model.isEmpty ? 'default' : model,
+      model: resolvedModel,
       endpoint: endpoint,
       sessionId: sessionId,
       runId: runId,
@@ -292,7 +311,9 @@ class TokenUsageService extends ChangeNotifier {
       success: success,
       cancelled: cancelled,
       usage: snapshot,
-      costEstimate: estimateCost(snapshot),
+      costEstimate: costEstimate.costUsd,
+      pricingSource: costEstimate.price.sourceName,
+      pricingUpdatedAt: costEstimate.price.updatedAt,
       createdAt: DateTime.now(),
     );
     _events.insert(0, event);

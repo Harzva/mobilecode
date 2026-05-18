@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag to upload the iOS simulator build to
         required: false
-        default: v0.1.12
+        default: v0.1.13
 
 permissions:
   contents: write
@@ -44,7 +44,7 @@ jobs:
 
       - name: Analyze Flutter entry surfaces
         working-directory: mobile_agent
-        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/device_telemetry_service.dart --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart --no-fatal-infos --no-fatal-warnings
 
       - name: Build iOS simulator app
         working-directory: mobile_agent
@@ -64,7 +64,7 @@ jobs:
       - name: Install and launch on iOS simulator
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.12' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.13' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -97,6 +97,6 @@ jobs:
       - name: Upload iOS simulator app to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.12' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.13' }}
         run: |
           gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-simulator-"$RELEASE_TAG".zip --clobber --repo "$GITHUB_REPOSITORY"

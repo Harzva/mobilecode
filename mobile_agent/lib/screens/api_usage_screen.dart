@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../services/token_pricing_service.dart';
 import '../services/token_usage_service.dart';
 
 const _usageBg = Color(0xFFF7FAFF);
@@ -25,12 +26,15 @@ class ApiUsageScreen extends StatefulWidget {
 
 class _ApiUsageScreenState extends State<ApiUsageScreen> {
   final _usageService = TokenUsageService.instance;
+  final _pricingService = TokenPricingService.instance;
   StreamSubscription<TokenUsageSummary>? _summarySub;
   TokenUsageSummary _summary = TokenUsageSummary.empty;
 
   @override
   void initState() {
     super.initState();
+    _pricingService.addListener(_handlePricingChanged);
+    unawaited(_pricingService.initialize());
     _summarySub = _usageService.watchSummary().listen((summary) {
       if (mounted) setState(() => _summary = summary);
     });
@@ -38,14 +42,33 @@ class _ApiUsageScreenState extends State<ApiUsageScreen> {
 
   @override
   void dispose() {
+    _pricingService.removeListener(_handlePricingChanged);
     _summarySub?.cancel();
     super.dispose();
+  }
+
+  void _handlePricingChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openPricingOverrideSheet([TokenPrice? price]) async {
+    final override = await showModalBottomSheet<TokenPrice>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _usagePanel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+      builder: (context) => _PricingOverrideSheet(initialPrice: price),
+    );
+    if (override != null) {
+      await _pricingService.upsertOverride(override);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final events = _usageService.recentEvents.take(40).toList(growable: false);
     final breakdown = _breakdownByProviderModel(_usageService.recentEvents);
+    final catalog = _pricingService.catalog;
     return Scaffold(
       backgroundColor: _usageBg,
       appBar: AppBar(
@@ -77,6 +100,15 @@ class _ApiUsageScreenState extends State<ApiUsageScreen> {
                         ),
                     ],
                   ),
+          ),
+          const SizedBox(height: 12),
+          _PricingPanel(
+            catalog: catalog,
+            prices: _pricingService.snapshotPrices.take(8).toList(growable: false),
+            overrides: _pricingService.overrides,
+            onAdd: () => unawaited(_openPricingOverrideSheet()),
+            onEdit: (price) => unawaited(_openPricingOverrideSheet(price)),
+            onRemove: (price) => unawaited(_pricingService.removeOverride(price.key)),
           ),
           const SizedBox(height: 12),
           _UsagePanel(
@@ -301,6 +333,285 @@ class _BreakdownRow extends StatelessWidget {
   }
 }
 
+class _PricingPanel extends StatelessWidget {
+  const _PricingPanel({
+    required this.catalog,
+    required this.prices,
+    required this.overrides,
+    required this.onAdd,
+    required this.onEdit,
+    required this.onRemove,
+  });
+
+  final TokenPricingCatalog catalog;
+  final List<TokenPrice> prices;
+  final List<TokenPrice> overrides;
+  final VoidCallback onAdd;
+  final ValueChanged<TokenPrice> onEdit;
+  final ValueChanged<TokenPrice> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return _UsagePanel(
+      title: 'Pricing table',
+      icon: Icons.price_change_outlined,
+      color: _usageAmber,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${catalog.sourceName} · ${catalog.snapshotCount} models · updated ${_dateLabel(catalog.updatedAt)}',
+                  style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.35),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.add_outlined, size: 16),
+                label: const Text('Override'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (overrides.isNotEmpty) ...[
+            const Text('User overrides', style: TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            for (final price in overrides)
+              _PriceRow(
+                price: price,
+                onEdit: () => onEdit(price),
+                onRemove: () => onRemove(price),
+              ),
+            const SizedBox(height: 8),
+          ],
+          const Text('Built-in snapshot', style: TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          for (final price in prices)
+            _PriceRow(
+              price: price,
+              onEdit: () => onEdit(price),
+              onRemove: price.custom ? () => onRemove(price) : null,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PriceRow extends StatelessWidget {
+  const _PriceRow({
+    required this.price,
+    required this.onEdit,
+    this.onRemove,
+  });
+
+  final TokenPrice price;
+  final VoidCallback onEdit;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: price.custom ? _usageAmber.withOpacity(0.08) : _usageCyan.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: (price.custom ? _usageAmber : _usageLine).withOpacity(0.55)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${price.provider} / ${price.model}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'in \$${price.inputPerMillion.toStringAsFixed(3)} / out \$${price.outputPerMillion.toStringAsFixed(3)} per 1M tokens',
+                  style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.3),
+                ),
+                Text(
+                  '${price.custom ? 'User override' : price.sourceName} · ${_dateLabel(price.updatedAt)}',
+                  style: const TextStyle(color: _usageFaint, fontSize: 10.5, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: price.custom ? 'Edit override' : 'Create override from this price',
+            onPressed: onEdit,
+            icon: const Icon(Icons.tune_outlined, size: 18),
+          ),
+          if (onRemove != null)
+            IconButton(
+              tooltip: 'Remove override',
+              onPressed: onRemove,
+              icon: const Icon(Icons.delete_outline, size: 18),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PricingOverrideSheet extends StatefulWidget {
+  const _PricingOverrideSheet({this.initialPrice});
+
+  final TokenPrice? initialPrice;
+
+  @override
+  State<_PricingOverrideSheet> createState() => _PricingOverrideSheetState();
+}
+
+class _PricingOverrideSheetState extends State<_PricingOverrideSheet> {
+  late final TextEditingController _provider;
+  late final TextEditingController _model;
+  late final TextEditingController _inputPerMillion;
+  late final TextEditingController _outputPerMillion;
+  late final TextEditingController _cacheReadPerMillion;
+  late final TextEditingController _cacheWritePerMillion;
+
+  @override
+  void initState() {
+    super.initState();
+    final price = widget.initialPrice;
+    _provider = TextEditingController(text: price?.provider ?? '');
+    _model = TextEditingController(text: price?.model ?? '');
+    _inputPerMillion = TextEditingController(text: price == null ? '' : price.inputPerMillion.toStringAsFixed(6));
+    _outputPerMillion = TextEditingController(text: price == null ? '' : price.outputPerMillion.toStringAsFixed(6));
+    _cacheReadPerMillion = TextEditingController(text: price == null || price.cacheReadPerMillion == 0 ? '' : price.cacheReadPerMillion.toStringAsFixed(6));
+    _cacheWritePerMillion = TextEditingController(text: price == null || price.cacheWritePerMillion == 0 ? '' : price.cacheWritePerMillion.toStringAsFixed(6));
+  }
+
+  @override
+  void dispose() {
+    _provider.dispose();
+    _model.dispose();
+    _inputPerMillion.dispose();
+    _outputPerMillion.dispose();
+    _cacheReadPerMillion.dispose();
+    _cacheWritePerMillion.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final provider = _provider.text.trim();
+    final model = _model.text.trim();
+    final input = _moneyPerMillion(_inputPerMillion.text);
+    final output = _moneyPerMillion(_outputPerMillion.text);
+    final cacheRead = _moneyPerMillion(_cacheReadPerMillion.text);
+    final cacheWrite = _moneyPerMillion(_cacheWritePerMillion.text);
+    if (provider.isEmpty || model.isEmpty || input == null || output == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Provider, model, input and output prices are required.')));
+      return;
+    }
+    Navigator.of(context).pop(TokenPrice(
+      provider: provider,
+      model: model,
+      inputCostPerToken: input,
+      outputCostPerToken: output,
+      cacheReadCostPerToken: cacheRead ?? 0,
+      cacheWriteCostPerToken: cacheWrite ?? 0,
+      sourceName: 'User override',
+      sourceUrl: '',
+      updatedAt: DateTime.now(),
+      custom: true,
+      notes: 'User-configured MobileCode price override.',
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.price_change_outlined, color: _usageAmber, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Pricing override', style: TextStyle(color: _usageText, fontSize: 16, fontWeight: FontWeight.w900)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Enter USD prices per 1M tokens. MobileCode stores only the price table, not prompts or responses.',
+                style: TextStyle(color: _usageMuted, fontSize: 12, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: _provider, decoration: const InputDecoration(labelText: 'Provider, e.g. openai / anthropic / custom')),
+              const SizedBox(height: 8),
+              TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model, e.g. gpt-4o-mini')),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _inputPerMillion,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Input USD / 1M tokens'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _outputPerMillion,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Output USD / 1M tokens'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _cacheReadPerMillion,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Cache read USD / 1M tokens (optional)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _cacheWritePerMillion,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Cache write USD / 1M tokens (optional)'),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _save,
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _UsageEventTile extends StatelessWidget {
   const _UsageEventTile({required this.event});
 
@@ -345,6 +656,13 @@ class _UsageEventTile extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'price: ${event.pricingSource} · ${_dateLabel(event.pricingUpdatedAt)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _usageFaint, fontSize: 10.5, height: 1.3),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -404,6 +722,19 @@ String _formatInt(int value) {
     if (reverseIndex > 1 && reverseIndex % 3 == 1) buffer.write(',');
   }
   return buffer.toString();
+}
+
+double? _moneyPerMillion(String value) {
+  final parsed = double.tryParse(value.trim());
+  if (parsed == null || parsed < 0) return null;
+  return parsed / 1000000;
+}
+
+String _dateLabel(DateTime value) {
+  final y = value.year.toString().padLeft(4, '0');
+  final m = value.month.toString().padLeft(2, '0');
+  final d = value.day.toString().padLeft(2, '0');
+  return '$y-$m-$d';
 }
 
 String _timeLabel(DateTime value) {

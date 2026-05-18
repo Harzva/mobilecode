@@ -79,22 +79,7 @@ jobs:
             grep '"failureKind":"none"' artifacts/android-helper-execute.json
             adb logcat -c || true
             adb shell am start -W -n com.mobilecode.mobile_agent/.MainActivity | tee artifacts/main-start.txt
-            app_drawn=0
-            for attempt in $(seq 1 24); do
-              adb shell pidof com.mobilecode.mobile_agent
-              adb shell dumpsys window windows > artifacts/window-focus.txt || true
-              if awk '/Window #[0-9]+/ { in_app = ($0 ~ /com\.mobilecode\.mobile_agent\/com\.mobilecode\.mobile_agent\.MainActivity/) } in_app && /Surface: shown=true/ { ok=1 } END { exit ok ? 0 : 1 }' artifacts/window-focus.txt; then
-                app_drawn=1
-                break
-              fi
-              sleep 5
-            done
-            adb shell pidof com.mobilecode.mobile_agent
-            adb exec-out screencap -p > artifacts/mobilecode-android-smoke.png || true
-            adb logcat -d -t 2000 > artifacts/android-logcat.txt || true
-            grep -q "com.mobilecode.mobile_agent" artifacts/window-focus.txt
-            grep -E "FATAL EXCEPTION|E AndroidRuntime|NoSuchMethodError|MissingPluginException|ANR in com.mobilecode.mobile_agent" artifacts/android-logcat.txt && exit 1 || true
-            test "$app_drawn" = 1
+            app_drawn=0; for attempt in $(seq 1 24); do adb shell pidof com.mobilecode.mobile_agent; adb shell dumpsys window windows > artifacts/window-focus.txt || true; if awk '/Window #[0-9]+/ { in_app = ($0 ~ /com\.mobilecode\.mobile_agent\/com\.mobilecode\.mobile_agent\.MainActivity/) } in_app && /Surface: shown=true/ { ok=1 } END { exit ok ? 0 : 1 }' artifacts/window-focus.txt; then app_drawn=1; break; fi; sleep 5; done; echo "$app_drawn" > artifacts/app-drawn.txt; adb shell pidof com.mobilecode.mobile_agent; adb exec-out screencap -p > artifacts/mobilecode-android-smoke.png || true; adb logcat -d -t 2000 > artifacts/android-logcat.txt || true; grep -q "com.mobilecode.mobile_agent" artifacts/window-focus.txt; grep -E "FATAL EXCEPTION|E AndroidRuntime|NoSuchMethodError|MissingPluginException|ANR in com.mobilecode.mobile_agent" artifacts/android-logcat.txt && exit 1 || true; test "$app_drawn" = 1
 
       - name: Upload Android smoke artifacts
         uses: actions/upload-artifact@v7

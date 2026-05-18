@@ -1,5 +1,5 @@
 import React from 'react';
-import {AbsoluteFill, Easing, Sequence, interpolate, useCurrentFrame} from 'remotion';
+import {AbsoluteFill, Audio, Easing, Sequence, interpolate, staticFile, useCurrentFrame} from 'remotion';
 
 const fps = 30;
 const sceneFrames = 300;
@@ -602,6 +602,7 @@ const SceneFrame = ({scene, index}: {scene: (typeof scenes)[number]; index: numb
 export const MobileCodePrincipleExplainer = () => {
   return (
     <AbsoluteFill style={{background: colors.bg}}>
+      <Audio src={staticFile('audio/mobilecode-principle-voiceover.wav')} volume={0.92} />
       {scenes.map((scene, index) => (
         <Sequence key={scene.eyebrow} from={index * sceneFrames} durationInFrames={sceneFrames}>
           <SceneFrame scene={scene} index={index} />

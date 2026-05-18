@@ -192,6 +192,15 @@ List<TokenPrice> _combinedPrices({
   return values;
 }
 
+String _providerBucket(TokenPrice price) {
+  final text = '${price.provider} ${price.model} ${price.sourceName}'.toLowerCase();
+  if (price.custom || text.contains('custom') || text.contains('override')) return 'custom';
+  if (text.contains('openai') || text.contains('gpt')) return 'openai';
+  if (text.contains('anthropic') || text.contains('claude') || text.contains('mimo')) return 'anthropic';
+  if (text.contains('google') || text.contains('gemini')) return 'google';
+  return 'other';
+}
+
 class _UsageHero extends StatelessWidget {
   const _UsageHero({required this.summary});
 
@@ -590,7 +599,10 @@ class _PricingCatalogSearchSheet extends StatefulWidget {
 }
 
 class _PricingCatalogSearchSheetState extends State<_PricingCatalogSearchSheet> {
+  static const _providerFilters = ['all', 'openai', 'anthropic', 'google', 'custom', 'other'];
+
   final _query = TextEditingController();
+  var _providerFilter = 'all';
 
   @override
   void dispose() {
@@ -661,6 +673,30 @@ class _PricingCatalogSearchSheetState extends State<_PricingCatalogSearchSheet> 
               spacing: 8,
               runSpacing: 8,
               children: [
+                for (final filter in _providerFilters)
+                  FilterChip(
+                    showCheckmark: false,
+                    selected: _providerFilter == filter,
+                    onSelected: (_) => setState(() => _providerFilter = filter),
+                    label: Text('${_providerFilterLabel(filter)} ${_formatInt(_providerCount(filter))}'),
+                    selectedColor: _usageAmber.withOpacity(0.16),
+                    backgroundColor: _usageBg,
+                    side: BorderSide(
+                      color: _providerFilter == filter ? _usageAmber.withOpacity(0.55) : _usageLine,
+                    ),
+                    labelStyle: TextStyle(
+                      color: _providerFilter == filter ? _usageAmber : _usageMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
                 _UsageBadge(label: '${_formatInt(widget.prices.length)} snapshot', color: _usageCyan),
                 _UsageBadge(label: '${_formatInt(widget.overrides.length)} overrides', color: _usageAmber),
                 TextButton.icon(
@@ -710,11 +746,37 @@ class _PricingCatalogSearchSheetState extends State<_PricingCatalogSearchSheet> 
 
   List<TokenPrice> get _filteredPrices {
     final needle = _query.text.trim().toLowerCase();
-    if (needle.isEmpty) return _allPrices;
-    return _allPrices.where((price) {
+    final providerFiltered = _allPrices.where((price) {
+      if (_providerFilter == 'all') return true;
+      return _providerBucket(price) == _providerFilter;
+    });
+    if (needle.isEmpty) return providerFiltered.toList(growable: false);
+    return providerFiltered.where((price) {
       final haystack = '${price.provider} ${price.model} ${price.sourceName} ${price.notes}'.toLowerCase();
       return haystack.contains(needle);
     }).toList(growable: false);
+  }
+
+  int _providerCount(String filter) {
+    if (filter == 'all') return _allPrices.length;
+    return _allPrices.where((price) => _providerBucket(price) == filter).length;
+  }
+
+  String _providerFilterLabel(String filter) {
+    switch (filter) {
+      case 'openai':
+        return 'OpenAI';
+      case 'anthropic':
+        return 'Anthropic';
+      case 'google':
+        return 'Google';
+      case 'custom':
+        return 'Custom';
+      case 'other':
+        return 'Other';
+      default:
+        return 'All';
+    }
   }
 }
 

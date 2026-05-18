@@ -54,6 +54,12 @@ jobs:
             lib/main.dart \
             lib/screens/home_screen.dart \
             lib/screens/build_preview_screen.dart \
+            lib/screens/role_manager_screen.dart \
+            lib/screens/api_usage_screen.dart \
+            lib/screens/device_telemetry_screen.dart \
+            lib/services/role_library_service.dart \
+            lib/services/token_usage_service.dart \
+            lib/services/device_telemetry_service.dart \
             lib/services/runtime_provider.dart \
             lib/services/runtime_manager.dart \
             lib/services/runtime_actions.dart \
@@ -68,6 +74,9 @@ jobs:
             test/services/mobile_code_helper_provider_test.dart \
             test/services/github_pages_service_test.dart \
             test/services/html_publish_readiness_service_test.dart \
+            test/services/role_library_service_test.dart \
+            test/services/token_usage_service_test.dart \
+            test/services/device_telemetry_service_test.dart \
             --no-fatal-infos \
             --no-fatal-warnings
 
@@ -78,7 +87,10 @@ jobs:
             test/services/runtime_manager_test.dart \
             test/services/mobile_code_helper_provider_test.dart \
             test/services/github_pages_service_test.dart \
-            test/services/html_publish_readiness_service_test.dart
+            test/services/html_publish_readiness_service_test.dart \
+            test/services/role_library_service_test.dart \
+            test/services/token_usage_service_test.dart \
+            test/services/device_telemetry_service_test.dart
 
   helper-daemon-smoke:
     runs-on: ubuntu-latest

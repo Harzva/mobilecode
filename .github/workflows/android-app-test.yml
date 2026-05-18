@@ -47,7 +47,7 @@ jobs:
 
       - name: Analyze Flutter entry surfaces
         working-directory: mobile_agent
-        run: flutter analyze lib/main.dart lib/screens/home_screen.dart --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/device_telemetry_service.dart --no-fatal-infos --no-fatal-warnings
 
       - name: Build debug APK for emulator
         working-directory: mobile_agent

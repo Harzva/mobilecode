@@ -13,22 +13,27 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import 'agent_dashboard_screen.dart';
+import 'api_usage_screen.dart';
+import 'device_telemetry_screen.dart';
 import 'github_repo_hub_screen.dart';
 import 'github_screen.dart';
 import 'hook_registry_screen.dart';
 import 'memory_manager_screen.dart';
 import 'mcp_manager_screen.dart';
+import 'role_manager_screen.dart';
 import 'skill_manager_screen.dart';
 import '../services/feature_flags_service.dart';
 import '../services/github_deep_service.dart';
 import '../services/github_pages_service.dart';
 import '../services/github_repo_hub_service.dart';
 import '../services/html_publish_readiness_service.dart';
+import '../services/role_library_service.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
 import '../services/skill_manager_service.dart';
 import '../services/termux_service.dart';
+import '../services/token_usage_service.dart';
 import '../services/voice_service.dart';
 
 enum _ApiFlavor { openAi, anthropic }
@@ -72,6 +77,8 @@ enum _ModuleAction {
   build,
   githubRepoHub,
   larkCli,
+  tokenUsage,
+  deviceTelemetry,
   inspect,
 }
 
@@ -103,14 +110,15 @@ const _managedModel = String.fromEnvironment(
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.10';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.12';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.10+29';
+const _releaseBuildLabel = 'v0.1.12+31';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 const _mobileCodeProjectsFolderName = 'mobilecode_projects';
 const _browserOpenModeSystem = 'systemDefault';
 const _browserOpenModeInApp = 'inAppBrowser';
+const _rrModeAvatarAsset = 'assets/role_avatars/avatar-batch2-24-rounded-icon.svg';
 
 String _normalizeBrandTheme(String value) {
   return value == 'claudeYellow' ? 'claudeYellow' : 'codexBlue';
@@ -122,6 +130,20 @@ String _normalizeBrowserOpenMode(String? value) {
 
 String _browserOpenModeLabel(String value) {
   return _normalizeBrowserOpenMode(value) == _browserOpenModeInApp ? 'App 内浏览器优先' : '系统默认浏览器';
+}
+
+TokenUsageSnapshot _providerUsageFromBody(_ApiFlavor flavor, String body) {
+  try {
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic>) {
+      return flavor == _ApiFlavor.anthropic
+          ? TokenUsageService.parseAnthropicUsage(decoded)
+          : TokenUsageService.parseOpenAiUsage(decoded);
+    }
+  } catch (_) {
+    // Providers without usage metadata fall back to local estimation.
+  }
+  return TokenUsageSnapshot.empty;
 }
 
 String? runtimeFailureKindHint(RuntimeTaskFailureKind kind) {
@@ -558,48 +580,6 @@ const _miniAgentTools = [
     icon: Icons.hub_outlined,
     color: _amber,
     risk: 'network',
-  ),
-];
-
-class _AgentVisualRoleSpec {
-  const _AgentVisualRoleSpec({
-    required this.name,
-    required this.mission,
-    required this.color,
-  });
-
-  final String name;
-  final String mission;
-  final Color color;
-}
-
-const _agentVisualAvatarAsset = 'assets/role_avatars/avatar-batch2-14-sticker.svg';
-
-const _agentVisualRoles = [
-  _AgentVisualRoleSpec(
-    name: 'Planner',
-    mission: 'Clarify the request and choose the safest build path.',
-    color: _violet,
-  ),
-  _AgentVisualRoleSpec(
-    name: 'UI Designer',
-    mission: 'Keep the generated web page mobile-first and visually polished.',
-    color: _amber,
-  ),
-  _AgentVisualRoleSpec(
-    name: 'Mobile Web Builder',
-    mission: 'Write the local HTML artifact and keep it self-contained.',
-    color: _cyan,
-  ),
-  _AgentVisualRoleSpec(
-    name: 'Runtime Reviewer',
-    mission: 'Check file paths, previewability, and recovery hints.',
-    color: _mint,
-  ),
-  _AgentVisualRoleSpec(
-    name: 'Release Checker',
-    mission: 'Prepare the result for browser preview and GitHub Pages.',
-    color: _blue,
   ),
 ];
 
@@ -1592,6 +1572,139 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<String> _polishRoleIntent(String intent) async {
+    final baseUrl = _effectiveBaseUrl;
+    final apiKey = _effectiveApiKey;
+    final model = _effectiveModel;
+    if (baseUrl.isEmpty) {
+      throw Exception('Provider is not configured: Base URL is empty.');
+    }
+    if (apiKey.isEmpty) {
+      throw Exception('Provider is not configured: API key is empty.');
+    }
+
+    final flavor = _detectApiFlavor(baseUrl, model);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
+    final usageStarted = DateTime.now();
+    try {
+      final request = await client
+          .postUrl(flavor == _ApiFlavor.anthropic ? _anthropicMessagesUri(baseUrl) : _openAiChatUri(baseUrl))
+          .timeout(const Duration(seconds: 12));
+      request.headers.contentType = ContentType.json;
+      if (flavor == _ApiFlavor.anthropic) {
+        request.headers.set('anthropic-version', '2023-06-01');
+        request.headers.set('x-api-key', apiKey);
+      }
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $apiKey');
+      request.write(jsonEncode(_rolePolishRequestBody(flavor, model, intent)));
+
+      final response = await request.close().timeout(const Duration(seconds: 90));
+      final body = await utf8.decodeStream(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('AI role polish HTTP ${response.statusCode}: ${_compact(body, limit: 220)}');
+      }
+      final answer = _extractProviderText(body);
+      if (answer.trim().isEmpty) {
+        throw Exception('AI role polish returned an empty response.');
+      }
+      await TokenUsageService.instance.recordCompleted(
+        provider: _flavorLabel(flavor),
+        model: model,
+        endpoint: 'role_polish',
+        durationMs: DateTime.now().difference(usageStarted).inMilliseconds,
+        success: true,
+        usage: _providerUsageFromBody(flavor, body),
+        inputChars: rolePolishSystemPrompt.length + intent.length,
+        outputChars: answer.length,
+      );
+      return answer;
+    } on SocketException catch (error) {
+      await TokenUsageService.instance.recordCompleted(
+        provider: _flavorLabel(flavor),
+        model: model,
+        endpoint: 'role_polish',
+        durationMs: DateTime.now().difference(usageStarted).inMilliseconds,
+        success: false,
+        inputChars: rolePolishSystemPrompt.length + intent.length,
+        outputChars: 0,
+      );
+      throw Exception('AI role polish network error: ${_friendlySocketError(error)}');
+    } on TimeoutException {
+      await TokenUsageService.instance.recordCompleted(
+        provider: _flavorLabel(flavor),
+        model: model,
+        endpoint: 'role_polish',
+        durationMs: DateTime.now().difference(usageStarted).inMilliseconds,
+        success: false,
+        inputChars: rolePolishSystemPrompt.length + intent.length,
+        outputChars: 0,
+      );
+      throw const TimeoutException('AI role polish timed out while waiting for the provider.');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Map<String, dynamic> _rolePolishRequestBody(_ApiFlavor flavor, String model, String intent) {
+    final resolvedModel = model.isEmpty
+        ? (flavor == _ApiFlavor.anthropic ? _defaultModel : 'gpt-4o-mini')
+        : model;
+    if (flavor == _ApiFlavor.anthropic) {
+      return {
+        'model': resolvedModel,
+        'system': rolePolishSystemPrompt,
+        'max_tokens': 1200,
+        'temperature': 0.2,
+        'messages': [
+          {'role': 'user', 'content': intent},
+        ],
+      };
+    }
+    return {
+      'model': resolvedModel,
+      'temperature': 0.2,
+      'messages': [
+        {'role': 'system', 'content': rolePolishSystemPrompt},
+        {'role': 'user', 'content': intent},
+      ],
+    };
+  }
+
+  String _extractProviderText(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final choices = decoded['choices'];
+        if (choices is List && choices.isNotEmpty) {
+          final first = choices.first;
+          if (first is Map<String, dynamic>) {
+            final message = first['message'];
+            if (message is Map<String, dynamic>) {
+              final content = message['content'];
+              if (content is String && content.trim().isNotEmpty) return content.trim();
+            }
+            final text = first['text'];
+            if (text is String && text.trim().isNotEmpty) return text.trim();
+          }
+        }
+        final content = decoded['content'];
+        if (content is List && content.isNotEmpty) {
+          final parts = <String>[];
+          for (final item in content) {
+            if (item is Map<String, dynamic>) {
+              final text = item['text'];
+              if (text is String && text.trim().isNotEmpty) parts.add(text.trim());
+            }
+          }
+          if (parts.isNotEmpty) return parts.join('\n\n');
+        }
+      }
+    } catch (_) {
+      // Fall back to the compact raw body below.
+    }
+    return _compact(body, limit: 1600);
+  }
+
   List<Uri> _openAiHealthUris(String baseUrl) {
     final normalized = _normalizedBaseUrl(baseUrl);
     final probes = [
@@ -1742,6 +1855,12 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case _ModuleAction.larkCli:
         _openLarkCliSheet();
+        break;
+      case _ModuleAction.tokenUsage:
+        _openManagementScreen('Token Usage', const ApiUsageScreen());
+        break;
+      case _ModuleAction.deviceTelemetry:
+        _openManagementScreen('Device Telemetry', const DeviceTelemetryScreen());
         break;
       case _ModuleAction.inspect:
         if (capability != null) _openCapabilitySheet(capability);
@@ -2352,6 +2471,20 @@ class _HomeScreenState extends State<HomeScreen> {
         action: _ModuleAction.larkCli,
       ),
       _CommandShortcut(
+        icon: Icons.token_outlined,
+        title: 'Token Usage',
+        subtitle: '查看 provider token、cache hit、估算费用和最近 run。',
+        color: _violet,
+        action: _ModuleAction.tokenUsage,
+      ),
+      _CommandShortcut(
+        icon: Icons.speed_outlined,
+        title: 'Device telemetry',
+        subtitle: '手机 CPU、RAM、存储、电量、温度和 App 内存采样。',
+        color: _cyan,
+        action: _ModuleAction.deviceTelemetry,
+      ),
+      _CommandShortcut(
         icon: Icons.rocket_launch_outlined,
         title: 'Build / release',
         subtitle: '查看 GitHub Release、APK、iOS simulator 和 smoke report。',
@@ -2387,10 +2520,16 @@ class _HomeScreenState extends State<HomeScreen> {
         const SizedBox(height: 12),
         _ManagementSurfacePanel(
           onOpenAgent: () => _openManagementScreen('Agent Manager', const AgentDashboardScreen()),
+          onOpenRoles: () => _openManagementScreen(
+            'Role Library',
+            RoleManagerScreen(onPolishRoleIntent: _polishRoleIntent),
+          ),
           onOpenSkills: () => _openManagementScreen('Skill Manager', const SkillManagerScreen()),
           onOpenMcp: () => _openManagementScreen('MCP Manager', const McpManagerScreen()),
           onOpenMemory: () => _openManagementScreen('Memory Manager', const MemoryManagerScreen()),
           onOpenHooks: () => _openManagementScreen('Hook Registry', const HookRegistryScreen()),
+          onOpenUsage: () => _openManagementScreen('Token Usage', const ApiUsageScreen()),
+          onOpenDevice: () => _openManagementScreen('Device Telemetry', const DeviceTelemetryScreen()),
         ),
         const SizedBox(height: 12),
         for (final tool in tools) ...[
@@ -9028,6 +9167,9 @@ class _ChatPanelState extends State<_ChatPanel> {
   StreamSubscription<String>? _voiceTranscriptSub;
   StreamSubscription<VoiceState>? _voiceStateSub;
   String? _error;
+  List<MobileCodeRole> _roleRecruitRoles = RoleLibraryService.instance.recruitmentRoles;
+  List<MobileCodeRole>? _activeRunRoles;
+  RoleProposal? _activeRunProposal;
   final List<_AgentTraceStep> _agentTrace = [];
 
   _ChatSession? get _activeSession {
@@ -9036,10 +9178,18 @@ class _ChatPanelState extends State<_ChatPanel> {
     return index == -1 ? _sessions.first : _sessions[index];
   }
 
+  List<MobileCodeRole> get _displayRecruitRoles => _activeRunRoles ?? _roleRecruitRoles;
+
   @override
   void initState() {
     super.initState();
     _chatScrollController.addListener(_handleChatScroll);
+    RoleLibraryService.instance.addListener(_handleRoleLibraryChanged);
+    unawaited(RoleLibraryService.instance.initialize().then((_) {
+      if (!mounted) return;
+      setState(() => _roleRecruitRoles = RoleLibraryService.instance.recruitmentRoles);
+    }));
+    unawaited(TokenUsageService.instance.initialize());
     _sessionLoadFuture = _loadSessions();
     _initVoiceInput();
   }
@@ -9047,12 +9197,18 @@ class _ChatPanelState extends State<_ChatPanel> {
   @override
   void dispose() {
     _agentProviderClient?.close(force: true);
+    RoleLibraryService.instance.removeListener(_handleRoleLibraryChanged);
     _voiceTranscriptSub?.cancel();
     _voiceStateSub?.cancel();
     _voiceService.dispose();
     _chatScrollController.dispose();
     _promptController.dispose();
     super.dispose();
+  }
+
+  void _handleRoleLibraryChanged() {
+    if (!mounted) return;
+    setState(() => _roleRecruitRoles = RoleLibraryService.instance.recruitmentRoles);
   }
 
   Future<void> _initVoiceInput() async {
@@ -9263,17 +9419,22 @@ class _ChatPanelState extends State<_ChatPanel> {
     _scrollConversationToEnd(force: true);
     await _persist();
 
+    final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
+    const systemPrompt =
+        'You are MobileCode, a mobile AI development assistant. Use the saved multi-turn chat context, answer concisely, and prefer executable mobile development steps.';
+    final runId = 'chat_${DateTime.now().microsecondsSinceEpoch}';
+    final usageAccumulator = TokenUsageAccumulator(providerKind: _usageProviderKind(flavor));
+    final usageStarted = DateTime.now();
+    final answerBuffer = StringBuffer();
     try {
-      final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
       final assistantStarted = DateTime.now();
-      final answerBuffer = StringBuffer();
       var lastPaintAt = DateTime.fromMillisecondsSinceEpoch(0);
       var lastPaintLength = 0;
       await for (final chunk in _streamProvider(
         history,
-        systemPrompt:
-            'You are MobileCode, a mobile AI development assistant. Use the saved multi-turn chat context, answer concisely, and prefer executable mobile development steps.',
+        systemPrompt: systemPrompt,
         responseTimeout: const Duration(minutes: 2),
+        onUsageChunk: usageAccumulator.addChunk,
       )) {
         answerBuffer.write(chunk);
         final answer = answerBuffer.toString();
@@ -9305,11 +9466,37 @@ class _ChatPanelState extends State<_ChatPanel> {
       if (!mounted) return;
       _scrollConversationToEnd();
       await _persist();
+      await TokenUsageService.instance.recordCompleted(
+        provider: _flavorLabel(flavor),
+        model: widget.model,
+        endpoint: 'chat',
+        durationMs: DateTime.now().difference(usageStarted).inMilliseconds,
+        success: true,
+        sessionId: pending.id,
+        runId: runId,
+        usage: usageAccumulator.snapshot(
+          inputChars: _tokenInputChars(history, systemPrompt),
+          outputChars: answer.length,
+        ),
+      );
       widget.onLog('AI response streamed', '${_flavorLabel(flavor)} - ${widget.model} - ${answer.length} chars', Icons.forum_outlined, _mint);
     } on Object catch (error) {
       if (!mounted) return;
       final message = error.toString().replaceFirst('Exception: ', '');
       setState(() => _error = message);
+      await TokenUsageService.instance.recordCompleted(
+        provider: _flavorLabel(flavor),
+        model: widget.model,
+        endpoint: 'chat',
+        durationMs: DateTime.now().difference(usageStarted).inMilliseconds,
+        success: false,
+        sessionId: pending.id,
+        runId: runId,
+        usage: usageAccumulator.snapshot(
+          inputChars: _tokenInputChars(history, systemPrompt),
+          outputChars: answerBuffer.length,
+        ),
+      );
       widget.onLog('AI request error', _compact(message, limit: 140), Icons.error_outline, _rose);
     } finally {
       if (mounted) {
@@ -9373,6 +9560,14 @@ class _ChatPanelState extends State<_ChatPanel> {
       _showMessage(_compact(error.toString(), limit: 120));
       setState(() => _voiceState = VoiceState.error);
     }
+  }
+
+  String _usageProviderKind(_ApiFlavor flavor) {
+    return flavor == _ApiFlavor.anthropic ? 'anthropic' : 'openai';
+  }
+
+  int _tokenInputChars(List<_ChatTurn> turns, String systemPrompt) {
+    return systemPrompt.length + turns.fold<int>(0, (total, turn) => total + turn.content.length + turn.role.length + 8);
   }
 
   Future<String> _callProvider(
@@ -9463,6 +9658,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     Duration responseTimeout = const Duration(seconds: 180),
     bool trackAgentRequest = false,
     bool Function()? isCancelled,
+    void Function(Map<String, dynamic> chunk)? onUsageChunk,
   }) async* {
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
@@ -9528,6 +9724,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         try {
           final decoded = jsonDecode(payload);
           if (decoded is Map<String, dynamic>) {
+            onUsageChunk?.call(decoded);
             if (decoded['type'] == 'message_stop') break;
             final delta = _extractStreamDelta(decoded, flavor);
             if (delta != null && delta.isNotEmpty) {
@@ -9582,6 +9779,23 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
 
     final toolName = _agentToolNameForPrompt(prompt);
+    final runId = 'agent_${DateTime.now().microsecondsSinceEpoch}';
+    RoleProposal? proposedRole;
+    List<MobileCodeRole>? activeRoles;
+    if (_agentModeEnabled) {
+      await RoleLibraryService.instance.initialize();
+      final enabledRoles = RoleLibraryService.instance.recruitmentRoles;
+      proposedRole = await RoleLibraryService.instance.createProposalFromPrompt(prompt, runId, enabledRoles);
+      if (proposedRole != null) {
+        final sourceRoleId = proposedRole.sourceRoleId;
+        activeRoles = [
+          proposedRole.role,
+          ...enabledRoles.where((role) => role.id != sourceRoleId).take(4),
+        ];
+      } else {
+        activeRoles = enabledRoles;
+      }
+    }
     final now = DateTime.now();
     final pending = active.copyWith(
       title: active.title == 'New chat' ? _chatTitle(prompt) : active.title,
@@ -9601,6 +9815,8 @@ class _ChatPanelState extends State<_ChatPanel> {
       _agentTrace
         ..clear()
         ..addAll(_agentRunTraceTemplate(prompt));
+      _activeRunRoles = activeRoles;
+      _activeRunProposal = proposedRole;
       _storeSession(pending);
     });
     _scrollConversationToEnd(force: true);
@@ -9609,6 +9825,10 @@ class _ChatPanelState extends State<_ChatPanel> {
     String? failure;
     String? modelAnswer;
     String? generatedPath;
+    final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
+    final usageAccumulator = TokenUsageAccumulator(providerKind: _usageProviderKind(flavor));
+    final agentStarted = DateTime.now();
+    DateTime? providerStartedAt;
     try {
       await _completeAgentRunStep(0);
       if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
@@ -9625,21 +9845,27 @@ class _ChatPanelState extends State<_ChatPanel> {
         );
       }
       final providerStarted = DateTime.now();
+      providerStartedAt = providerStarted;
       _setAgentRunStep(
         2,
         _AgentStepState.running,
-        detail: 'Streaming ${_flavorLabel(_detectApiFlavor(widget.baseUrl, widget.model))} provider response. Use Pause to stop this run.',
+        detail: 'Streaming ${_flavorLabel(flavor)} provider response. Use Pause to stop this run.',
       );
       final streamBuffer = StringBuffer();
       var lastPreviewAt = DateTime.fromMillisecondsSinceEpoch(0);
       var lastPreviewLength = 0;
       await for (final chunk in _streamProvider(
         pending.turns,
-        systemPrompt: _agentSystemPrompt(toolName, skillContext: skillContext),
+        systemPrompt: _agentSystemPrompt(
+          toolName,
+          skillContext: skillContext,
+          roleContext: _agentModeEnabled ? _roleRecruitmentContext() : '',
+        ),
         maxTokens: 4096,
         responseTimeout: const Duration(minutes: 3),
         trackAgentRequest: true,
         isCancelled: () => _agentCancelRequested,
+        onUsageChunk: usageAccumulator.addChunk,
       )) {
         if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
         streamBuffer.write(chunk);
@@ -9666,7 +9892,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       modelAnswer = streamedAnswer;
       if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
       final elapsed = DateTime.now().difference(providerStarted).inSeconds;
-      _setAgentRunStep(2, _AgentStepState.done, detail: 'Streamed ${streamedAnswer.length} chars from ${_flavorLabel(_detectApiFlavor(widget.baseUrl, widget.model))} in ${elapsed}s.');
+      _setAgentRunStep(2, _AgentStepState.done, detail: 'Streamed ${streamedAnswer.length} chars from ${_flavorLabel(flavor)} in ${elapsed}s.');
       generatedPath = await _persistAgentGeneratedArtifact(toolName, modelAnswer);
       if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
       await _completeAgentRunStep(
@@ -9703,6 +9929,36 @@ class _ChatPanelState extends State<_ChatPanel> {
       _storeSession(next);
       if (failure != null && !stopped) _error = failure;
     });
+    final roleId = _displayRecruitRoles.isEmpty ? null : _displayRecruitRoles.first.id;
+    final durationBase = providerStartedAt ?? agentStarted;
+    if (stopped) {
+      await TokenUsageService.instance.recordCancelled(
+        provider: _flavorLabel(flavor),
+        model: widget.model,
+        endpoint: toolName,
+        durationMs: DateTime.now().difference(durationBase).inMilliseconds,
+        sessionId: pending.id,
+        runId: runId,
+        roleId: roleId,
+        inputChars: _tokenInputChars(pending.turns, _agentSystemPrompt(toolName, roleContext: _agentModeEnabled ? _roleRecruitmentContext() : '')),
+        outputChars: modelAnswer?.length ?? 0,
+      );
+    } else {
+      await TokenUsageService.instance.recordCompleted(
+        provider: _flavorLabel(flavor),
+        model: widget.model,
+        endpoint: toolName,
+        durationMs: DateTime.now().difference(durationBase).inMilliseconds,
+        success: failure == null,
+        sessionId: pending.id,
+        runId: runId,
+        roleId: roleId,
+        usage: usageAccumulator.snapshot(
+          inputChars: _tokenInputChars(pending.turns, _agentSystemPrompt(toolName, roleContext: _agentModeEnabled ? _roleRecruitmentContext() : '')),
+          outputChars: modelAnswer?.length ?? 0,
+        ),
+      );
+    }
     _scrollConversationToEnd();
     await _persist();
 
@@ -9764,13 +10020,83 @@ class _ChatPanelState extends State<_ChatPanel> {
     _scrollConversationToEnd();
   }
 
-  String _agentSystemPrompt(String toolName, {String skillContext = ''}) {
+  void _openAgentRoleView(MobileCodeRole role, int index) {
+    final step = index >= 0 && index < _agentTrace.length ? _agentTrace[index] : null;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+      builder: (context) => _AgentRoleViewSheet(
+        role: role,
+        index: index,
+        step: step,
+      ),
+    );
+  }
+
+  Future<void> _acceptRoleProposal(RoleProposal proposal, {MobileCodeRole? editedRole}) async {
+    await RoleLibraryService.instance.acceptProposal(proposal.proposalId, editedRole: editedRole);
+    if (!mounted) return;
+    setState(() {
+      _activeRunProposal = null;
+      _roleRecruitRoles = RoleLibraryService.instance.recruitmentRoles;
+    });
+    _showMessage('Role saved to local library');
+  }
+
+  Future<void> _dismissRoleProposal(RoleProposal proposal) async {
+    await RoleLibraryService.instance.dismissProposal(proposal.proposalId);
+    if (!mounted) return;
+    setState(() => _activeRunProposal = null);
+    _showMessage('Role proposal dismissed');
+  }
+
+  Future<void> _editRoleProposal(RoleProposal proposal) async {
+    final edited = await showModalBottomSheet<MobileCodeRole>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+      builder: (context) => _RoleProposalEditSheet(role: proposal.role),
+    );
+    if (edited == null) return;
+    await _acceptRoleProposal(proposal, editedRole: edited);
+  }
+
+  String _roleRecruitmentContext() {
+    final roles = _displayRecruitRoles;
+    if (roles.isEmpty) return '';
+    final lines = <String>[
+      'RR mode is enabled. Use these role cards as sequential role personalities inside one execution lane. Do not claim parallel execution.',
+    ];
+    for (var index = 0; index < roles.length; index++) {
+      final role = roles[index];
+      lines.add([
+        '${index + 1}. ${role.name}',
+        'Mission: ${role.mission}',
+        if (role.personality.trim().isNotEmpty) 'Personality: ${role.personality}',
+        if (role.responsibilities.isNotEmpty) 'Responsibilities: ${role.responsibilities.take(4).join('; ')}',
+        if (role.guardrails.isNotEmpty) 'Guardrails: ${role.guardrails.take(3).join('; ')}',
+        if (role.successCriteria.isNotEmpty) 'Success: ${role.successCriteria.take(3).join('; ')}',
+        if (role.promptTemplate.trim().isNotEmpty) 'Prompt: ${role.promptTemplate}',
+      ].join('\n'));
+    }
+    return lines.join('\n\n');
+  }
+
+  String _agentSystemPrompt(String toolName, {String skillContext = '', String roleContext = ''}) {
     return [
       'You are MobileCode Android Mini Agent.',
       'You are running inside a mobile app, so be honest about what has actually happened.',
       'The selected tool is `$toolName`.',
       'You must generate original code from the user request. Do not use or mention a built-in demo fallback.',
       'Do not claim a file was written, previewed, pushed, or executed unless the app reports that after your response.',
+      if (roleContext.isNotEmpty) ...[
+        '',
+        'Role Recruit / RR mode context:',
+        roleContext,
+      ],
       if (skillContext.isNotEmpty) ...[
         '',
         'Enabled HTML/UI skill context:',
@@ -9883,6 +10209,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         ...messages,
       ],
       'stream': stream,
+      if (stream) 'stream_options': {'include_usage': true},
     };
   }
 
@@ -10259,12 +10586,23 @@ class _ChatPanelState extends State<_ChatPanel> {
             _AgentRecruitmentPanel(
               steps: _agentTrace,
               running: _agentRunning,
+              roles: _displayRecruitRoles,
+              onOpenRole: _openAgentRoleView,
             ),
             const SizedBox(height: 12),
           ],
           _AgentTracePanel(
             title: _agentRunning ? 'Agent is writing code' : 'Last agent process',
             steps: _agentTrace,
+          ),
+        ],
+        if (!_agentRunning && _activeRunProposal != null && _activeRunProposal!.status == RoleProposalStatus.pending) ...[
+          const SizedBox(height: 12),
+          _RoleProposalApprovalCard(
+            proposal: _activeRunProposal!,
+            onSave: () => unawaited(_acceptRoleProposal(_activeRunProposal!)),
+            onDismiss: () => unawaited(_dismissRoleProposal(_activeRunProposal!)),
+            onEdit: () => unawaited(_editRoleProposal(_activeRunProposal!)),
           ),
         ],
         if (agentResultTurn != null) ...[
@@ -11070,7 +11408,7 @@ class _AgentModeToggle extends StatelessWidget {
             height: 28,
             child: enabled
                 ? SvgPicture.asset(
-                    _agentVisualAvatarAsset,
+                    _rrModeAvatarAsset,
                     fit: BoxFit.contain,
                     placeholderBuilder: (_) => Icon(Icons.psychology_alt_outlined, color: color, size: 18),
                   )
@@ -11214,17 +11552,23 @@ class _PromptLaunchPanel extends StatelessWidget {
 class _ManagementSurfacePanel extends StatelessWidget {
   const _ManagementSurfacePanel({
     required this.onOpenAgent,
+    required this.onOpenRoles,
     required this.onOpenSkills,
     required this.onOpenMcp,
     required this.onOpenMemory,
     required this.onOpenHooks,
+    required this.onOpenUsage,
+    required this.onOpenDevice,
   });
 
   final VoidCallback onOpenAgent;
+  final VoidCallback onOpenRoles;
   final VoidCallback onOpenSkills;
   final VoidCallback onOpenMcp;
   final VoidCallback onOpenMemory;
   final VoidCallback onOpenHooks;
+  final VoidCallback onOpenUsage;
+  final VoidCallback onOpenDevice;
 
   @override
   Widget build(BuildContext context) {
@@ -11248,10 +11592,13 @@ class _ManagementSurfacePanel extends StatelessWidget {
             runSpacing: 8,
             children: [
               _MiniArtifactButton(icon: Icons.psychology_alt_outlined, label: 'Agent', onTap: onOpenAgent, color: _violet),
+              _MiniArtifactButton(icon: Icons.badge_outlined, label: 'Roles', onTap: onOpenRoles, color: _blue),
               _MiniArtifactButton(icon: Icons.extension_outlined, label: 'Skills', onTap: onOpenSkills, color: _mint),
               _MiniArtifactButton(icon: Icons.account_tree_outlined, label: 'MCP', onTap: onOpenMcp, color: _cyan),
               _MiniArtifactButton(icon: Icons.memory_outlined, label: 'Memory', onTap: onOpenMemory, color: _amber),
               _MiniArtifactButton(icon: Icons.link_outlined, label: 'Hooks', onTap: onOpenHooks, color: _faint),
+              _MiniArtifactButton(icon: Icons.token_outlined, label: 'Usage', onTap: onOpenUsage, color: _rose),
+              _MiniArtifactButton(icon: Icons.speed_outlined, label: 'Device', onTap: onOpenDevice, color: _lime),
             ],
           ),
         ],
@@ -12336,14 +12683,413 @@ class _MiniAgentEventCard extends StatelessWidget {
   }
 }
 
+class _RoleProposalApprovalCard extends StatelessWidget {
+  const _RoleProposalApprovalCard({
+    required this.proposal,
+    required this.onSave,
+    required this.onDismiss,
+    required this.onEdit,
+  });
+
+  final RoleProposal proposal;
+  final VoidCallback onSave;
+  final VoidCallback onDismiss;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Color(proposal.role.colorValue);
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: color.withOpacity(0.35)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(4),
+                  child: SvgPicture.asset(
+                    proposal.role.avatarAsset,
+                    fit: BoxFit.contain,
+                    placeholderBuilder: (_) => Icon(Icons.person_add_alt_1_outlined, color: color, size: 18),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pending Approval',
+                      style: TextStyle(color: _text, fontSize: 14, fontWeight: FontWeight.w900),
+                    ),
+                    Text(
+                      '${proposal.role.name} · ${proposal.rationale}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _muted, fontSize: 11, height: 1.3),
+                    ),
+                  ],
+                ),
+              ),
+              _Pill(label: 'local only', icon: Icons.lock_outline, color: _amber),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            proposal.role.mission,
+            style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MiniArtifactButton(icon: Icons.library_add_check_outlined, label: '保存到 Roles', onTap: onSave, color: _mint),
+              _MiniArtifactButton(icon: Icons.edit_note_outlined, label: '编辑后保存', onTap: onEdit, color: _violet),
+              _MiniArtifactButton(icon: Icons.close_outlined, label: '忽略', onTap: onDismiss, color: _faint),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoleProposalEditSheet extends StatefulWidget {
+  const _RoleProposalEditSheet({required this.role});
+
+  final MobileCodeRole role;
+
+  @override
+  State<_RoleProposalEditSheet> createState() => _RoleProposalEditSheetState();
+}
+
+class _RoleProposalEditSheetState extends State<_RoleProposalEditSheet> {
+  late final TextEditingController _name;
+  late final TextEditingController _mission;
+  late final TextEditingController _personality;
+  late final TextEditingController _responsibilities;
+  late final TextEditingController _guardrails;
+  late final TextEditingController _successCriteria;
+  late final TextEditingController _promptTemplate;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: widget.role.name);
+    _mission = TextEditingController(text: widget.role.mission);
+    _personality = TextEditingController(text: widget.role.personality);
+    _responsibilities = TextEditingController(text: widget.role.responsibilities.join('\n'));
+    _guardrails = TextEditingController(text: widget.role.guardrails.join('\n'));
+    _successCriteria = TextEditingController(text: widget.role.successCriteria.join('\n'));
+    _promptTemplate = TextEditingController(text: widget.role.promptTemplate);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _mission.dispose();
+    _personality.dispose();
+    _responsibilities.dispose();
+    _guardrails.dispose();
+    _successCriteria.dispose();
+    _promptTemplate.dispose();
+    super.dispose();
+  }
+
+  List<String> _lines(TextEditingController controller) {
+    return controller.text
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .take(6)
+        .toList(growable: false);
+  }
+
+  void _save() {
+    final name = _name.text.trim();
+    final mission = _mission.text.trim();
+    if (name.isEmpty || mission.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name and mission are required.')));
+      return;
+    }
+    final edited = widget.role.copyWith(
+      name: name,
+      summary: mission,
+      mission: mission,
+      personality: _personality.text.trim(),
+      responsibilities: _lines(_responsibilities),
+      guardrails: _lines(_guardrails),
+      successCriteria: _lines(_successCriteria),
+      promptTemplate: _promptTemplate.text.trim(),
+      builtIn: false,
+      enabled: true,
+    );
+    Navigator.of(context).pop(edited);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.edit_note_outlined, color: _violet, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Edit role before saving', style: TextStyle(color: _text, fontSize: 16, fontWeight: FontWeight.w900)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: _name, decoration: const InputDecoration(labelText: 'Role name')),
+              const SizedBox(height: 8),
+              TextField(controller: _mission, maxLines: 2, decoration: const InputDecoration(labelText: 'Mission')),
+              const SizedBox(height: 8),
+              TextField(controller: _personality, maxLines: 2, decoration: const InputDecoration(labelText: 'Personality')),
+              const SizedBox(height: 8),
+              TextField(controller: _responsibilities, maxLines: 3, decoration: const InputDecoration(labelText: 'Responsibilities, one per line')),
+              const SizedBox(height: 8),
+              TextField(controller: _guardrails, maxLines: 3, decoration: const InputDecoration(labelText: 'Guardrails, one per line')),
+              const SizedBox(height: 8),
+              TextField(controller: _successCriteria, maxLines: 3, decoration: const InputDecoration(labelText: 'Success criteria, one per line')),
+              const SizedBox(height: 8),
+              TextField(controller: _promptTemplate, minLines: 3, maxLines: 6, decoration: const InputDecoration(labelText: 'Prompt template')),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _save,
+                      icon: const Icon(Icons.library_add_check_outlined),
+                      label: const Text('Save role'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AgentRoleViewSheet extends StatelessWidget {
+  const _AgentRoleViewSheet({
+    required this.role,
+    required this.index,
+    this.step,
+  });
+
+  final MobileCodeRole role;
+  final int index;
+  final _AgentTraceStep? step;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Color(role.colorValue);
+    final state = step?.state ?? _AgentStepState.queued;
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 54,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: color.withOpacity(0.35)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(5),
+                    child: SvgPicture.asset(
+                      role.avatarAsset,
+                      fit: BoxFit.contain,
+                      placeholderBuilder: (_) => Icon(Icons.person_outline, color: color, size: 24),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(role.name, style: const TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w900)),
+                      const SizedBox(height: 4),
+                      Text(role.summary.isEmpty ? role.mission : role.summary, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+                    ],
+                  ),
+                ),
+                _Pill(label: 'Role ${index + 1}', icon: Icons.badge_outlined, color: color),
+              ],
+            ),
+            const SizedBox(height: 14),
+            _AgentViewStatusCard(step: step, state: state),
+            const SizedBox(height: 12),
+            _AgentViewTextBlock(title: 'Mission', text: role.mission),
+            _AgentViewTextBlock(title: 'Personality', text: role.personality),
+            _AgentViewListBlock(title: 'Responsibilities', values: role.responsibilities),
+            _AgentViewListBlock(title: 'Guardrails', values: role.guardrails),
+            _AgentViewListBlock(title: 'Success Criteria', values: role.successCriteria),
+            if (role.promptTemplate.trim().isNotEmpty)
+              _AgentViewTextBlock(title: 'Role Prompt', text: role.promptTemplate),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AgentViewStatusCard extends StatelessWidget {
+  const _AgentViewStatusCard({required this.step, required this.state});
+
+  final _AgentTraceStep? step;
+  final _AgentStepState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _agentStepColor(state);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(_agentStepStatusIcon(state), color: color, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  step?.title ?? 'Awaiting handoff',
+                  style: const TextStyle(color: _text, fontSize: 14, fontWeight: FontWeight.w900),
+                ),
+              ),
+              _Pill(label: _agentStepLabel(state), icon: _agentStepStatusIcon(state), color: color),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            step?.detail ?? 'This role has not taken a visible step in the current run yet.',
+            style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+          ),
+          if (step?.toolName != null) ...[
+            const SizedBox(height: 8),
+            _MiniChip(label: step!.toolName!, color: color),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AgentViewTextBlock extends StatelessWidget {
+  const _AgentViewTextBlock({required this.title, required this.text});
+
+  final String title;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.trim().isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(color: _text, fontSize: 13, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          SelectableText(text, style: const TextStyle(color: _muted, fontSize: 12, height: 1.4)),
+        ],
+      ),
+    );
+  }
+}
+
+class _AgentViewListBlock extends StatelessWidget {
+  const _AgentViewListBlock({required this.title, required this.values});
+
+  final String title;
+  final List<String> values;
+
+  @override
+  Widget build(BuildContext context) {
+    if (values.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(color: _text, fontSize: 13, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 6),
+          for (final value in values)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('• ', style: TextStyle(color: _faint, fontSize: 12, height: 1.4)),
+                  Expanded(child: Text(value, style: const TextStyle(color: _muted, fontSize: 12, height: 1.4))),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AgentRecruitmentPanel extends StatelessWidget {
   const _AgentRecruitmentPanel({
     required this.steps,
     required this.running,
+    required this.roles,
+    required this.onOpenRole,
   });
 
   final List<_AgentTraceStep> steps;
   final bool running;
+  final List<MobileCodeRole> roles;
+  final void Function(MobileCodeRole role, int index) onOpenRole;
 
   _AgentStepState _roleState(int index) {
     if (steps.any((step) => step.state == _AgentStepState.failed)) {
@@ -12389,19 +13135,34 @@ class _AgentRecruitmentPanel extends StatelessWidget {
           const SizedBox(height: 12),
           SizedBox(
             height: 134,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _agentVisualRoles.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final role = _agentVisualRoles[index];
-                return _AgentRoleCard(
-                  role: role,
-                  index: index,
-                  state: _roleState(index),
-                );
-              },
-            ),
+            child: roles.isEmpty
+                ? Container(
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _panelSoft,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: _line),
+                    ),
+                    child: const Text(
+                      'No enabled roles. Open Control Center -> Roles to enable one.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: _muted, fontSize: 11, fontWeight: FontWeight.w700),
+                    ),
+                  )
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: roles.length,
+                    separatorBuilder: (context, index) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final role = roles[index];
+                      return _AgentRoleCard(
+                        role: role,
+                        index: index,
+                        state: _roleState(index),
+                        onTap: () => onOpenRole(role, index),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -12414,24 +13175,30 @@ class _AgentRoleCard extends StatelessWidget {
     required this.role,
     required this.index,
     required this.state,
+    required this.onTap,
   });
 
-  final _AgentVisualRoleSpec role;
+  final MobileCodeRole role;
   final int index;
   final _AgentStepState state;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final stateColor = _agentStepColor(state);
-    return Container(
-      width: 174,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: role.color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: stateColor.withOpacity(state == _AgentStepState.queued ? 0.22 : 0.48)),
-      ),
-      child: Column(
+    final roleColor = Color(role.colorValue);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: 174,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: roleColor.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: stateColor.withOpacity(state == _AgentStepState.queued ? 0.22 : 0.48)),
+        ),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
@@ -12440,16 +13207,16 @@ class _AgentRoleCard extends StatelessWidget {
                 width: 34,
                 height: 34,
                 decoration: BoxDecoration(
-                  color: role.color.withOpacity(0.12),
+                  color: roleColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: role.color.withOpacity(0.35)),
+                  border: Border.all(color: roleColor.withOpacity(0.35)),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(3),
                   child: SvgPicture.asset(
-                    _agentVisualAvatarAsset,
+                    role.avatarAsset,
                     fit: BoxFit.contain,
-                    placeholderBuilder: (_) => Icon(Icons.person_outline, color: role.color, size: 18),
+                    placeholderBuilder: (_) => Icon(Icons.person_outline, color: roleColor, size: 18),
                   ),
                 ),
               ),
@@ -12481,6 +13248,7 @@ class _AgentRoleCard extends StatelessWidget {
             ],
           ),
         ],
+      ),
       ),
     );
   }

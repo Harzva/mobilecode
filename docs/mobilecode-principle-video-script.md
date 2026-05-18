@@ -11,6 +11,8 @@ cd promo/mobilecode-remotion
 npm run voiceover
 ```
 
+The full explainer uses a slower voice pace and renders at about 75 seconds.
+
 ## Voiceover
 
 ### 1. Why MobileCode Exists

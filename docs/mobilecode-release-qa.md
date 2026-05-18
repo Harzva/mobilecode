@@ -28,22 +28,28 @@ Required GitHub Actions before publishing:
 Release candidate:
 
 - Branch: `v011-streaming-fix`
-- App/build content commit: pending CI
-- Release: pending
-- APK asset: pending
-- APK SHA256: pending
+- App/build content commit: `39316ab0f1f466d1a9973bda5556ada06d9f2cf2`
+- CI smoke workflow commit: `c0dc62fe0329b912a8337be353c3819f4fb1096f`
+- Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.10`
+- APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.10/mobilecode-v0.1.10.apk`
+- APK SHA256: `2603fc0b1ad4f5b5e4bb9b0a3c9f961b078e545174f6792972b87f81c5c8166c`
 
 Required CI evidence:
 
 | Gate | Run | Result |
 | --- | --- | --- |
-| Mobile Runtime CI | pending | Pending |
-| Build Android APK | pending | Pending |
-| Android App Smoke Test | pending | Pending |
+| Mobile Runtime CI | `https://github.com/Harzva/mobilecode/actions/runs/26015207199` | Passed |
+| Build Android APK | `https://github.com/Harzva/mobilecode/actions/runs/26015207331` | Passed |
+| Android App Smoke Test | `https://github.com/Harzva/mobilecode/actions/runs/26015653307` | Passed |
 
 Validated coverage:
 
-- Pending after GitHub Repo Hub, repo watchlist persistence, `mobilecode_projects/github/<owner>/<repo>` workspace mapping, Git/remote-linked local status, Actions polling/artifact download, API-backed file tree/read/edit/commit, and repo-bound Pages defaults pass analyzer/build checks.
+- Flutter scoped analyzer passed for runtime and Home entry surfaces.
+- RuntimeProvider tests passed.
+- Helper daemon protocol smoke passed.
+- Android release APK built and uploaded as the `v0.1.10` release asset.
+- Android emulator smoke verified Helper health/execute, launched the main app, captured screenshot/logcat artifacts, and checked common crash signatures.
+- Runtime UX polish is included: folded long code viewing, bottom agent trace progress, respectful chat scrolling, and visual Role Recruit / RR mode without real multi-agent parallelism.
 
 Manual device coverage:
 

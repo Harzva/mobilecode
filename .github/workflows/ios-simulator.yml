@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag to upload the iOS simulator build to
         required: false
-        default: v0.1.17
+        default: v0.1.18
 
 permissions:
   contents: write
@@ -64,7 +64,7 @@ jobs:
       - name: Install and launch on iOS simulator
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.17' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.18' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -97,6 +97,6 @@ jobs:
       - name: Upload iOS simulator app to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.17' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.18' }}
         run: |
           gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-simulator-"$RELEASE_TAG".zip --clobber --repo "$GITHUB_REPOSITORY"

@@ -1,17 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
   <title id="title">Animated rocket Claude pet</title>
   <desc id="desc">A tiny orange square pet flying with pulsing rocket flames.</desc>
-  <style>
-    .pet { animation: float 1s steps(3) infinite; }
-    .flame-a { animation: flameA .45s steps(2) infinite; transform-origin: center; }
-    .flame-b { animation: flameB .45s steps(2) infinite; transform-origin: center; }
-    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
-    @keyframes flameA { 0%,100%{opacity:1;transform:scaleY(1)} 50%{opacity:.65;transform:scaleY(.72)} }
-    @keyframes flameB { 0%,100%{opacity:.55;transform:scaleY(.72)} 50%{opacity:1;transform:scaleY(1.15)} }
-  </style>
-  <g class="flame-b"><path d="M29 98h14v8H29v-8Zm-9 10h27v9H20v-9Zm70-8h15v8H90v-8Zm-5 10h25v9H85v-9Z" fill="#ffd16b"/></g>
-  <g class="flame-a"><path d="M35 97h14v7H35v-7Zm50 0h14v7H85v-7Z" fill="#ff7c4d"/></g>
-  <g class="pet">
+  <g><path d="M29 98h14v8H29v-8Zm-9 10h27v9H20v-9Zm70-8h15v8H90v-8Zm-5 10h25v9H85v-9Z" fill="#ffd16b"/></g>
+  <g><path d="M35 97h14v7H35v-7Zm50 0h14v7H85v-7Z" fill="#ff7c4d"/></g>
+  <g>
     <rect x="37" y="20" width="12" height="30" rx="3" fill="#f6a064" stroke="#9f6240" stroke-width="4"/>
     <rect x="79" y="20" width="12" height="30" rx="3" fill="#f6a064" stroke="#9f6240" stroke-width="4"/>
     <rect x="32" y="43" width="64" height="52" rx="4" fill="#f3975e" stroke="#965b3c" stroke-width="4"/>

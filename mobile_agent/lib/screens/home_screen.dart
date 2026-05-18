@@ -9019,7 +9019,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   bool _agentRunning = false;
   bool _agentStopping = false;
   bool _agentCancelRequested = false;
-  bool _agentModeEnabled = true;
+  bool _agentModeEnabled = false;
   bool _followChatBottom = true;
   bool _showJumpToBottom = false;
   HttpClient? _agentProviderClient;
@@ -11068,11 +11068,13 @@ class _AgentModeToggle extends StatelessWidget {
           SizedBox(
             width: 28,
             height: 28,
-            child: SvgPicture.asset(
-              enabled ? _agentVisualAvatarAsset : 'assets/role_avatars/claude-pet-animated-coder.svg',
-              fit: BoxFit.contain,
-              placeholderBuilder: (_) => Icon(Icons.psychology_alt_outlined, color: color, size: 18),
-            ),
+            child: enabled
+                ? SvgPicture.asset(
+                    _agentVisualAvatarAsset,
+                    fit: BoxFit.contain,
+                    placeholderBuilder: (_) => Icon(Icons.psychology_alt_outlined, color: color, size: 18),
+                  )
+                : Icon(Icons.groups_2_outlined, color: color, size: 20),
           ),
           const SizedBox(width: 8),
           Expanded(

@@ -1,16 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title desc" shape-rendering="crispEdges">
   <title id="title">Animated waving Claude pet</title>
   <desc id="desc">A tiny orange square pet waving one hand.</desc>
-  <style>
-    .arm { animation: wave .75s steps(3) infinite; transform-origin: 96px 72px; }
-    @keyframes wave { 0%,100%{transform:rotate(0deg)} 50%{transform:rotate(-18deg)} }
-  </style>
   <rect x="37" y="21" width="12" height="31" rx="3" fill="#f6a066" stroke="#a96b45" stroke-width="4"/>
   <rect x="79" y="21" width="12" height="31" rx="3" fill="#f6a066" stroke="#a96b45" stroke-width="4"/>
   <rect x="33" y="44" width="62" height="54" rx="4" fill="#f49a5e" stroke="#9d603f" stroke-width="4"/>
   <rect x="45" y="33" width="38" height="16" fill="#f49a5e"/>
   <rect x="20" y="64" width="17" height="19" rx="4" fill="#f6a066" stroke="#a96b45" stroke-width="4"/>
-  <g class="arm">
+  <g>
     <rect x="91" y="55" width="17" height="22" rx="4" fill="#f6a066" stroke="#a96b45" stroke-width="4"/>
     <rect x="104" y="48" width="8" height="8" fill="#f6a066" stroke="#a96b45" stroke-width="3"/>
   </g>

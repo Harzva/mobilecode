@@ -17,6 +17,8 @@ const _usageAmber = Color(0xFFB7791F);
 const _usageRose = Color(0xFFE0526E);
 const _usageViolet = Color(0xFF7557E8);
 
+enum _PricingSortMode { modelName, priceLowHigh, priceHighLow }
+
 class ApiUsageScreen extends StatefulWidget {
   const ApiUsageScreen({super.key});
 
@@ -603,6 +605,7 @@ class _PricingCatalogSearchSheetState extends State<_PricingCatalogSearchSheet> 
 
   final _query = TextEditingController();
   var _providerFilter = 'all';
+  var _sortMode = _PricingSortMode.modelName;
 
   @override
   void dispose() {
@@ -699,6 +702,46 @@ class _PricingCatalogSearchSheetState extends State<_PricingCatalogSearchSheet> 
               children: [
                 _UsageBadge(label: '${_formatInt(widget.prices.length)} snapshot', color: _usageCyan),
                 _UsageBadge(label: '${_formatInt(widget.overrides.length)} overrides', color: _usageAmber),
+                PopupMenuButton<_PricingSortMode>(
+                  tooltip: 'Sort pricing rows',
+                  initialValue: _sortMode,
+                  onSelected: (mode) => setState(() => _sortMode = mode),
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: _PricingSortMode.modelName,
+                      child: Text('Model A-Z'),
+                    ),
+                    PopupMenuItem(
+                      value: _PricingSortMode.priceLowHigh,
+                      child: Text('Price low-high'),
+                    ),
+                    PopupMenuItem(
+                      value: _PricingSortMode.priceHighLow,
+                      child: Text('Price high-low'),
+                    ),
+                  ],
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: _usageViolet.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: _usageViolet.withOpacity(0.28)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.sort_outlined, color: _usageViolet, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          _sortModeLabel(_sortMode),
+                          style: const TextStyle(color: _usageViolet, fontSize: 11, fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.expand_more_outlined, color: _usageViolet, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
                 TextButton.icon(
                   onPressed: () {
                     Navigator.of(context).pop();
@@ -750,11 +793,27 @@ class _PricingCatalogSearchSheetState extends State<_PricingCatalogSearchSheet> 
       if (_providerFilter == 'all') return true;
       return _providerBucket(price) == _providerFilter;
     });
-    if (needle.isEmpty) return providerFiltered.toList(growable: false);
-    return providerFiltered.where((price) {
-      final haystack = '${price.provider} ${price.model} ${price.sourceName} ${price.notes}'.toLowerCase();
-      return haystack.contains(needle);
-    }).toList(growable: false);
+    final filtered = needle.isEmpty
+        ? providerFiltered
+        : providerFiltered.where((price) {
+            final haystack = '${price.provider} ${price.model} ${price.sourceName} ${price.notes}'.toLowerCase();
+            return haystack.contains(needle);
+          });
+    return filtered.toList(growable: false)
+      ..sort(_compareBySortMode);
+  }
+
+  int _compareBySortMode(TokenPrice a, TokenPrice b) {
+    switch (_sortMode) {
+      case _PricingSortMode.priceLowHigh:
+        return _comparePrice(a, b);
+      case _PricingSortMode.priceHighLow:
+        return _comparePrice(b, a);
+      case _PricingSortMode.modelName:
+        final model = a.model.compareTo(b.model);
+        if (model != 0) return model;
+        return a.provider.compareTo(b.provider);
+    }
   }
 
   int _providerCount(String filter) {
@@ -776,6 +835,29 @@ class _PricingCatalogSearchSheetState extends State<_PricingCatalogSearchSheet> 
         return 'Other';
       default:
         return 'All';
+    }
+  }
+
+  int _comparePrice(TokenPrice a, TokenPrice b) {
+    final price = _combinedPricePerMillion(a).compareTo(_combinedPricePerMillion(b));
+    if (price != 0) return price;
+    final model = a.model.compareTo(b.model);
+    if (model != 0) return model;
+    return a.provider.compareTo(b.provider);
+  }
+
+  double _combinedPricePerMillion(TokenPrice price) {
+    return price.inputPerMillion + price.outputPerMillion;
+  }
+
+  String _sortModeLabel(_PricingSortMode mode) {
+    switch (mode) {
+      case _PricingSortMode.priceLowHigh:
+        return 'Price low-high';
+      case _PricingSortMode.priceHighLow:
+        return 'Price high-low';
+      case _PricingSortMode.modelName:
+        return 'Model A-Z';
     }
   }
 }

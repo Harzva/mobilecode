@@ -29,7 +29,7 @@ Release APK workflow: `.github/workflows/android-apk.yml`
 
 - Builds the release APK.
 - Injects the managed debug provider only from GitHub Secret `MOBILECODE_MANAGED_API_KEY`.
-- Uploads `mobilecode-v0.1.23.apk` to the GitHub Release.
+- Uploads `mobilecode-v0.1.24.apk` to the GitHub Release.
 
 ## iOS
 
@@ -43,12 +43,12 @@ Checks:
 - Builds a debug iOS Simulator `.app`.
 - Installs and launches the app on an available iPhone simulator.
 - Captures a simulator screenshot and Runner logs.
-- Uploads `mobilecode-ios-simulator-v0.1.23.zip` to the GitHub Release.
+- Uploads `mobilecode-ios-simulator-v0.1.24.zip` to the GitHub Release.
 
 Archive workflow: `.github/workflows/ios-archive.yml`
 
 - Builds an unsigned release iOS device app with `flutter build ios --release --no-codesign`.
-- Packages the device app as `mobilecode-ios-archive-v0.1.23.xcarchive.zip`.
+- Packages the device app as `mobilecode-ios-archive-v0.1.24.xcarchive.zip`.
 - Uploads the unsigned archive and `ios-archive-summary.txt` to the GitHub Release.
 - Does not create an installable `.ipa`.
 

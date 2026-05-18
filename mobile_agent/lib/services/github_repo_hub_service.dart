@@ -284,7 +284,7 @@ class GitHubRepoHubService {
     final watchlist = await loadWatchlist();
     final repos = normalizedOwner == null || normalizedOwner.isEmpty || normalizedOwner == currentUser
         ? await github.getRepos(sort: sort)
-        : await github.getUserRepos(normalizedOwner, sort: sort);
+        : await github.getUserRepos(normalizedOwner, sort: sort, public: true);
     final items = <GitHubRepoHubItem>[];
     for (final repo in repos) {
       items.add(GitHubRepoHubItem(
@@ -309,6 +309,7 @@ class GitHubRepoHubService {
       effectiveQuery,
       sort: _searchSort(sort),
       perPage: 50,
+      public: true,
     );
     final items = <GitHubRepoHubItem>[];
     final seen = <String>{};
@@ -439,16 +440,17 @@ class GitHubRepoHubService {
   }
 
   Future<GitHubActionsSnapshot> loadActionsSnapshot(GitHubRepo repo) async {
-    final workflows = await github.getWorkflows(repo.owner, repo.name);
-    final runs = await github.getWorkflowRuns(repo.owner, repo.name, perPage: 5);
+    final usePublicRead = !repo.isPrivate;
+    final workflows = await github.getWorkflows(repo.owner, repo.name, public: usePublicRead);
+    final runs = await github.getWorkflowRuns(repo.owner, repo.name, perPage: 5, public: usePublicRead);
     var artifacts = const <dynamic>[];
     var jobs = const <dynamic>[];
     final latestRun = runs.isEmpty ? null : runs.first;
     if (latestRun is Map<String, dynamic>) {
       final id = latestRun['id'];
       if (id is int) {
-        artifacts = await github.getWorkflowRunArtifacts(repo.owner, repo.name, id);
-        jobs = await github.getWorkflowRunJobs(repo.owner, repo.name, id);
+        artifacts = await github.getWorkflowRunArtifacts(repo.owner, repo.name, id, public: usePublicRead);
+        jobs = await github.getWorkflowRunJobs(repo.owner, repo.name, id, public: usePublicRead);
       }
     }
     return GitHubActionsSnapshot(
@@ -460,7 +462,7 @@ class GitHubRepoHubService {
   }
 
   Future<List<GitHubReleaseSummary>> loadReleaseSummaries(GitHubRepo repo) async {
-    final releases = await github.getReleases(repo.owner, repo.name);
+    final releases = await github.getReleases(repo.owner, repo.name, public: !repo.isPrivate);
     return releases
         .whereType<Map<String, dynamic>>()
         .map(GitHubReleaseSummary.fromJson)
@@ -537,11 +539,13 @@ class GitHubRepoHubService {
   }
 
   Future<List<GitHubWorkspaceEntry>> loadRemoteTree(GitHubRepo repo, {String path = ''}) async {
+    final usePublicRead = !repo.isPrivate;
     final items = await github.getContents(
       repo.owner,
       repo.name,
       path: path.isEmpty ? null : path,
       ref: repo.defaultBranch,
+      public: usePublicRead,
     );
     return items
         .whereType<Map<String, dynamic>>()
@@ -555,9 +559,10 @@ class GitHubRepoHubService {
   }
 
   Future<GitHubRemoteFile> readRemoteFile(GitHubRepo repo, String path) async {
-    final items = await github.getContents(repo.owner, repo.name, path: path, ref: repo.defaultBranch);
+    final usePublicRead = !repo.isPrivate;
+    final items = await github.getContents(repo.owner, repo.name, path: path, ref: repo.defaultBranch, public: usePublicRead);
     final metadata = items.isNotEmpty && items.first is Map<String, dynamic> ? items.first as Map<String, dynamic> : null;
-    final content = await github.getFileContent(repo.owner, repo.name, path, ref: repo.defaultBranch);
+    final content = await github.getFileContent(repo.owner, repo.name, path, ref: repo.defaultBranch, public: usePublicRead);
     return GitHubRemoteFile(
       path: path,
       content: content,

@@ -1,16 +1,18 @@
 # MobileCode
 
 <p align="center">
-  <strong>Mobile-first AI Coding Workspace</strong>
+  <strong>Phone-native AI Coding Harness</strong>
   <br />
-  在手机上生成、编辑、预览、发布网页，并把 GitHub 作为轻量远端工作区、Pages 发布层和 Actions 构建层。
+  The agent harness runs on the phone. Models can be remote; the coding loop, files, previews, runtime routing, and shipping controls stay in MobileCode.
+  <br />
+  不是远程 IDE 的手机壳，而是真正把 agent loop、工具状态、文件、预览和发布控制面放到手机本机的 MobileCode。
 </p>
 
 <p align="center">
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml"><img alt="Mobile Runtime CI" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml/badge.svg?branch=v011-streaming-fix"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=v011-streaming-fix"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=v011-streaming-fix"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.1.23%2B42-2555FF">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.1.24%2B43-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20Flutter-0B9B7E">
 </p>
 
@@ -28,19 +30,25 @@
 
 <p align="center">
   <a href="https://harzva.github.io/mobilecode/">
-    <img src="docs/assets/thumb-demo-lab/responsive.png" alt="MobileCode GitHub Pages responsive demo thumbnail" width="960">
+    <img src="docs/assets/mobilecode-readme-showcase.svg" alt="MobileCode phone-native AI coding harness workflow" width="960">
   </a>
 </p>
 
+| Runs on the phone | Remote by choice | GitHub-first shipping |
+| --- | --- | --- |
+| Agent trace, tool selection, runtime routing, local files, WebView preview, result cards | Model provider, optional Cloud Runtime, external Termux/Helper backends | Repo discovery, Contents API commits, Pages publish, Actions builds, release artifacts |
+
 ## Why MobileCode
 
-MobileCode 的第一性原理很简单：手机端不适合塞一个完整桌面编译环境，但非常适合成为 AI coding 的控制台。
+MobileCode 的第一性原理很简单：手机端不适合塞一个完整桌面编译环境，但非常适合成为 AI coding 的本机 harness。
+
+它不是 Codex Remote、Claude Remote 或云端 IDE 的移动端外壳。模型可以来自云端 provider，但对话、工具编排、运行时选择、文件落盘、WebView 预览、GitHub 发布和恢复提示都在手机 App 内闭环。
 
 它把最重的部分交给外部平台，把最贴近用户的部分留在手机上：
 
 | Layer | MobileCode does | External layer does |
 | --- | --- | --- |
-| Product UI | Chat, file cards, preview, runtime diagnostics, settings | None |
+| Phone-native harness | Chat, tool trace, role cards, file cards, preview, runtime diagnostics, settings | None |
 | Local runtime | Helper / Termux / WebViewOnly through `RuntimeProvider` | Shell, logs, small local tasks |
 | GitHub-first workspace | Repo Hub, watchlist, remote-linked folders, Pages publish cards | Repos, Contents API commits, Actions builds, artifacts |
 | Web artifacts | Generate HTML, run publish readiness checks, open browser/WebView | GitHub Pages hosting |
@@ -89,10 +97,6 @@ These thumbnails are generated from the live GitHub Pages demos with `just-thumb
 | GitHub Test | Verify token identity, repo access, and Pages readiness from a browser | [Open GitHub test](https://harzva.github.io/mobilecode/github-test/) |
 | Repo Hub | Watch repos, map them to `mobilecode_projects/github/<owner>/<repo>/`, inspect Actions, edit files through GitHub API | `mobile_agent/lib/screens/github_repo_hub_screen.dart` |
 | Published Work Card | After Pages publish, show Pages URL, repo URL, local file path, browser open, copy/share, and redeploy actions | `mobile_agent/lib/screens/home_screen.dart` |
-
-<p align="center">
-  <img src="docs/assets/mobilecode-readme-showcase.svg" alt="MobileCode GitHub-first mobile coding workflow" width="860">
-</p>
 
 ## Product Loop
 
@@ -205,7 +209,7 @@ That keeps the phone lightweight while still letting users produce shareable web
 
 ## Release Line
 
-Current candidate: `0.1.23+42`.
+Current candidate: `0.1.24+43`.
 
 See:
 

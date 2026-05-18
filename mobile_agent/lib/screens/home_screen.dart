@@ -110,10 +110,10 @@ const _managedModel = String.fromEnvironment(
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.23';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.24';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.23+42';
+const _releaseBuildLabel = 'v0.1.24+43';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 const _mobileCodeProjectsFolderName = 'mobilecode_projects';
 const _browserOpenModeSystem = 'systemDefault';
@@ -2757,7 +2757,7 @@ class _TopBar extends StatelessWidget {
               ),
               SizedBox(height: 2),
               Text(
-                'Mobile AI development console',
+                'Phone-native AI coding harness',
                 style: TextStyle(color: _muted, fontSize: 13),
               ),
             ],

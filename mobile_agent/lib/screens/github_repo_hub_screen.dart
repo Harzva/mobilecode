@@ -9,7 +9,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/github_repo.dart';
 import '../services/github_deep_service.dart';
 import '../services/github_repo_hub_service.dart';
-import 'github_screen.dart';
 
 const _bg = Color(0xFFF7FAFF);
 const _panel = Color(0xFFFFFFFF);
@@ -58,11 +57,13 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
 
   bool _loading = true;
   bool _authenticated = false;
+  bool _hasLoaded = false;
   String? _error;
+  String? _notice;
   String _filter = 'all';
   String _languageFilter = 'all';
   String _sort = 'pushed';
-  String _source = 'owner';
+  String _source = 'repo';
   List<GitHubRepoHubItem> _items = const [];
 
   @override
@@ -108,25 +109,30 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _notice = null;
     });
     try {
       await _hub.initialize();
-      if (!_hub.isAuthenticated) {
+      final authenticated = _hub.isAuthenticated;
+      final owner = _ownerController.text.trim();
+      if (_source == 'owner' && owner.isEmpty && !authenticated) {
         if (!mounted) return;
         setState(() {
           _authenticated = false;
           _loading = false;
           _items = const [];
+          _hasLoaded = false;
+          _notice = '输入 GitHub user/org 可以匿名浏览公开仓库；登录后空白输入会加载自己的仓库。';
         });
         return;
       }
       final items = _source == 'owner'
           ? await _hub.loadHubItems(
-              owner: _ownerController.text,
+              owner: owner,
               sort: _sort,
             )
           : await _hub.searchHubItems(
-              query: _ownerController.text,
+              query: owner,
               source: _source,
               sort: _sort,
             );
@@ -134,8 +140,9 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
       final keepLanguageFilter = _languageFilter == 'all' ||
           items.any((item) => (item.repo.language ?? '').toLowerCase() == _languageFilter);
       setState(() {
-        _authenticated = true;
+        _authenticated = authenticated;
         _items = items;
+        _hasLoaded = true;
         if (!keepLanguageFilter) _languageFilter = 'all';
         _loading = false;
       });
@@ -143,15 +150,121 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = _compact(error.toString(), 180);
+        _hasLoaded = true;
+        _authenticated = _hub.isAuthenticated;
+        _error = _friendlyGitHubError(error);
       });
     }
   }
 
   Future<void> _openLogin() async {
-    await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const GitHubScreen()));
+    final tokenController = TextEditingController();
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(18))),
+      builder: (sheetContext) {
+        var connecting = false;
+        String? error;
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            Future<void> connect() async {
+              final token = tokenController.text.trim();
+              if (token.isEmpty || connecting) return;
+              setSheetState(() {
+                connecting = true;
+                error = null;
+              });
+              final success = await _github.authenticate(token);
+              if (!sheetContext.mounted) return;
+              if (success) {
+                Navigator.of(sheetContext).pop(true);
+              } else {
+                setSheetState(() {
+                  connecting = false;
+                  error = 'Token 无法访问 GitHub /user。请确认 token 有效，且没有多余空格。';
+                });
+              }
+            }
+
+            return Padding(
+              padding: EdgeInsets.fromLTRB(20, 14, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(color: _line, borderRadius: BorderRadius.circular(99)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Add GitHub access', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 18)),
+                  const SizedBox(height: 6),
+                  const Text(
+                    '公开搜索不需要登录；token 只用于加载私有仓库、发布 Pages、触发 Actions、提交文件等账号操作。',
+                    style: TextStyle(color: _muted, height: 1.35),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: tokenController,
+                    obscureText: true,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => unawaited(connect()),
+                    decoration: const InputDecoration(
+                      labelText: 'GitHub access token',
+                      hintText: 'ghp_... / github_pat_...',
+                      prefixIcon: Icon(Icons.key_outlined),
+                    ),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 10),
+                    Text(error!, style: const TextStyle(color: _rose, height: 1.35)),
+                  ],
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: connecting ? null : () => Navigator.of(sheetContext).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        flex: 2,
+                        child: FilledButton.icon(
+                          onPressed: connecting ? null : () => unawaited(connect()),
+                          icon: connecting
+                              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                              : const Icon(Icons.login_outlined),
+                          label: Text(connecting ? 'Connecting' : 'Save access'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+    tokenController.dispose();
     if (!mounted) return;
-    await _refresh();
+    if (ok == true) {
+      _toast('GitHub access saved.');
+      setState(() {
+        _source = 'owner';
+        _ownerController.clear();
+        _filter = 'all';
+        _languageFilter = 'all';
+      });
+      await _refresh();
+    }
   }
 
   Future<void> _setWatched(GitHubRepoHubItem item, bool watched) async {
@@ -281,9 +394,7 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
         children: [
           const _HubHeader(),
           const SizedBox(height: 12),
-          if (!_authenticated && !_loading)
-            _AuthPanel(onLogin: _openLogin)
-          else ...[
+          if (_authenticated) ...[
             _HubAccountPanel(
               hub: _hub,
               currentUser: _hub.currentUser,
@@ -292,141 +403,185 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
               onSwitch: (username) => unawaited(_switchAccount(username)),
             ),
             const SizedBox(height: 12),
-            _HubPanel(
-              child: Column(
-                children: [
-                  TextField(
-                    controller: _ownerController,
-                    textInputAction: TextInputAction.search,
-                    onSubmitted: (_) => unawaited(_refresh()),
-                    decoration: InputDecoration(
-                      labelText: _source == 'owner' ? 'GitHub user / org' : _sourceSearchLabel(_source),
-                      hintText: _source == 'owner'
-                          ? (_hub.currentUser == null ? 'Leave blank for current login' : 'Blank = ${_hub.currentUser}')
-                          : _sourceSearchHint(_source),
-                      prefixIcon: Icon(_source == 'owner' ? Icons.account_circle_outlined : Icons.public_outlined),
-                      suffixIcon: IconButton(
-                        tooltip: _source == 'owner' ? 'Load repos' : 'Search GitHub',
-                        onPressed: _loading ? null : _refresh,
-                        icon: const Icon(Icons.travel_explore_outlined),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _FilterChip(label: 'Owner repos', value: 'owner', selected: _source == 'owner', onSelected: _setSource),
-                      _FilterChip(label: 'Any repo', value: 'repo', selected: _source == 'repo', onSelected: _setSource),
-                      _FilterChip(label: 'Skill', value: 'skill', selected: _source == 'skill', onSelected: _setSource),
-                      _FilterChip(label: 'MCP', value: 'mcp', selected: _source == 'mcp', onSelected: _setSource),
-                      _FilterChip(label: 'Release', value: 'release', selected: _source == 'release', onSelected: _setSource),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    _sourceScopeCopy(_source),
-                    style: const TextStyle(color: _muted, fontSize: 11.5, height: 1.35),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _searchController,
-                    decoration: const InputDecoration(
-                      labelText: 'Filter loaded cards',
-                      hintText: 'name, description, language',
-                      prefixIcon: Icon(Icons.search_outlined),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    value: _sort,
-                    decoration: const InputDecoration(labelText: 'Sort'),
-                    items: const [
-                      DropdownMenuItem(value: 'pushed', child: Text('Recently pushed')),
-                      DropdownMenuItem(value: 'updated', child: Text('Recently updated')),
-                      DropdownMenuItem(value: 'created', child: Text('Recently created')),
-                      DropdownMenuItem(value: 'full_name', child: Text('Name')),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() => _sort = value);
-                      unawaited(_refresh());
-                    },
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String>(
-                    value: languageOptions.containsKey(_languageFilter) ? _languageFilter : 'all',
-                    decoration: const InputDecoration(labelText: 'Language'),
-                    items: [
-                      const DropdownMenuItem(value: 'all', child: Text('All languages')),
-                      for (final language in languages) DropdownMenuItem(value: language.key, child: Text(language.value)),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() => _languageFilter = value);
-                    },
-                  ),
-                ],
-              ),
-            ),
+          ] else ...[
+            _AuthPanel(onLogin: _openLogin),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+          ],
+          _HubPanel(
+            child: Column(
               children: [
-                _FilterChip(label: 'All', value: 'all', selected: _filter == 'all', onSelected: _setFilter),
-                _FilterChip(label: '关注', value: 'watched', selected: _filter == 'watched', onSelected: _setFilter),
-                _FilterChip(label: 'On phone', value: 'local', selected: _filter == 'local', onSelected: _setFilter),
-                _FilterChip(label: 'Git', value: 'git', selected: _filter == 'git', onSelected: _setFilter),
-                _FilterChip(label: 'Pages', value: 'pages', selected: _filter == 'pages', onSelected: _setFilter),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _HubStats(total: _items.length, visible: visible.length),
-            const SizedBox(height: 12),
-            if (_error != null)
-              _HubPanel(
-                borderColor: _rose,
-                child: Text(_error!, style: const TextStyle(color: _rose, height: 1.35)),
-              ),
-            if (_loading)
-              const Padding(
-                padding: EdgeInsets.all(28),
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (visible.isEmpty)
-              const _HubPanel(
-                child: Text('No repositories match this filter yet.', style: TextStyle(color: _muted)),
-              )
-            else
-              for (final item in visible) ...[
-                _RepoHubCard(
-                  item: item,
-                  hub: _hub,
-                  currentUser: _hub.currentUser,
-                  source: _source,
-                  onWatched: (value) => unawaited(_setWatched(item, value)),
-                  onLinkWorkspace: () => unawaited(_linkWorkspace(item)),
-                  onOpenRepo: () => unawaited(_openUrl(item.repo.webUrl, 'repository')),
-                  onOpenPages: item.repo.hasPages ? () => unawaited(_openPages(item.repo)) : null,
-                  onOpenChat: () => _openRepoChat(item),
-                  onOpenUrl: (url, label) => unawaited(_openUrl(url, label)),
-                  onCopyRepoUrl: () => unawaited(_copy(item.repo.webUrl, 'GitHub URL')),
-                  onCopyPath: () => unawaited(_copy(item.localState.path, 'Workspace path')),
-                  onActions: () => _showActions(item.repo),
-                  onWorkspace: () => _showWorkspace(item.repo),
+                TextField(
+                  controller: _ownerController,
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => unawaited(_refresh()),
+                  decoration: InputDecoration(
+                    labelText: _source == 'owner' ? 'GitHub user / org' : _sourceSearchLabel(_source),
+                    hintText: _source == 'owner'
+                        ? (_hub.currentUser == null ? 'Type Harzva, flutter, vercel...' : 'Blank = ${_hub.currentUser}')
+                        : _sourceSearchHint(_source),
+                    prefixIcon: Icon(_source == 'owner' ? Icons.account_circle_outlined : Icons.public_outlined),
+                    suffixIcon: IconButton(
+                      tooltip: _source == 'owner' ? 'Load repos' : 'Search GitHub',
+                      onPressed: _loading ? null : _refresh,
+                      icon: const Icon(Icons.travel_explore_outlined),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _FilterChip(label: 'Any repo', value: 'repo', selected: _source == 'repo', onSelected: _setSource),
+                    _FilterChip(label: 'Owner repos', value: 'owner', selected: _source == 'owner', onSelected: _setSource),
+                    _FilterChip(label: 'Skill', value: 'skill', selected: _source == 'skill', onSelected: _setSource),
+                    _FilterChip(label: 'MCP', value: 'mcp', selected: _source == 'mcp', onSelected: _setSource),
+                    _FilterChip(label: 'Release', value: 'release', selected: _source == 'release', onSelected: _setSource),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _sourceScopeCopy(_source),
+                  style: const TextStyle(color: _muted, fontSize: 11.5, height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _searchController,
+                  decoration: const InputDecoration(
+                    labelText: 'Filter loaded cards',
+                    hintText: 'name, description, language',
+                    prefixIcon: Icon(Icons.search_outlined),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  value: _sort,
+                  decoration: const InputDecoration(labelText: 'Sort'),
+                  items: const [
+                    DropdownMenuItem(value: 'pushed', child: Text('Recently pushed')),
+                    DropdownMenuItem(value: 'updated', child: Text('Recently updated')),
+                    DropdownMenuItem(value: 'created', child: Text('Recently created')),
+                    DropdownMenuItem(value: 'full_name', child: Text('Name')),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _sort = value);
+                    unawaited(_refresh());
+                  },
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  value: languageOptions.containsKey(_languageFilter) ? _languageFilter : 'all',
+                  decoration: const InputDecoration(labelText: 'Language'),
+                  items: [
+                    const DropdownMenuItem(value: 'all', child: Text('All languages')),
+                    for (final language in languages) DropdownMenuItem(value: language.key, child: Text(language.value)),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _languageFilter = value);
+                  },
+                ),
               ],
-          ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _FilterChip(label: 'All', value: 'all', selected: _filter == 'all', onSelected: _setFilter),
+              _FilterChip(label: '关注', value: 'watched', selected: _filter == 'watched', onSelected: _setFilter),
+              _FilterChip(label: 'On phone', value: 'local', selected: _filter == 'local', onSelected: _setFilter),
+              _FilterChip(label: 'Git', value: 'git', selected: _filter == 'git', onSelected: _setFilter),
+              _FilterChip(label: 'Pages', value: 'pages', selected: _filter == 'pages', onSelected: _setFilter),
+            ],
+          ),
+          const SizedBox(height: 10),
+          _HubStats(total: _items.length, visible: visible.length),
+          const SizedBox(height: 12),
+          if (_notice != null)
+            _HubPanel(
+              borderColor: _amber,
+              child: Text(_notice!, style: const TextStyle(color: _amber, height: 1.35)),
+            ),
+          if (_error != null)
+            _HubPanel(
+              borderColor: _rose,
+              child: Text(_error!, style: const TextStyle(color: _rose, height: 1.35)),
+            ),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.all(28),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (visible.isEmpty)
+            _HubPanel(
+              child: Text(_emptyStateMessage(), style: const TextStyle(color: _muted)),
+            )
+          else
+            for (final item in visible) ...[
+              _RepoHubCard(
+                item: item,
+                hub: _hub,
+                currentUser: _hub.currentUser,
+                source: _source,
+                onWatched: (value) => unawaited(_setWatched(item, value)),
+                onLinkWorkspace: () => unawaited(_linkWorkspace(item)),
+                onOpenRepo: () => unawaited(_openUrl(item.repo.webUrl, 'repository')),
+                onOpenPages: item.repo.hasPages ? () => unawaited(_openPages(item.repo)) : null,
+                onOpenChat: () => _openRepoChat(item),
+                onOpenUrl: (url, label) => unawaited(_openUrl(url, label)),
+                onCopyRepoUrl: () => unawaited(_copy(item.repo.webUrl, 'GitHub URL')),
+                onCopyPath: () => unawaited(_copy(item.localState.path, 'Workspace path')),
+                onActions: () => _showActions(item.repo),
+                onWorkspace: () => _showWorkspace(item.repo),
+              ),
+              const SizedBox(height: 10),
+            ],
         ],
       ),
     );
   }
 
+  String _emptyStateMessage() {
+    if (_notice != null && !_hasLoaded) return _notice!;
+    if (_items.isNotEmpty && _visibleItems.isEmpty) {
+      return 'Loaded repositories are hidden by the current filter. Clear search text, language, or status chips.';
+    }
+    if (_source == 'owner') {
+      final owner = _ownerController.text.trim();
+      if (owner.isEmpty && !_authenticated) {
+        return 'Type a GitHub user/org to browse public repos, or add GitHub access to load your own repos.';
+      }
+      if (owner.isEmpty) return 'No repositories were returned for the active GitHub account.';
+      return 'No public repositories were returned for $owner.';
+    }
+    if (!_hasLoaded) return 'Type a query or tap search to discover public GitHub repositories.';
+    return 'No public repositories matched this GitHub search.';
+  }
+
   void _setFilter(String value) {
     setState(() => _filter = value);
+  }
+
+  String _friendlyGitHubError(Object error) {
+    if (error is GitHubDeepException) {
+      final status = error.statusCode;
+      if (status == 401) {
+        return 'GitHub token 失效或无效。公开搜索仍可用；账号仓库、Pages、Actions 操作需要重新登录。';
+      }
+      if (status == 403) {
+        return 'GitHub 返回 403。可能是匿名 rate limit、token scope 不足，或该仓库不允许当前账号访问。';
+      }
+      if (status == 404) {
+        return _source == 'owner'
+            ? '没有找到这个 owner/org 的公开仓库，或该账号不可见。'
+            : '没有找到可公开访问的仓库资源。';
+      }
+      return _compact('GitHub ${status ?? ''}: ${error.message}', 180);
+    }
+    return _compact(error.toString(), 180);
   }
 
   void _setSource(String value) {
@@ -505,17 +660,17 @@ class _AuthPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('GitHub login required', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 16)),
+          const Text('GitHub access optional', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 16)),
           const SizedBox(height: 6),
           const Text(
-            'Sign in once to list repos, create a watchlist, publish Pages, and later trigger GitHub Actions builds from the phone.',
+            'Public search works without login. Add access when you want private repos, Pages publishing, Actions dispatch, or file commits.',
             style: TextStyle(color: _muted, height: 1.35),
           ),
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: onLogin,
             icon: const Icon(Icons.login_outlined),
-            label: const Text('Open GitHub login'),
+            label: const Text('Add GitHub access'),
           ),
         ],
       ),

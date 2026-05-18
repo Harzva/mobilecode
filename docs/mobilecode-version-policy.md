@@ -4,7 +4,7 @@
 
 MobileCode uses semantic versioning, but the project is still pre-1.0. The version number should communicate release intent clearly, not simply increase because work happened.
 
-Current next release line: `0.1.23+42`.
+Current next release line: `0.1.24+43`.
 
 ## Version Lines
 
@@ -49,6 +49,7 @@ Examples:
 - `0.1.21+40`: GitHub connectivity status dots, Repo Hub search scopes/copy URL, and Skill GitHub discovery init fix.
 - `0.1.22+41`: Repo Hub ownership/discovery boundaries, compact mobile chat composer, and clearer external repo management expectations.
 - `0.1.23+42`: Release search asset preview, GitHub account operation boundary panel, Skill/MCP manifest risk review, and compact chat top bar.
+- `0.1.24+43`: Repo Hub anonymous public search, local token login sheet, clearer account-gated operations, and logout confirmation.
 - `0.2.0+38`: Helper APK/runtime capability expansion starts.
 
 ## Stop Rules
@@ -69,9 +70,9 @@ Do not tag `1.0.0` until the app is installable, testable, documented, and under
 
 Release tags should match the product version:
 
-- Tag: `v0.1.23`
-- APK asset: `mobilecode-v0.1.23.apk`
-- iOS simulator asset: `mobilecode-ios-simulator-v0.1.23.zip`
-- Unsigned iOS archive asset: `mobilecode-ios-archive-v0.1.23.xcarchive.zip`
+- Tag: `v0.1.24`
+- APK asset: `mobilecode-v0.1.24.apk`
+- iOS simulator asset: `mobilecode-ios-simulator-v0.1.24.zip`
+- Unsigned iOS archive asset: `mobilecode-ios-archive-v0.1.24.xcarchive.zip`
 
 If a release tag is supplied manually in GitHub Actions, artifact names should follow that tag.

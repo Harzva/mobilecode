@@ -477,13 +477,18 @@ class GitHubDeepService {
     String owner, {
     String sort = 'pushed',
     int perPage = 100,
+    bool public = false,
   }) async {
     final query = <String, String>{
       'per_page': '$perPage',
       'sort': sort,
       'type': 'all',
     };
-    final List<dynamic> data = await _getJsonList('/users/$owner/repos', query: query);
+    final List<dynamic> data = await _getJsonList(
+      '/users/$owner/repos',
+      query: query,
+      allowAnonymous: public,
+    );
     return data.map((item) => GitHubRepo.fromGitHubApi(item)).toList();
   }
 
@@ -551,39 +556,41 @@ class GitHubDeepService {
   }
 
   /// Get repository details.
-  Future<Map<String, dynamic>> getRepoDetails(String owner, String repo) async {
-    return await _getJson('/repos/$owner/$repo') ?? {};
+  Future<Map<String, dynamic>> getRepoDetails(String owner, String repo, {bool public = false}) async {
+    return await _getJson('/repos/$owner/$repo', allowAnonymous: public) ?? {};
   }
 
   /// List GitHub Actions workflows for a repository.
-  Future<List<dynamic>> getWorkflows(String owner, String repo, {int perPage = 30}) async {
+  Future<List<dynamic>> getWorkflows(String owner, String repo, {int perPage = 30, bool public = false}) async {
     final data = await _getJson(
           '/repos/$owner/$repo/actions/workflows',
           query: {'per_page': '$perPage'},
+          allowAnonymous: public,
         ) ??
         {};
     return (data['workflows'] as List<dynamic>?) ?? const [];
   }
 
   /// List recent GitHub Actions runs for a repository.
-  Future<List<dynamic>> getWorkflowRuns(String owner, String repo, {int perPage = 5}) async {
+  Future<List<dynamic>> getWorkflowRuns(String owner, String repo, {int perPage = 5, bool public = false}) async {
     final data = await _getJson(
           '/repos/$owner/$repo/actions/runs',
           query: {'per_page': '$perPage'},
+          allowAnonymous: public,
         ) ??
         {};
     return (data['workflow_runs'] as List<dynamic>?) ?? const [];
   }
 
   /// List artifacts for a workflow run.
-  Future<List<dynamic>> getWorkflowRunArtifacts(String owner, String repo, int runId) async {
-    final data = await _getJson('/repos/$owner/$repo/actions/runs/$runId/artifacts') ?? {};
+  Future<List<dynamic>> getWorkflowRunArtifacts(String owner, String repo, int runId, {bool public = false}) async {
+    final data = await _getJson('/repos/$owner/$repo/actions/runs/$runId/artifacts', allowAnonymous: public) ?? {};
     return (data['artifacts'] as List<dynamic>?) ?? const [];
   }
 
   /// List jobs and step status for a workflow run.
-  Future<List<dynamic>> getWorkflowRunJobs(String owner, String repo, int runId) async {
-    final data = await _getJson('/repos/$owner/$repo/actions/runs/$runId/jobs') ?? {};
+  Future<List<dynamic>> getWorkflowRunJobs(String owner, String repo, int runId, {bool public = false}) async {
+    final data = await _getJson('/repos/$owner/$repo/actions/runs/$runId/jobs', allowAnonymous: public) ?? {};
     return (data['jobs'] as List<dynamic>?) ?? const [];
   }
 
@@ -754,8 +761,8 @@ class GitHubDeepService {
   }
 
   /// Get repository releases.
-  Future<List<dynamic>> getReleases(String owner, String repo) async {
-    return await _getJsonList('/repos/$owner/$repo/releases');
+  Future<List<dynamic>> getReleases(String owner, String repo, {bool public = false}) async {
+    return await _getJsonList('/repos/$owner/$repo/releases', allowAnonymous: public);
   }
 
   /// Get repository tags.
@@ -782,6 +789,7 @@ class GitHubDeepService {
     String repo, {
     String? path,
     String? ref,
+    bool public = false,
   }) async {
     var url = '/repos/$owner/$repo/contents';
     if (path != null && path.isNotEmpty) url += '/$path';
@@ -794,6 +802,7 @@ class GitHubDeepService {
       'GET',
       url,
       query: query.isNotEmpty ? query : null,
+      allowAnonymous: public,
     );
     if (response.body.isEmpty) return [];
     final data = jsonDecode(response.body);
@@ -809,8 +818,9 @@ class GitHubDeepService {
     String repo,
     String path, {
     String? ref,
+    bool public = false,
   }) async {
-    final items = await getContents(owner, repo, path: path, ref: ref);
+    final items = await getContents(owner, repo, path: path, ref: ref, public: public);
     if (items.isEmpty) throw const GitHubDeepException(message: 'File not found');
 
     final fileData = items.first as Map<String, dynamic>;
@@ -1342,6 +1352,7 @@ class GitHubDeepService {
     String? language,
     String? sort,
     int perPage = 30,
+    bool public = false,
   }) async {
     var q = query;
     if (language != null && language.isNotEmpty) {
@@ -1354,7 +1365,11 @@ class GitHubDeepService {
       if (sort != null && sort.isNotEmpty) 'sort': sort,
     };
 
-    final data = await _getJson('/search/repositories', query: queryParams);
+    final data = await _getJson(
+      '/search/repositories',
+      query: queryParams,
+      allowAnonymous: public,
+    );
     return (data?['items'] as List<dynamic>?) ?? [];
   }
 
@@ -1431,6 +1446,12 @@ class GitHubDeepService {
     'User-Agent': 'MobileAgent/1.0',
   };
 
+  Map<String, String> _publicHeaders() => {
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': _apiVersion,
+    'User-Agent': 'MobileAgent/1.0',
+  };
+
   Uri _uri(String path, {Map<String, String>? query}) {
     final base = Uri.parse('$_baseUrl$path');
     if (query == null || query.isEmpty) return base;
@@ -1444,13 +1465,14 @@ class GitHubDeepService {
     Map<String, String>? query,
     Map<String, String>? extraHeaders,
     String? token,
+    bool allowAnonymous = false,
   }) async {
-    final t = token ?? activeSession?.token;
-    if (t == null) {
+    final t = allowAnonymous ? token : token ?? activeSession?.token;
+    if (t == null && !allowAnonymous) {
       throw const GitHubDeepException(message: 'Not authenticated');
     }
 
-    final headers = _headers(t);
+    final headers = t == null ? _publicHeaders() : _headers(t);
     if (extraHeaders != null) headers.addAll(extraHeaders);
 
     final uri = _uri(path, query: query);
@@ -1512,9 +1534,10 @@ class GitHubDeepService {
     Map<String, String>? query,
     Map<String, String>? extraHeaders,
     String? token,
+    bool allowAnonymous = false,
   }) async {
     final response = await _request('GET', path,
-        query: query, extraHeaders: extraHeaders, token: token);
+        query: query, extraHeaders: extraHeaders, token: token, allowAnonymous: allowAnonymous);
     if (response.body.isEmpty) return null;
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -1523,9 +1546,10 @@ class GitHubDeepService {
     String path, {
     Map<String, String>? query,
     Map<String, String>? extraHeaders,
+    bool allowAnonymous = false,
   }) async {
     final response = await _request('GET', path,
-        query: query, extraHeaders: extraHeaders);
+        query: query, extraHeaders: extraHeaders, allowAnonymous: allowAnonymous);
     if (response.body.isEmpty) return [];
     return jsonDecode(response.body) as List<dynamic>;
   }

@@ -204,6 +204,31 @@ class _GitHubScreenState extends State<GitHubScreen>
   }
 
   Future<void> _logout() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Remove GitHub access?', style: TextStyle(color: AppTheme.textPrimary)),
+        content: const Text(
+          'This removes the active token from this device. Public search still works, but private repos and write actions will require adding access again.',
+          style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.logout, size: 16),
+            label: const Text('Remove access'),
+            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     await _svc.logout();
     setState(() {
       _auth = false;
@@ -676,9 +701,10 @@ class _GitHubScreenState extends State<GitHubScreen>
                 icon: const Icon(Icons.switch_account,
                     size: 20, color: AppTheme.accent)),
           IconButton(
+              tooltip: 'Remove GitHub access',
               onPressed: _logout,
               icon: const Icon(Icons.logout,
-                  size: 18, color: AppTheme.textTertiary)),
+                  size: 18, color: AppTheme.error)),
         ]),
       );
 

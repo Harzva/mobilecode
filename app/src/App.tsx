@@ -1,8 +1,7 @@
-import { Routes, Route } from 'react-router-dom';
+import { Navigate, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Home from './pages/Home';
 import Features from './pages/Features';
-import Pricing from './pages/Pricing';
 import Docs from './pages/Docs';
 import Changelog from './pages/Changelog';
 import About from './pages/About';
@@ -14,7 +13,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/features" element={<Features />} />
-        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/pricing" element={<Navigate to="/features" replace />} />
         <Route path="/docs" element={<Docs />} />
         <Route path="/changelog" element={<Changelog />} />
         <Route path="/about" element={<About />} />

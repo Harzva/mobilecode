@@ -1,0 +1,25 @@
+{
+  "name": "mobilecode-promo-video",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "remotion studio src/index.ts",
+    "render:vertical": "remotion render src/index.ts MobileCodeVertical ../../docs/assets/mobilecode-promo-vertical.mp4 --codec h264 --crf 28 --pixel-format yuv420p",
+    "render:readme": "remotion render src/index.ts MobileCodeReadmeCover ../../docs/assets/mobilecode-readme-cover.mp4 --codec h264 --crf 28 --pixel-format yuv420p",
+    "render:principle": "remotion render src/index.ts MobileCodePrincipleExplainer ../../docs/assets/mobilecode-principle-remotion.mp4 --codec h264 --crf 28 --pixel-format yuv420p",
+    "render:principle:poster": "remotion still src/index.ts MobileCodePrincipleExplainer ../../docs/assets/mobilecode-principle-poster.png --frame=90",
+    "render": "npm run render:vertical && npm run render:readme && npm run render:principle && npm run render:principle:poster"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.462",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.462"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.5",
+    "@types/react-dom": "19.2.3",
+    "typescript": "5.9.3"
+  }
+}

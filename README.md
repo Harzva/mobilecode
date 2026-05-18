@@ -17,6 +17,18 @@
 </p>
 
 <p align="center">
+  <a href="docs/assets/mobilecode-promo-vertical.mp4"><strong>Watch 9:16 Promo Video</strong></a>
+  ·
+  <a href="docs/assets/mobilecode-readme-cover.mp4">README Motion Cover</a>
+  ·
+  <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">HTML Principle Video</a>
+  ·
+  <a href="https://github.com/Harzva/mobilecode/releases/download/v0.1.24/mobilecode-v0.1.24.apk">Download v0.1.24 APK</a>
+  ·
+  <a href="https://harzva.github.io/mobilecode/">GitHub Pages Demo</a>
+</p>
+
+<p align="center">
   <a href="https://harzva.github.io/mobilecode/">Demo Lab</a>
   ·
   <a href="https://harzva.github.io/mobilecode/demo/2048/">2048 Demo</a>
@@ -32,6 +44,14 @@
   <a href="https://harzva.github.io/mobilecode/">
     <img src="docs/assets/mobilecode-readme-showcase.svg" alt="MobileCode phone-native AI coding harness workflow" width="960">
   </a>
+</p>
+
+<p align="center">
+  <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">
+    <img src="docs/assets/mobilecode-principle-poster.png" alt="MobileCode Remotion principle video cover" width="960">
+  </a>
+  <br>
+  <sub>Remotion explainer: demand, pain, phone-native harness, RuntimeProvider, GitHub-first shipping.</sub>
 </p>
 
 | Runs on the phone | Remote by choice | GitHub-first shipping |

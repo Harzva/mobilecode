@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MobileCode Principle Video</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7faff;
+      --surface: #ffffff;
+      --ink: #0b1020;
+      --muted: #536079;
+      --line: #dde7f7;
+      --blue: #2555ff;
+      --mint: #0b9b7e;
+      --amber: #b7791f;
+      --shadow: 0 28px 90px rgba(37, 85, 255, .13);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      padding: 24px;
+    }
+
+    main {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      width: 40px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      background: var(--blue);
+      color: white;
+      font-weight: 1000;
+      box-shadow: 0 12px 26px rgba(37, 85, 255, .25);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(24px, 5vw, 44px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-weight: 750;
+      line-height: 1.45;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .button {
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+
+    .button.primary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: white;
+    }
+
+    .video-card {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    video {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      border-radius: 8px;
+      background: #0b1020;
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .meta-card {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, .72);
+    }
+
+    .meta-card strong {
+      display: block;
+      color: var(--blue);
+      font-size: 22px;
+      margin-bottom: 8px;
+    }
+
+    @media (max-width: 720px) {
+      body { padding: 14px; }
+      .meta { grid-template-columns: 1fr; }
+      .button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">M</div>
+        <div>
+          <h1>MobileCode Principle Video</h1>
+          <p>Remotion-rendered HTML video page: demand, pain, solution, architecture, and GitHub-first loop.</p>
+        </div>
+      </div>
+      <nav class="actions" aria-label="Video actions">
+        <a class="button primary" href="./assets/mobilecode-principle-remotion.mp4" download>Download MP4</a>
+        <a class="button" href="./mobilecode-principle-video-script.md">Script</a>
+        <a class="button" href="./">Demo Lab</a>
+        <a class="button" href="https://github.com/Harzva/mobilecode/releases/download/v0.1.24/mobilecode-v0.1.24.apk">APK</a>
+      </nav>
+    </header>
+
+    <section class="video-card">
+      <video
+        controls
+        autoplay
+        muted
+        playsinline
+        poster="./assets/mobilecode-principle-poster.png"
+        src="./assets/mobilecode-principle-remotion.mp4"
+      >
+        <track
+          default
+          kind="subtitles"
+          srclang="zh"
+          label="中文"
+          src="./assets/mobilecode-principle-captions.zh.vtt"
+        >
+      </video>
+    </section>
+
+    <section class="meta" aria-label="Video outline">
+      <div class="meta-card">
+        <strong>Demand</strong>
+        <p>AI coding is moving to the phone, but the phone needs a clear harness instead of a desktop clone.</p>
+      </div>
+      <div class="meta-card">
+        <strong>Principle</strong>
+        <p>RuntimeProvider keeps execution replaceable while the app owns state, preview, files, and recovery.</p>
+      </div>
+      <div class="meta-card">
+        <strong>Shipping</strong>
+        <p>GitHub Pages and Actions handle publishing and heavy builds while MobileCode stays lightweight.</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

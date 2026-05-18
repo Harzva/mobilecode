@@ -29,6 +29,7 @@ class _ApiUsageScreenState extends State<ApiUsageScreen> {
   final _pricingService = TokenPricingService.instance;
   StreamSubscription<TokenUsageSummary>? _summarySub;
   TokenUsageSummary _summary = TokenUsageSummary.empty;
+  var _checkingPricingUpdate = false;
 
   @override
   void initState() {
@@ -61,6 +62,36 @@ class _ApiUsageScreenState extends State<ApiUsageScreen> {
     );
     if (override != null) {
       await _pricingService.upsertOverride(override);
+    }
+  }
+
+  Future<void> _checkLiteLlmUpdate() async {
+    if (_checkingPricingUpdate) return;
+    setState(() => _checkingPricingUpdate = true);
+    try {
+      final update = await _pricingService.checkLiteLlmUpdate();
+      if (!mounted) return;
+      final apply = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: _usagePanel,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+        builder: (context) => _PricingUpdateSheet(update: update),
+      );
+      if (apply == true) {
+        await _pricingService.applySnapshotUpdate(update);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Pricing snapshot updated: ${update.modelCount} models from LiteLLM.')),
+        );
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('LiteLLM update check failed: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _checkingPricingUpdate = false);
     }
   }
 
@@ -106,6 +137,8 @@ class _ApiUsageScreenState extends State<ApiUsageScreen> {
             catalog: catalog,
             prices: _pricingService.snapshotPrices.take(8).toList(growable: false),
             overrides: _pricingService.overrides,
+            checkingUpdate: _checkingPricingUpdate,
+            onCheckUpdate: () => unawaited(_checkLiteLlmUpdate()),
             onAdd: () => unawaited(_openPricingOverrideSheet()),
             onEdit: (price) => unawaited(_openPricingOverrideSheet(price)),
             onRemove: (price) => unawaited(_pricingService.removeOverride(price.key)),
@@ -338,6 +371,8 @@ class _PricingPanel extends StatelessWidget {
     required this.catalog,
     required this.prices,
     required this.overrides,
+    required this.checkingUpdate,
+    required this.onCheckUpdate,
     required this.onAdd,
     required this.onEdit,
     required this.onRemove,
@@ -346,6 +381,8 @@ class _PricingPanel extends StatelessWidget {
   final TokenPricingCatalog catalog;
   final List<TokenPrice> prices;
   final List<TokenPrice> overrides;
+  final bool checkingUpdate;
+  final VoidCallback onCheckUpdate;
   final VoidCallback onAdd;
   final ValueChanged<TokenPrice> onEdit;
   final ValueChanged<TokenPrice> onRemove;
@@ -359,13 +396,25 @@ class _PricingPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Text(
+            '${catalog.sourceName} · ${catalog.snapshotCount} models · updated ${_dateLabel(catalog.updatedAt)}',
+            style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Expanded(
-                child: Text(
-                  '${catalog.sourceName} · ${catalog.snapshotCount} models · updated ${_dateLabel(catalog.updatedAt)}',
-                  style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.35),
-                ),
+              OutlinedButton.icon(
+                onPressed: checkingUpdate ? null : onCheckUpdate,
+                icon: checkingUpdate
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cloud_sync_outlined, size: 16),
+                label: Text(checkingUpdate ? 'Checking...' : 'Check LiteLLM update'),
               ),
               TextButton.icon(
                 onPressed: onAdd,
@@ -386,7 +435,7 @@ class _PricingPanel extends StatelessWidget {
               ),
             const SizedBox(height: 8),
           ],
-          const Text('Built-in snapshot', style: TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900)),
+          const Text('Current snapshot', style: TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900)),
           const SizedBox(height: 8),
           for (final price in prices)
             _PriceRow(
@@ -456,6 +505,113 @@ class _PriceRow extends StatelessWidget {
               onPressed: onRemove,
               icon: const Icon(Icons.delete_outline, size: 18),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PricingUpdateSheet extends StatelessWidget {
+  const _PricingUpdateSheet({required this.update});
+
+  final TokenPricingSnapshotUpdate update;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.cloud_sync_outlined, color: _usageAmber, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('LiteLLM pricing update', style: TextStyle(color: _usageText, fontSize: 16, fontWeight: FontWeight.w900)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'This is a manual snapshot update. MobileCode will not update prices in the background, and user overrides still take priority.',
+                style: TextStyle(color: _usageMuted, fontSize: 12, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              _PricingUpdateMetric(label: 'Models', value: _formatInt(update.modelCount), color: _usageViolet),
+              _PricingUpdateMetric(label: 'New', value: _formatInt(update.newCount), color: _usageMint),
+              _PricingUpdateMetric(label: 'Price changes', value: _formatInt(update.changedCount), color: _usageAmber),
+              _PricingUpdateMetric(label: 'Unchanged', value: _formatInt(update.unchangedCount), color: _usageCyan),
+              const SizedBox(height: 10),
+              Text(
+                '${update.sourceName} · updated ${_dateLabel(update.updatedAt)}',
+                style: const TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900, height: 1.35),
+              ),
+              const SizedBox(height: 4),
+              SelectableText(
+                update.sourceUrl,
+                style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: update.modelCount == 0 ? null : () => Navigator.of(context).pop(true),
+                      icon: const Icon(Icons.download_done_outlined),
+                      label: const Text('Apply snapshot'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PricingUpdateMetric extends StatelessWidget {
+  const _PricingUpdateMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.28)),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(color: _usageMuted, fontSize: 12, fontWeight: FontWeight.w700))),
+          Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w900)),
         ],
       ),
     );

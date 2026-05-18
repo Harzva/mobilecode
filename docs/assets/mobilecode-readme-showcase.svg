@@ -60,6 +60,6 @@
     <text x="942" y="480" fill="#536079" font-family="Inter,Arial,sans-serif" font-size="13">download artifacts to phone.</text>
   </g>
   <rect x="548" y="548" width="614" height="74" rx="18" fill="#0B1020"/>
-  <text x="578" y="586" fill="#FFFFFF" font-family="Inter,Arial,sans-serif" font-size="18" font-weight="900">v0.1.13+32</text>
+  <text x="578" y="586" fill="#FFFFFF" font-family="Inter,Arial,sans-serif" font-size="18" font-weight="900">v0.1.14+33</text>
   <text x="690" y="586" fill="#A8B5CF" font-family="Inter,Arial,sans-serif" font-size="14">RuntimeProvider · MobileCode Helper · External Termux · Cloud-ready fallback</text>
 </svg>

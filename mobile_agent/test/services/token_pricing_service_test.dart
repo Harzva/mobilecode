@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_agent/services/token_pricing_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -5,8 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('loads built-in LiteLLM-compatible snapshot and estimates cost', () async {
+  setUp(() {
+    TokenPricingService.instance.resetForTesting();
     SharedPreferences.setMockInitialValues({});
+  });
+
+  test('loads built-in LiteLLM-compatible snapshot and estimates cost', () async {
     final service = TokenPricingService.instance;
     await service.initialize();
 
@@ -26,7 +32,6 @@ void main() {
   });
 
   test('user override wins over snapshot', () async {
-    SharedPreferences.setMockInitialValues({});
     final service = TokenPricingService.instance;
     await service.initialize();
 
@@ -54,5 +59,61 @@ void main() {
 
     expect(estimate.price.custom, isTrue);
     expect(estimate.costUsd, closeTo(3.0, 0.01));
+  });
+
+  test('parses and applies official LiteLLM model-map snapshot', () async {
+    final service = TokenPricingService.instance;
+    await service.initialize();
+
+    final updatedAt = DateTime(2026, 5, 18);
+    final update = service.buildUpdateFromJson(
+      jsonEncode({
+        'gpt-manual-test': {
+          'litellm_provider': 'openai',
+          'input_cost_per_token': 0.000001,
+          'output_cost_per_token': 0.000002,
+          'cache_read_input_token_cost': 0.0000002,
+          'cache_creation_input_token_cost': 0.0000005,
+        },
+      }),
+      sourceName: 'LiteLLM remote snapshot',
+      sourceUrl: TokenPricingService.officialLiteLlmRawUrl,
+      updatedAt: updatedAt,
+    );
+
+    expect(update.modelCount, 1);
+    expect(update.newCount, 1);
+
+    await service.applySnapshotUpdate(update);
+    final catalog = service.catalog;
+    expect(catalog.sourceName, 'LiteLLM remote snapshot');
+    expect(catalog.snapshotCount, 1);
+
+    final estimate = await service.estimateCost(
+      provider: 'openai',
+      model: 'gpt-manual-test',
+      inputTokens: 1000000,
+      outputTokens: 1000000,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    );
+
+    expect(estimate.price.sourceUrl, TokenPricingService.officialLiteLlmRawUrl);
+    expect(estimate.costUsd, closeTo(3.0, 0.01));
+
+    service.resetForTesting();
+    await service.initialize();
+    expect(service.catalog.sourceName, 'LiteLLM remote snapshot');
+
+    final reloadedEstimate = await service.estimateCost(
+      provider: 'openai',
+      model: 'gpt-manual-test',
+      inputTokens: 1000000,
+      outputTokens: 1000000,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    );
+
+    expect(reloadedEstimate.costUsd, closeTo(3.0, 0.01));
   });
 }

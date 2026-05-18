@@ -10,7 +10,7 @@
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml"><img alt="Mobile Runtime CI" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml/badge.svg?branch=v011-streaming-fix"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=v011-streaming-fix"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=v011-streaming-fix"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.1.13%2B32-2555FF">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.1.14%2B33-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20Flutter-0B9B7E">
 </p>
 
@@ -119,7 +119,7 @@ flowchart LR
 - GitHub Actions surface: workflows, latest run status, jobs/steps, workflow dispatch, artifact zip download record.
 - API-backed file flow: browse remote tree, read text files, edit, commit via GitHub Contents API, reload on SHA conflict.
 - Extension management: Roles, Skill, MCP, Memory, Agent, Hook Registry surfaces for role-based workflows.
-- Observability: RR AgentView, pending role approvals, Token Usage/cache-hit statistics, configurable LiteLLM-style pricing, and Device Telemetry htop-style phone health.
+- Observability: RR AgentView, pending role approvals, Token Usage/cache-hit statistics, configurable LiteLLM-style pricing with manual LiteLLM snapshot checks, and Device Telemetry htop-style phone health.
 - Lark CLI connector: opt-in diagnostics and structured dry-run action model.
 
 ## Architecture
@@ -205,7 +205,7 @@ That keeps the phone lightweight while still letting users produce shareable web
 
 ## Release Line
 
-Current candidate: `0.1.13+32`.
+Current candidate: `0.1.14+33`.
 
 See:
 

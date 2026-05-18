@@ -12,6 +12,11 @@ on:
         required: false
         default: true
         type: boolean
+      build_archive:
+        description: Also build and upload an unsigned iOS xcarchive zip
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -120,3 +125,153 @@ jobs:
               --repo "$GITHUB_REPOSITORY"
           fi
           gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-simulator-"$RELEASE_TAG".zip --clobber --repo "$GITHUB_REPOSITORY"
+
+  build-ios-archive:
+    if: ${{ github.event.inputs.build_archive != 'false' }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun --find xcodebuild
+
+      - name: Recreate iOS platform project
+        working-directory: mobile_agent
+        run: |
+          rm -rf ios
+          flutter create --platforms=ios --project-name mobile_agent --org com.mobilecode .
+          python3 tooling/prepare_ios_project.py
+
+      - name: Resolve Flutter dependencies
+        working-directory: mobile_agent
+        run: flutter pub get
+
+      - name: Build unsigned iOS device app
+        working-directory: mobile_agent
+        env:
+          MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
+        run: |
+          if [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
+            flutter build ios --release --no-codesign --target lib/main.dart \
+              --dart-define=MOBILECODE_MANAGED_PROVIDER=true \
+              --dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic \
+              --dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro \
+              --dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY"
+          else
+            flutter build ios --release --no-codesign --target lib/main.dart
+          fi
+
+      - name: Package unsigned xcarchive
+        working-directory: mobile_agent
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.23' }}
+        run: |
+          set -euxo pipefail
+          mkdir -p ../artifacts
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          ARCHIVE_PATH="../artifacts/MobileCode-${RELEASE_TAG}.xcarchive"
+          ZIP_PATH="../artifacts/mobilecode-ios-archive-${RELEASE_TAG}.xcarchive.zip"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Expected iOS app bundle was not found at $APP_PATH"
+            exit 1
+          fi
+
+          rm -rf "$ARCHIVE_PATH" "$ZIP_PATH"
+          mkdir -p "$ARCHIVE_PATH/Products/Applications"
+          ditto "$APP_PATH" "$ARCHIVE_PATH/Products/Applications/Runner.app"
+
+          DSYM_ROOT="build/ios/Release-iphoneos"
+          mkdir -p "$ARCHIVE_PATH/dSYMs"
+          copied_dsym=0
+          for dsym in "$DSYM_ROOT"/*.dSYM; do
+            if [ -e "$dsym" ]; then
+              cp -R "$dsym" "$ARCHIVE_PATH/dSYMs/"
+              copied_dsym=1
+            fi
+          done
+          if [ "$copied_dsym" -eq 0 ]; then
+            rmdir "$ARCHIVE_PATH/dSYMs"
+          fi
+
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP_PATH/Info.plist")"
+          BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$APP_PATH/Info.plist")"
+          CREATION_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          cat > "$ARCHIVE_PATH/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>ApplicationProperties</key>
+            <dict>
+              <key>ApplicationPath</key>
+              <string>Applications/Runner.app</string>
+              <key>CFBundleIdentifier</key>
+              <string>${BUNDLE_ID}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${SHORT_VERSION}</string>
+              <key>CFBundleVersion</key>
+              <string>${BUILD_VERSION}</string>
+              <key>SigningIdentity</key>
+              <string>Unsigned CI archive</string>
+            </dict>
+            <key>ArchiveVersion</key>
+            <integer>2</integer>
+            <key>CreationDate</key>
+            <date>${CREATION_DATE}</date>
+            <key>Name</key>
+            <string>MobileCode</string>
+            <key>SchemeName</key>
+            <string>Runner</string>
+          </dict>
+          </plist>
+          PLIST
+
+          plutil -lint "$ARCHIVE_PATH/Info.plist"
+          ditto -c -k --sequesterRsrc --keepParent "$ARCHIVE_PATH" "$ZIP_PATH"
+          {
+            echo "MobileCode iOS archive"
+            echo "Release tag: $RELEASE_TAG"
+            echo "Bundle ID: $BUNDLE_ID"
+            echo "Version: $SHORT_VERSION+$BUILD_VERSION"
+            echo "Signed: no"
+            echo "Installable on physical iPhone: no; export/sign this archive first."
+          } > ../artifacts/ios-archive-summary.txt
+
+      - name: Upload iOS archive artifact
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mobilecode-ios-archive
+          path: artifacts/
+
+      - name: Upload iOS archive to GitHub Release
+        if: ${{ github.event.inputs.upload_to_release != 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.23' }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+          else
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "MobileCode $RELEASE_TAG" \
+              --notes "Automated MobileCode unsigned iOS archive build." \
+              --prerelease \
+              --repo "$GITHUB_REPOSITORY"
+          fi
+          gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-archive-"$RELEASE_TAG".xcarchive.zip artifacts/ios-archive-summary.txt --clobber --repo "$GITHUB_REPOSITORY"

@@ -103,10 +103,10 @@ const _managedModel = String.fromEnvironment(
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.9';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.10';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.9+28';
+const _releaseBuildLabel = 'v0.1.10+29';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 const _mobileCodeProjectsFolderName = 'mobilecode_projects';
 const _browserOpenModeSystem = 'systemDefault';
@@ -561,6 +561,48 @@ const _miniAgentTools = [
   ),
 ];
 
+class _AgentVisualRoleSpec {
+  const _AgentVisualRoleSpec({
+    required this.name,
+    required this.mission,
+    required this.color,
+  });
+
+  final String name;
+  final String mission;
+  final Color color;
+}
+
+const _agentVisualAvatarAsset = 'assets/role_avatars/avatar-batch2-14-sticker.svg';
+
+const _agentVisualRoles = [
+  _AgentVisualRoleSpec(
+    name: 'Planner',
+    mission: 'Clarify the request and choose the safest build path.',
+    color: _violet,
+  ),
+  _AgentVisualRoleSpec(
+    name: 'UI Designer',
+    mission: 'Keep the generated web page mobile-first and visually polished.',
+    color: _amber,
+  ),
+  _AgentVisualRoleSpec(
+    name: 'Mobile Web Builder',
+    mission: 'Write the local HTML artifact and keep it self-contained.',
+    color: _cyan,
+  ),
+  _AgentVisualRoleSpec(
+    name: 'Runtime Reviewer',
+    mission: 'Check file paths, previewability, and recovery hints.',
+    color: _mint,
+  ),
+  _AgentVisualRoleSpec(
+    name: 'Release Checker',
+    mission: 'Prepare the result for browser preview and GitHub Pages.',
+    color: _blue,
+  ),
+];
+
 String _normalizedBaseUrl(String baseUrl) {
   return baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
 }
@@ -913,7 +955,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       title: 'Parse instruction',
       detail: 'Read the user request and decide whether this is chat, coding, preview, GitHub, or device tooling.',
       icon: Icons.manage_search_outlined,
-      avatarAsset: 'assets/role_avatars/agent-magic.svg',
+      avatarAsset: 'assets/role_avatars/claude-pet-animated-magic.svg',
       details: {
         'Input': _compact(prompt, limit: 420),
         'Decision rule': 'Classify the prompt before any provider call or file write.',
@@ -923,7 +965,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       title: 'Select tool',
       detail: '$tool · tap for call details',
       icon: Icons.psychology_alt_outlined,
-      avatarAsset: 'assets/role_avatars/agent-coder.svg',
+      avatarAsset: 'assets/role_avatars/claude-pet-animated-coder.svg',
       toolName: tool,
       details: _agentToolCallDetails(tool, prompt),
     ),
@@ -931,7 +973,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       title: 'Call model provider',
       detail: 'Send the prompt and chat context to the configured provider. If this fails, the agent must stop.',
       icon: Icons.cloud_sync_outlined,
-      avatarAsset: 'assets/role_avatars/agent-codex-blue.svg',
+      avatarAsset: 'assets/role_avatars/claude-girl-dancer.svg',
       details: {
         'Provider call': 'Uses the configured Base URL, model, API flavor, and current chat context.',
         'Streaming': 'Tokens are streamed into this trace while the provider responds.',
@@ -942,7 +984,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       title: 'Write generated artifact',
       detail: 'Persist model-generated code only after the provider returns real output.',
       icon: Icons.account_tree_outlined,
-      avatarAsset: 'assets/role_avatars/agent-rocket.svg',
+      avatarAsset: 'assets/role_avatars/claude-pet-animated-rocket.svg',
       details: {
         'Write rule': 'Generated files are written only after provider text is received and validated.',
         'Web validation': 'HTML tools require a complete HTML document before index.html is replaced.',
@@ -953,7 +995,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       title: 'Report in chat',
       detail: 'Keep the process, generated content, paths, and failure state in this conversation.',
       icon: Icons.play_arrow_outlined,
-      avatarAsset: 'assets/role_avatars/agent-wave.svg',
+      avatarAsset: 'assets/role_avatars/claude-pet-animated-wave.svg',
       details: {
         'Chat report': 'The final assistant message includes the selected tool, saved path, and generated content.',
         'Artifact actions': 'Generated artifacts can be opened as code, previewed in WebView, copied, or opened in a browser when HTML.',
@@ -5650,18 +5692,74 @@ class _WebPreviewSheetState extends State<_WebPreviewSheet> {
   }
 }
 
-class _CodeFileSheet extends StatelessWidget {
+class _CodeFileSheet extends StatefulWidget {
   const _CodeFileSheet({required this.path, required this.code});
 
   final String path;
   final String code;
 
   @override
+  State<_CodeFileSheet> createState() => _CodeFileSheetState();
+}
+
+class _CodeFileSheetState extends State<_CodeFileSheet> {
+  static const _previewLineCount = 110;
+
+  final _codeScrollController = ScrollController();
+  bool _expanded = false;
+
+  @override
+  void dispose() {
+    _codeScrollController.dispose();
+    super.dispose();
+  }
+
+  List<String> get _lines => widget.code.split('\n');
+
+  Map<String, int> _htmlSections(List<String> lines) {
+    final markers = <String, RegExp>{
+      'head': RegExp(r'<head\b', caseSensitive: false),
+      'style': RegExp(r'<style\b', caseSensitive: false),
+      'body': RegExp(r'<body\b', caseSensitive: false),
+      'script': RegExp(r'<script\b', caseSensitive: false),
+    };
+    final sections = <String, int>{};
+    for (final entry in markers.entries) {
+      for (var i = 0; i < lines.length; i++) {
+        if (entry.value.hasMatch(lines[i])) {
+          sections[entry.key] = i;
+          break;
+        }
+      }
+    }
+    return sections;
+  }
+
+  void _jumpToLine(int line) {
+    setState(() => _expanded = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_codeScrollController.hasClients) return;
+      final offset = ((line - 2).clamp(0, line) * 15.8).toDouble();
+      _codeScrollController.animateTo(
+        offset.clamp(0.0, _codeScrollController.position.maxScrollExtent).toDouble(),
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final lines = _lines;
+    final isHtml = _isWebArtifactPath(widget.path) || widget.code.trimLeft().toLowerCase().startsWith('<!doctype html') || widget.code.toLowerCase().contains('<html');
+    final visibleLines = _expanded ? lines : lines.take(_previewLineCount).toList();
+    final hiddenLines = lines.length - visibleLines.length;
+    final sections = isHtml ? _htmlSections(lines) : const <String, int>{};
+    final maxCodeHeight = MediaQuery.of(context).size.height * 0.52;
     return _SheetScaffold(
       icon: Icons.code_outlined,
       title: 'Generated Code',
-      subtitle: path,
+      subtitle: widget.path,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5674,7 +5772,7 @@ class _CodeFileSheet extends StatelessWidget {
                 label: 'Copy code',
                 disabled: false,
                 onTap: () {
-                  Clipboard.setData(ClipboardData(text: code));
+                  Clipboard.setData(ClipboardData(text: widget.code));
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Generated code copied.')));
                 },
               ),
@@ -5683,8 +5781,19 @@ class _CodeFileSheet extends StatelessWidget {
                 label: 'Copy path',
                 disabled: false,
                 onTap: () {
-                  Clipboard.setData(ClipboardData(text: path));
+                  Clipboard.setData(ClipboardData(text: widget.path));
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Phone file path copied.')));
+                },
+              ),
+              _RuntimeActionButton(
+                icon: _expanded ? Icons.unfold_less_outlined : Icons.unfold_more_outlined,
+                label: _expanded ? 'Collapse' : 'Expand all',
+                disabled: lines.length <= _previewLineCount,
+                onTap: () {
+                  setState(() => _expanded = !_expanded);
+                  if (!_expanded && _codeScrollController.hasClients) {
+                    _codeScrollController.jumpTo(0);
+                  }
                 },
               ),
             ],
@@ -5692,28 +5801,136 @@ class _CodeFileSheet extends StatelessWidget {
           const SizedBox(height: 12),
           _Panel(
             padding: const EdgeInsets.all(12),
-            child: SelectableText(
-              path,
-              style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(
+                  widget.path,
+                  style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _TaskDetailChip(label: '${lines.length} lines', color: _cyan),
+                    _TaskDetailChip(label: _formatBytes(utf8.encode(widget.code).length), color: _violet),
+                    if (!_expanded && hiddenLines > 0) _TaskDetailChip(label: '$hiddenLines hidden', color: _amber),
+                  ],
+                ),
+              ],
             ),
           ),
+          if (sections.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _Panel(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('HTML quick jump', style: TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final entry in sections.entries)
+                        _CodeSectionChip(
+                          label: entry.key,
+                          line: entry.value + 1,
+                          onTap: () => _jumpToLine(entry.value),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           _Panel(
             padding: const EdgeInsets.all(12),
-            child: SelectableText(
-              code,
-              style: const TextStyle(
-                color: _text,
-                fontFamily: 'monospace',
-                fontSize: 11,
-                height: 1.35,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(_expanded ? Icons.subject_outlined : Icons.short_text_outlined, color: _mint, size: 17),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _expanded ? 'Full file' : 'Preview first $_previewLineCount lines',
+                        style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: maxCodeHeight.clamp(260.0, 560.0).toDouble()),
+                  child: Scrollbar(
+                    controller: _codeScrollController,
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      controller: _codeScrollController,
+                      padding: const EdgeInsets.only(right: 8),
+                      child: SelectableText(
+                        visibleLines.join('\n'),
+                        style: const TextStyle(
+                          color: _text,
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                if (hiddenLines > 0) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    '$hiddenLines more lines are folded to keep this sheet readable.',
+                    style: const TextStyle(color: _amber, fontSize: 11, height: 1.3),
+                  ),
+                ],
+              ],
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _CodeSectionChip extends StatelessWidget {
+  const _CodeSectionChip({
+    required this.label,
+    required this.line,
+    required this.onTap,
+  });
+
+  final String label;
+  final int line;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      avatar: const Icon(Icons.tag_outlined, color: _cyan, size: 15),
+      label: Text('$label · L$line'),
+      side: BorderSide(color: _cyan.withOpacity(0.35)),
+      backgroundColor: _cyan.withOpacity(0.08),
+      labelStyle: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w800),
+      onPressed: onTap,
+    );
+  }
+}
+
+String _formatBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  final kb = bytes / 1024;
+  if (kb < 1024) return '${kb.toStringAsFixed(kb >= 100 ? 0 : 1)} KB';
+  final mb = kb / 1024;
+  return '${mb.toStringAsFixed(mb >= 100 ? 0 : 1)} MB';
 }
 
 class _QuickActionGrid extends StatelessWidget {
@@ -8802,6 +9019,9 @@ class _ChatPanelState extends State<_ChatPanel> {
   bool _agentRunning = false;
   bool _agentStopping = false;
   bool _agentCancelRequested = false;
+  bool _agentModeEnabled = true;
+  bool _followChatBottom = true;
+  bool _showJumpToBottom = false;
   HttpClient? _agentProviderClient;
   bool _voiceAvailable = false;
   VoiceState _voiceState = VoiceState.idle;
@@ -8819,6 +9039,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   @override
   void initState() {
     super.initState();
+    _chatScrollController.addListener(_handleChatScroll);
     _sessionLoadFuture = _loadSessions();
     _initVoiceInput();
   }
@@ -9039,7 +9260,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       _promptController.clear();
       _storeSession(pending);
     });
-    _scrollConversationToEnd();
+    _scrollConversationToEnd(force: true);
     await _persist();
 
     try {
@@ -9382,7 +9603,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         ..addAll(_agentRunTraceTemplate(prompt));
       _storeSession(pending);
     });
-    _scrollConversationToEnd();
+    _scrollConversationToEnd(force: true);
     await _persist();
 
     String? failure;
@@ -9778,14 +9999,37 @@ class _ChatPanelState extends State<_ChatPanel> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _scrollConversationToEnd() {
+  bool _isNearChatBottom([double threshold = 180]) {
+    if (!_chatScrollController.hasClients) return true;
+    final position = _chatScrollController.position;
+    return (position.maxScrollExtent - position.pixels) <= threshold;
+  }
+
+  void _handleChatScroll() {
+    if (!_chatScrollController.hasClients) return;
+    final nearBottom = _isNearChatBottom();
+    if (nearBottom == _followChatBottom && _showJumpToBottom == !nearBottom) return;
+    setState(() {
+      _followChatBottom = nearBottom;
+      _showJumpToBottom = !nearBottom;
+    });
+  }
+
+  void _scrollConversationToEnd({bool force = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_chatScrollController.hasClients) return;
+      if (!force && !_followChatBottom && !_isNearChatBottom()) return;
       _chatScrollController.animateTo(
         _chatScrollController.position.maxScrollExtent,
         duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
+      if (force && mounted) {
+        setState(() {
+          _followChatBottom = true;
+          _showJumpToBottom = false;
+        });
+      }
     });
   }
 
@@ -10011,6 +10255,13 @@ class _ChatPanelState extends State<_ChatPanel> {
         ),
         if (_agentTrace.isNotEmpty) ...[
           const SizedBox(height: 12),
+          if (_agentModeEnabled) ...[
+            _AgentRecruitmentPanel(
+              steps: _agentTrace,
+              running: _agentRunning,
+            ),
+            const SizedBox(height: 12),
+          ],
           _AgentTracePanel(
             title: _agentRunning ? 'Agent is writing code' : 'Last agent process',
             steps: _agentTrace,
@@ -10065,6 +10316,12 @@ class _ChatPanelState extends State<_ChatPanel> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            _AgentModeToggle(
+              enabled: _agentModeEnabled,
+              running: _agentRunning,
+              onChanged: (value) => setState(() => _agentModeEnabled = value),
+            ),
+            const SizedBox(height: 8),
             _ChatModeStrip(onPrompt: (prompt, {runAgent = false}) => unawaited(setPromptFromShell(prompt, runAgent: runAgent))),
             const SizedBox(height: 6),
             Text(
@@ -10147,20 +10404,32 @@ class _ChatPanelState extends State<_ChatPanel> {
       return Column(
         children: [
           Expanded(
-            child: SingleChildScrollView(
-              controller: _chatScrollController,
-              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-              padding: const EdgeInsets.fromLTRB(0, 2, 0, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildChatHeader(active),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: _buildConversationBody(active),
+            child: Stack(
+              children: [
+                SingleChildScrollView(
+                  controller: _chatScrollController,
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: const EdgeInsets.fromLTRB(0, 2, 0, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildChatHeader(active),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: _buildConversationBody(active),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+                if (_showJumpToBottom)
+                  Positioned(
+                    right: 18,
+                    bottom: 14,
+                    child: _JumpToBottomButton(
+                      onTap: () => _scrollConversationToEnd(force: true),
+                    ),
+                  ),
+              ],
             ),
           ),
           _buildComposer(flavor),
@@ -10180,6 +10449,41 @@ class _ChatPanelState extends State<_ChatPanel> {
           const SizedBox(height: 12),
           _buildComposer(flavor),
         ],
+      ),
+    );
+  }
+}
+
+class _JumpToBottomButton extends StatelessWidget {
+  const _JumpToBottomButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: _panel,
+      elevation: 10,
+      shadowColor: _blue.withOpacity(0.25),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: _blue.withOpacity(0.35)),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.keyboard_arrow_down_outlined, color: _blue, size: 18),
+              SizedBox(width: 4),
+              Text('到底部', style: TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -10733,6 +11037,71 @@ class _EmptyChatState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AgentModeToggle extends StatelessWidget {
+  const _AgentModeToggle({
+    required this.enabled,
+    required this.running,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final bool running;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = enabled ? _violet : _faint;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(enabled ? 0.10 : 0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(enabled ? 0.34 : 0.18)),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 28,
+            height: 28,
+            child: SvgPicture.asset(
+              enabled ? _agentVisualAvatarAsset : 'assets/role_avatars/claude-pet-animated-coder.svg',
+              fit: BoxFit.contain,
+              placeholderBuilder: (_) => Icon(Icons.psychology_alt_outlined, color: color, size: 18),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  enabled ? 'RR mode on' : 'RR mode off',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900),
+                ),
+                Text(
+                  enabled ? 'One run, multiple role personalities' : 'Plain chat surface',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _muted, fontSize: 10.5),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Switch.adaptive(
+            value: enabled,
+            onChanged: running ? null : onChanged,
+            activeColor: _violet,
+          ),
+        ],
       ),
     );
   }
@@ -11965,6 +12334,156 @@ class _MiniAgentEventCard extends StatelessWidget {
   }
 }
 
+class _AgentRecruitmentPanel extends StatelessWidget {
+  const _AgentRecruitmentPanel({
+    required this.steps,
+    required this.running,
+  });
+
+  final List<_AgentTraceStep> steps;
+  final bool running;
+
+  _AgentStepState _roleState(int index) {
+    if (steps.any((step) => step.state == _AgentStepState.failed)) {
+      final failedIndex = steps.indexWhere((step) => step.state == _AgentStepState.failed);
+      if (index > failedIndex) return _AgentStepState.queued;
+      if (index == failedIndex) return _AgentStepState.failed;
+    }
+    final completed = steps.where((step) => step.state == _AgentStepState.done).length;
+    if (index < completed) return _AgentStepState.done;
+    if (running && index == completed) return _AgentStepState.running;
+    return _AgentStepState.queued;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.groups_2_outlined, color: _violet, size: 18),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'Role Recruit · RR mode',
+                  style: TextStyle(color: _text, fontSize: 14, fontWeight: FontWeight.w900),
+                ),
+              ),
+              _Pill(
+                label: running ? 'working' : 'ready',
+                icon: running ? Icons.sync_outlined : Icons.verified_outlined,
+                color: running ? _amber : _mint,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'One execution lane, with different role personalities taking each stage.',
+            style: TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 134,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _agentVisualRoles.length,
+              separatorBuilder: (context, index) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final role = _agentVisualRoles[index];
+                return _AgentRoleCard(
+                  role: role,
+                  index: index,
+                  state: _roleState(index),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AgentRoleCard extends StatelessWidget {
+  const _AgentRoleCard({
+    required this.role,
+    required this.index,
+    required this.state,
+  });
+
+  final _AgentVisualRoleSpec role;
+  final int index;
+  final _AgentStepState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final stateColor = _agentStepColor(state);
+    return Container(
+      width: 174,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: role.color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: stateColor.withOpacity(state == _AgentStepState.queued ? 0.22 : 0.48)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: role.color.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: role.color.withOpacity(0.35)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: SvgPicture.asset(
+                    _agentVisualAvatarAsset,
+                    fit: BoxFit.contain,
+                    placeholderBuilder: (_) => Icon(Icons.person_outline, color: role.color, size: 18),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  role.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text('${index + 1}'.padLeft(2, '0'), style: const TextStyle(color: _faint, fontSize: 10, fontWeight: FontWeight.w900)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            role.mission,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _muted, fontSize: 10.5, height: 1.25),
+          ),
+          const Spacer(),
+          Row(
+            children: [
+              Icon(_agentStepStatusIcon(state), color: stateColor, size: 14),
+              const SizedBox(width: 5),
+              Text(_agentStepLabel(state), style: TextStyle(color: stateColor, fontSize: 10.5, fontWeight: FontWeight.w900)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AgentTracePanel extends StatelessWidget {
   const _AgentTracePanel({
     required this.title,
@@ -12002,17 +12521,81 @@ class _AgentTracePanel extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
+          for (var index = 0; index < steps.length; index++) ...[
+            _AgentTraceRow(
+              step: steps[index],
+              index: index,
+              isLast: index == steps.length - 1,
+            ),
+          ],
+          const SizedBox(height: 12),
+          _AgentTraceProgressFooter(
+            progress: progress,
+            completed: completed,
+            running: running,
+            failed: failed,
+            total: steps.length,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AgentTraceProgressFooter extends StatelessWidget {
+  const _AgentTraceProgressFooter({
+    required this.progress,
+    required this.completed,
+    required this.running,
+    required this.failed,
+    required this.total,
+  });
+
+  final double progress;
+  final int completed;
+  final int running;
+  final int failed;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = failed > 0 ? _rose : _mint;
+    final percent = (progress * 100).round().clamp(0, 100);
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _panelSoft.withOpacity(0.70),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.stacked_line_chart_outlined, color: color, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Progress · $percent%',
+                  style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text('$completed/$total steps', style: const TextStyle(color: _muted, fontSize: 11, fontWeight: FontWeight.w800)),
+            ],
+          ),
+          const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 6,
-              backgroundColor: _panelSoft,
-              valueColor: AlwaysStoppedAnimation<Color>(failed > 0 ? _rose : _mint),
+              backgroundColor: _panel,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -12022,14 +12605,6 @@ class _AgentTracePanel extends StatelessWidget {
               if (failed > 0) _Pill(label: '$failed failed', icon: Icons.error_outline, color: _rose),
             ],
           ),
-          const SizedBox(height: 12),
-          for (var index = 0; index < steps.length; index++) ...[
-            _AgentTraceRow(
-              step: steps[index],
-              index: index,
-              isLast: index == steps.length - 1,
-            ),
-          ],
         ],
       ),
     );

@@ -21,9 +21,9 @@ Required GitHub Actions before publishing:
 - `.github/workflows/android-apk.yml`
   - Builds the release APK.
   - Uses stable signing when release keystore secrets are configured.
-  - Uploads `mobilecode-v0.1.9.apk` as an artifact and GitHub Release asset.
+  - Uploads `mobilecode-v0.1.10.apk` as an artifact and GitHub Release asset.
 
-## v0.1.9 Release Candidate
+## v0.1.10 Release Candidate
 
 Release candidate:
 
@@ -259,7 +259,7 @@ Expected result:
 After downloading the release APK:
 
 ```bash
-adb install -r mobilecode-v0.1.9.apk
+adb install -r mobilecode-v0.1.10.apk
 adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
 adb shell pidof com.mobilecode.mobile_agent
 adb logcat -d -t 1200 > android-logcat.txt

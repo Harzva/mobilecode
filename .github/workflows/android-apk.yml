@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag to upload the APK to
         required: false
-        default: v0.1.30
+        default: v0.1.39
   push:
     tags:
       - 'v*'
@@ -47,7 +47,7 @@ jobs:
 
       - name: Analyze Flutter sources
         working-directory: mobile_agent
-        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/github_screen.dart lib/screens/github_repo_hub_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/github_deep_service.dart lib/services/github_oauth_flow.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart --no-fatal-infos --no-fatal-warnings
 
       - name: Configure stable Android release signing
         working-directory: mobile_agent
@@ -76,21 +76,35 @@ jobs:
         working-directory: mobile_agent
         env:
           MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
+          MOBILECODE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.MOBILECODE_GITHUB_OAUTH_CLIENT_ID }}
+          MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET }}
+          MOBILECODE_GITHUB_OAUTH_REDIRECT_URI: ${{ vars.MOBILECODE_GITHUB_OAUTH_REDIRECT_URI }}
         run: |
+          DART_DEFINES=()
+          if [ -n "$MOBILECODE_GITHUB_OAUTH_CLIENT_ID" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_GITHUB_OAUTH_CLIENT_ID="$MOBILECODE_GITHUB_OAUTH_CLIENT_ID")
+          fi
+          if [ -n "$MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET="$MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET")
+          fi
+          if [ -n "$MOBILECODE_GITHUB_OAUTH_REDIRECT_URI" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_GITHUB_OAUTH_REDIRECT_URI="$MOBILECODE_GITHUB_OAUTH_REDIRECT_URI")
+          fi
           if [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
             flutter build apk --release --target lib/main.dart \
               --dart-define=MOBILECODE_MANAGED_PROVIDER=true \
               --dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic \
               --dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro \
-              --dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY"
+              --dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY" \
+              "${DART_DEFINES[@]}"
           else
-            flutter build apk --release --target lib/main.dart
+            flutter build apk --release --target lib/main.dart "${DART_DEFINES[@]}"
           fi
 
       - name: Stage APK
         id: stage_apk
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.30' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.39' }}
         run: |
           mkdir -p artifacts
           APK_PATH="artifacts/mobilecode-${RELEASE_TAG}.apk"
@@ -106,7 +120,7 @@ jobs:
       - name: Ensure GitHub Release exists
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.30' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.39' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -122,6 +136,6 @@ jobs:
       - name: Upload APK to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.30' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.39' }}
         run: |
           gh release upload "$RELEASE_TAG" "${{ steps.stage_apk.outputs.apk_path }}" --clobber --repo "$GITHUB_REPOSITORY"

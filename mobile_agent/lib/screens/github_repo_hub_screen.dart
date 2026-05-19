@@ -10,6 +10,7 @@ import 'downloads_shared_folders_screen.dart';
 import '../models/github_repo.dart';
 import '../models/skill_model.dart';
 import '../services/github_deep_service.dart';
+import '../services/github_oauth_flow.dart';
 import '../services/github_repo_hub_service.dart';
 import '../services/memory_service.dart';
 import '../services/mobile_code_helper_provider.dart';
@@ -59,7 +60,7 @@ class GitHubRepoHubScreen extends StatefulWidget {
   State<GitHubRepoHubScreen> createState() => _GitHubRepoHubScreenState();
 }
 
-class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
+class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> with WidgetsBindingObserver {
   late final GitHubDeepService _github;
   late final GitHubRepoHubService _hub;
   late final RuntimeManager _runtimeManager;
@@ -83,10 +84,12 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
   Set<String> _cloningKeys = const {};
   Set<String> _installingKeys = const {};
   bool _analyzingKnowledge = false;
+  bool _oauthBusy = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _github = GitHubDeepService();
     _hub = GitHubRepoHubService(_github);
     _runtimeManager = RuntimeManager.withExternalTermux(TermuxService());
@@ -103,11 +106,19 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _ownerController.dispose();
     _searchController.dispose();
     _github.dispose();
     unawaited(_runtimeManager.dispose());
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_handlePendingOAuthCallback());
+    }
   }
 
   List<GitHubRepoHubItem> get _visibleItems {
@@ -140,6 +151,10 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
     });
     try {
       await _hub.initialize();
+      final oauthHandled = await _handlePendingOAuthCallback(refreshAfterSuccess: false);
+      if (oauthHandled) {
+        await _hub.initialize();
+      }
       final authenticated = _hub.isAuthenticated;
       final owner = _ownerController.text.trim();
       if (_source == 'owner' && owner.isEmpty && !authenticated) {
@@ -273,6 +288,25 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: connecting || _oauthBusy
+                        ? null
+                        : () {
+                            Navigator.of(sheetContext).pop(false);
+                            unawaited(_launchOAuthFromHub());
+                          },
+                    icon: const Icon(Icons.open_in_browser_outlined),
+                    label: Text(GitHubOAuthFlow.actionLabel),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(46),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    GitHubOAuthFlow.authModeDescription,
+                    style: const TextStyle(color: _faint, fontSize: 12, height: 1.35),
+                  ),
                 ],
               ),
             );
@@ -292,6 +326,70 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
       });
       await _refresh();
     }
+  }
+
+  Future<void> _launchOAuthFromHub() async {
+    if (_oauthBusy) return;
+    setState(() {
+      _oauthBusy = true;
+      _error = null;
+      _notice = null;
+    });
+    try {
+      final result = await GitHubOAuthFlow.launchAuthorization();
+      if (!mounted) return;
+      setState(() {
+        _oauthBusy = false;
+        if (result.startedOAuth) {
+          _notice = result.message;
+        } else {
+          _error = result.message;
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _oauthBusy = false;
+        _error = 'Could not open GitHub: $error';
+      });
+    }
+  }
+
+  Future<bool> _handlePendingOAuthCallback({bool refreshAfterSuccess = true}) async {
+    if (_oauthBusy) return false;
+    final uri = await GitHubOAuthFlow.consumePendingCallbackUri();
+    if (uri == null) return false;
+    if (!mounted) return true;
+    setState(() {
+      _oauthBusy = true;
+      _loading = true;
+      _error = null;
+      _notice = 'Completing GitHub OAuth login...';
+    });
+    final result = await GitHubOAuthFlow.completeCallbackUri(uri, _github);
+    if (!mounted) return true;
+    if (result.success) {
+      setState(() {
+        _oauthBusy = false;
+        _authenticated = true;
+        _source = 'owner';
+        _filter = 'all';
+        _languageFilter = 'all';
+        _ownerController.clear();
+        _notice = result.message ?? 'GitHub OAuth login connected.';
+      });
+      if (refreshAfterSuccess) {
+        await _refresh();
+      }
+      return true;
+    }
+    setState(() {
+      _oauthBusy = false;
+      _loading = false;
+      _error = result.message ?? 'GitHub OAuth login failed.';
+      _notice = null;
+    });
+    return true;
   }
 
   Future<void> _setWatched(GitHubRepoHubItem item, bool watched) async {

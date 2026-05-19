@@ -351,9 +351,9 @@ class GitHubDeepService {
   }
 
   /// Exchange a GitHub OAuth callback code for an access token, then persist the
-  /// resulting account just like PAT login. For production APKs, provide the
-  /// client id and redirect URI through build-time config; client secret is
-  /// optional because public mobile clients should avoid hard-coding secrets.
+  /// resulting account just like PAT login. OAuth App token exchange requires
+  /// a configured client id and client secret; public builds should treat this
+  /// as a preview convenience because APK secrets can be extracted.
   Future<bool> authenticateWithOAuthCode({
     required String code,
     required String clientId,
@@ -363,14 +363,17 @@ class GitHubDeepService {
     if (clientId.trim().isEmpty) {
       throw const GitHubDeepException(message: 'GitHub OAuth client id is not configured');
     }
+    if (clientSecret == null || clientSecret.trim().isEmpty) {
+      throw const GitHubDeepException(message: 'GitHub OAuth client secret is not configured');
+    }
     if (code.trim().isEmpty) {
       throw const GitHubDeepException(message: 'GitHub OAuth callback did not include a code');
     }
 
     final body = <String, String>{
       'client_id': clientId.trim(),
+      'client_secret': clientSecret.trim(),
       'code': code.trim(),
-      if (clientSecret != null && clientSecret.trim().isNotEmpty) 'client_secret': clientSecret.trim(),
       if (redirectUri != null && redirectUri.trim().isNotEmpty) 'redirect_uri': redirectUri.trim(),
     };
     final response = await _httpClient.post(

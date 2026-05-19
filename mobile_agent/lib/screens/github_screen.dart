@@ -1,12 +1,11 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../core/theme.dart';
 import '../models/github_repo.dart';
 import '../services/github_deep_service.dart';
+import '../services/github_oauth_flow.dart';
 import '../services/repo_intent_polish_service.dart';
 import '../widgets/glass_card_widget.dart';
 import 'github_repo_screen.dart';
@@ -25,15 +24,6 @@ class GitHubScreen extends StatefulWidget {
 
 class _GitHubScreenState extends State<GitHubScreen>
     with TickerProviderStateMixin, AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
-  static const _systemTools = MethodChannel('mobilecode/system_tools');
-  static const _oauthClientId = String.fromEnvironment('MOBILECODE_GITHUB_OAUTH_CLIENT_ID');
-  static const _oauthClientSecret = String.fromEnvironment('MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET');
-  static const _oauthRedirectUri = String.fromEnvironment(
-    'MOBILECODE_GITHUB_OAUTH_REDIRECT_URI',
-    defaultValue: 'mobilecode://github/oauth',
-  );
-  static const _oauthScopes = 'repo user notifications workflow';
-
   late TabController _tabCtrl;
   final GitHubDeepService _svc = GitHubDeepService();
   final _tokenCtrl = TextEditingController();
@@ -65,7 +55,6 @@ class _GitHubScreenState extends State<GitHubScreen>
   bool _searching = false;
   bool _showSearchInRepos = false;
   bool _oauthBusy = false;
-  String? _oauthState;
 
   // Issue/PR dynamic filters
   List<dynamic> _repoLabels = [];
@@ -115,6 +104,7 @@ class _GitHubScreenState extends State<GitHubScreen>
     setState(() => _loading = true);
     try {
       await _svc.initialize();
+      await _handlePendingOAuthCallback();
       if (_svc.isAuthenticated) await _loadRepos();
       setState(() {
         _auth = _svc.isAuthenticated;
@@ -283,61 +273,28 @@ class _GitHubScreenState extends State<GitHubScreen>
     });
   }
 
-  String _newOAuthState() => DateTime.now().microsecondsSinceEpoch.toRadixString(36);
-
   Future<void> _launchOAuth() async {
-    const tokenSetupUrl =
-        'https://github.com/settings/tokens/new?description=MobileCode&scopes=repo,user,notifications,workflow';
-    final state = _newOAuthState();
-    _oauthState = state;
-    final url = _oauthClientId.isEmpty
-        ? tokenSetupUrl
-        : Uri.https('github.com', '/login/oauth/authorize', {
-            'client_id': _oauthClientId,
-            'redirect_uri': _oauthRedirectUri,
-            'scope': _oauthScopes,
-            'state': state,
-          }).toString();
-    if (_oauthClientId.isEmpty) {
-      setState(() {
-        _error = 'This APK has no GitHub OAuth client configured yet. Create a token in the browser, then paste it above.';
-      });
-    }
+    setState(() {
+      _oauthBusy = true;
+      _error = null;
+    });
     try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      final result = await GitHubOAuthFlow.launchAuthorization();
+      if (!mounted) return;
+      setState(() {
+        _oauthBusy = false;
+        if (!result.startedOAuth) _error = result.message;
+      });
     } catch (e) {
+      if (mounted) setState(() => _oauthBusy = false);
       _toast('Could not open GitHub: $e', isError: true);
     }
   }
 
   Future<void> _handlePendingOAuthCallback() async {
     if (_oauthBusy) return;
-    String? rawLink;
-    try {
-      rawLink = await _systemTools.invokeMethod<String>('consumeInitialDeepLink');
-    } catch (_) {
-      return;
-    }
-    if (rawLink == null || rawLink.trim().isEmpty) return;
-    final uri = Uri.tryParse(rawLink);
-    if (uri == null || uri.scheme != 'mobilecode' || uri.host != 'github') return;
-    final error = uri.queryParameters['error'];
-    if (error != null && error.isNotEmpty) {
-      final description = uri.queryParameters['error_description'] ?? error;
-      if (mounted) setState(() => _error = 'GitHub OAuth failed: $description');
-      return;
-    }
-    final code = uri.queryParameters['code'];
-    if (code == null || code.isEmpty) return;
-    final state = uri.queryParameters['state'];
-    if (_oauthState != null && state != _oauthState) {
-      if (mounted) setState(() => _error = 'GitHub OAuth state mismatch. Please try login again.');
-      return;
-    }
-    if (_oauthClientId.isEmpty) {
-      if (mounted) setState(() => _error = 'GitHub OAuth client id is missing. Paste a token or build with MOBILECODE_GITHUB_OAUTH_CLIENT_ID.');
-      return;
-    }
+    final uri = await GitHubOAuthFlow.consumePendingCallbackUri();
+    if (uri == null) return;
     if (mounted) {
       setState(() {
         _oauthBusy = true;
@@ -346,27 +303,22 @@ class _GitHubScreenState extends State<GitHubScreen>
       });
     }
     try {
-      final ok = await _svc.authenticateWithOAuthCode(
-        code: code,
-        clientId: _oauthClientId,
-        clientSecret: _oauthClientSecret,
-        redirectUri: _oauthRedirectUri,
-      );
+      final result = await GitHubOAuthFlow.completeCallbackUri(uri, _svc);
       if (!mounted) return;
-      if (ok) {
+      if (result.success) {
         await _loadRepos();
         setState(() {
           _auth = true;
           _loading = false;
           _oauthBusy = false;
-          _oauthState = null;
+          _error = null;
         });
-        _toast('GitHub OAuth login connected');
+        _toast(result.message ?? 'GitHub OAuth login connected');
       } else {
         setState(() {
           _loading = false;
           _oauthBusy = false;
-          _error = 'GitHub OAuth token was received but could not read /user.';
+          _error = result.message ?? 'GitHub OAuth login failed.';
         });
       }
     } catch (e) {
@@ -374,7 +326,7 @@ class _GitHubScreenState extends State<GitHubScreen>
       setState(() {
         _loading = false;
         _oauthBusy = false;
-        _error = 'GitHub OAuth exchange failed: $e';
+        _error = 'GitHub OAuth callback failed: $e';
       });
     }
   }
@@ -663,7 +615,7 @@ class _GitHubScreenState extends State<GitHubScreen>
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(_oauthClientId.isEmpty ? 'Browser token setup' : 'OAuth Web Login',
+                        Text(GitHubOAuthFlow.authModeLabel,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
@@ -672,9 +624,7 @@ class _GitHubScreenState extends State<GitHubScreen>
                                     fontWeight: FontWeight.w600)),
                         const SizedBox(height: 8),
                         Text(
-                            _oauthClientId.isEmpty
-                                ? 'Open GitHub in the browser, create a token, then return and paste it above.'
-                                : 'Sign in through GitHub, then MobileCode will exchange the callback code for a stored token.',
+                            GitHubOAuthFlow.authModeDescription,
                             style: Theme.of(context)
                                 .textTheme
                                 .bodySmall
@@ -687,7 +637,7 @@ class _GitHubScreenState extends State<GitHubScreen>
                               icon: _oauthBusy
                                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                                   : const Icon(Icons.open_in_browser, size: 18),
-                              label: Text(_oauthClientId.isEmpty ? 'Open GitHub token page' : 'Login with GitHub OAuth'),
+                              label: Text(GitHubOAuthFlow.actionLabel),
                               style: OutlinedButton.styleFrom(
                                   foregroundColor: AppTheme.accent,
                                   side: const BorderSide(color: AppTheme.accent),

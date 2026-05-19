@@ -7,8 +7,16 @@ import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/github_repo.dart';
+import '../models/skill_model.dart';
 import '../services/github_deep_service.dart';
 import '../services/github_repo_hub_service.dart';
+import '../services/memory_service.dart';
+import '../services/repo_knowledge_digest_service.dart';
+import '../services/role_library_service.dart';
+import '../services/runtime_manager.dart';
+import '../services/runtime_provider.dart';
+import '../services/skill_manager_service.dart';
+import '../services/termux_service.dart';
 
 const _bg = Color(0xFFF7FAFF);
 const _panel = Color(0xFFFFFFFF);
@@ -52,6 +60,11 @@ class GitHubRepoHubScreen extends StatefulWidget {
 class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
   late final GitHubDeepService _github;
   late final GitHubRepoHubService _hub;
+  late final RuntimeManager _runtimeManager;
+  late final SkillManagerService _skillManager;
+  late final RepoKnowledgeDigestService _repoKnowledge;
+  final MemoryService _memory = MemoryService();
+  final RoleLibraryService _roles = RoleLibraryService.instance;
   final _ownerController = TextEditingController();
   final _searchController = TextEditingController();
 
@@ -65,13 +78,24 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
   String _sort = 'pushed';
   String _source = 'repo';
   List<GitHubRepoHubItem> _items = const [];
+  Set<String> _cloningKeys = const {};
+  Set<String> _installingKeys = const {};
+  bool _analyzingKnowledge = false;
 
   @override
   void initState() {
     super.initState();
     _github = GitHubDeepService();
     _hub = GitHubRepoHubService(_github);
+    _runtimeManager = RuntimeManager.withExternalTermux(TermuxService());
+    _skillManager = SkillManagerService.instance;
+    _repoKnowledge = RepoKnowledgeDigestService();
     _searchController.addListener(() => setState(() {}));
+    unawaited(_skillManager.initialize().then((_) {
+      if (mounted) setState(() {});
+    }));
+    unawaited(_memory.init());
+    unawaited(_roles.initialize());
     unawaited(_refresh());
   }
 
@@ -80,6 +104,7 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
     _ownerController.dispose();
     _searchController.dispose();
     _github.dispose();
+    unawaited(_runtimeManager.dispose());
     super.dispose();
   }
 
@@ -296,6 +321,66 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
     }
   }
 
+  Future<void> _cloneWorkspace(GitHubRepoHubItem item) async {
+    final key = item.key;
+    if (_cloningKeys.contains(key)) return;
+
+    setState(() => _cloningKeys = {..._cloningKeys, key});
+    GitHubRepoCloneTarget? cloneTarget;
+    try {
+      await _runtimeManager.initialize();
+      final capabilities = await _runtimeManager.capabilities();
+      if (!capabilities.git) {
+        throw StateError(
+          'Active runtime does not expose git. Install git in Helper/Termux, '
+          'or keep using GitHub API file commits.',
+        );
+      }
+
+      final target = await _hub.prepareCloneTarget(item.repo);
+      cloneTarget = target;
+      final cloneUrl = item.repo.cloneUrl ?? '${item.repo.webUrl}.git';
+      final branch = item.repo.defaultBranch.trim();
+      final command = branch.isEmpty
+          ? 'git clone ${_shellArg(cloneUrl)} ${_shellArg(target.clonePath)}'
+          : 'git clone --branch ${_shellArg(branch)} --single-branch '
+              '${_shellArg(cloneUrl)} ${_shellArg(target.clonePath)}';
+      final result = await _runtimeManager.execute(
+        command,
+        timeout: const Duration(minutes: 5),
+      );
+      if (!result.success) {
+        throw StateError(_cloneFailureMessage(result));
+      }
+
+      final local = await _hub.completeCloneTarget(item.repo, target);
+      final next = <GitHubRepoHubItem>[];
+      for (final current in _items) {
+        next.add(current.key == key
+            ? GitHubRepoHubItem(
+                repo: current.repo,
+                localState: local,
+                watched: current.watched,
+              )
+            : current);
+      }
+      if (!mounted) return;
+      setState(() => _items = next);
+      _toast('Repo cloned to phone workspace.');
+    } on Object catch (error) {
+      final target = cloneTarget;
+      if (target != null) {
+        await _hub.cleanupCloneTarget(target);
+      }
+      if (!mounted) return;
+      _toast(_compact(error.toString(), 180), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _cloningKeys = {..._cloningKeys}..remove(key));
+      }
+    }
+  }
+
   Future<void> _openUrl(String? url, String label) async {
     if (url == null || url.isEmpty) return;
     final opened = await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
@@ -325,6 +410,222 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
     await Clipboard.setData(ClipboardData(text: value));
     if (!mounted) return;
     _toast('$label copied.');
+  }
+
+  Future<void> _installDiscoveryRepo(GitHubRepoHubItem item) async {
+    if (_source != 'skill' && _source != 'mcp') return;
+    final key = '${_source}:${item.key}';
+    if (_installingKeys.contains(key)) return;
+    setState(() => _installingKeys = {..._installingKeys, key});
+    try {
+      await _skillManager.initialize();
+      if (_source == 'skill') {
+        final skill = await _skillManager.previewSkillInstallFromRepo(item.repo.webUrl);
+        if (!mounted) return;
+        final ok = await _showSkillInstallReview(skill);
+        if (ok == true) {
+          await _skillManager.install(skill);
+          if (!mounted) return;
+          _toast('Skill installed: ${skill.name}');
+          setState(() {});
+        }
+        return;
+      }
+
+      final candidate = await _skillManager.previewMcpInstallFromRepo(
+        fullName: item.repo.fullName,
+        repoUrl: item.repo.webUrl,
+        name: item.repo.name,
+        description: item.repo.description,
+      );
+      if (!mounted) return;
+      final ok = await _showMcpInstallReview(candidate);
+      if (ok == true) {
+        await _skillManager.registerReviewedMcpCandidate(candidate);
+        if (!mounted) return;
+        _toast('MCP candidate registered disabled: ${candidate.name}');
+        setState(() {});
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      _toast(_compact(error.toString(), 180), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() => _installingKeys = {..._installingKeys}..remove(key));
+      }
+    }
+  }
+
+  Future<bool?> _showSkillInstallReview(Skill skill) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (context) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 14, 18, MediaQuery.of(context).viewInsets.bottom + 18),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(color: _line, borderRadius: BorderRadius.circular(99)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text('Review Skill install', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 18)),
+              const SizedBox(height: 8),
+              Text(skill.name, style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15)),
+              const SizedBox(height: 4),
+              Text(skill.description, style: const TextStyle(color: _muted, height: 1.35)),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: [
+                  _HubPill(label: skill.version, icon: Icons.sell_outlined, color: _blue),
+                  _HubPill(label: skill.author, icon: Icons.person_outline, color: _violet),
+                  _HubPill(label: skill.source.displayName, icon: Icons.source_outlined, color: _mint),
+                  if (skill.actions.isEmpty && skill.prompts.isEmpty)
+                    const _HubPill(label: 'metadata-only', icon: Icons.warning_amber_outlined, color: _amber),
+                ],
+              ),
+              if (skill.githubUrl != null) ...[
+                const SizedBox(height: 10),
+                SelectableText(skill.githubUrl!, style: const TextStyle(color: _faint, fontSize: 12)),
+              ],
+              const SizedBox(height: 12),
+              const _InlineInfoBox(
+                icon: Icons.verified_user_outlined,
+                color: _amber,
+                title: 'Install is reviewed, not silent',
+                detail: 'MobileCode imports the manifest or metadata first. Enable/runtime usage still stays under user control.',
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      icon: const Icon(Icons.download_done_outlined),
+                      label: const Text('Install reviewed Skill'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<bool?> _showMcpInstallReview(McpServer server) {
+    return showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (context) => Padding(
+        padding: EdgeInsets.fromLTRB(18, 14, 18, MediaQuery.of(context).viewInsets.bottom + 18),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(color: _line, borderRadius: BorderRadius.circular(99)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text('Review MCP candidate', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 18)),
+              const SizedBox(height: 8),
+              Text(server.name, style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15)),
+              const SizedBox(height: 4),
+              Text(server.description ?? 'No description', style: const TextStyle(color: _muted, height: 1.35)),
+              const SizedBox(height: 10),
+              _CodeLine(label: 'type', value: server.type),
+              _CodeLine(label: 'command', value: server.command.isEmpty ? '(not inferred)' : server.command),
+              const SizedBox(height: 12),
+              const _InlineInfoBox(
+                icon: Icons.power_settings_new_outlined,
+                color: _amber,
+                title: 'Registered disabled',
+                detail: 'This only stores a disabled MCP candidate. MobileCode will not start a process from GitHub discovery.',
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      icon: const Icon(Icons.playlist_add_check_outlined),
+                      label: const Text('Register disabled MCP'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _analyzeGitHubKnowledge() async {
+    if (!_authenticated || _analyzingKnowledge) {
+      _toast('GitHub access is required before analysis.', isError: true);
+      return;
+    }
+    setState(() => _analyzingKnowledge = true);
+    try {
+      await _memory.init();
+      await _roles.initialize();
+      final digest = await _repoKnowledge.analyzeWatchedAndOwnerRepos(_hub);
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: _panel,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        builder: (_) => _RepoKnowledgeDigestSheet(
+          digest: digest,
+          roleLibrary: _roles,
+          memory: _memory,
+          onMessage: _toast,
+        ),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      _toast(_compact(error.toString(), 180), isError: true);
+    } finally {
+      if (mounted) setState(() => _analyzingKnowledge = false);
+    }
   }
 
   void _showActions(GitHubRepo repo) {
@@ -400,7 +701,9 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
               currentUser: _hub.currentUser,
               accounts: _hub.accountList,
               source: _source,
+              analyzing: _analyzingKnowledge,
               onSwitch: (username) => unawaited(_switchAccount(username)),
+              onAnalyze: () => unawaited(_analyzeGitHubKnowledge()),
             ),
             const SizedBox(height: 12),
           ] else ...[
@@ -526,8 +829,13 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
                 hub: _hub,
                 currentUser: _hub.currentUser,
                 source: _source,
+                cloning: _cloningKeys.contains(item.key),
+                installing: _installingKeys.contains('${_source}:${item.key}'),
+                installLabel: _installLabel(item),
                 onWatched: (value) => unawaited(_setWatched(item, value)),
                 onLinkWorkspace: () => unawaited(_linkWorkspace(item)),
+                onCloneWorkspace: () => unawaited(_cloneWorkspace(item)),
+                onInstall: () => unawaited(_installDiscoveryRepo(item)),
                 onOpenRepo: () => unawaited(_openUrl(item.repo.webUrl, 'repository')),
                 onOpenPages: item.repo.hasPages ? () => unawaited(_openPages(item.repo)) : null,
                 onOpenChat: () => _openRepoChat(item),
@@ -559,6 +867,19 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
     }
     if (!_hasLoaded) return 'Type a query or tap search to discover public GitHub repositories.';
     return 'No public repositories matched this GitHub search.';
+  }
+
+  String? _installLabel(GitHubRepoHubItem item) {
+    if (_source != 'skill' && _source != 'mcp') return null;
+    if (!_skillManager.isInitialized) return 'Install';
+    try {
+      if (_source == 'skill') {
+        return _skillManager.isGitHubSkillInstalled(item.repo.webUrl) ? 'Installed' : 'Install';
+      }
+      return _skillManager.isMcpRepoRegistered(item.repo.fullName) ? 'Registered' : 'Install';
+    } on Object {
+      return 'Install';
+    }
   }
 
   void _setFilter(String value) {
@@ -684,14 +1005,18 @@ class _HubAccountPanel extends StatelessWidget {
     required this.currentUser,
     required this.accounts,
     required this.source,
+    required this.analyzing,
     required this.onSwitch,
+    required this.onAnalyze,
   });
 
   final GitHubRepoHubService hub;
   final String? currentUser;
   final List<String> accounts;
   final String source;
+  final bool analyzing;
   final ValueChanged<String> onSwitch;
+  final VoidCallback onAnalyze;
 
   @override
   Widget build(BuildContext context) {
@@ -737,6 +1062,17 @@ class _HubAccountPanel extends StatelessWidget {
                         : scopes.take(4).join(', ');
                 return _HubPill(label: label, icon: Icons.key_outlined, color: scopes.isEmpty ? _faint : _violet);
               },
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: analyzing ? null : onAnalyze,
+                icon: analyzing
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.auto_awesome_outlined, size: 18),
+                label: Text(analyzing ? 'Analyzing repositories...' : 'Analyze my GitHub'),
+              ),
             ),
           ],
           if (accounts.length > 1) ...[
@@ -826,8 +1162,13 @@ class _RepoHubCard extends StatelessWidget {
     required this.hub,
     required this.currentUser,
     required this.source,
+    required this.cloning,
+    required this.installing,
+    required this.installLabel,
     required this.onWatched,
     required this.onLinkWorkspace,
+    required this.onCloneWorkspace,
+    required this.onInstall,
     required this.onOpenRepo,
     required this.onOpenChat,
     required this.onOpenUrl,
@@ -842,8 +1183,13 @@ class _RepoHubCard extends StatelessWidget {
   final GitHubRepoHubService hub;
   final String? currentUser;
   final String source;
+  final bool cloning;
+  final bool installing;
+  final String? installLabel;
   final ValueChanged<bool> onWatched;
   final VoidCallback onLinkWorkspace;
+  final VoidCallback onCloneWorkspace;
+  final VoidCallback onInstall;
   final VoidCallback onOpenRepo;
   final VoidCallback onOpenChat;
   final void Function(String url, String label) onOpenUrl;
@@ -939,11 +1285,32 @@ class _RepoHubCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
+              if (installLabel != null)
+                FilledButton.icon(
+                  onPressed: installing || installLabel == 'Installed' || installLabel == 'Registered'
+                      ? null
+                      : onInstall,
+                  icon: installing
+                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      : Icon(
+                          installLabel == 'Registered' || installLabel == 'Installed'
+                              ? Icons.check_circle_outline
+                              : Icons.download_outlined,
+                          size: 16,
+                        ),
+                  label: Text(installing ? 'Installing...' : installLabel!),
+                ),
               OutlinedButton.icon(
                 onPressed: onLinkWorkspace,
                 icon: const Icon(Icons.add_to_drive_outlined, size: 16),
                 label: Text(local.exists ? '刷新本机链接' : '创建手机工作区'),
               ),
+              if (!local.hasGit)
+                OutlinedButton.icon(
+                  onPressed: cloning ? null : onCloneWorkspace,
+                  icon: const Icon(Icons.download_for_offline_outlined, size: 16),
+                  label: Text(cloning ? 'Cloning...' : '克隆到手机'),
+                ),
               OutlinedButton.icon(
                 onPressed: onOpenChat,
                 icon: const Icon(Icons.chat_bubble_outline, size: 16),
@@ -1121,6 +1488,759 @@ class _InlineInfoBox extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CodeLine extends StatelessWidget {
+  const _CodeLine({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _line),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 78,
+            child: Text(label, style: const TextStyle(color: _faint, fontSize: 12, fontWeight: FontWeight.w800)),
+          ),
+          Expanded(
+            child: SelectableText(value, style: const TextStyle(color: _text, fontSize: 12.5, height: 1.3)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RepoKnowledgeDigestSheet extends StatefulWidget {
+  const _RepoKnowledgeDigestSheet({
+    required this.digest,
+    required this.roleLibrary,
+    required this.memory,
+    required this.onMessage,
+  });
+
+  final RepoKnowledgeDigest digest;
+  final RoleLibraryService roleLibrary;
+  final MemoryService memory;
+  final void Function(String message, {bool isError}) onMessage;
+
+  @override
+  State<_RepoKnowledgeDigestSheet> createState() => _RepoKnowledgeDigestSheetState();
+}
+
+class _RepoKnowledgeDigestSheetState extends State<_RepoKnowledgeDigestSheet> {
+  final Set<String> _acceptedRoles = {};
+  final Set<String> _ignoredRoles = {};
+  final Set<String> _acceptedRules = {};
+  final Set<String> _ignoredRules = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final digest = widget.digest;
+    return FractionallySizedBox(
+      heightFactor: 0.92,
+      child: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(color: _line, borderRadius: BorderRadius.circular(99)),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                const Icon(Icons.auto_awesome_outlined, color: _violet, size: 20),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'GitHub repository intelligence',
+                    style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 18),
+                  ),
+                ),
+                _HubPill(
+                  label: digest.usedProvider ? 'AI summary' : 'heuristic',
+                  icon: digest.usedProvider ? Icons.cloud_done_outlined : Icons.offline_bolt_outlined,
+                  color: digest.usedProvider ? _mint : _amber,
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(digest.summary, style: const TextStyle(color: _muted, height: 1.35)),
+            if (digest.fallbackReason != null) ...[
+              const SizedBox(height: 10),
+              _InlineInfoBox(
+                icon: Icons.info_outline,
+                color: _amber,
+                title: 'Fallback mode',
+                detail: digest.fallbackReason!,
+              ),
+            ],
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                _HubPill(label: '${digest.analyzedRepos.length} repos', icon: Icons.folder_copy_outlined, color: _blue),
+                for (final stack in digest.techStacks.take(6))
+                  _HubPill(label: stack, icon: Icons.code_outlined, color: _violet),
+              ],
+            ),
+            if (digest.analyzedRepos.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              const Text('Evidence repos', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 7),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final repo in digest.analyzedRepos.take(8))
+                    _HubPill(label: repo, icon: Icons.folder_outlined, color: _faint),
+                ],
+              ),
+            ],
+            const SizedBox(height: 18),
+            _DigestSectionTitle(
+              title: 'Suggested Roles',
+              subtitle: '保存前不会写入 Roles。',
+              icon: Icons.groups_2_outlined,
+              color: _violet,
+            ),
+            if (digest.roleProposals.isEmpty)
+              const _InlineInfoBox(
+                icon: Icons.info_outline,
+                color: _faint,
+                title: 'No role suggestion',
+                detail: 'Repository evidence was too thin to suggest a useful role.',
+              )
+            else
+              for (final proposal in digest.roleProposals)
+                _RoleProposalReviewCard(
+                  proposal: proposal,
+                  accepted: _acceptedRoles.contains(proposal.proposalId),
+                  ignored: _ignoredRoles.contains(proposal.proposalId),
+                  onAccept: () => _acceptRole(proposal),
+                  onEditAccept: () => _editAndAcceptRole(proposal),
+                  onIgnore: () => setState(() => _ignoredRoles.add(proposal.proposalId)),
+                ),
+            const SizedBox(height: 18),
+            _DigestSectionTitle(
+              title: 'Suggested Memory Rules',
+              subtitle: '保存到 App Memory，不修改仓库文件。',
+              icon: Icons.psychology_alt_outlined,
+              color: _mint,
+            ),
+            if (digest.memoryProposals.isEmpty)
+              const _InlineInfoBox(
+                icon: Icons.info_outline,
+                color: _faint,
+                title: 'No memory rule suggestion',
+                detail: 'Repository evidence was too thin to create a durable rule.',
+              )
+            else
+              for (final proposal in digest.memoryProposals)
+                _MemoryRuleProposalReviewCard(
+                  proposal: proposal,
+                  accepted: _acceptedRules.contains(proposal.proposalId),
+                  ignored: _ignoredRules.contains(proposal.proposalId),
+                  onAccept: () => _acceptRule(proposal),
+                  onEditAccept: () => _editAndAcceptRule(proposal),
+                  onIgnore: () => setState(() => _ignoredRules.add(proposal.proposalId)),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _acceptRole(RoleProposal proposal) async {
+    await widget.roleLibrary.initialize();
+    await widget.roleLibrary.upsertCustomRole(proposal.role);
+    setState(() => _acceptedRoles.add(proposal.proposalId));
+    widget.onMessage('Role saved: ${proposal.role.name}');
+  }
+
+  Future<void> _editAndAcceptRole(RoleProposal proposal) async {
+    final edited = await showModalBottomSheet<MobileCodeRole>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _RoleProposalEditSheet(role: proposal.role),
+    );
+    if (edited == null) return;
+    await widget.roleLibrary.initialize();
+    await widget.roleLibrary.upsertCustomRole(edited);
+    setState(() => _acceptedRoles.add(proposal.proposalId));
+    widget.onMessage('Edited role saved: ${edited.name}');
+  }
+
+  Future<void> _acceptRule(MemoryRuleProposal proposal) async {
+    await widget.memory.init();
+    await widget.memory.upsertMemoryRule(proposal.rule);
+    setState(() => _acceptedRules.add(proposal.proposalId));
+    widget.onMessage('Memory rule saved: ${proposal.rule.title}');
+  }
+
+  Future<void> _editAndAcceptRule(MemoryRuleProposal proposal) async {
+    final edited = await showModalBottomSheet<MemoryRule>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (_) => _MemoryRuleProposalEditSheet(rule: proposal.rule),
+    );
+    if (edited == null) return;
+    await widget.memory.init();
+    await widget.memory.upsertMemoryRule(edited);
+    setState(() => _acceptedRules.add(proposal.proposalId));
+    widget.onMessage('Edited memory rule saved: ${edited.title}');
+  }
+}
+
+class _DigestSectionTitle extends StatelessWidget {
+  const _DigestSectionTitle({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 19),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15)),
+                Text(subtitle, style: const TextStyle(color: _muted, fontSize: 11.5)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoleProposalReviewCard extends StatelessWidget {
+  const _RoleProposalReviewCard({
+    required this.proposal,
+    required this.accepted,
+    required this.ignored,
+    required this.onAccept,
+    required this.onEditAccept,
+    required this.onIgnore,
+  });
+
+  final RoleProposal proposal;
+  final bool accepted;
+  final bool ignored;
+  final Future<void> Function() onAccept;
+  final Future<void> Function() onEditAccept;
+  final VoidCallback onIgnore;
+
+  @override
+  Widget build(BuildContext context) {
+    final role = proposal.role;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: accepted ? _mint.withOpacity(0.07) : _bg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accepted ? _mint.withOpacity(0.3) : _line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.badge_outlined, color: _violet, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(role.name, style: const TextStyle(color: _text, fontWeight: FontWeight.w900)),
+              ),
+              if (accepted)
+                const _HubPill(label: 'Saved', icon: Icons.check_circle_outline, color: _mint)
+              else if (ignored)
+                const _HubPill(label: 'Ignored', icon: Icons.visibility_off_outlined, color: _faint),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(role.summary, style: const TextStyle(color: _muted, height: 1.3)),
+          const SizedBox(height: 8),
+          Text(proposal.rationale, style: const TextStyle(color: _faint, fontSize: 11.5, height: 1.3)),
+          if (!accepted && !ignored) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onIgnore,
+                    child: const Text('忽略'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton.icon(
+                    onPressed: () => unawaited(onEditAccept()),
+                    icon: const Icon(Icons.edit_note_outlined, size: 16),
+                    label: const Text('编辑后保存'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: () => unawaited(onAccept()),
+                    icon: const Icon(Icons.library_add_check_outlined, size: 16),
+                    label: const Text('保存到 Roles'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _MemoryRuleProposalReviewCard extends StatelessWidget {
+  const _MemoryRuleProposalReviewCard({
+    required this.proposal,
+    required this.accepted,
+    required this.ignored,
+    required this.onAccept,
+    required this.onEditAccept,
+    required this.onIgnore,
+  });
+
+  final MemoryRuleProposal proposal;
+  final bool accepted;
+  final bool ignored;
+  final Future<void> Function() onAccept;
+  final Future<void> Function() onEditAccept;
+  final VoidCallback onIgnore;
+
+  @override
+  Widget build(BuildContext context) {
+    final rule = proposal.rule;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: accepted ? _mint.withOpacity(0.07) : _bg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accepted ? _mint.withOpacity(0.3) : _line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.rule_outlined, color: _mint, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(rule.title, style: const TextStyle(color: _text, fontWeight: FontWeight.w900)),
+              ),
+              if (accepted)
+                const _HubPill(label: 'Saved', icon: Icons.check_circle_outline, color: _mint)
+              else if (ignored)
+                const _HubPill(label: 'Ignored', icon: Icons.visibility_off_outlined, color: _faint),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(rule.rule, style: const TextStyle(color: _muted, height: 1.3)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _HubPill(label: rule.category, icon: Icons.label_outline, color: _blue),
+              for (final repo in rule.evidenceRepos.take(3))
+                _HubPill(label: repo, icon: Icons.folder_outlined, color: _faint),
+            ],
+          ),
+          if (!accepted && !ignored) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onIgnore,
+                    child: const Text('忽略'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: OutlinedButton.icon(
+                    onPressed: () => unawaited(onEditAccept()),
+                    icon: const Icon(Icons.edit_note_outlined, size: 16),
+                    label: const Text('编辑后保存'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: () => unawaited(onAccept()),
+                    icon: const Icon(Icons.library_add_check_outlined, size: 16),
+                    label: const Text('保存到 Memory'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RoleProposalEditSheet extends StatefulWidget {
+  const _RoleProposalEditSheet({required this.role});
+
+  final MobileCodeRole role;
+
+  @override
+  State<_RoleProposalEditSheet> createState() => _RoleProposalEditSheetState();
+}
+
+class _RoleProposalEditSheetState extends State<_RoleProposalEditSheet> {
+  late final TextEditingController _name;
+  late final TextEditingController _summary;
+  late final TextEditingController _mission;
+  late final TextEditingController _personality;
+  late final TextEditingController _responsibilities;
+  late final TextEditingController _guardrails;
+  late final TextEditingController _successCriteria;
+  late final TextEditingController _promptTemplate;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final role = widget.role;
+    _name = TextEditingController(text: role.name);
+    _summary = TextEditingController(text: role.summary);
+    _mission = TextEditingController(text: role.mission);
+    _personality = TextEditingController(text: role.personality);
+    _responsibilities = TextEditingController(text: _joinLines(role.responsibilities));
+    _guardrails = TextEditingController(text: _joinLines(role.guardrails));
+    _successCriteria = TextEditingController(text: _joinLines(role.successCriteria));
+    _promptTemplate = TextEditingController(text: role.promptTemplate);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _summary.dispose();
+    _mission.dispose();
+    _personality.dispose();
+    _responsibilities.dispose();
+    _guardrails.dispose();
+    _successCriteria.dispose();
+    _promptTemplate.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      heightFactor: 0.92,
+      child: SafeArea(
+        top: false,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(18, 14, 18, MediaQuery.of(context).viewInsets.bottom + 18),
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(color: _line, borderRadius: BorderRadius.circular(99)),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text('Edit Role before saving', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 18)),
+            const SizedBox(height: 6),
+            const Text(
+              '把建议角色改成你真正想长期使用的模板。保存后才会写入 Roles。',
+              style: TextStyle(color: _muted, height: 1.35),
+            ),
+            const SizedBox(height: 14),
+            _EditTextField(controller: _name, label: 'Role name', icon: Icons.badge_outlined),
+            _EditTextField(controller: _summary, label: 'Summary', icon: Icons.short_text_outlined, maxLines: 2),
+            _EditTextField(controller: _mission, label: 'Mission', icon: Icons.flag_outlined, maxLines: 3),
+            _EditTextField(controller: _personality, label: 'Personality', icon: Icons.psychology_outlined, maxLines: 3),
+            _EditTextField(
+              controller: _responsibilities,
+              label: 'Responsibilities',
+              icon: Icons.checklist_outlined,
+              maxLines: 5,
+              helperText: '每行一条',
+            ),
+            _EditTextField(
+              controller: _guardrails,
+              label: 'Guardrails',
+              icon: Icons.security_outlined,
+              maxLines: 4,
+              helperText: '每行一条',
+            ),
+            _EditTextField(
+              controller: _successCriteria,
+              label: 'Success criteria',
+              icon: Icons.verified_outlined,
+              maxLines: 4,
+              helperText: '每行一条',
+            ),
+            _EditTextField(
+              controller: _promptTemplate,
+              label: 'Prompt template',
+              icon: Icons.article_outlined,
+              maxLines: 6,
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: _rose, height: 1.3)),
+            ],
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: _save,
+                    icon: const Icon(Icons.library_add_check_outlined),
+                    label: const Text('Save edited Role'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _save() {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Role name is required.');
+      return;
+    }
+    final edited = widget.role.copyWith(
+      name: name,
+      summary: _summary.text.trim(),
+      mission: _mission.text.trim(),
+      personality: _personality.text.trim(),
+      responsibilities: _splitLines(_responsibilities.text),
+      guardrails: _splitLines(_guardrails.text),
+      successCriteria: _splitLines(_successCriteria.text),
+      promptTemplate: _promptTemplate.text.trim(),
+      builtIn: false,
+      enabled: true,
+    );
+    Navigator.of(context).pop(edited);
+  }
+}
+
+class _MemoryRuleProposalEditSheet extends StatefulWidget {
+  const _MemoryRuleProposalEditSheet({required this.rule});
+
+  final MemoryRule rule;
+
+  @override
+  State<_MemoryRuleProposalEditSheet> createState() => _MemoryRuleProposalEditSheetState();
+}
+
+class _MemoryRuleProposalEditSheetState extends State<_MemoryRuleProposalEditSheet> {
+  late final TextEditingController _title;
+  late final TextEditingController _category;
+  late final TextEditingController _rule;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _title = TextEditingController(text: widget.rule.title);
+    _category = TextEditingController(text: widget.rule.category);
+    _rule = TextEditingController(text: widget.rule.rule);
+  }
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _category.dispose();
+    _rule.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      heightFactor: 0.78,
+      child: SafeArea(
+        top: false,
+        child: ListView(
+          padding: EdgeInsets.fromLTRB(18, 14, 18, MediaQuery.of(context).viewInsets.bottom + 18),
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(color: _line, borderRadius: BorderRadius.circular(99)),
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text('Edit Memory rule before saving', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 18)),
+            const SizedBox(height: 6),
+            const Text(
+              '只保存长期有价值的偏好、规范和工作流规则。保存后写入 App Memory，不改仓库文件。',
+              style: TextStyle(color: _muted, height: 1.35),
+            ),
+            const SizedBox(height: 14),
+            _EditTextField(controller: _title, label: 'Title', icon: Icons.rule_outlined),
+            _EditTextField(controller: _category, label: 'Category', icon: Icons.label_outline),
+            _EditTextField(controller: _rule, label: 'Rule', icon: Icons.psychology_alt_outlined, maxLines: 6),
+            if (widget.rule.evidenceRepos.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              const Text('Evidence repos', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 12)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final repo in widget.rule.evidenceRepos.take(5))
+                    _HubPill(label: repo, icon: Icons.folder_outlined, color: _faint),
+                ],
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: _rose, height: 1.3)),
+            ],
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cancel'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  flex: 2,
+                  child: FilledButton.icon(
+                    onPressed: _save,
+                    icon: const Icon(Icons.library_add_check_outlined),
+                    label: const Text('Save edited Memory'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _save() {
+    final title = _title.text.trim();
+    final rule = _rule.text.trim();
+    if (title.isEmpty || rule.isEmpty) {
+      setState(() => _error = 'Title and rule are required.');
+      return;
+    }
+    Navigator.of(context).pop(widget.rule.copyWith(
+          title: title,
+          category: _category.text.trim().isEmpty ? 'repo-insight' : _category.text.trim(),
+          rule: rule,
+          enabled: true,
+        ));
+  }
+}
+
+class _EditTextField extends StatelessWidget {
+  const _EditTextField({
+    required this.controller,
+    required this.label,
+    required this.icon,
+    this.maxLines = 1,
+    this.helperText,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final IconData icon;
+  final int maxLines;
+  final String? helperText;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        minLines: maxLines == 1 ? 1 : null,
+        decoration: InputDecoration(
+          labelText: label,
+          helperText: helperText,
+          prefixIcon: Icon(icon),
+          alignLabelWithHint: maxLines > 1,
+        ),
+      ),
+    );
+  }
+}
+
+String _joinLines(List<String> values) => values.where((value) => value.trim().isNotEmpty).join('\n');
+
+List<String> _splitLines(String value) {
+  return value
+      .split(RegExp(r'[\n;]+'))
+      .map((line) => line.replaceFirst(RegExp(r'^[-*•\d.]+\s*'), '').trim())
+      .where((line) => line.isNotEmpty)
+      .toList(growable: false);
 }
 
 class _ReleaseAssetChip extends StatelessWidget {
@@ -2081,6 +3201,7 @@ String _repoChatPrompt(GitHubRepoHubItem item) {
 请先基于这个仓库上下文回答。若需要修改文件：
 - Remote-linked 模式优先通过 GitHub API 读取/提交文件。
 - Git clone 模式才使用本机 git 命令。
+- 若用户明确需要 git push，而当前不是 Git clone，引导先点“克隆到手机”按钮。
 - Not on phone 时先建议创建手机工作区或使用 GitHub API。
 '''.trim();
 }
@@ -2128,6 +3249,21 @@ String _timeAgo(DateTime value) {
   if (diff.inHours >= 1) return '${diff.inHours}h ago';
   if (diff.inMinutes >= 1) return '${diff.inMinutes}m ago';
   return 'just now';
+}
+
+String _cloneFailureMessage(RuntimeCommandResult result) {
+  final output = [result.stderr, result.stdout]
+      .where((part) => part.trim().isNotEmpty)
+      .join(' ');
+  if (output.trim().isEmpty) {
+    return 'Clone failed with exit code ${result.exitCode}.';
+  }
+  return 'Clone failed: ${_compact(output, 180)}';
+}
+
+String _shellArg(String value) {
+  final escaped = value.replaceAll("'", "'\"'\"'");
+  return "'$escaped'";
 }
 
 String _compact(String value, int limit) {

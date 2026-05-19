@@ -771,8 +771,17 @@ class GitHubDeepService {
   }
 
   /// Get README content rendered as HTML, or raw markdown.
-  Future<Map<String, dynamic>?> getReadme(String owner, String repo) async {
-    return await _getJson('/repos/$owner/$repo/readme');
+  Future<Map<String, dynamic>?> getReadme(String owner, String repo, {bool public = false}) async {
+    return await _getJson('/repos/$owner/$repo/readme', allowAnonymous: public);
+  }
+
+  /// Get a single repository metadata record.
+  Future<GitHubRepo> getRepository(String owner, String repo, {bool public = false}) async {
+    final json = await _getJson('/repos/$owner/$repo', allowAnonymous: public);
+    if (json == null) {
+      throw const GitHubDeepException(message: 'Repository not found', statusCode: 404);
+    }
+    return GitHubRepo.fromGitHubApi(json);
   }
 
   // ---------------------------------------------------------------------------
@@ -1717,9 +1726,9 @@ class GitHubDeepService {
   ///
   /// Returns the raw markdown text of the README file.
   /// Returns an empty string if no README exists.
-  Future<String> getReadmeContent(String owner, String repo) async {
+  Future<String> getReadmeContent(String owner, String repo, {bool public = false}) async {
     try {
-      final readme = await getReadme(owner, repo);
+      final readme = await getReadme(owner, repo, public: public);
       if (readme == null) return '';
 
       final content = readme['content'] as String?;

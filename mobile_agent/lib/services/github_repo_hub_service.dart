@@ -57,6 +57,18 @@ class GitHubRemoteWorkspaceLink {
   String get fullName => '$owner/$name';
 }
 
+class GitHubRepoCloneTarget {
+  const GitHubRepoCloneTarget({
+    required this.finalPath,
+    required this.clonePath,
+    required this.usesTemporaryPath,
+  });
+
+  final String finalPath;
+  final String clonePath;
+  final bool usesTemporaryPath;
+}
+
 class GitHubRepoHubItem {
   const GitHubRepoHubItem({
     required this.repo,
@@ -405,6 +417,83 @@ class GitHubRepoHubService {
       flush: true,
     );
     return localStateFor(repo);
+  }
+
+  Future<GitHubRepoCloneTarget> prepareCloneTarget(GitHubRepo repo) async {
+    final path = await workspacePathFor(repo);
+    final directory = Directory(path);
+    final parent = Directory(p.dirname(path));
+    await parent.create(recursive: true);
+
+    if (!await directory.exists()) {
+      return GitHubRepoCloneTarget(
+        finalPath: path,
+        clonePath: await _uniqueCloneTempPath(path),
+        usesTemporaryPath: true,
+      );
+    }
+    if (await Directory(p.join(path, '.git')).exists()) {
+      return GitHubRepoCloneTarget(
+        finalPath: path,
+        clonePath: path,
+        usesTemporaryPath: false,
+      );
+    }
+
+    final entities = await directory.list(followLinks: false).toList();
+    final blockingEntries = entities
+        .where((entity) => p.basename(entity.path) != _markerName)
+        .toList();
+    if (blockingEntries.isNotEmpty) {
+      throw StateError(
+        'Phone workspace already contains files but no .git folder. '
+        'Move or remove that folder before cloning.',
+      );
+    }
+
+    return GitHubRepoCloneTarget(
+      finalPath: path,
+      clonePath: await _uniqueCloneTempPath(path),
+      usesTemporaryPath: true,
+    );
+  }
+
+  Future<GitHubRepoLocalState> completeCloneTarget(
+    GitHubRepo repo,
+    GitHubRepoCloneTarget target,
+  ) async {
+    if (target.usesTemporaryPath) {
+      final finalDirectory = Directory(target.finalPath);
+      if (await finalDirectory.exists()) {
+        final marker = File(p.join(target.finalPath, _markerName));
+        if (await marker.exists()) {
+          await marker.delete();
+        }
+        await finalDirectory.delete();
+      }
+      await Directory(target.clonePath).rename(target.finalPath);
+    }
+    return localStateFor(repo);
+  }
+
+  Future<void> cleanupCloneTarget(GitHubRepoCloneTarget target) async {
+    if (!target.usesTemporaryPath) return;
+    final directory = Directory(target.clonePath);
+    if (await directory.exists()) {
+      await directory.delete(recursive: true);
+    }
+  }
+
+  Future<String> _uniqueCloneTempPath(String finalPath) async {
+    for (var attempt = 0; attempt < 10; attempt += 1) {
+      final suffix = '${DateTime.now().millisecondsSinceEpoch}-$attempt';
+      final candidate = '$finalPath.clone-tmp-$suffix';
+      if (!await Directory(candidate).exists() &&
+          !await File(candidate).exists()) {
+        return candidate;
+      }
+    }
+    throw StateError('Could not allocate a temporary clone path.');
   }
 
   static Future<GitHubRemoteWorkspaceLink?> findRemoteLinkForPath(String path) async {

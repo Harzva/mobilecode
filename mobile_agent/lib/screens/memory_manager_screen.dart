@@ -41,7 +41,7 @@ class _MemoryManagerScreenState extends State<MemoryManagerScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 7, vsync: this);
+    _tabController = TabController(length: 8, vsync: this);
     _initialize();
   }
 
@@ -96,6 +96,7 @@ class _MemoryManagerScreenState extends State<MemoryManagerScreen>
             Tab(text: '错误模式'),
             Tab(text: '常用片段'),
             Tab(text: '用户修正'),
+            Tab(text: '规则洞察'),
             Tab(text: '记忆统计'),
             Tab(text: '代码偏好'),
           ],
@@ -116,6 +117,7 @@ class _MemoryManagerScreenState extends State<MemoryManagerScreen>
                 _ErrorPatternsTab(memory: _memory),
                 _FrequentSnippetsTab(memory: _memory),
                 _UserCorrectionsTab(memory: _memory),
+                _MemoryRulesTab(memory: _memory),
                 _MemoryStatsTab(memory: _memory),
                 _CodePreferencesTab(memory: _memory),
               ],
@@ -875,7 +877,139 @@ class _UserCorrectionsTab extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Tab 6: Memory Statistics
+// Tab 6: Memory Rules
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _MemoryRulesTab extends StatefulWidget {
+  final MemoryService memory;
+
+  const _MemoryRulesTab({required this.memory});
+
+  @override
+  State<_MemoryRulesTab> createState() => _MemoryRulesTabState();
+}
+
+class _MemoryRulesTabState extends State<_MemoryRulesTab> {
+  late Future<List<MemoryRule>> _rules;
+
+  @override
+  void initState() {
+    super.initState();
+    _rules = widget.memory.getMemoryRules();
+  }
+
+  void _reload() {
+    setState(() {
+      _rules = widget.memory.getMemoryRules();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<MemoryRule>>(
+      future: _rules,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
+        }
+        final rules = snapshot.data!;
+        if (rules.isEmpty) {
+          return const _EmptyState(message: '还没有从仓库洞察中保存 Memory 规则');
+        }
+        return ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: rules.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final rule = rules[index];
+            return _GlassCard(
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.psychology_alt_outlined, color: AppTheme.accent, size: 19),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                rule.title,
+                                style: const TextStyle(
+                                  fontFamily: AppTheme.fontBody,
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                '${rule.category} · ${rule.source}',
+                                style: const TextStyle(
+                                  fontFamily: AppTheme.fontBody,
+                                  fontSize: 12,
+                                  color: AppTheme.textTertiary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '删除规则',
+                          onPressed: () async {
+                            await widget.memory.removeMemoryRule(rule.id);
+                            _reload();
+                          },
+                          icon: const Icon(Icons.delete_outline, color: AppTheme.error, size: 20),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      rule.rule,
+                      style: const TextStyle(
+                        fontFamily: AppTheme.fontBody,
+                        fontSize: 13,
+                        color: AppTheme.textSecondary,
+                        height: 1.35,
+                      ),
+                    ),
+                    if (rule.evidenceRepos.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final repo in rule.evidenceRepos.take(4))
+                            _StatChip(label: repo),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Tab 7: Memory Statistics
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _MemoryStatsTab extends StatelessWidget {
@@ -920,6 +1054,12 @@ class _MemoryStatsTab extends StatelessWidget {
                 icon: Icons.code,
                 color: AppTheme.warning,
               ),
+              _StatCard(
+                title: '规则洞察',
+                value: '${stats.totalRules}',
+                icon: Icons.psychology_alt,
+                color: AppTheme.accent,
+              ),
               const SizedBox(height: 16),
               _GlassCard(
                 child: Padding(
@@ -940,6 +1080,7 @@ class _MemoryStatsTab extends StatelessWidget {
                       _MemoryBar(label: '对话', value: stats.totalConversations, max: stats.totalItems, color: AppTheme.accent),
                       _MemoryBar(label: '错误', value: stats.totalErrorPatterns, max: stats.totalItems, color: AppTheme.error),
                       _MemoryBar(label: '片段', value: stats.totalSnippets, max: stats.totalItems, color: AppTheme.warning),
+                      _MemoryBar(label: '规则', value: stats.totalRules, max: stats.totalItems, color: AppTheme.accent),
                       const SizedBox(height: 12),
                       Text(
                         '总占用: ${stats.memorySizeKB} KB',

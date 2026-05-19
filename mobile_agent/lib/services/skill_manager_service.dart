@@ -571,6 +571,62 @@ class SkillManagerService extends ChangeNotifier {
     }
   }
 
+  /// Preview a GitHub-backed skill install. The returned skill is not installed
+  /// until [install] is called from the review UI.
+  Future<Skill> previewSkillInstallFromRepo(String repoUrl) {
+    return importFromGitHub(repoUrl);
+  }
+
+  /// Build a disabled MCP candidate from public GitHub provenance.
+  ///
+  /// Registering this candidate must not start the server. The user reviews the
+  /// command and scope first, then [registerReviewedMcpCandidate] stores it.
+  Future<McpServer> previewMcpInstallFromRepo({
+    required String fullName,
+    required String repoUrl,
+    required String name,
+    String? description,
+  }) async {
+    _ensureInitialized();
+    final packageName = _guessNpmPackageName(fullName, name);
+    return McpServer(
+      id: _mcpRegistryId(fullName),
+      name: name.trim().isEmpty ? fullName.split('/').last : name.trim(),
+      type: 'stdio',
+      command: packageName == null ? '' : 'npx -y $packageName',
+      description: [
+        if (description != null && description.trim().isNotEmpty) description.trim(),
+        'Source: $repoUrl',
+      ].join('\n\n'),
+      version: 'registry-preview',
+      isEnabled: false,
+      status: McpServerStatus.stopped,
+      logs: const [
+        'Registered as disabled metadata. Review command, environment variables, and permissions before enabling.',
+      ],
+    );
+  }
+
+  Future<void> registerReviewedMcpCandidate(McpServer candidate) async {
+    _ensureInitialized();
+    await addCustomMcpServer(candidate.copyWith(
+      isEnabled: false,
+      status: McpServerStatus.stopped,
+    ));
+  }
+
+  bool isGitHubSkillInstalled(String repoUrl) {
+    _ensureInitialized();
+    final normalized = repoUrl.trim().toLowerCase();
+    return _skills.values.any((skill) =>
+        skill.isInstalled && (skill.githubUrl ?? '').trim().toLowerCase() == normalized);
+  }
+
+  bool isMcpRepoRegistered(String fullName) {
+    _ensureInitialized();
+    return _mcpServers.containsKey(_mcpRegistryId(fullName));
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // Install / Uninstall / Update
   // ═══════════════════════════════════════════════════════════════════════
@@ -1545,7 +1601,7 @@ class SkillManagerService extends ChangeNotifier {
     final description = repo['description'] as String?;
     final packageName = _guessNpmPackageName(fullName, name);
     return McpServer(
-      id: 'mcp_registry_${fullName.replaceAll(RegExp(r'[^A-Za-z0-9_]+'), '_')}',
+      id: _mcpRegistryId(fullName),
       name: name,
       type: 'stdio',
       command: packageName == null ? '' : 'npx -y $packageName',
@@ -1557,6 +1613,10 @@ class SkillManagerService extends ChangeNotifier {
         'Imported as disabled metadata. Review command, environment variables, and permissions before enabling.',
       ],
     );
+  }
+
+  String _mcpRegistryId(String fullName) {
+    return 'mcp_registry_${fullName.replaceAll(RegExp(r'[^A-Za-z0-9_]+'), '_')}';
   }
 
   List<Skill> _getCuratedGitHubSkills(String query, {int limit = 12}) {

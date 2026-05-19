@@ -195,7 +195,7 @@ class SyntaxHighlighter {
           pos += tagM.group(0)!.length;
           continue;
         }
-        final attrM = RegExp(r'\b([a-zA-Z-]+)=\s*["\']').matchAsPrefix(line, pos);
+        final attrM = RegExp(r'''\b([a-zA-Z-]+)=\s*["']''').matchAsPrefix(line, pos);
         if (attrM != null) {
           spans.add(_span(attrM.group(0)!, AppTheme.codeFunction));
           pos += attrM.group(0)!.length;
@@ -432,7 +432,7 @@ class _EditorScreenState extends State<EditorScreen> {
     context: context,
     position: RelativeRect.fromLTRB(pos.dx, pos.dy, pos.dx + 100, pos.dy),
     color: AppTheme.surface,
-    items: [
+    items: <PopupMenuEntry<dynamic>>[
       _menuItem('Close', () => _close(i)),
       _menuItem('Close Others', () => _closeOthers(i)),
       _menuItem('Close All', _closeAll),
@@ -441,7 +441,7 @@ class _EditorScreenState extends State<EditorScreen> {
     ],
   );
 
-  PopupMenuItem _menuItem(String label, VoidCallback onTap) => PopupMenuItem(
+  PopupMenuItem<dynamic> _menuItem(String label, VoidCallback onTap) => PopupMenuItem<dynamic>(
     onTap: () => Future.delayed(const Duration(milliseconds: 50), onTap),
     child: Text(label, style: const TextStyle(color: AppTheme.textPrimary)),
   );
@@ -777,21 +777,21 @@ class _EditorScreenState extends State<EditorScreen> {
     context: context,
     position: RelativeRect.fromLTRB(MediaQuery.of(context).size.width - 40, 100, 0, 0),
     color: AppTheme.surface,
-    items: [
+    items: <PopupMenuEntry<dynamic>>[
       _mi(Icons.format_indent_increase, 'Format Code', _format),
       _mi(Icons.visibility, _showLineNumbers ? 'Hide Line Numbers' : 'Show Line Numbers',
         () => setState(() => _showLineNumbers = !_showLineNumbers)),
       _mi(Icons.format_size, 'Font Size', _showFontDlg),
       const PopupMenuDivider(),
       _mi(Icons.save, 'Save', _save),
-      PopupMenuItem(
+      PopupMenuItem<dynamic>(
         onTap: () => Future.delayed(const Duration(milliseconds: 100), _closeAll),
         child: const Row(children: [Icon(Icons.close, size: 18, color: AppTheme.error), SizedBox(width: 10),
           Text('Close All Tabs', style: TextStyle(color: AppTheme.error))])),
     ],
   );
 
-  PopupMenuItem _mi(IconData icon, String label, VoidCallback fn) => PopupMenuItem(
+  PopupMenuItem<dynamic> _mi(IconData icon, String label, VoidCallback fn) => PopupMenuItem<dynamic>(
     onTap: () => Future.delayed(const Duration(milliseconds: 100), fn),
     child: Row(children: [Icon(icon, size: 18, color: AppTheme.textSecondary), const SizedBox(width: 10),
       Text(label, style: const TextStyle(color: AppTheme.textPrimary))]),

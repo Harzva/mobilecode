@@ -468,6 +468,26 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _polishMcpDraft(setState),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primary,
+                      side: const BorderSide(color: AppTheme.border),
+                    ),
+                    icon: const Icon(Icons.auto_awesome_outlined, size: 16),
+                    label: const Text(
+                      'AI 润色草案',
+                      style: TextStyle(
+                        fontFamily: AppTheme.fontBody,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
                 // Server name
                 TextField(
                   controller: _nameController,
@@ -616,6 +636,72 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
         ),
       ),
     );
+  }
+
+  void _polishMcpDraft(StateSetter dialogSetState) {
+    final endpoint = _newServerType == 'stdio'
+        ? _commandController.text.trim()
+        : _urlController.text.trim();
+    if (endpoint.isEmpty && _nameController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('先输入命令或 URL，再润色 MCP 草案'),
+          backgroundColor: AppTheme.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    dialogSetState(() {
+      if (_nameController.text.trim().isEmpty) {
+        _nameController.text = _inferMcpName(endpoint, _newServerType);
+      }
+      if (_newServerType == 'stdio') {
+        _commandController.text = _commandController.text.trim().replaceAll(RegExp(r'\s+'), ' ');
+      } else {
+        _urlController.text = _urlController.text.trim();
+      }
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('已按 MCP 模板整理名称和入口；启用前仍需人工审核命令、密钥和权限范围。'),
+        backgroundColor: AppTheme.success,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  String _inferMcpName(String endpoint, String type) {
+    final text = endpoint.trim();
+    if (text.isEmpty) return type == 'sse' ? 'Remote MCP Server' : 'Custom MCP Server';
+    if (type == 'sse') {
+      final uri = Uri.tryParse(text);
+      final host = uri?.host;
+      if (host != null && host.isNotEmpty) {
+        final name = host.split('.').where((part) => part.isNotEmpty && part != 'www').take(2).join(' ');
+        return name.isEmpty ? 'Remote MCP Server' : '${_titleCase(name)} MCP';
+      }
+      return 'Remote MCP Server';
+    }
+    final packageMatch = RegExp(r'(@[\w.-]+/[\w.-]+|[\w.-]*mcp[\w.-]*|server-[\w.-]+)', caseSensitive: false)
+        .firstMatch(text);
+    final raw = packageMatch?.group(0) ?? text.split(RegExp(r'\s+')).last;
+    final clean = raw
+        .replaceAll('@modelcontextprotocol/', '')
+        .replaceAll('@', '')
+        .replaceAll(RegExp(r'[-_/]+'), ' ')
+        .trim();
+    return clean.isEmpty ? 'Custom MCP Server' : '${_titleCase(clean)} MCP';
+  }
+
+  String _titleCase(String value) {
+    return value
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .map((part) => part[0].toUpperCase() + (part.length > 1 ? part.substring(1) : ''))
+        .join(' ');
   }
 
   Future<void> _addServer(BuildContext dialogContext) async {

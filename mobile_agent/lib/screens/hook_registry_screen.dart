@@ -99,13 +99,68 @@ class _SummaryCard extends StatelessWidget {
             children: [
               _Pill(label: '${snapshot.enabledCount} enabled', color: AppTheme.success),
               _Pill(label: '${snapshot.deferredCount} deferred', color: AppTheme.warning),
-              const _Pill(label: 'No script runtime', color: AppTheme.textTertiary),
+              const _Pill(label: 'No script runtime', color: AppTheme.primary),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _showHookDraftDialog(context),
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('新增 Hook 草案'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _showHookPolishDialog(context),
+                icon: const Icon(Icons.auto_awesome_outlined, size: 16),
+                label: const Text('AI 润色规范'),
+              ),
             ],
           ),
         ],
       ),
     );
   }
+}
+
+void _showHookDraftDialog(BuildContext context) {
+  showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: AppTheme.surface,
+      title: const Text('Hook 草案'),
+      content: const Text(
+        'V1 允许登记 hook 点和启用状态，但不执行任意脚本。下一步会把这里升级成“草案 -> 审核 -> 只读注册”的安全流程。',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('知道了'),
+        ),
+      ],
+    ),
+  );
+}
+
+void _showHookPolishDialog(BuildContext context) {
+  showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      backgroundColor: AppTheme.surface,
+      title: const Text('AI 润色 Hook 规范'),
+      content: const Text(
+        'Hook 的 AI 润色会把用户意图标准化为 phase、trigger、scope、guardrails、confirmation policy。V1 只保存规范草案，不启动脚本。',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('知道了'),
+        ),
+      ],
+    ),
+  );
 }
 
 class _HookEntryCard extends StatelessWidget {

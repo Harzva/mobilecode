@@ -28,6 +28,7 @@ class RuntimeManager {
     return RuntimeManager(
       providers: [
         EmbeddedLiteRuntimeProvider(),
+        TermuxDaemonProvider(baseUri: helperBaseUri),
         MobileCodeHelperProvider(baseUri: helperBaseUri),
         ExternalTermuxProvider(termux),
         CloudRuntimeProvider(),
@@ -59,12 +60,19 @@ class RuntimeManager {
 
   Future<List<RuntimeHealth>> refresh() async {
     final health = <RuntimeHealth>[];
+    RuntimeHealth? selectedHealth;
+    RuntimeProvider? selectedProvider;
 
     for (final provider in _providers) {
       try {
-        health.add(await provider.healthCheck());
+        final item = await provider.healthCheck();
+        health.add(item);
+        if (selectedProvider == null && item.available && item.ready) {
+          selectedHealth = item;
+          selectedProvider = provider;
+        }
       } catch (e) {
-        health.add(RuntimeHealth(
+        final item = RuntimeHealth(
           type: provider.type,
           name: provider.name,
           available: false,
@@ -73,19 +81,13 @@ class RuntimeManager {
           capabilities: RuntimeCapabilities.none,
           missingDependencies: const ['Health check'],
           recoveryActions: const ['Open runtime diagnostics and retry.'],
-        ));
+        );
+        health.add(item);
       }
     }
 
-    _activeHealth = health.firstWhere(
-      (item) => item.available && item.ready,
-      orElse: () => health.last,
-    );
-
-    _activeProvider = _providers.firstWhere(
-      (provider) => provider.type == _activeHealth!.type,
-      orElse: () => _providers.last,
-    );
+    _activeHealth = selectedHealth ?? health.last;
+    _activeProvider = selectedProvider ?? _providers.last;
 
     return health;
   }

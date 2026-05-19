@@ -438,6 +438,106 @@ class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor, R
   }
 }
 
+/// RuntimeProvider facade for the Termux-hosted MobileCode daemon prototype.
+///
+/// The daemon speaks the same protocol as MobileCode Helper, but it runs inside
+/// Termux so commands like `git clone` execute with Termux binaries and PATH.
+class TermuxDaemonProvider extends MobileCodeHelperProvider {
+  String? _workspaceRoot;
+
+  TermuxDaemonProvider({
+    super.baseUri,
+    super.probeTimeout,
+    super.authToken,
+    super.client,
+  });
+
+  @override
+  RuntimeProviderType get type => RuntimeProviderType.externalTermux;
+
+  @override
+  String get name => 'External Termux daemon';
+
+  String? get workspaceRoot => _workspaceRoot;
+
+  @override
+  Future<RuntimeHealth> healthCheck() async {
+    try {
+      final payload = await _getJson('/v1/health', timeout: probeTimeout);
+      final payloadName = payload['name']?.toString() ?? '';
+      final statusText = payload['status']?.toString() ?? '';
+      final runtimeKind = payload['runtimeKind']?.toString() ?? '';
+      _workspaceRoot = payload['workspaceRoot']?.toString();
+      final legacyPrototypeDaemon = runtimeKind.isEmpty &&
+          payloadName.toLowerCase().contains('prototype');
+      final isTermuxDaemon = runtimeKind == 'termuxDaemon' ||
+          payload['termux'] == true ||
+          legacyPrototypeDaemon ||
+          statusText.toLowerCase().contains('termux');
+
+      if (!isTermuxDaemon) {
+        final health = RuntimeHealth(
+          type: type,
+          name: name,
+          available: false,
+          ready: false,
+          status: payloadName.isEmpty
+              ? 'External Termux daemon is not the service at $baseUri.'
+              : 'Detected $payloadName at $baseUri; this is not the Termux daemon.',
+          capabilities: RuntimeCapabilities.none,
+          missingDependencies: const ['Termux daemon'],
+          recoveryActions: const [
+            'Start mobile_agent/tooling/run_mobilecode_helper_daemon.sh inside Termux.',
+            'Use MobileCode Helper APK for foreground-service execution instead.',
+          ],
+        );
+        _lastHealth = health;
+        return health;
+      }
+
+      final capabilities = _capabilitiesFromJson(_mapValue(payload['capabilities']));
+      final missing = [..._stringList(payload['missingDependencies'])];
+      final recovery = [..._stringList(payload['recoveryActions'])];
+      if (!capabilities.git) {
+        missing.add('git in Termux');
+        recovery.add('Run pkg install git in Termux, then restart or refresh the MobileCode daemon.');
+      }
+
+      final health = RuntimeHealth(
+        type: type,
+        name: name,
+        available: payload['available'] as bool? ?? true,
+        ready: (payload['ready'] as bool? ?? false) && capabilities.shell && capabilities.git,
+        status: capabilities.git
+            ? 'Termux daemon is running; git clone can execute through Termux.'
+            : 'Termux daemon is running, but git is missing from Termux.',
+        capabilities: capabilities,
+        missingDependencies: missing,
+        recoveryActions: recovery,
+      );
+      _lastHealth = health;
+      return health;
+    } catch (_) {
+      final health = RuntimeHealth(
+        type: type,
+        name: name,
+        available: false,
+        ready: false,
+        status: 'External Termux daemon is not reachable at $baseUri.',
+        capabilities: RuntimeCapabilities.none,
+        missingDependencies: const ['Termux daemon'],
+        recoveryActions: const [
+          'Open Termux and run mobile_agent/tooling/run_mobilecode_helper_daemon.sh.',
+          'Install git with pkg install git if /v1/health reports git=false.',
+          'Keep Termux running in the foreground while cloning.',
+        ],
+      );
+      _lastHealth = health;
+      return health;
+    }
+  }
+}
+
 class MobileCodeHelperException implements Exception {
   final String message;
 

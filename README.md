@@ -14,7 +14,7 @@
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml"><img alt="Mobile Runtime CI" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml/badge.svg?branch=v011-streaming-fix"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=v011-streaming-fix"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=v011-streaming-fix"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.1.26%2B45-2555FF">
+  <img alt="Version" src="https://img.shields.io/badge/version-0.1.30%2B49-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20Flutter-0B9B7E">
 </p>
 
@@ -27,7 +27,7 @@
   ·
   <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">HTML Principle Video</a>
   ·
-  <a href="https://github.com/Harzva/mobilecode/releases/download/v0.1.26/mobilecode-v0.1.26.apk">Download v0.1.26 APK</a>
+  <a href="https://github.com/Harzva/mobilecode/releases/download/v0.1.30/mobilecode-v0.1.30.apk">Download v0.1.30 APK</a>
   ·
   <a href="https://harzva.github.io/mobilecode/">GitHub Pages Demo</a>
 </p>
@@ -233,7 +233,7 @@ That keeps the phone lightweight while still letting users produce shareable web
 
 ## Release Line
 
-Current candidate: `0.1.26+45`.
+Current candidate: `0.1.30+49`.
 
 See:
 

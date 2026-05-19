@@ -63,8 +63,7 @@ class ExternalTermuxProvider implements RuntimeProvider {
       actions.add('Install Termux from F-Droid, then reopen MobileCode.');
     }
     if (installed && !apiInstalled) {
-      missing.add('Termux:API plugin');
-      actions.add('Install Termux:API for richer automation and notifications.');
+      actions.add('Optional: install Termux:API for notifications, clipboard, and richer Android integration.');
     }
     if (installed && !caps.flutter) {
       missing.add('Flutter SDK in Termux');

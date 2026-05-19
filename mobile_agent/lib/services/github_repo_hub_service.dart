@@ -17,14 +17,17 @@ class GitHubRepoLocalState {
     required this.exists,
     required this.hasGit,
     required this.remoteLinked,
+    this.runtimeGit = false,
   });
 
   final String path;
   final bool exists;
   final bool hasGit;
   final bool remoteLinked;
+  final bool runtimeGit;
 
   String get statusLabel {
+    if (runtimeGit) return 'Termux git clone';
     if (hasGit) return 'Git clone';
     if (remoteLinked) return 'Remote-linked';
     if (exists) return 'Phone folder';
@@ -32,6 +35,7 @@ class GitHubRepoLocalState {
   }
 
   String get modeDescription {
+    if (runtimeGit) return 'Real git clone inside the active runtime workspace.';
     if (hasGit) return 'Real git clone with a .git folder on this phone.';
     if (remoteLinked) return 'GitHub API workspace marker; files are remote-linked, not cloned.';
     if (exists) return 'Phone folder exists, but it is not linked to GitHub yet.';
@@ -260,11 +264,42 @@ class GitHubArtifactDownloadRecord {
   }
 }
 
+class GitHubRuntimeWorkspaceSyncRecord {
+  const GitHubRuntimeWorkspaceSyncRecord({
+    required this.repoFullName,
+    required this.runtimePath,
+    required this.sharedPath,
+    required this.syncedAt,
+  });
+
+  final String repoFullName;
+  final String runtimePath;
+  final String sharedPath;
+  final DateTime syncedAt;
+
+  Map<String, dynamic> toJson() => {
+        'repoFullName': repoFullName,
+        'runtimePath': runtimePath,
+        'sharedPath': sharedPath,
+        'syncedAt': syncedAt.toIso8601String(),
+      };
+
+  factory GitHubRuntimeWorkspaceSyncRecord.fromJson(Map<String, dynamic> json) {
+    return GitHubRuntimeWorkspaceSyncRecord(
+      repoFullName: json['repoFullName']?.toString() ?? '',
+      runtimePath: json['runtimePath']?.toString() ?? '',
+      sharedPath: json['sharedPath']?.toString() ?? '',
+      syncedAt: DateTime.tryParse(json['syncedAt']?.toString() ?? '') ?? DateTime.now(),
+    );
+  }
+}
+
 class GitHubRepoHubService {
   GitHubRepoHubService(this.github);
 
   static const _watchlistKey = 'mobilecode.github.repoWatchlist.v1';
   static const _artifactDownloadsKey = 'mobilecode.github.artifactDownloads.v1';
+  static const _runtimeWorkspaceSyncsKey = 'mobilecode.github.runtimeWorkspaceSyncs.v1';
   static const _markerName = '.mobilecode-remote.json';
 
   final GitHubDeepService github;
@@ -391,6 +426,25 @@ class GitHubRepoHubService {
     final exists = await directory.exists();
     final hasGit = await Directory(p.join(path, '.git')).exists();
     final marker = await File(p.join(path, _markerName)).exists();
+    if (marker && !hasGit) {
+      try {
+        final decoded = jsonDecode(await File(p.join(path, _markerName)).readAsString());
+        if (decoded is Map<String, dynamic> && decoded['mode'] == 'termux_git_workspace') {
+          final runtimePath = decoded['runtimePath']?.toString().trim();
+          if (runtimePath != null && runtimePath.isNotEmpty) {
+            return GitHubRepoLocalState(
+              path: runtimePath,
+              exists: true,
+              hasGit: true,
+              remoteLinked: false,
+              runtimeGit: true,
+            );
+          }
+        }
+      } catch (_) {
+        // Fall back to the normal marker state below.
+      }
+    }
     return GitHubRepoLocalState(
       path: path,
       exists: exists,
@@ -456,6 +510,42 @@ class GitHubRepoHubService {
       clonePath: await _uniqueCloneTempPath(path),
       usesTemporaryPath: true,
     );
+  }
+
+  String runtimeClonePathFor(GitHubRepo repo, String runtimeWorkspaceRoot) {
+    final root = runtimeWorkspaceRoot.trim().isEmpty
+        ? '~/mobilecode_projects'
+        : runtimeWorkspaceRoot.trim();
+    return p.posix.join(
+      root,
+      githubWorkspaceFolderName,
+      _safeSegment(repo.owner),
+      _safeSegment(repo.name),
+    );
+  }
+
+  Future<GitHubRepoLocalState> ensureRuntimeGitWorkspace(
+    GitHubRepo repo, {
+    required String runtimePath,
+  }) async {
+    final markerPath = await workspacePathFor(repo);
+    final directory = Directory(markerPath);
+    await directory.create(recursive: true);
+    final marker = File(p.join(markerPath, _markerName));
+    await marker.writeAsString(
+      const JsonEncoder.withIndent('  ').convert({
+        'mode': 'termux_git_workspace',
+        'repo': repoKey(repo),
+        'owner': repo.owner,
+        'name': repo.name,
+        'htmlUrl': repo.htmlUrl,
+        'defaultBranch': repo.defaultBranch,
+        'runtimePath': runtimePath,
+        'createdAt': DateTime.now().toIso8601String(),
+      }),
+      flush: true,
+    );
+    return localStateFor(repo);
   }
 
   Future<GitHubRepoLocalState> completeCloneTarget(
@@ -625,6 +715,46 @@ class GitHubRepoHubService {
       ...records.where((record) => record.path != path),
     ].take(24).map((record) => jsonEncode(record.toJson())).toList();
     await prefs.setStringList(_artifactDownloadsKey, next);
+  }
+
+  Future<List<GitHubRuntimeWorkspaceSyncRecord>> loadRuntimeWorkspaceSyncs({GitHubRepo? repo}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(_runtimeWorkspaceSyncsKey) ?? const <String>[];
+    final records = <GitHubRuntimeWorkspaceSyncRecord>[];
+    for (final item in raw) {
+      try {
+        final data = jsonDecode(item);
+        if (data is Map<String, dynamic>) {
+          final record = GitHubRuntimeWorkspaceSyncRecord.fromJson(data);
+          if (record.sharedPath.isEmpty) continue;
+          if (repo != null && record.repoFullName != repoKey(repo)) continue;
+          records.add(record);
+        }
+      } on Object {
+        continue;
+      }
+    }
+    records.sort((a, b) => b.syncedAt.compareTo(a.syncedAt));
+    return records;
+  }
+
+  Future<void> recordRuntimeWorkspaceSync(
+    GitHubRepo repo, {
+    required String runtimePath,
+    required String sharedPath,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final records = await loadRuntimeWorkspaceSyncs();
+    final next = [
+      GitHubRuntimeWorkspaceSyncRecord(
+        repoFullName: repoKey(repo),
+        runtimePath: runtimePath,
+        sharedPath: sharedPath,
+        syncedAt: DateTime.now(),
+      ),
+      ...records.where((record) => record.sharedPath != sharedPath),
+    ].take(24).map((record) => jsonEncode(record.toJson())).toList();
+    await prefs.setStringList(_runtimeWorkspaceSyncsKey, next);
   }
 
   Future<List<GitHubWorkspaceEntry>> loadRemoteTree(GitHubRepo repo, {String path = ''}) async {

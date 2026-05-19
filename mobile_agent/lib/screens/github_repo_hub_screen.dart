@@ -6,11 +6,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
 
+import 'downloads_shared_folders_screen.dart';
 import '../models/github_repo.dart';
 import '../models/skill_model.dart';
 import '../services/github_deep_service.dart';
 import '../services/github_repo_hub_service.dart';
 import '../services/memory_service.dart';
+import '../services/mobile_code_helper_provider.dart';
 import '../services/repo_knowledge_digest_service.dart';
 import '../services/role_library_service.dart';
 import '../services/runtime_manager.dart';
@@ -350,6 +352,67 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
         return;
       }
 
+      final provider = _runtimeManager.activeProvider;
+      if (provider is TermuxDaemonProvider) {
+        var workspaceRoot = provider.workspaceRoot?.trim();
+        if (workspaceRoot == null || workspaceRoot.isEmpty) {
+          final pwdResult = await _runtimeManager.execute(
+            'pwd',
+            timeout: const Duration(seconds: 10),
+          );
+          if (pwdResult.success) {
+            workspaceRoot = pwdResult.stdout.trim();
+          }
+        }
+        if (workspaceRoot == null || workspaceRoot.isEmpty) {
+          throw StateError('Termux daemon did not report a workspaceRoot.');
+        }
+        final runtimePath = _hub.runtimeClonePathFor(item.repo, workspaceRoot);
+        final runtimeParent = p.posix.dirname(runtimePath);
+        final mkdirResult = await _runtimeManager.execute(
+          'mkdir -p ${_shellArg(runtimeParent)}',
+          timeout: const Duration(seconds: 20),
+        );
+        if (!mkdirResult.success) {
+          throw StateError(_cloneFailureMessage(mkdirResult));
+        }
+        final existing = await _runtimeManager.execute(
+          'git -C ${_shellArg(runtimePath)} status --short',
+          timeout: const Duration(seconds: 20),
+        );
+        if (!existing.success) {
+          final cloneUrl = item.repo.cloneUrl ?? '${item.repo.webUrl}.git';
+          final branch = item.repo.defaultBranch.trim();
+          final command = branch.isEmpty
+              ? 'git clone ${_shellArg(cloneUrl)} ${_shellArg(runtimePath)}'
+              : 'git clone --branch ${_shellArg(branch)} --single-branch '
+                  '${_shellArg(cloneUrl)} ${_shellArg(runtimePath)}';
+          final result = await _runtimeManager.execute(
+            command,
+            timeout: const Duration(minutes: 5),
+          );
+          if (!result.success) {
+            throw StateError(_cloneFailureMessage(result));
+          }
+        }
+
+        final local = await _hub.ensureRuntimeGitWorkspace(item.repo, runtimePath: runtimePath);
+        final next = <GitHubRepoHubItem>[];
+        for (final current in _items) {
+          next.add(current.key == key
+              ? GitHubRepoHubItem(
+                  repo: current.repo,
+                  localState: local,
+                  watched: current.watched,
+                )
+              : current);
+        }
+        if (!mounted) return;
+        setState(() => _items = next);
+        _toast('Repo cloned through Termux git: $runtimePath');
+        return;
+      }
+
       final target = await _hub.prepareCloneTarget(item.repo);
       cloneTarget = target;
       final cloneUrl = item.repo.cloneUrl ?? '${item.repo.webUrl}.git';
@@ -665,6 +728,7 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
       builder: (_) => _RepoWorkspaceSheet(
         repo: repo,
         hub: _hub,
+        runtimeManager: _runtimeManager,
         onMessage: _toast,
       ),
     );
@@ -694,6 +758,13 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
       appBar: AppBar(
         title: const Text('GitHub Repo Hub'),
         actions: [
+          IconButton(
+            tooltip: 'Downloads / Shared folders',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const DownloadsSharedFoldersScreen()),
+            ),
+            icon: const Icon(Icons.folder_shared_outlined),
+          ),
           IconButton(
             tooltip: 'Refresh',
             onPressed: _loading ? null : _refresh,
@@ -1336,8 +1407,8 @@ class _RepoHubCard extends StatelessWidget {
               ),
               OutlinedButton.icon(
                 onPressed: onWorkspace,
-                icon: const Icon(Icons.folder_copy_outlined, size: 16),
-                label: const Text('Files'),
+                icon: Icon(local.runtimeGit ? Icons.sync_alt_outlined : Icons.folder_copy_outlined, size: 16),
+                label: Text(local.runtimeGit ? 'Runtime 文件' : 'Files'),
               ),
               OutlinedButton.icon(
                 onPressed: onOpenRepo,
@@ -2475,11 +2546,13 @@ class _RepoWorkspaceSheet extends StatefulWidget {
   const _RepoWorkspaceSheet({
     required this.repo,
     required this.hub,
+    required this.runtimeManager,
     required this.onMessage,
   });
 
   final GitHubRepo repo;
   final GitHubRepoHubService hub;
+  final RuntimeManager runtimeManager;
   final void Function(String message, {bool isError}) onMessage;
 
   @override
@@ -2488,19 +2561,32 @@ class _RepoWorkspaceSheet extends StatefulWidget {
 
 class _RepoWorkspaceSheetState extends State<_RepoWorkspaceSheet> {
   late Future<List<GitHubWorkspaceEntry>> _tree;
+  late Future<GitHubRepoLocalState> _localState;
+  late Future<List<GitHubRuntimeWorkspaceSyncRecord>> _recentSyncs;
   String _path = '';
   bool _openingFile = false;
+  bool _syncingRuntime = false;
+  String? _sharedCopyPath;
 
   @override
   void initState() {
     super.initState();
     _tree = widget.hub.loadRemoteTree(widget.repo);
+    _localState = widget.hub.localStateFor(widget.repo);
+    _recentSyncs = widget.hub.loadRuntimeWorkspaceSyncs(repo: widget.repo);
   }
 
   void _loadPath(String path) {
     setState(() {
       _path = path;
       _tree = widget.hub.loadRemoteTree(widget.repo, path: path);
+    });
+  }
+
+  void _refreshLocalState() {
+    setState(() {
+      _localState = widget.hub.localStateFor(widget.repo);
+      _recentSyncs = widget.hub.loadRuntimeWorkspaceSyncs(repo: widget.repo);
     });
   }
 
@@ -2546,110 +2632,397 @@ class _RepoWorkspaceSheetState extends State<_RepoWorkspaceSheet> {
     }
   }
 
+  Future<void> _copyRuntimePath(String path, String label) async {
+    await Clipboard.setData(ClipboardData(text: path));
+    if (!mounted) return;
+    widget.onMessage('$label copied.');
+  }
+
+  Future<void> _copyTermuxCdCommand(GitHubRepoLocalState local) async {
+    final command = 'cd ${_shellArg(local.path)} && ls';
+    await Clipboard.setData(ClipboardData(text: command));
+    if (!mounted) return;
+    widget.onMessage('Termux cd command copied.');
+  }
+
+  Future<void> _syncRuntimeWorkspace(GitHubRepoLocalState local) async {
+    if (_syncingRuntime) return;
+    setState(() => _syncingRuntime = true);
+    try {
+      await widget.runtimeManager.initialize();
+      final provider = widget.runtimeManager.activeProvider;
+      if (provider is! TermuxDaemonProvider) {
+        throw StateError('Active runtime is not a Termux daemon. Start the Termux helper daemon, then retry.');
+      }
+      final sourcePath = local.path.trim();
+      final rawWorkspaceRoot = provider.workspaceRoot?.trim();
+      final workspaceRoot = rawWorkspaceRoot?.replaceFirst(RegExp(r'/+$'), '');
+      if (workspaceRoot != null &&
+          workspaceRoot.isNotEmpty &&
+          sourcePath != workspaceRoot &&
+          !sourcePath.startsWith('$workspaceRoot/')) {
+        throw StateError('Runtime workspace is outside the Termux daemon workspace root.');
+      }
+
+      final targetPath = _sharedRuntimeWorkspacePath(widget.repo);
+      final mkdirResult = await widget.runtimeManager.execute(
+        'mkdir -p ${_shellArg(targetPath)}',
+        timeout: const Duration(seconds: 20),
+      );
+      if (!mkdirResult.success) throw StateError(_runtimeCommandFailureMessage(mkdirResult));
+
+      final copyResult = await widget.runtimeManager.execute(
+        'cp -R ${_shellArg('$sourcePath/.')} ${_shellArg(targetPath)}',
+        timeout: const Duration(minutes: 3),
+      );
+      if (!copyResult.success) throw StateError(_runtimeCommandFailureMessage(copyResult));
+
+      await widget.hub.ensureRuntimeGitWorkspace(widget.repo, runtimePath: sourcePath);
+      await widget.hub.recordRuntimeWorkspaceSync(
+        widget.repo,
+        runtimePath: sourcePath,
+        sharedPath: targetPath,
+      );
+      await Clipboard.setData(ClipboardData(text: targetPath));
+      if (!mounted) return;
+      setState(() {
+        _sharedCopyPath = targetPath;
+        _localState = widget.hub.localStateFor(widget.repo);
+        _recentSyncs = widget.hub.loadRuntimeWorkspaceSyncs(repo: widget.repo);
+      });
+      widget.onMessage('Runtime workspace synced to shared folder. Path copied: $targetPath');
+    } on Object catch (error) {
+      if (!mounted) return;
+      widget.onMessage(_friendlyRuntimeSyncError(error), isError: true);
+    } finally {
+      if (mounted) setState(() => _syncingRuntime = false);
+    }
+  }
+
+  Future<void> _openSharedRuntimeFolder([String? folderPath]) async {
+    final path = folderPath ?? _sharedCopyPath ?? _sharedRuntimeWorkspacePath(widget.repo);
+    final opened = await launchUrl(Uri.file(path), mode: LaunchMode.externalApplication);
+    if (!mounted) return;
+    if (opened) {
+      widget.onMessage('Opened shared runtime folder.');
+    } else {
+      await Clipboard.setData(ClipboardData(text: path));
+      widget.onMessage('Could not open folder directly. Shared folder path copied.', isError: true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
-        child: FutureBuilder<List<GitHubWorkspaceEntry>>(
-          future: _tree,
-          builder: (context, snapshot) {
-            final entries = snapshot.data ?? const <GitHubWorkspaceEntry>[];
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+        child: FutureBuilder<GitHubRepoLocalState>(
+          future: _localState,
+          builder: (context, localSnapshot) {
+            final local = localSnapshot.data;
+            final runtimeLocal = local?.runtimeGit == true ? local : null;
+            final listHeightFactor = runtimeLocal != null ? 0.48 : 0.66;
+            return FutureBuilder<List<GitHubWorkspaceEntry>>(
+              future: _tree,
+              builder: (context, snapshot) {
+                final entries = snapshot.data ?? const <GitHubWorkspaceEntry>[];
+                return Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.folder_copy_outlined, color: _blue),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        widget.repo.fullName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: _text, fontSize: 17, fontWeight: FontWeight.w900),
-                      ),
+                    Row(
+                      children: [
+                        const Icon(Icons.folder_copy_outlined, color: _blue),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            widget.repo.fullName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: _text, fontSize: 17, fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Refresh workspace',
+                          onPressed: () {
+                            _refreshLocalState();
+                            _loadPath(_path);
+                          },
+                          icon: const Icon(Icons.refresh_outlined),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      tooltip: 'Refresh files',
-                      onPressed: () => _loadPath(_path),
-                      icon: const Icon(Icons.refresh_outlined),
+                    const SizedBox(height: 6),
+                    Text(
+                      _path.isEmpty ? 'API workspace · ${widget.repo.defaultBranch}' : _path,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
+                    ),
+                    if (runtimeLocal != null) ...[
+                      const SizedBox(height: 10),
+                      FutureBuilder<List<GitHubRuntimeWorkspaceSyncRecord>>(
+                        future: _recentSyncs,
+                        builder: (context, syncSnapshot) {
+                          return _RuntimeWorkspacePanel(
+                            local: runtimeLocal,
+                            sharedPath: _sharedCopyPath ?? _sharedRuntimeWorkspacePath(widget.repo),
+                            recentSyncs: syncSnapshot.data ?? const <GitHubRuntimeWorkspaceSyncRecord>[],
+                            syncing: _syncingRuntime,
+                            onCopyRuntimePath: () => unawaited(_copyRuntimePath(runtimeLocal.path, 'Runtime path')),
+                            onCopyCdCommand: () => unawaited(_copyTermuxCdCommand(runtimeLocal)),
+                            onSyncToShared: () => unawaited(_syncRuntimeWorkspace(runtimeLocal)),
+                            onOpenShared: () => unawaited(_openSharedRuntimeFolder()),
+                            onCopySharedPath: () => unawaited(_copyRuntimePath(_sharedCopyPath ?? _sharedRuntimeWorkspacePath(widget.repo), 'Shared folder path')),
+                            onOpenRecord: (record) => unawaited(_openSharedRuntimeFolder(record.sharedPath)),
+                            onCopyRecord: (record) => unawaited(_copyRuntimePath(record.sharedPath, 'Recent shared folder path')),
+                          );
+                        },
+                      ),
+                    ],
+                    const SizedBox(height: 12),
+                    if (_path.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: OutlinedButton.icon(
+                          onPressed: _goUp,
+                          icon: const Icon(Icons.arrow_upward_outlined, size: 16),
+                          label: const Text('Parent folder'),
+                        ),
+                      ),
+                    SizedBox(
+                      height: MediaQuery.of(context).size.height * listHeightFactor,
+                      child: snapshot.connectionState == ConnectionState.waiting
+                          ? const SizedBox(height: 260, child: Center(child: CircularProgressIndicator()))
+                          : snapshot.hasError
+                              ? _HubPanel(
+                                  borderColor: _rose,
+                                  child: Text(_compact(snapshot.error.toString(), 180), style: const TextStyle(color: _rose, height: 1.35)),
+                                )
+                              : entries.isEmpty
+                                  ? const _HubPanel(child: Text('No files in this folder.', style: TextStyle(color: _muted)))
+                                  : ListView.separated(
+                                      shrinkWrap: true,
+                                      itemCount: entries.length,
+                                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                                      itemBuilder: (context, index) {
+                                        final entry = entries[index];
+                                        return _HubPanel(
+                                          child: InkWell(
+                                            onTap: entry.isDirectory ? () => _loadPath(entry.path) : () => unawaited(_openFile(entry)),
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  entry.isDirectory ? Icons.folder_outlined : Icons.description_outlined,
+                                                  color: entry.isDirectory ? _amber : _blue,
+                                                  size: 20,
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _text, fontWeight: FontWeight.w800)),
+                                                      Text(
+                                                        entry.isDirectory ? 'folder' : '${entry.size ?? 0} bytes',
+                                                        style: const TextStyle(color: _faint, fontSize: 11),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                if (_openingFile && entry.isFile)
+                                                  const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                                                else
+                                                  Icon(entry.isDirectory ? Icons.chevron_right : Icons.edit_outlined, color: _faint, size: 18),
+                                              ],
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
                     ),
                   ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _path.isEmpty ? 'API workspace · ${widget.repo.defaultBranch}' : _path,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
-                ),
-                const SizedBox(height: 12),
-                if (_path.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: OutlinedButton.icon(
-                      onPressed: _goUp,
-                      icon: const Icon(Icons.arrow_upward_outlined, size: 16),
-                      label: const Text('Parent folder'),
-                    ),
-                  ),
-                SizedBox(
-                  height: MediaQuery.of(context).size.height * 0.66,
-                  child: snapshot.connectionState == ConnectionState.waiting
-                      ? const SizedBox(height: 260, child: Center(child: CircularProgressIndicator()))
-                      : snapshot.hasError
-                          ? _HubPanel(
-                              borderColor: _rose,
-                              child: Text(_compact(snapshot.error.toString(), 180), style: const TextStyle(color: _rose, height: 1.35)),
-                            )
-                          : entries.isEmpty
-                              ? const _HubPanel(child: Text('No files in this folder.', style: TextStyle(color: _muted)))
-                              : ListView.separated(
-                                  shrinkWrap: true,
-                                  itemCount: entries.length,
-                                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                                  itemBuilder: (context, index) {
-                                    final entry = entries[index];
-                                    return _HubPanel(
-                                      child: InkWell(
-                                        onTap: entry.isDirectory ? () => _loadPath(entry.path) : () => unawaited(_openFile(entry)),
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              entry.isDirectory ? Icons.folder_outlined : Icons.description_outlined,
-                                              color: entry.isDirectory ? _amber : _blue,
-                                              size: 20,
-                                            ),
-                                            const SizedBox(width: 10),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(entry.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _text, fontWeight: FontWeight.w800)),
-                                                  Text(
-                                                    entry.isDirectory ? 'folder' : '${entry.size ?? 0} bytes',
-                                                    style: const TextStyle(color: _faint, fontSize: 11),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                            if (_openingFile && entry.isFile)
-                                              const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                                            else
-                                              Icon(entry.isDirectory ? Icons.chevron_right : Icons.edit_outlined, color: _faint, size: 18),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                ),
-              ],
+                );
+              },
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _RuntimeWorkspacePanel extends StatelessWidget {
+  const _RuntimeWorkspacePanel({
+    required this.local,
+    required this.sharedPath,
+    required this.recentSyncs,
+    required this.syncing,
+    required this.onCopyRuntimePath,
+    required this.onCopyCdCommand,
+    required this.onSyncToShared,
+    required this.onOpenShared,
+    required this.onCopySharedPath,
+    required this.onOpenRecord,
+    required this.onCopyRecord,
+  });
+
+  final GitHubRepoLocalState local;
+  final String sharedPath;
+  final List<GitHubRuntimeWorkspaceSyncRecord> recentSyncs;
+  final bool syncing;
+  final VoidCallback onCopyRuntimePath;
+  final VoidCallback onCopyCdCommand;
+  final VoidCallback onSyncToShared;
+  final VoidCallback onOpenShared;
+  final VoidCallback onCopySharedPath;
+  final ValueChanged<GitHubRuntimeWorkspaceSyncRecord> onOpenRecord;
+  final ValueChanged<GitHubRuntimeWorkspaceSyncRecord> onCopyRecord;
+
+  @override
+  Widget build(BuildContext context) {
+    return _HubPanel(
+      borderColor: _mint.withOpacity(0.28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.sync_alt_outlined, color: _mint, size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Runtime workspace',
+                  style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          Text(
+            local.path,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _muted, fontSize: 11.5, height: 1.3),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Termux clone lives in the runtime workspace. Sync a copy to $sharedPath when you want to browse it from the phone file manager.',
+            style: const TextStyle(color: _faint, fontSize: 11.5, height: 1.35),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onCopyRuntimePath,
+                icon: const Icon(Icons.copy_outlined, size: 16),
+                label: const Text('复制 Runtime 路径'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onCopyCdCommand,
+                icon: const Icon(Icons.terminal_outlined, size: 16),
+                label: const Text('复制 cd 命令'),
+              ),
+              FilledButton.icon(
+                onPressed: syncing ? null : onSyncToShared,
+                icon: syncing
+                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.sync_outlined, size: 16),
+                label: Text(syncing ? '同步中...' : '同步到共享目录'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onOpenShared,
+                icon: const Icon(Icons.folder_open_outlined, size: 16),
+                label: const Text('打开共享目录'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onCopySharedPath,
+                icon: const Icon(Icons.content_copy_outlined, size: 16),
+                label: const Text('复制共享路径'),
+              ),
+            ],
+          ),
+          if (recentSyncs.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            const Text(
+              '最近同步目录',
+              style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            for (final record in recentSyncs.take(3)) ...[
+              _RuntimeSyncRecordTile(
+                record: record,
+                onOpen: () => onOpenRecord(record),
+                onCopy: () => onCopyRecord(record),
+              ),
+              const SizedBox(height: 7),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _RuntimeSyncRecordTile extends StatelessWidget {
+  const _RuntimeSyncRecordTile({
+    required this.record,
+    required this.onOpen,
+    required this.onCopy,
+  });
+
+  final GitHubRuntimeWorkspaceSyncRecord record;
+  final VoidCallback onOpen;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: _mint.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _mint.withOpacity(0.16)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.history_outlined, color: _mint, size: 18),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  record.sharedPath,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _text, fontSize: 11.5, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${_timeAgo(record.syncedAt)} · ${record.repoFullName}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _faint, fontSize: 10.5),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Open shared folder',
+            visualDensity: VisualDensity.compact,
+            onPressed: onOpen,
+            icon: const Icon(Icons.folder_open_outlined, color: _blue, size: 18),
+          ),
+          IconButton(
+            tooltip: 'Copy shared path',
+            visualDensity: VisualDensity.compact,
+            onPressed: onCopy,
+            icon: const Icon(Icons.copy_outlined, color: _blue, size: 18),
+          ),
+        ],
       ),
     );
   }
@@ -3405,6 +3778,7 @@ String _repoChatPrompt(GitHubRepoHubItem item) {
 }
 
 String _repoWorkspaceModeLabel(GitHubRepoLocalState local) {
+  if (local.runtimeGit) return 'Termux git clone';
   if (local.hasGit) return 'Git clone';
   if (local.remoteLinked) return 'Remote-linked';
   if (local.exists) return 'Phone folder';
@@ -3459,6 +3833,16 @@ String _cloneFailureMessage(RuntimeCommandResult result) {
   return 'Clone failed: ${_compact(output, 180)}';
 }
 
+String _runtimeCommandFailureMessage(RuntimeCommandResult result) {
+  final output = [result.stderr, result.stdout]
+      .where((part) => part.trim().isNotEmpty)
+      .join(' ');
+  if (output.trim().isEmpty) {
+    return 'Runtime command failed with exit code ${result.exitCode}.';
+  }
+  return _compact(output, 220);
+}
+
 String _friendlyCloneError(Object error) {
   final message = error.toString().replaceFirst(RegExp(r'^Bad state:\s*'), '').trim();
   final lower = message.toLowerCase();
@@ -3472,6 +3856,35 @@ String _friendlyCloneError(Object error) {
     return 'Git 克隆需要有效的 GitHub 凭据。公开仓库可先创建 Remote-linked 工作区；私有仓库请检查 token/权限。';
   }
   return _compact(message.isEmpty ? error.toString() : message, 180);
+}
+
+String _friendlyRuntimeSyncError(Object error) {
+  final message = error.toString().replaceFirst(RegExp(r'^Bad state:\s*'), '').trim();
+  final lower = message.toLowerCase();
+  if (lower.contains('permission denied') && (lower.contains('/sdcard') || lower.contains('/storage'))) {
+    return 'Termux 还没有共享存储权限。请在 Termux 运行 termux-setup-storage 后重试同步到共享目录。';
+  }
+  if (lower.contains('not a termux daemon')) {
+    return '当前运行时不是 Termux daemon。请启动 Termux 里的 mobilecode helper daemon 后重试。';
+  }
+  if (lower.contains('outside the termux daemon workspace root')) {
+    return 'Runtime workspace 路径不在 Termux daemon 工作区内，已阻止同步。请重新创建或刷新该仓库工作区。';
+  }
+  return _compact(message.isEmpty ? error.toString() : message, 220);
+}
+
+String _sharedRuntimeWorkspacePath(GitHubRepo repo) {
+  return p.posix.join(
+    '/sdcard/MobileCode/github',
+    _safeRuntimePathSegment(repo.owner),
+    _safeRuntimePathSegment(repo.name),
+  );
+}
+
+String _safeRuntimePathSegment(String value) {
+  final normalized = value.trim().replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '-');
+  final trimmed = normalized.replaceAll(RegExp(r'^-+|-+$'), '');
+  return trimmed.isEmpty ? 'repo' : trimmed;
 }
 
 String _shellArg(String value) {

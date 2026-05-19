@@ -15,6 +15,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'agent_dashboard_screen.dart';
 import 'api_usage_screen.dart';
 import 'device_telemetry_screen.dart';
+import 'downloads_shared_folders_screen.dart';
 import 'github_repo_hub_screen.dart';
 import 'github_screen.dart';
 import 'hook_registry_screen.dart';
@@ -79,6 +80,7 @@ enum _ModuleAction {
   larkCli,
   tokenUsage,
   deviceTelemetry,
+  downloadsShared,
   inspect,
 }
 
@@ -110,10 +112,10 @@ const _managedModel = String.fromEnvironment(
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.26';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.30';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.26+45';
+const _releaseBuildLabel = 'v0.1.30+49';
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 const _mobileCodeProjectsFolderName = 'mobilecode_projects';
 const _browserOpenModeSystem = 'systemDefault';
@@ -1862,6 +1864,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case _ModuleAction.deviceTelemetry:
         _openManagementScreen('Device Telemetry', const DeviceTelemetryScreen());
         break;
+      case _ModuleAction.downloadsShared:
+        _openManagementScreen('Downloads / Shared folders', const DownloadsSharedFoldersScreen());
+        break;
       case _ModuleAction.inspect:
         if (capability != null) _openCapabilitySheet(capability);
         break;
@@ -2477,6 +2482,13 @@ class _HomeScreenState extends State<HomeScreen> {
         subtitle: '列出仓库、关注名单、本机工作区、Pages 和 Actions 状态。',
         color: _blue,
         action: _ModuleAction.githubRepoHub,
+      ),
+      _CommandShortcut(
+        icon: Icons.folder_shared_outlined,
+        title: 'Downloads / Shared folders',
+        subtitle: '统一查看 Actions artifact 下载和 Runtime 同步共享目录。',
+        color: _mint,
+        action: _ModuleAction.downloadsShared,
       ),
       _CommandShortcut(
         icon: Icons.business_center_outlined,
@@ -7779,7 +7791,7 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
                 const Text('Fallback visibility', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 8),
                 _DiagnosticLine(label: 'External Termux', value: _boolStatus(_termuxInstalled), good: _termuxInstalled == true),
-                _DiagnosticLine(label: 'External Termux:API', value: _boolStatus(_termuxApiInstalled), good: _termuxApiInstalled == true),
+                _DiagnosticLine(label: 'External Termux:API (optional)', value: _boolStatus(_termuxApiInstalled), good: true),
                 _DiagnosticLine(label: 'Root keepalive', value: _boolStatus(_rootAvailable), good: _rootAvailable == true),
               ],
             ),
@@ -11990,7 +12002,7 @@ class _ManagementSurfacePanel extends StatelessWidget {
               _MiniArtifactButton(icon: Icons.extension_outlined, label: 'Skills', onTap: onOpenSkills, color: _mint),
               _MiniArtifactButton(icon: Icons.account_tree_outlined, label: 'MCP', onTap: onOpenMcp, color: _cyan),
               _MiniArtifactButton(icon: Icons.memory_outlined, label: 'Memory', onTap: onOpenMemory, color: _amber),
-              _MiniArtifactButton(icon: Icons.link_outlined, label: 'Hooks', onTap: onOpenHooks, color: _faint),
+              _MiniArtifactButton(icon: Icons.cable_outlined, label: 'Hooks', onTap: onOpenHooks, color: _violet),
               _MiniArtifactButton(icon: Icons.token_outlined, label: 'Usage', onTap: onOpenUsage, color: _rose),
               _MiniArtifactButton(icon: Icons.speed_outlined, label: 'Device', onTap: onOpenDevice, color: _lime),
             ],

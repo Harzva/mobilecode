@@ -321,6 +321,8 @@ class MobileCodeHelperService : Service() {
             .put("ready", running)
             .put("status", if (lastError.isBlank()) "Android foreground service is running." else lastError)
             .put("protocolVersion", 1)
+            .put("runtimeKind", "helperApk")
+            .put("termux", false)
             .put("authRequired", false)
             .put(
                 "capabilities",

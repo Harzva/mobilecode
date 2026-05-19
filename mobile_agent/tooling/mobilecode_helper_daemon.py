@@ -394,6 +394,16 @@ def has_binary(name: str) -> bool:
     return False
 
 
+def is_termux_environment() -> bool:
+    prefix = os.environ.get("PREFIX", "")
+    home = os.environ.get("HOME", "")
+    return "com.termux" in prefix or "com.termux" in home or bool(os.environ.get("TERMUX_VERSION"))
+
+
+def runtime_kind() -> str:
+    return "termuxDaemon" if is_termux_environment() else "helperPrototype"
+
+
 def clone_task(task: dict[str, Any]) -> dict[str, Any]:
     copied = dict(task)
     logs = copied.get("logs", [])
@@ -503,6 +513,9 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                         "ready": True,
                         "status": f"Helper daemon running at {self.server.server_address}",
                         "protocolVersion": 1,
+                        "runtimeKind": runtime_kind(),
+                        "termux": is_termux_environment(),
+                        "workspaceRoot": str(self.state.workspace_root),
                         "authRequired": bool(self.state.auth_token),
                         "capabilities": self.state.capabilities(),
                         "taskRegistry": {

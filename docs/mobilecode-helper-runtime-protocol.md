@@ -29,6 +29,7 @@ The Termux/Python fallback can be started with:
 
 ```bash
 cd mobile_agent
+pkg install -y python git
 ./tooling/run_mobilecode_helper_daemon.sh
 ```
 
@@ -70,6 +71,8 @@ Response:
   "ready": true,
   "status": "Helper foreground service is running.",
   "protocolVersion": 1,
+  "runtimeKind": "helperApk",
+  "termux": false,
   "authRequired": true,
   "capabilities": {
     "shell": true,
@@ -91,6 +94,12 @@ Response:
   "recoveryActions": []
 }
 ```
+
+`runtimeKind` distinguishes execution surfaces:
+
+- `helperApk`: Android foreground-service helper.
+- `termuxDaemon`: Python daemon running inside Termux; Repo Hub can use this for real `git clone` when `capabilities.git` is true.
+- `helperPrototype`: Python daemon outside Termux, useful for desktop protocol tests.
 
 ## Command Execution
 

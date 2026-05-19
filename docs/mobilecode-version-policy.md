@@ -4,7 +4,7 @@
 
 MobileCode uses semantic versioning, but the project is still pre-1.0. The version number should communicate release intent clearly, not simply increase because work happened.
 
-Current next release line: `0.1.26+45`.
+Current next release line: `0.1.30+49`.
 
 ## Version Lines
 
@@ -52,6 +52,10 @@ Examples:
 - `0.1.24+43`: Repo Hub anonymous public search, local token login sheet, clearer account-gated operations, and logout confirmation.
 - `0.1.25+44`: Role/Memory proposal edit polish, MobileCode logo asset, and splash branding refresh.
 - `0.1.26+45`: Repo Hub Git clone fallback to Remote-linked workspace and friendlier repository intelligence fallback copy.
+- `0.1.27+46`: Termux daemon runtime selection for real Termux git clone, clearer Hooks/MCP management affordances.
+- `0.1.28+47`: Runtime workspace browse/sync entry for Termux git clones, including shared-folder copy actions.
+- `0.1.29+48`: Recent shared runtime workspace sync history with quick open/copy actions.
+- `0.1.30+49`: Global Downloads / Shared folders surface for Actions artifacts and runtime shared copies.
 - `0.2.0+38`: Helper APK/runtime capability expansion starts.
 
 ## Stop Rules
@@ -72,9 +76,9 @@ Do not tag `1.0.0` until the app is installable, testable, documented, and under
 
 Release tags should match the product version:
 
-- Tag: `v0.1.26`
-- APK asset: `mobilecode-v0.1.26.apk`
-- iOS simulator asset: `mobilecode-ios-simulator-v0.1.26.zip`
-- Unsigned iOS archive asset: `mobilecode-ios-archive-v0.1.26.xcarchive.zip`
+- Tag: `v0.1.30`
+- APK asset: `mobilecode-v0.1.30.apk`
+- iOS simulator asset: `mobilecode-ios-simulator-v0.1.30.zip`
+- Unsigned iOS archive asset: `mobilecode-ios-archive-v0.1.30.xcarchive.zip`
 
 If a release tag is supplied manually in GitHub Actions, artifact names should follow that tag.

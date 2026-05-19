@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 import '../core/theme.dart';
 import '../core/constants.dart';
 import '../widgets/ai_chat_panel.dart';
@@ -316,11 +318,37 @@ class _EditorScreenState extends State<EditorScreen> {
     _editorScroll.addListener(() {
       if (_lineScroll.hasClients) _lineScroll.jumpTo(_editorScroll.offset);
     });
-    if (widget.initialFilePath != null || widget.fileName != null) {
-      _open(widget.initialFilePath ?? 'untitled', widget.fileName ?? 'untitled',
-          widget.initialContent ?? '', widget.language, widget.readOnly);
-    } else {
-      _open('untitled', 'untitled', '');
+    unawaited(_openInitialFile());
+  }
+
+  Future<void> _openInitialFile() async {
+    final filePath = widget.initialFilePath;
+    final fileName = widget.fileName ?? (filePath == null ? 'untitled' : p.basename(filePath));
+    var content = widget.initialContent;
+    Object? readError;
+    if (content == null && filePath != null && filePath != 'untitled') {
+      try {
+        final file = File(filePath);
+        final exists = await file.exists();
+        content = exists ? await file.readAsString() : '';
+      } on Object catch (error) {
+        readError = error;
+        content = '';
+      }
+    }
+    if (!mounted) return;
+    _open(filePath ?? 'untitled', fileName, content ?? '', widget.language, widget.readOnly);
+    if (readError != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not read "$fileName": $readError'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      });
     }
   }
 
@@ -613,14 +641,40 @@ class _EditorScreenState extends State<EditorScreen> {
   // ── Save ────────────────────────────────────────────────────────────
 
   void _save() {
+    unawaited(_saveActiveFile());
+  }
+
+  Future<void> _saveActiveFile() async {
     final t = _active; if (t == null) return;
-    setState(() { t.originalContent = t.controller.text; t.isModified = false; });
-    HapticFeedback.mediumImpact();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('"${t.fileName}" saved'), duration: const Duration(seconds: 1),
-        behavior: SnackBarBehavior.floating, backgroundColor: AppTheme.surfaceHover,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-    );
+    if (t.readOnly) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"${t.fileName}" is read-only'), behavior: SnackBarBehavior.floating),
+      );
+      return;
+    }
+    try {
+      if (t.filePath.trim().isEmpty || t.filePath == 'untitled') {
+        throw StateError('This tab has no phone file path yet.');
+      }
+      await File(t.filePath).writeAsString(t.controller.text);
+      if (!mounted) return;
+      setState(() { t.originalContent = t.controller.text; t.isModified = false; });
+      HapticFeedback.mediumImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"${t.fileName}" saved to phone'), duration: const Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating, backgroundColor: AppTheme.surfaceHover,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+      );
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Save failed: $error'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.error,
+        ),
+      );
+    }
   }
 
   // ── AI Panel ────────────────────────────────────────────────────────
@@ -663,8 +717,17 @@ class _EditorScreenState extends State<EditorScreen> {
     decoration: BoxDecoration(color: AppTheme.backgroundElevated,
       border: Border(bottom: BorderSide(color: AppTheme.divider.withOpacity(0.8)))),
     child: Row(children: [
-      const SizedBox(width: 40, child: Center(
-        child: Icon(Icons.folder_open_outlined, size: 18, color: AppTheme.textTertiary))),
+      SizedBox(width: 42, child: Center(
+        child: Tooltip(
+          message: '返回聊天',
+          child: IconButton(
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.arrow_back_rounded, size: 19, color: AppTheme.textSecondary),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(width: 36, height: 36),
+          ),
+        ),
+      )),
       Expanded(child: ListView.builder(controller: _tabScroll, scrollDirection: Axis.horizontal,
         itemCount: _tabs.length, itemBuilder: (c, i) => _tabItem(i))),
       _td(),

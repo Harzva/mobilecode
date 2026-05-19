@@ -16,6 +16,7 @@ import 'agent_dashboard_screen.dart';
 import 'api_usage_screen.dart';
 import 'device_telemetry_screen.dart';
 import 'downloads_shared_folders_screen.dart';
+import 'editor_screen.dart';
 import 'github_repo_hub_screen.dart';
 import 'github_screen.dart';
 import 'hook_registry_screen.dart';
@@ -32,6 +33,7 @@ import '../services/role_library_service.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
+import '../services/device_telemetry_service.dart';
 import '../services/skill_manager_service.dart';
 import '../services/termux_service.dart';
 import '../services/token_usage_service.dart';
@@ -49,7 +51,7 @@ enum _CapabilityStatus { ready, needsConfig, local, preview }
 
 enum _AgentStepState { queued, running, done, failed }
 
-enum _MiniAgentEventKind {
+enum _LocalToolEventKind {
   system,
   thought,
   toolCall,
@@ -280,17 +282,34 @@ class _ChatTurn {
     required this.role,
     required this.content,
     required this.time,
+    this.bookmarked = false,
   });
 
   final String role;
   final String content;
   final DateTime time;
+  final bool bookmarked;
+
+  _ChatTurn copyWith({
+    String? role,
+    String? content,
+    DateTime? time,
+    bool? bookmarked,
+  }) {
+    return _ChatTurn(
+      role: role ?? this.role,
+      content: content ?? this.content,
+      time: time ?? this.time,
+      bookmarked: bookmarked ?? this.bookmarked,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
       'role': role,
       'content': content,
       'time': time.toIso8601String(),
+      'bookmarked': bookmarked,
     };
   }
 
@@ -299,6 +318,7 @@ class _ChatTurn {
       role: json['role'] as String? ?? 'user',
       content: json['content'] as String? ?? '',
       time: DateTime.tryParse(json['time'] as String? ?? '') ?? DateTime.now(),
+      bookmarked: json['bookmarked'] as bool? ?? false,
     );
   }
 }
@@ -481,8 +501,8 @@ class _AgentTraceStep {
   }
 }
 
-class _MiniAgentEvent {
-  const _MiniAgentEvent({
+class _LocalToolEvent {
+  const _LocalToolEvent({
     required this.kind,
     required this.title,
     required this.detail,
@@ -493,7 +513,7 @@ class _MiniAgentEvent {
     this.ok = true,
   });
 
-  final _MiniAgentEventKind kind;
+  final _LocalToolEventKind kind;
   final String title;
   final String detail;
   final DateTime time;
@@ -516,8 +536,8 @@ class _MiniAgentEvent {
   }
 }
 
-class _MiniAgentToolSpec {
-  const _MiniAgentToolSpec({
+class _LocalToolSpec {
+  const _LocalToolSpec({
     required this.name,
     required this.description,
     required this.surface,
@@ -534,8 +554,8 @@ class _MiniAgentToolSpec {
   final String risk;
 }
 
-const _miniAgentTools = [
-  _MiniAgentToolSpec(
+const _localToolSpecs = [
+  _LocalToolSpec(
     name: 'list_files',
     description: 'Inspect app-owned project folders before writing.',
     surface: 'Android app documents',
@@ -543,7 +563,7 @@ const _miniAgentTools = [
     color: _mint,
     risk: 'read-only',
   ),
-  _MiniAgentToolSpec(
+  _LocalToolSpec(
     name: 'write_file',
     description: 'Write generated code with a temp-file rename.',
     surface: 'Android app documents',
@@ -551,7 +571,7 @@ const _miniAgentTools = [
     color: _cyan,
     risk: 'guarded',
   ),
-  _MiniAgentToolSpec(
+  _LocalToolSpec(
     name: 'read_file',
     description: 'Read generated files back for preview and copy.',
     surface: 'Android app documents',
@@ -559,7 +579,7 @@ const _miniAgentTools = [
     color: _blue,
     risk: 'read-only',
   ),
-  _MiniAgentToolSpec(
+  _LocalToolSpec(
     name: 'preview_webview',
     description: 'Load HTML/CSS/JS into the in-app Android WebView.',
     surface: 'Android WebView',
@@ -567,7 +587,7 @@ const _miniAgentTools = [
     color: _violet,
     risk: 'local',
   ),
-  _MiniAgentToolSpec(
+  _LocalToolSpec(
     name: 'termux_probe',
     description: 'Check local runtime providers for shell-like mobile builds.',
     surface: 'Runtime provider bridge',
@@ -575,7 +595,7 @@ const _miniAgentTools = [
     color: _lime,
     risk: 'controlled shell',
   ),
-  _MiniAgentToolSpec(
+  _LocalToolSpec(
     name: 'github_connect',
     description: 'Open the GitHub Pages token/repo connectivity tester.',
     surface: 'GitHub API',
@@ -843,6 +863,37 @@ bool _isAgentResultTurn(String content) {
       trimmed.startsWith('Agent run stopped before writing');
 }
 
+bool _isFinalResultTurn(String content) {
+  final trimmed = content.trimLeft();
+  return _isAgentResultTurn(content) ||
+      trimmed.startsWith('GitHub Pages deployment completed.') ||
+      trimmed.contains('Saved generated artifact:') ||
+      trimmed.contains('Code file:');
+}
+
+bool _isPublishResultTurn(String content) {
+  final trimmed = content.trimLeft();
+  return trimmed.startsWith('GitHub Pages deployment completed.') ||
+      trimmed.contains('Pages URL:') ||
+      trimmed.contains('GitHub Pages URL') ||
+      trimmed.contains('发布 GitHub Pages 成功');
+}
+
+bool _isCodeResultTurn(String content) {
+  final trimmed = content.trimLeft();
+  return trimmed.contains('```') ||
+      trimmed.contains('<!DOCTYPE html') ||
+      trimmed.contains('<html') ||
+      trimmed.contains('Saved generated artifact:') ||
+      trimmed.contains('Code file:') ||
+      trimmed.contains('index.html');
+}
+
+bool _isBookmarkedTurn(String content) {
+  final lower = content.toLowerCase();
+  return lower.contains('#bookmark') || content.contains('书签') || content.contains('重点');
+}
+
 bool _promptTargets2048(String prompt) {
   final lower = prompt.toLowerCase();
   return lower.contains('2048') || prompt.contains('二零四八');
@@ -913,6 +964,29 @@ String _agentToolExpectedOutput(String tool) {
   return 'Provider response is reported in chat without writing a project artifact.';
 }
 
+String _agentLocalToolChainFor(String tool) {
+  if (tool == 'mobile_coding.generate_snake_preview' ||
+      tool == 'mobile_coding.generate_2048_preview' ||
+      tool == 'mobile_coding.generate_web_preview') {
+    return '1. Parse complete HTML from provider output\n'
+        '2. write_file: save index.html inside app documents with temp-file rename\n'
+        '3. read_file: verify the saved artifact path/content\n'
+        '4. preview_webview: expose the in-app WebView preview action';
+  }
+  if (tool == 'mobile_coding.build_diary_demo') {
+    return '1. Validate provider output is not empty\n'
+        '2. write_file: save agent_response.md inside app documents\n'
+        '3. Show copy/open actions for inspection';
+  }
+  if (tool == 'mobile_tools.termux_probe') {
+    return 'No shell claim is made from provider text alone. Runtime checks must come from RuntimeProvider capability/status results.';
+  }
+  if (tool == 'github.connectivity_test') {
+    return 'GitHub checks must use the GitHub test surface/API result, not only the model explanation.';
+  }
+  return 'No local write tool is expected for this prompt. The final answer stays as chat text.';
+}
+
 Map<String, String> _agentToolCallDetails(String tool, String prompt) {
   final writesFile = tool.startsWith('mobile_coding.');
   final isWeb = tool == 'mobile_coding.generate_snake_preview' ||
@@ -953,12 +1027,16 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
     ),
     _AgentTraceStep(
       title: 'Call model provider',
-      detail: 'Send the prompt and chat context to the configured provider. If this fails, the agent must stop.',
+      detail:
+          'Send the prompt and chat context to the configured provider, then continue into visible local tool actions.',
       icon: Icons.cloud_sync_outlined,
       avatarAsset: 'assets/role_avatars/claude-girl-dancer.svg',
       details: {
         'Provider call': 'Uses the configured Base URL, model, API flavor, and current chat context.',
         'Streaming': 'Tokens are streamed into this trace while the provider responds.',
+        'Local tool chain': _agentLocalToolChainFor(tool),
+        'Transparency rule':
+            'Provider text is not treated as completion by itself. MobileCode must show the selected local tool, file write target, saved path, and preview action before reporting done.',
         'Cancel behavior': 'Pause closes the current provider request and prevents additional file writes.',
       },
     ),
@@ -1033,7 +1111,7 @@ Future<bool?> _startMobileCodeHelperService() async {
   }
 }
 
-String _agent2048Html() {
+String _localTool2048Html() {
   return r'''<!doctype html>
 <html lang="en">
 <head>
@@ -1973,12 +2051,29 @@ class _HomeScreenState extends State<HomeScreen> {
         isScrollControlled: true,
         backgroundColor: _panel,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
-        builder: (context) => _CodeFileSheet(path: path, code: code),
+        builder: (context) => _CodeFileSheet(
+          path: path,
+          code: code,
+          onOpenEditor: () => unawaited(_openWorkspaceFileInEditor(path, initialContent: code)),
+        ),
       );
     } on Object catch (error) {
       if (!mounted) return;
       _showMessage(_compact(error.toString(), limit: 140));
     }
+  }
+
+  Future<void> _openWorkspaceFileInEditor(String path, {String? initialContent}) async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => EditorScreen(
+          initialFilePath: path,
+          initialContent: initialContent,
+          fileName: p.basename(path),
+        ),
+      ),
+    );
   }
 
   Future<void> _openWorkspaceFolder(String path) async {
@@ -2336,22 +2431,7 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
           child: _MobileChatTopBar(
             title: 'MobileCode',
-            subtitle: _managedProviderActive ? 'Managed model ready' : '${_flavorLabel(_flavor)} provider',
-            providerLabel: _managedProviderActive ? 'Managed' : _flavorLabel(_flavor),
-            providerColor: _managedProviderActive ? _mint : (_flavor == _ApiFlavor.anthropic ? _amber : _cyan),
             onMenu: _openDrawer,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-          child: _RuntimePermissionBanner(
-            activeRuntimeName: _activeRuntimeName,
-            ready: _runtimeReady,
-            capabilitiesLabel: _runtimeCapabilityLabel(_runtimeCapabilities),
-            checking: _runtimeChecking,
-            message: _runtimeMessage,
-            onCheck: () => _checkRuntime(),
-            onOpenRuntime: _openTermuxSheet,
           ),
         ),
         Expanded(
@@ -2838,16 +2918,10 @@ class _SimpleHeader extends StatelessWidget {
 class _MobileChatTopBar extends StatelessWidget {
   const _MobileChatTopBar({
     required this.title,
-    required this.subtitle,
-    required this.providerLabel,
-    required this.providerColor,
     required this.onMenu,
   });
 
   final String title;
-  final String subtitle;
-  final String providerLabel;
-  final Color providerColor;
   final VoidCallback onMenu;
 
   @override
@@ -2861,33 +2935,153 @@ class _MobileChatTopBar extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Expanded(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: _text, fontSize: 20, fontWeight: FontWeight.w900),
-              ),
-              const SizedBox(height: 1),
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: _muted, fontSize: 11.5),
-              ),
-            ],
+          child: Text(
+            title,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _text, fontSize: 20, fontWeight: FontWeight.w900),
           ),
         ),
         const SizedBox(width: 6),
-        _Pill(
-          label: providerLabel,
-          icon: Icons.auto_awesome_outlined,
-          color: providerColor,
-        ),
+        const _CpuTelemetryChip(),
       ],
+    );
+  }
+}
+
+class _CpuTelemetryChip extends StatefulWidget {
+  const _CpuTelemetryChip();
+
+  @override
+  State<_CpuTelemetryChip> createState() => _CpuTelemetryChipState();
+}
+
+class _CpuTelemetryChipState extends State<_CpuTelemetryChip> {
+  late final Stream<DeviceTelemetrySnapshot> _stream;
+
+  @override
+  void initState() {
+    super.initState();
+    _stream = DeviceTelemetryService.instance.watchTelemetry(interval: const Duration(seconds: 2));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DeviceTelemetrySnapshot>(
+      stream: _stream,
+      builder: (context, snapshot) {
+        final data = snapshot.data;
+        final label = data == null ? 'CPU --' : '${data.cpuUsagePercent.clamp(0, 100).toStringAsFixed(0)}%';
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: data == null ? null : () => _showTelemetryDetails(context, data),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                color: _mint.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _mint.withOpacity(0.34)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.speed_outlined, size: 13, color: _mint),
+                  const SizedBox(width: 4),
+                  Text(label, style: const TextStyle(color: _mint, fontSize: 11, fontWeight: FontWeight.w900)),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showTelemetryDetails(BuildContext context, DeviceTelemetrySnapshot data) {
+    final deviceLabel = [data.manufacturer, data.model]
+        .where((item) => item.trim().isNotEmpty)
+        .join(' ')
+        .trim();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (context) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(color: _line, borderRadius: BorderRadius.circular(99)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Row(
+                children: [
+                  Icon(Icons.speed_outlined, color: _mint, size: 18),
+                  SizedBox(width: 8),
+                  Text('Device telemetry', style: TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w900)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _TelemetryDetailRow(label: 'CPU', value: '${data.cpuUsagePercent.clamp(0, 100).toStringAsFixed(0)}% · ${data.cpuCores} cores'),
+              _TelemetryDetailRow(label: 'Memory', value: data.totalMemoryMb > 0 ? '${data.availableMemoryMb} MB free / ${data.totalMemoryMb} MB' : 'Fallback unavailable'),
+              _TelemetryDetailRow(label: 'App RSS / Heap', value: '${data.appRssMb} MB / ${data.appHeapMb} MB'),
+              _TelemetryDetailRow(label: 'Storage', value: data.storageTotalMb > 0 ? '${data.storageFreeMb} MB free / ${data.storageTotalMb} MB' : 'Unavailable'),
+              _TelemetryDetailRow(
+                label: 'Battery',
+                value: data.batteryLevel >= 0
+                    ? '${data.batteryLevel}%${data.batteryCharging ? ' · charging' : ''}${data.batteryTemperatureC > 0 ? ' · ${data.batteryTemperatureC.toStringAsFixed(1)}°C' : ''}'
+                    : 'Unavailable',
+              ),
+              _TelemetryDetailRow(label: 'Device', value: deviceLabel.isEmpty ? data.platform : deviceLabel),
+              if (data.fallback)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'Using Flutter fallback telemetry. Android native telemetry is unavailable in this build/runtime.',
+                    style: TextStyle(color: _amber, fontSize: 12, height: 1.35),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TelemetryDetailRow extends StatelessWidget {
+  const _TelemetryDetailRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 96,
+            child: Text(label, style: const TextStyle(color: _muted, fontSize: 12, fontWeight: FontWeight.w700)),
+          ),
+          Expanded(
+            child: Text(value, style: const TextStyle(color: _text, fontSize: 12, height: 1.3)),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -4253,12 +4447,12 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
   int? _lastGenerateMs;
   bool _generating = false;
   bool _autoStarted = false;
-  final List<_MiniAgentEvent> _agentEvents = [];
-  final _agentEventController = ScrollController();
+  final List<_LocalToolEvent> _localToolEvents = [];
+  final _localToolEventController = ScrollController();
 
   @override
   void dispose() {
-    _agentEventController.dispose();
+    _localToolEventController.dispose();
     super.dispose();
   }
 
@@ -4275,37 +4469,37 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
     final started = DateTime.now();
     setState(() {
       _generating = true;
-      _stage = 'Starting mini agent';
-      _agentEvents.clear();
+      _stage = 'Starting local tool test';
+      _localToolEvents.clear();
       _transcriptPath = null;
     });
     try {
       final rootDirectory = await _mobileCodeProjectsRootDirectory();
-      final projectDirectory = Directory(p.join(rootDirectory.path, 'agent_2048'));
+      final projectDirectory = Directory(p.join(rootDirectory.path, 'local_tool_2048'));
 
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.system,
-          title: 'Mini harness booted',
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.system,
+          title: 'Local tool harness booted',
           detail:
-              'Loaded phone-safe tools: list_files, write_file, read_file, preview_webview, runtime_probe, github_connect.',
+              'This is a scripted local tool test, not a model-provider agent call. Loaded phone-safe tools: list_files, write_file, read_file, preview_webview, runtime_probe, github_connect.',
           time: DateTime.now(),
         ),
       );
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.thought,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.thought,
           title: 'Reasoning',
           detail:
-              'Goal is a real local 2048 project. The agent will create an app-owned workspace, generate a complete single-file web app, save it atomically, read it back, then make WebView preview available.',
+              'Goal is a real local 2048 project. The local harness will create an app-owned workspace, generate a complete single-file web app, save it atomically, read it back, then make WebView preview available.',
           time: DateTime.now(),
         ),
       );
 
       final listStarted = DateTime.now();
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.toolCall,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.toolCall,
           title: 'tool_call: list_files',
           toolName: 'list_files',
           path: rootDirectory.path,
@@ -4323,9 +4517,9 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
           .where((name) => name.trim().isNotEmpty)
           .take(8)
           .toList();
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.observation,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.observation,
           title: 'tool_result: list_files',
           toolName: 'list_files',
           path: rootDirectory.path,
@@ -4338,23 +4532,23 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
       );
 
       final prepareStarted = DateTime.now();
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.toolCall,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.toolCall,
           title: 'tool_call: mkdir',
           toolName: 'write_file',
           path: projectDirectory.path,
           detail: jsonEncode({
-            'path': 'mobilecode_projects/agent_2048',
+            'path': 'mobilecode_projects/local_tool_2048',
             'recursive': true,
           }),
           time: DateTime.now(),
         ),
       );
       await projectDirectory.create(recursive: true);
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.observation,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.observation,
           title: 'tool_result: mkdir',
           toolName: 'write_file',
           path: projectDirectory.path,
@@ -4364,9 +4558,9 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
         ),
       );
 
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.thought,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.thought,
           title: 'Plan code structure',
           detail:
               'Single index.html keeps the demo portable: responsive board, swipe/keyboard input, score, best score, undo, game-over detection, and localStorage persistence.',
@@ -4374,16 +4568,16 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
         ),
       );
 
-      final html = _agent2048Html();
+      final html = _localTool2048Html();
       final chunks = _chunkText(html, 1500);
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.toolCall,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.toolCall,
           title: 'tool_call: write_file',
           toolName: 'write_file',
           path: '${projectDirectory.path}/index.html',
           detail: jsonEncode({
-            'path': 'mobilecode_projects/agent_2048/index.html',
+            'path': 'mobilecode_projects/local_tool_2048/index.html',
             'bytes': utf8.encode(html).length,
             'atomic': true,
           }),
@@ -4391,9 +4585,9 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
         ),
       );
       for (var index = 0; index < chunks.length; index++) {
-        await _emitAgentEvent(
-          _MiniAgentEvent(
-            kind: _MiniAgentEventKind.fileWrite,
+        await _emitLocalToolEvent(
+          _LocalToolEvent(
+            kind: _LocalToolEventKind.fileWrite,
             title: 'Writing code chunk ${index + 1}/${chunks.length}',
             toolName: 'write_file',
             path: '${projectDirectory.path}/index.html',
@@ -4412,9 +4606,9 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
         await file.delete();
       }
       await tempFile.rename(file.path);
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.observation,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.observation,
           title: 'tool_result: write_file',
           toolName: 'write_file',
           path: file.path,
@@ -4424,14 +4618,14 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
         ),
       );
 
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.diff,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.diff,
           title: 'Generated diff',
           toolName: 'write_file',
           path: file.path,
           detail: [
-            '+ mobilecode_projects/agent_2048/index.html',
+            '+ mobilecode_projects/local_tool_2048/index.html',
             '+ responsive 4x4 2048 board',
             '+ swipe and keyboard controls',
             '+ score, best score, undo, game-over state',
@@ -4442,23 +4636,23 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
       );
 
       final readStarted = DateTime.now();
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.toolCall,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.toolCall,
           title: 'tool_call: read_file',
           toolName: 'read_file',
           path: file.path,
           detail: jsonEncode({
-            'path': 'mobilecode_projects/agent_2048/index.html',
+            'path': 'mobilecode_projects/local_tool_2048/index.html',
             'purpose': 'verify saved file and prepare preview',
           }),
           time: DateTime.now(),
         ),
       );
       final savedHtml = await file.readAsString();
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.observation,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.observation,
           title: 'tool_result: read_file',
           toolName: 'read_file',
           path: file.path,
@@ -4475,9 +4669,9 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
         _lastGenerateMs = DateTime.now().difference(started).inMilliseconds;
       });
 
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.preview,
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.preview,
           title: 'tool_call: preview_webview',
           toolName: 'preview_webview',
           path: file.path,
@@ -4487,10 +4681,10 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
           time: DateTime.now(),
         ),
       );
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.finalAnswer,
-          title: 'Agent final',
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.finalAnswer,
+          title: 'Local test final',
           detail:
               '2048 project is complete. The generated code is visible below, stored on-device, and ready for WebView preview or GitHub publishing.',
           durationMs: _lastGenerateMs,
@@ -4501,13 +4695,13 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
       final transcript = await _persistRunTranscript(projectDirectory, started);
       if (!mounted) return;
       setState(() => _transcriptPath = transcript.path);
-      widget.onLog('Agent generated 2048', '${file.path} - ${_lastGenerateMs}ms', Icons.grid_4x4_outlined, _mint);
+      widget.onLog('Local test generated 2048', '${file.path} - ${_lastGenerateMs}ms', Icons.grid_4x4_outlined, _mint);
     } on Object catch (error) {
       if (!mounted) return;
-      await _emitAgentEvent(
-        _MiniAgentEvent(
-          kind: _MiniAgentEventKind.error,
-          title: 'Agent failed',
+      await _emitLocalToolEvent(
+        _LocalToolEvent(
+          kind: _LocalToolEventKind.error,
+          title: 'Local test failed',
           detail: _compact(error.toString(), limit: 260),
           ok: false,
           time: DateTime.now(),
@@ -4522,19 +4716,19 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
     }
   }
 
-  Future<void> _emitAgentEvent(
-    _MiniAgentEvent event, {
+  Future<void> _emitLocalToolEvent(
+    _LocalToolEvent event, {
     Duration delay = const Duration(milliseconds: 150),
   }) async {
     if (!mounted) return;
     setState(() {
       _stage = event.title;
-      _agentEvents.add(event);
+      _localToolEvents.add(event);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_agentEventController.hasClients) return;
-      _agentEventController.animateTo(
-        _agentEventController.position.maxScrollExtent,
+      if (!_localToolEventController.hasClients) return;
+      _localToolEventController.animateTo(
+        _localToolEventController.position.maxScrollExtent,
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOut,
       );
@@ -4545,19 +4739,18 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
   }
 
   Future<File> _persistRunTranscript(Directory projectDirectory, DateTime started) async {
-    final file = File('${projectDirectory.path}/agent_run.json');
+    final file = File('${projectDirectory.path}/local_tool_run.json');
     final payload = {
-      'agent': 'MobileCode Android Mini Agent',
+      'agent': 'MobileCode Android Local Tool Harness',
       'inspiredBy': [
-        'mini-harness: model/tool/result loop',
-        'mini-codex: workspace-scoped actions and shell-style tool output',
-        'mini-claude-code: persistent session and tool transcript',
-        'MiniClaude: visible tool-use lifecycle and file diff surfaces',
+        'tool-harness: model/tool/result loop',
+        'workspace-scoped transcript: shell-style tool output',
+        'visible tool lifecycle: persistent session events and saved artifacts',
       ],
       'startedAt': started.toIso8601String(),
       'finishedAt': DateTime.now().toIso8601String(),
       'projectPath': _projectPath,
-      'tools': _miniAgentTools
+      'tools': _localToolSpecs
           .map((tool) => {
                 'name': tool.name,
                 'description': tool.description,
@@ -4565,7 +4758,7 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
                 'risk': tool.risk,
               })
           .toList(),
-      'events': _agentEvents.map((event) => event.toJson()).toList(),
+      'events': _localToolEvents.map((event) => event.toJson()).toList(),
     };
     await file.writeAsString(const JsonEncoder.withIndent('  ').convert(payload), flush: true);
     return file;
@@ -4605,8 +4798,9 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
   Widget build(BuildContext context) {
     return _SheetScaffold(
       icon: Icons.code_outlined,
-      title: 'Mobile Mini Agent',
-      subtitle: 'A phone-first coding loop with visible tool calls, file writes, diff, and WebView preview.',
+      title: 'Mobile Tool Test',
+      subtitle:
+          'A local scripted smoke test with visible tool calls, file writes, diff, and WebView preview.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -4615,7 +4809,7 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Mini agent harness',
+                  'Local tool harness',
                   style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 16),
                 ),
                 const SizedBox(height: 10),
@@ -4639,12 +4833,12 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
             ),
           ),
           const SizedBox(height: 12),
-          const _MiniAgentToolRegistry(tools: _miniAgentTools),
+          const _LocalToolRegistry(tools: _localToolSpecs),
           const SizedBox(height: 12),
-          _MiniAgentConsole(
-            events: _agentEvents,
+          _LocalToolTranscript(
+            events: _localToolEvents,
             running: _generating,
-            controller: _agentEventController,
+            controller: _localToolEventController,
           ),
           const SizedBox(height: 12),
           Row(
@@ -4655,7 +4849,7 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
                   icon: _generating
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.auto_fix_high_outlined),
-                  label: Text(_generating ? 'Agent running' : 'Run mini agent'),
+                  label: Text(_generating ? 'Running test' : 'Run local tool test'),
                 ),
               ),
               const SizedBox(width: 10),
@@ -4731,7 +4925,7 @@ class _MobileCodingLabSheetState extends State<_MobileCodingLabSheet> {
             padding: const EdgeInsets.all(12),
             child: SelectableText(
               _html == null
-                  ? 'No generated code yet. Tap "Run mini agent" to create a real local project.'
+                  ? 'No generated code yet. Tap "Run local tool test" to create a real local project.'
                   : _compact(_html!, limit: 2600),
               style: const TextStyle(color: _muted, fontSize: 12, height: 1.4, fontFamily: 'monospace'),
             ),
@@ -5154,12 +5348,29 @@ class _GitHubPagesArtifactDeploySheetState extends State<_GitHubPagesArtifactDep
         isScrollControlled: true,
         backgroundColor: _panel,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
-        builder: (context) => _CodeFileSheet(path: widget.artifactPath, code: code),
+        builder: (context) => _CodeFileSheet(
+          path: widget.artifactPath,
+          code: code,
+          onOpenEditor: () => unawaited(_openArtifactInEditor(widget.artifactPath, initialContent: code)),
+        ),
       );
     } on Object catch (error) {
       if (!mounted) return;
       setState(() => _error = _compact(error.toString(), limit: 160));
     }
+  }
+
+  Future<void> _openArtifactInEditor(String path, {String? initialContent}) async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => EditorScreen(
+          initialFilePath: path,
+          initialContent: initialContent,
+          fileName: p.basename(path),
+        ),
+      ),
+    );
   }
 
   Future<void> _openProjectFolder() async {
@@ -5916,10 +6127,15 @@ class _WebPreviewSheetState extends State<_WebPreviewSheet> {
 }
 
 class _CodeFileSheet extends StatefulWidget {
-  const _CodeFileSheet({required this.path, required this.code});
+  const _CodeFileSheet({
+    required this.path,
+    required this.code,
+    required this.onOpenEditor,
+  });
 
   final String path;
   final String code;
+  final VoidCallback onOpenEditor;
 
   @override
   State<_CodeFileSheet> createState() => _CodeFileSheetState();
@@ -5990,6 +6206,16 @@ class _CodeFileSheetState extends State<_CodeFileSheet> {
             spacing: 8,
             runSpacing: 8,
             children: [
+              _RuntimeActionButton(
+                icon: Icons.edit_note_outlined,
+                label: '用编辑器打开',
+                disabled: false,
+                onTap: () {
+                  final openEditor = widget.onOpenEditor;
+                  Navigator.of(context).pop();
+                  WidgetsBinding.instance.addPostFrameCallback((_) => openEditor());
+                },
+              ),
               _RuntimeActionButton(
                 icon: Icons.copy_outlined,
                 label: 'Copy code',
@@ -9287,6 +9513,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   bool _agentModeEnabled = false;
   bool _followChatBottom = true;
   bool _showJumpToBottom = false;
+  bool _autoScrollScheduled = false;
   HttpClient? _agentProviderClient;
   bool _voiceAvailable = false;
   VoiceState _voiceState = VoiceState.idle;
@@ -9298,6 +9525,10 @@ class _ChatPanelState extends State<_ChatPanel> {
   List<MobileCodeRole>? _activeRunRoles;
   RoleProposal? _activeRunProposal;
   final List<_AgentTraceStep> _agentTrace = [];
+  final Map<String, GlobalKey> _turnKeys = {};
+  Timer? _navPreviewTimer;
+  _ChatNavPreview? _navPreview;
+  int? _lastNavActiveIndex;
 
   _ChatSession? get _activeSession {
     if (_sessions.isEmpty) return null;
@@ -9327,6 +9558,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     RoleLibraryService.instance.removeListener(_handleRoleLibraryChanged);
     _voiceTranscriptSub?.cancel();
     _voiceStateSub?.cancel();
+    _navPreviewTimer?.cancel();
     _voiceService.dispose();
     _chatScrollController.dispose();
     _promptController.dispose();
@@ -9684,8 +9916,16 @@ class _ChatPanelState extends State<_ChatPanel> {
       }
     }
 
-    if (_voiceService.isListening) {
-      final transcript = await _voiceService.stopListening();
+    final voiceActive = _voiceService.isListening || _voiceState == VoiceState.listening;
+    if (voiceActive) {
+      setState(() => _voiceState = VoiceState.processing);
+      String transcript;
+      try {
+        transcript = await _voiceService.stopListening().timeout(const Duration(seconds: 2));
+      } on TimeoutException {
+        await _voiceService.cancel();
+        transcript = _promptController.text;
+      }
       if (!mounted) return;
       if (transcript.trim().isNotEmpty) {
         _promptController.text = transcript.trim();
@@ -10246,7 +10486,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   String _agentSystemPrompt(String toolName, {String skillContext = '', String roleContext = ''}) {
     final repoContext = _repoBindingContext();
     return [
-      'You are MobileCode Android Mini Agent.',
+      'You are MobileCode Android tool-aware coding assistant.',
       'You are running inside a mobile app, so be honest about what has actually happened.',
       'The selected tool is `$toolName`.',
       if (repoContext.isNotEmpty) ...[
@@ -10298,7 +10538,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         toolName == 'mobile_coding.generate_web_preview';
     final slug = switch (toolName) {
       'mobile_coding.generate_snake_preview' => 'agent_snake',
-      'mobile_coding.generate_2048_preview' => 'agent_2048_from_model',
+      'mobile_coding.generate_2048_preview' => 'local_tool_2048_from_model',
       'mobile_coding.build_diary_demo' => 'agent_diary',
       _ => 'agent_run',
     };
@@ -10498,22 +10738,50 @@ class _ChatPanelState extends State<_ChatPanel> {
   void _handleChatScroll() {
     if (!_chatScrollController.hasClients) return;
     final nearBottom = _isNearChatBottom();
-    if (nearBottom == _followChatBottom && _showJumpToBottom == !nearBottom) return;
+    final navCount = _conversationNavEntries(_activeSession).length;
+    final navIndex = _activeNavIndex(navCount);
+    if (nearBottom == _followChatBottom &&
+        _showJumpToBottom == !nearBottom &&
+        navIndex == _lastNavActiveIndex) {
+      return;
+    }
     setState(() {
       _followChatBottom = nearBottom;
       _showJumpToBottom = !nearBottom;
+      _lastNavActiveIndex = navIndex;
     });
   }
 
   void _scrollConversationToEnd({bool force = false}) {
+    if (!force && _autoScrollScheduled) return;
+    if (!force) _autoScrollScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!force) _autoScrollScheduled = false;
       if (!_chatScrollController.hasClients) return;
       if (!force && !_followChatBottom && !_isNearChatBottom()) return;
-      _chatScrollController.animateTo(
-        _chatScrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
+      final position = _chatScrollController.position;
+      final target = position.maxScrollExtent;
+      if ((target - position.pixels).abs() < 2) {
+        if (force && mounted) {
+          setState(() {
+            _followChatBottom = true;
+            _showJumpToBottom = false;
+          });
+        }
+        return;
+      }
+      if (force) {
+        _chatScrollController.animateTo(
+          target,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+        );
+      } else {
+        // Streaming output can update dozens of times per second. Jumping once per
+        // frame avoids stacked animations fighting each other while still keeping
+        // the tail visible when the user has not scrolled away.
+        _chatScrollController.jumpTo(target);
+      }
       if (force && mounted) {
         setState(() {
           _followChatBottom = true;
@@ -10523,52 +10791,115 @@ class _ChatPanelState extends State<_ChatPanel> {
     });
   }
 
-  Widget _buildChatHeader(_ChatSession? active) {
+  String _turnNavId(_ChatTurn turn, int index) {
+    return '${turn.role}_${turn.time.microsecondsSinceEpoch}_$index';
+  }
+
+  GlobalKey _keyForTurn(_ChatTurn turn, int index) {
+    return _turnKeys.putIfAbsent(_turnNavId(turn, index), () => GlobalKey());
+  }
+
+  List<_ChatNavEntry> _conversationNavEntries(_ChatSession? active) {
+    final turns = active?.turns ?? const <_ChatTurn>[];
+    final entries = <_ChatNavEntry>[];
+    for (var index = 0; index < turns.length; index++) {
+      final turn = turns[index];
+      final isUser = turn.role == 'user';
+      final isKeyResult = turn.role == 'assistant' && _isFinalResultTurn(turn.content);
+      final isPublishResult = turn.role == 'assistant' && _isPublishResultTurn(turn.content);
+      final isCodeResult = turn.role == 'assistant' && _isCodeResultTurn(turn.content);
+      final isBookmark = turn.bookmarked || _isBookmarkedTurn(turn.content);
+      if (!isUser && !isKeyResult && !isCodeResult && !isBookmark) continue;
+      final summary = _compact(turn.content.replaceAll(RegExp(r'\s+'), ' ').trim(), limit: 72);
+      final kind = isBookmark
+          ? _ChatNavKind.bookmark
+          : isPublishResult
+              ? _ChatNavKind.publish
+              : isCodeResult
+                  ? _ChatNavKind.code
+                  : isKeyResult
+                      ? _ChatNavKind.result
+                      : _ChatNavKind.prompt;
+      entries.add(_ChatNavEntry(
+        id: _turnNavId(turn, index),
+        number: entries.length + 1,
+        kind: kind,
+        preview: summary.isEmpty
+            ? isBookmark
+                ? '书签'
+                : isPublishResult
+                ? '发布成功'
+                : isCodeResult
+                    ? '代码结果'
+                    : isKeyResult
+                        ? '关键结果'
+                        : '空输入'
+            : summary,
+      ));
+    }
+    return entries;
+  }
+
+  int? _activeNavIndex(int count) {
+    if (count == 0 || !_chatScrollController.hasClients) return null;
+    final position = _chatScrollController.position;
+    final max = position.maxScrollExtent;
+    if (max <= 0) return 0;
+    final ratio = (position.pixels / max).clamp(0.0, 1.0);
+    final index = (ratio * (count - 1)).round();
+    if (index < 0) return 0;
+    if (index >= count) return count - 1;
+    return index;
+  }
+
+  void _showNavPreview(_ChatNavEntry entry) {
+    _navPreviewTimer?.cancel();
+    setState(() => _navPreview = _ChatNavPreview(entry));
+    _navPreviewTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted) return;
+      setState(() => _navPreview = null);
+    });
+  }
+
+  void _jumpToNavEntry(_ChatNavEntry entry) {
+    _showNavPreview(entry);
+    final turnContext = _turnKeys[entry.id]?.currentContext;
+    if (turnContext != null) {
+      Scrollable.ensureVisible(
+        turnContext,
+        duration: const Duration(milliseconds: 240),
+        curve: Curves.easeOut,
+        alignment: 0.12,
+      );
+      return;
+    }
+    if (!_chatScrollController.hasClients) return;
+    final entries = _conversationNavEntries(_activeSession);
+    final index = entries.indexWhere((item) => item.id == entry.id);
+    if (index == -1 || entries.length <= 1) return;
+    final target = _chatScrollController.position.maxScrollExtent * (index / (entries.length - 1));
+    _chatScrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Widget _buildChatHeader() {
     final repoBinding = _repoBinding;
+    if (repoBinding == null) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: _Panel(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.memory_outlined, color: _blue, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    active == null ? 'Conversation loading · context will be sent with each request' : '${_sessionTurnLabel(active)} · context sent with each request',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(color: _muted, fontSize: 12, height: 1.3),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filledTonal(
-                  tooltip: 'New chat',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: _sending || _agentRunning ? null : _createSession,
-                  icon: const Icon(Icons.add_comment_outlined, size: 18),
-                ),
-              ],
-            ),
-            if (repoBinding != null) ...[
-              const SizedBox(height: 8),
-              _RepoChatBindingBar(
-                binding: repoBinding,
-                onOpenRepo: () => unawaited(_openExternalUrl(context, repoBinding.repoUrl, label: 'repository', browserOpenMode: widget.browserOpenMode)),
-                onOpenPages: repoBinding.pagesUrl == null
-                    ? null
-                    : () => unawaited(_openExternalUrl(context, repoBinding.pagesUrl!, label: 'GitHub Pages', browserOpenMode: widget.browserOpenMode)),
-                onOpenActions: repoBinding.actionsUrl == null
-                    ? null
-                    : () => unawaited(_openExternalUrl(context, repoBinding.actionsUrl!, label: 'GitHub Actions', browserOpenMode: widget.browserOpenMode)),
-                onClear: () => setState(() => _repoBinding = null),
-              ),
-            ],
-          ],
-        ),
+      child: _RepoChatBindingBar(
+        binding: repoBinding,
+        onOpenRepo: () => unawaited(_openExternalUrl(context, repoBinding.repoUrl, label: 'repository', browserOpenMode: widget.browserOpenMode)),
+        onOpenPages: repoBinding.pagesUrl == null
+            ? null
+            : () => unawaited(_openExternalUrl(context, repoBinding.pagesUrl!, label: 'GitHub Pages', browserOpenMode: widget.browserOpenMode)),
+        onOpenActions: repoBinding.actionsUrl == null
+            ? null
+            : () => unawaited(_openExternalUrl(context, repoBinding.actionsUrl!, label: 'GitHub Actions', browserOpenMode: widget.browserOpenMode)),
+        onClear: () => setState(() => _repoBinding = null),
       ),
     );
   }
@@ -10587,12 +10918,29 @@ class _ChatPanelState extends State<_ChatPanel> {
         isScrollControlled: true,
         backgroundColor: _panel,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
-        builder: (context) => _CodeFileSheet(path: path, code: code),
+        builder: (context) => _CodeFileSheet(
+          path: path,
+          code: code,
+          onOpenEditor: () => unawaited(_openArtifactInEditor(path, initialContent: code)),
+        ),
       );
     } on Object catch (error) {
       if (!mounted) return;
       _showMessage(_compact(error.toString(), limit: 140));
     }
+  }
+
+  Future<void> _openArtifactInEditor(String path, {String? initialContent}) async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => EditorScreen(
+          initialFilePath: path,
+          initialContent: initialContent,
+          fileName: p.basename(path),
+        ),
+      ),
+    );
   }
 
   Future<void> _previewArtifact(String path) async {
@@ -10729,12 +11077,28 @@ class _ChatPanelState extends State<_ChatPanel> {
     _scrollConversationToEnd();
   }
 
+  Future<void> _toggleTurnBookmark(int turnIndex) async {
+    final active = _activeSession;
+    if (active == null || turnIndex < 0 || turnIndex >= active.turns.length) return;
+    final turns = List<_ChatTurn>.of(active.turns);
+    final nextTurn = turns[turnIndex].copyWith(bookmarked: !turns[turnIndex].bookmarked);
+    turns[turnIndex] = nextTurn;
+    final now = DateTime.now();
+    setState(() {
+      _storeSession(active.copyWith(updatedAt: now, turns: turns));
+    });
+    _notifySessionsChanged();
+    await _persist();
+    if (!mounted) return;
+    _showMessage(nextTurn.bookmarked ? '已设为书签，可在右侧导航条快速跳转。' : '已取消书签。');
+  }
+
   Widget _buildConversationBody(_ChatSession? active) {
     final allTurns = active?.turns ?? const <_ChatTurn>[];
-    final agentResultTurn = _agentTrace.isNotEmpty && allTurns.isNotEmpty && _isAgentResultTurn(allTurns.last.content)
+    final finalResultTurn = allTurns.isNotEmpty && allTurns.last.role == 'assistant' && _isFinalResultTurn(allTurns.last.content)
         ? allTurns.last
         : null;
-    final conversationTurns = agentResultTurn == null ? allTurns : allTurns.sublist(0, allTurns.length - 1);
+    final conversationTurns = finalResultTurn == null ? allTurns : allTurns.sublist(0, allTurns.length - 1);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -10747,15 +11111,19 @@ class _ChatPanelState extends State<_ChatPanel> {
                 : Column(
                     children: [
                       for (var index = 0; index < conversationTurns.length; index++) ...[
-                        _ChatBubble(
-                          turn: conversationTurns[index],
-                          onOpenArtifactCode: _openArtifactCode,
-                          onPreviewArtifact: _previewArtifact,
-                          onOpenArtifactBrowser: _openArtifactInBrowser,
-                          onDeployArtifactPages: _deployArtifactToGitHubPages,
-                          onCopyArtifactPath: _copyArtifactPath,
-                          onOpenArtifactFolder: _openArtifactFolder,
-                          browserOpenMode: widget.browserOpenMode,
+                        KeyedSubtree(
+                          key: _keyForTurn(conversationTurns[index], index),
+                          child: _ChatBubble(
+                            turn: conversationTurns[index],
+                            onOpenArtifactCode: _openArtifactCode,
+                            onPreviewArtifact: _previewArtifact,
+                            onOpenArtifactBrowser: _openArtifactInBrowser,
+                            onDeployArtifactPages: _deployArtifactToGitHubPages,
+                            onCopyArtifactPath: _copyArtifactPath,
+                            onOpenArtifactFolder: _openArtifactFolder,
+                            onToggleBookmark: () => unawaited(_toggleTurnBookmark(index)),
+                            browserOpenMode: widget.browserOpenMode,
+                          ),
                         ),
                         if (index != conversationTurns.length - 1) const SizedBox(height: 10),
                       ],
@@ -10788,7 +11156,7 @@ class _ChatPanelState extends State<_ChatPanel> {
             onEdit: () => unawaited(_editRoleProposal(_activeRunProposal!)),
           ),
         ],
-        if (agentResultTurn != null) ...[
+        if (finalResultTurn != null) ...[
           const SizedBox(height: 12),
           _Panel(
             padding: const EdgeInsets.all(12),
@@ -10805,15 +11173,19 @@ class _ChatPanelState extends State<_ChatPanel> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                _ChatBubble(
-                  turn: agentResultTurn,
-                  onOpenArtifactCode: _openArtifactCode,
-                  onPreviewArtifact: _previewArtifact,
-                  onOpenArtifactBrowser: _openArtifactInBrowser,
-                  onDeployArtifactPages: _deployArtifactToGitHubPages,
-                  onCopyArtifactPath: _copyArtifactPath,
-                  onOpenArtifactFolder: _openArtifactFolder,
-                  browserOpenMode: widget.browserOpenMode,
+                KeyedSubtree(
+                  key: _keyForTurn(finalResultTurn, allTurns.length - 1),
+                  child: _ChatBubble(
+                    turn: finalResultTurn,
+                    onOpenArtifactCode: _openArtifactCode,
+                    onPreviewArtifact: _previewArtifact,
+                    onOpenArtifactBrowser: _openArtifactInBrowser,
+                    onDeployArtifactPages: _deployArtifactToGitHubPages,
+                    onCopyArtifactPath: _copyArtifactPath,
+                    onOpenArtifactFolder: _openArtifactFolder,
+                    onToggleBookmark: () => unawaited(_toggleTurnBookmark(allTurns.length - 1)),
+                    browserOpenMode: widget.browserOpenMode,
+                  ),
                 ),
               ],
             ),
@@ -10823,8 +11195,8 @@ class _ChatPanelState extends State<_ChatPanel> {
     );
   }
 
-  Widget _buildComposer(_ApiFlavor flavor) {
-    final status = _voiceHelperText(flavor, widget.model, _voiceState);
+  Widget _buildComposer() {
+    final voiceActive = _voiceState == VoiceState.listening || _voiceService.isListening;
     return Container(
       decoration: BoxDecoration(
         color: _panel,
@@ -10857,16 +11229,9 @@ class _ChatPanelState extends State<_ChatPanel> {
                 ),
               ],
             ),
-            const SizedBox(height: 5),
-            Text(
-              status,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _faint, fontSize: 10.5),
-            ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 7),
             Container(
-              padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+              padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
               decoration: BoxDecoration(
                 color: _panelSoft,
                 borderRadius: BorderRadius.circular(18),
@@ -10879,18 +11244,19 @@ class _ChatPanelState extends State<_ChatPanel> {
                     child: TextField(
                       controller: _promptController,
                       minLines: 1,
-                      maxLines: 2,
+                      maxLines: 3,
                       textInputAction: TextInputAction.newline,
-                      style: const TextStyle(color: _text, fontSize: 14.5, height: 1.25),
-                      decoration: InputDecoration.collapsed(
-                        hintText: _voiceService.isListening ? '正在听...' : '发消息或描述要构建的网页...',
-                        hintStyle: const TextStyle(color: _faint, fontSize: 14.5),
+                      style: const TextStyle(color: _text, fontSize: 14.5, height: 1.35),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(vertical: 10),
                       ),
                     ),
                   ),
                   const SizedBox(width: 6),
                   _VoiceInputButton(
-                    enabled: !_sending && !_agentRunning,
+                    enabled: !_sending && (!_agentRunning || voiceActive),
                     available: _voiceAvailable,
                     state: _voiceState,
                     onTap: _toggleVoiceInput,
@@ -10908,27 +11274,21 @@ class _ChatPanelState extends State<_ChatPanel> {
                         ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.send_outlined, size: 20),
                   ),
-                  const SizedBox(width: 4),
-                  IconButton.outlined(
-                    tooltip: _agentRunning
-                        ? (_agentStopping ? 'Stopping agent' : 'Pause agent run')
-                        : 'Run agent',
-                    style: IconButton.styleFrom(
-                      minimumSize: const Size(42, 42),
-                      padding: EdgeInsets.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  if (_agentRunning) ...[
+                    const SizedBox(width: 4),
+                    IconButton.outlined(
+                      tooltip: _agentStopping ? 'Stopping agent' : 'Pause agent run',
+                      style: IconButton.styleFrom(
+                        minimumSize: const Size(42, 42),
+                        padding: EdgeInsets.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      onPressed: _agentStopping ? null : _cancelAgentRun,
+                      icon: _agentStopping
+                          ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.pause_circle_outline, size: 20),
                     ),
-                    onPressed: _sending
-                        ? null
-                        : _agentRunning
-                            ? (_agentStopping ? null : _cancelAgentRun)
-                            : _runAgent,
-                    icon: _agentRunning
-                        ? _agentStopping
-                            ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.pause_circle_outline, size: 20)
-                        : const Icon(Icons.psychology_alt_outlined, size: 20),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -10949,6 +11309,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   Widget build(BuildContext context) {
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
     final active = _activeSession;
+    final navEntries = _conversationNavEntries(active);
     if (_loading) {
       return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
     }
@@ -10965,7 +11326,7 @@ class _ChatPanelState extends State<_ChatPanel> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildChatHeader(active),
+                      _buildChatHeader(),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 16),
                         child: _buildConversationBody(active),
@@ -10981,10 +11342,28 @@ class _ChatPanelState extends State<_ChatPanel> {
                       onTap: () => _scrollConversationToEnd(force: true),
                     ),
                   ),
+                if (navEntries.length >= 2)
+                  Positioned(
+                    right: 4,
+                    top: 36,
+                    bottom: 76,
+                    child: _ConversationMinimapRail(
+                      entries: navEntries,
+                      activeIndex: _activeNavIndex(navEntries.length),
+                      onTap: _jumpToNavEntry,
+                      onPreview: _showNavPreview,
+                    ),
+                  ),
+                if (_navPreview != null)
+                  Positioned(
+                    right: 34,
+                    top: 70,
+                    child: _ConversationMinimapPreview(entry: _navPreview!.entry),
+                  ),
               ],
             ),
           ),
-          _buildComposer(flavor),
+          _buildComposer(),
         ],
       );
     }
@@ -10995,11 +11374,11 @@ class _ChatPanelState extends State<_ChatPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildChatHeader(active),
+          _buildChatHeader(),
           const SizedBox(height: 12),
           _buildConversationBody(active),
           const SizedBox(height: 12),
-          _buildComposer(flavor),
+          _buildComposer(),
         ],
       ),
     );
@@ -11035,6 +11414,205 @@ class _JumpToBottomButton extends StatelessWidget {
               Text('到底部', style: TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900)),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+enum _ChatNavKind { prompt, result, code, publish, bookmark }
+
+class _ChatNavEntry {
+  const _ChatNavEntry({
+    required this.id,
+    required this.number,
+    required this.kind,
+    required this.preview,
+  });
+
+  final String id;
+  final int number;
+  final _ChatNavKind kind;
+  final String preview;
+
+  bool get isKeyResult =>
+      kind == _ChatNavKind.result || kind == _ChatNavKind.code || kind == _ChatNavKind.publish;
+}
+
+class _ChatNavPreview {
+  const _ChatNavPreview(this.entry);
+
+  final _ChatNavEntry entry;
+}
+
+class _ConversationMinimapRail extends StatelessWidget {
+  const _ConversationMinimapRail({
+    required this.entries,
+    required this.activeIndex,
+    required this.onTap,
+    required this.onPreview,
+  });
+
+  final List<_ChatNavEntry> entries;
+  final int? activeIndex;
+  final ValueChanged<_ChatNavEntry> onTap;
+  final ValueChanged<_ChatNavEntry> onPreview;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxHeight = constraints.maxHeight.isFinite ? constraints.maxHeight : 260.0;
+          final itemHeight = entries.isEmpty ? 8.0 : (maxHeight / entries.length).clamp(4.0, 12.0).toDouble();
+          return Container(
+            width: 24,
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var index = 0; index < entries.length; index++)
+                  _ConversationMinimapItem(
+                    entry: entries[index],
+                    active: index == activeIndex,
+                    height: itemHeight,
+                    compact: itemHeight < 7,
+                    onTap: onTap,
+                    onPreview: onPreview,
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ConversationMinimapItem extends StatelessWidget {
+  const _ConversationMinimapItem({
+    required this.entry,
+    required this.active,
+    required this.height,
+    required this.compact,
+    required this.onTap,
+    required this.onPreview,
+  });
+
+  final _ChatNavEntry entry;
+  final bool active;
+  final double height;
+  final bool compact;
+  final ValueChanged<_ChatNavEntry> onTap;
+  final ValueChanged<_ChatNavEntry> onPreview;
+
+  @override
+  Widget build(BuildContext context) {
+    final baseColor = switch (entry.kind) {
+      _ChatNavKind.result => _mint,
+      _ChatNavKind.code => _violet,
+      _ChatNavKind.publish => _cyan,
+      _ChatNavKind.bookmark => _amber,
+      _ChatNavKind.prompt => _line,
+    };
+    final color = active ? _blue : baseColor;
+    return MouseRegion(
+      onEnter: (_) => onPreview(entry),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => onTap(entry),
+        onLongPress: () => onPreview(entry),
+        child: SizedBox(
+          width: 24,
+          height: height,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              width: active ? 21 : entry.isKeyResult ? 17 : (compact ? 8 : 12),
+              height: active ? 3.5 : entry.isKeyResult ? 3 : (compact ? 2 : 2.5),
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: active
+                    ? [
+                        BoxShadow(
+                          color: _blue.withOpacity(0.24),
+                          blurRadius: 8,
+                        ),
+                      ]
+                    : null,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ConversationMinimapPreview extends StatelessWidget {
+  const _ConversationMinimapPreview({required this.entry});
+
+  final _ChatNavEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final markerColor = switch (entry.kind) {
+      _ChatNavKind.publish => _cyan,
+      _ChatNavKind.code => _violet,
+      _ChatNavKind.result => _mint,
+      _ChatNavKind.bookmark => _amber,
+      _ChatNavKind.prompt => _blue,
+    };
+    final markerLabel = switch (entry.kind) {
+      _ChatNavKind.publish => '发布 ${entry.number}',
+      _ChatNavKind.code => '代码 ${entry.number}',
+      _ChatNavKind.result => '结果 ${entry.number}',
+      _ChatNavKind.bookmark => '书签 ${entry.number}',
+      _ChatNavKind.prompt => '#${entry.number}',
+    };
+    return Material(
+      color: Colors.transparent,
+      child: Container(
+        width: 230,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _panel,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _line),
+          boxShadow: [
+            BoxShadow(
+              color: _blue.withOpacity(0.12),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+              decoration: BoxDecoration(
+                color: markerColor.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                markerLabel,
+                style: TextStyle(color: markerColor, fontSize: 12, fontWeight: FontWeight.w900),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              entry.preview,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _text, fontSize: 12.5, height: 1.35),
+            ),
+          ],
         ),
       ),
     );
@@ -11231,6 +11809,7 @@ class _ChatBubble extends StatelessWidget {
     required this.onDeployArtifactPages,
     required this.onCopyArtifactPath,
     required this.onOpenArtifactFolder,
+    required this.onToggleBookmark,
     required this.browserOpenMode,
   });
 
@@ -11241,6 +11820,7 @@ class _ChatBubble extends StatelessWidget {
   final ValueChanged<String> onDeployArtifactPages;
   final ValueChanged<String> onCopyArtifactPath;
   final ValueChanged<String> onOpenArtifactFolder;
+  final VoidCallback onToggleBookmark;
   final String browserOpenMode;
 
   @override
@@ -11251,7 +11831,10 @@ class _ChatBubble extends StatelessWidget {
     final artifactPath = isUser ? null : _artifactPathFromContent(turn.content);
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onLongPress: onToggleBookmark,
+        child: Container(
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * (isUser ? 0.78 : 0.92)),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -11263,9 +11846,18 @@ class _ChatBubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              isUser ? 'You' : 'MobileCode',
-              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  isUser ? 'You' : 'MobileCode',
+                  style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900),
+                ),
+                if (turn.bookmarked) ...[
+                  const SizedBox(width: 6),
+                  const Icon(Icons.bookmark_rounded, color: _amber, size: 14),
+                ],
+              ],
             ),
             const SizedBox(height: 6),
             if (published != null)
@@ -11278,13 +11870,7 @@ class _ChatBubble extends StatelessWidget {
                 onCopyPath: () => onCopyArtifactPath(published.artifactPath),
                 onOpenFolder: () => onOpenArtifactFolder(published.artifactPath),
               )
-            else
-              SelectableText(
-                turn.content,
-                style: const TextStyle(color: _text, height: 1.42, fontSize: 13),
-              ),
-            if (published == null && artifactPath != null) ...[
-              const SizedBox(height: 10),
+            else if (artifactPath != null) ...[
               _GeneratedArtifactActions(
                 path: artifactPath,
                 onOpenCode: () => onOpenArtifactCode(artifactPath),
@@ -11294,10 +11880,125 @@ class _ChatBubble extends StatelessWidget {
                 onCopyPath: () => onCopyArtifactPath(artifactPath),
                 onOpenFolder: () => onOpenArtifactFolder(artifactPath),
               ),
-            ],
+              const SizedBox(height: 10),
+              _AssistantContentView(content: turn.content, isUser: isUser),
+            ] else
+              _AssistantContentView(content: turn.content, isUser: isUser),
           ],
         ),
+        ),
       ),
+    );
+  }
+}
+
+class _AssistantContentView extends StatefulWidget {
+  const _AssistantContentView({
+    required this.content,
+    required this.isUser,
+  });
+
+  final String content;
+  final bool isUser;
+
+  @override
+  State<_AssistantContentView> createState() => _AssistantContentViewState();
+}
+
+class _AssistantContentViewState extends State<_AssistantContentView> {
+  bool _expanded = false;
+  final ScrollController _codeScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _codeScrollController.dispose();
+    super.dispose();
+  }
+
+  bool get _shouldCollapse {
+    if (widget.isUser) return false;
+    return widget.content.length > 1800 ||
+        widget.content.contains('```') ||
+        widget.content.contains('<!DOCTYPE html') ||
+        widget.content.contains('<html');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final shouldCollapse = _shouldCollapse;
+    final content = shouldCollapse && !_expanded ? _compact(widget.content, limit: 900) : widget.content;
+    final text = SelectableText(
+      content,
+      style: const TextStyle(color: _text, height: 1.42, fontSize: 13),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (shouldCollapse && _expanded)
+          Container(
+            constraints: const BoxConstraints(maxHeight: 360),
+            decoration: BoxDecoration(
+              color: _bg.withOpacity(0.28),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: _line),
+            ),
+            child: Scrollbar(
+              controller: _codeScrollController,
+              thumbVisibility: true,
+              child: SingleChildScrollView(
+                controller: _codeScrollController,
+                padding: const EdgeInsets.all(10),
+                child: text,
+              ),
+            ),
+          )
+        else
+          text,
+        if (shouldCollapse) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => setState(() => _expanded = !_expanded),
+                icon: Icon(_expanded ? Icons.unfold_less_outlined : Icons.unfold_more_outlined, size: 16),
+                label: Text(_expanded ? '折叠代码/全文' : '展开代码/全文'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _blue,
+                  side: BorderSide(color: _blue.withOpacity(0.35)),
+                  visualDensity: VisualDensity.compact,
+                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: () {
+                  unawaited(Clipboard.setData(ClipboardData(text: widget.content)));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('已复制完整代码/全文')),
+                  );
+                },
+                icon: const Icon(Icons.copy_all_outlined, size: 16),
+                label: const Text('复制全文'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _mint,
+                  side: BorderSide(color: _mint.withOpacity(0.35)),
+                  visualDensity: VisualDensity.compact,
+                  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                ),
+              ),
+              if (_expanded)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    '完整查看请使用上方“代码文件 / 网页预览 / 浏览器打开”。',
+                    style: TextStyle(color: _faint, fontSize: 11.5, height: 1.3),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }
@@ -11825,8 +12526,10 @@ class _CompactAgentModeToggle extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(enabled ? Icons.groups_2_outlined : Icons.person_outline, color: color, size: 16),
-              const SizedBox(width: 5),
+              if (enabled) ...[
+                Icon(Icons.groups_2_outlined, color: color, size: 16),
+                const SizedBox(width: 5),
+              ],
               Text(
                 enabled ? 'RR' : 'Chat',
                 style: TextStyle(color: enabled ? _text : _muted, fontSize: 11.5, fontWeight: FontWeight.w900),
@@ -12128,18 +12831,6 @@ class _VoiceInputButton extends StatelessWidget {
       ),
     );
   }
-}
-
-String _voiceHelperText(_ApiFlavor flavor, String model, VoiceState state) {
-  final modelLabel = model.isEmpty ? 'default model' : model;
-  final voiceLabel = switch (state) {
-    VoiceState.listening => 'voice listening',
-    VoiceState.processing => 'voice processing',
-    VoiceState.done => 'voice ready',
-    VoiceState.error => 'voice unavailable',
-    VoiceState.idle => 'voice ready',
-  };
-  return '${_flavorLabel(flavor)} - $modelLabel - $voiceLabel';
 }
 
 class _DraftSheet extends StatefulWidget {
@@ -12827,10 +13518,10 @@ class _InlineStatus extends StatelessWidget {
   }
 }
 
-class _MiniAgentToolRegistry extends StatelessWidget {
-  const _MiniAgentToolRegistry({required this.tools});
+class _LocalToolRegistry extends StatelessWidget {
+  const _LocalToolRegistry({required this.tools});
 
-  final List<_MiniAgentToolSpec> tools;
+  final List<_LocalToolSpec> tools;
 
   @override
   Widget build(BuildContext context) {
@@ -12866,7 +13557,7 @@ class _MiniAgentToolRegistry extends StatelessWidget {
                   crossAxisSpacing: 8,
                   mainAxisSpacing: 8,
                 ),
-                itemBuilder: (context, index) => _MiniAgentToolTile(tool: tools[index]),
+                itemBuilder: (context, index) => _LocalToolTile(tool: tools[index]),
               );
             },
           ),
@@ -12876,10 +13567,10 @@ class _MiniAgentToolRegistry extends StatelessWidget {
   }
 }
 
-class _MiniAgentToolTile extends StatelessWidget {
-  const _MiniAgentToolTile({required this.tool});
+class _LocalToolTile extends StatelessWidget {
+  const _LocalToolTile({required this.tool});
 
-  final _MiniAgentToolSpec tool;
+  final _LocalToolSpec tool;
 
   @override
   Widget build(BuildContext context) {
@@ -12931,21 +13622,21 @@ class _MiniAgentToolTile extends StatelessWidget {
   }
 }
 
-class _MiniAgentConsole extends StatelessWidget {
-  const _MiniAgentConsole({
+class _LocalToolTranscript extends StatelessWidget {
+  const _LocalToolTranscript({
     required this.events,
     required this.running,
     required this.controller,
   });
 
-  final List<_MiniAgentEvent> events;
+  final List<_LocalToolEvent> events;
   final bool running;
   final ScrollController controller;
 
   @override
   Widget build(BuildContext context) {
-    final toolCalls = events.where((event) => event.kind == _MiniAgentEventKind.toolCall).length;
-    final observations = events.where((event) => event.kind == _MiniAgentEventKind.observation).length;
+    final toolCalls = events.where((event) => event.kind == _LocalToolEventKind.toolCall).length;
+    final observations = events.where((event) => event.kind == _LocalToolEventKind.observation).length;
     return _Panel(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -12982,12 +13673,12 @@ class _MiniAgentConsole extends StatelessWidget {
           SizedBox(
             height: events.isEmpty ? 178 : 390,
             child: events.isEmpty
-                ? const _MiniAgentEmptyConsole()
+                ? const _LocalToolEmptyTranscript()
                 : ListView.separated(
                     controller: controller,
                     itemCount: events.length,
                     separatorBuilder: (context, index) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) => _MiniAgentEventCard(event: events[index]),
+                    itemBuilder: (context, index) => _LocalToolEventCard(event: events[index]),
                   ),
           ),
         ],
@@ -12996,8 +13687,8 @@ class _MiniAgentConsole extends StatelessWidget {
   }
 }
 
-class _MiniAgentEmptyConsole extends StatelessWidget {
-  const _MiniAgentEmptyConsole();
+class _LocalToolEmptyTranscript extends StatelessWidget {
+  const _LocalToolEmptyTranscript();
 
   @override
   Widget build(BuildContext context) {
@@ -13015,7 +13706,7 @@ class _MiniAgentEmptyConsole extends StatelessWidget {
           Icon(Icons.play_circle_outline, color: _faint, size: 34),
           SizedBox(height: 10),
           Text(
-            'Run the mini agent to watch thinking, tool calls, file writes, diff, and preview setup appear here.',
+            'Run the local tool test to watch tool calls, file writes, diff, and preview setup appear here.',
             textAlign: TextAlign.center,
             style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
           ),
@@ -13025,17 +13716,17 @@ class _MiniAgentEmptyConsole extends StatelessWidget {
   }
 }
 
-class _MiniAgentEventCard extends StatelessWidget {
-  const _MiniAgentEventCard({required this.event});
+class _LocalToolEventCard extends StatelessWidget {
+  const _LocalToolEventCard({required this.event});
 
-  final _MiniAgentEvent event;
+  final _LocalToolEvent event;
 
   @override
   Widget build(BuildContext context) {
-    final color = _miniAgentEventColor(event);
-    final isCodeLike = event.kind == _MiniAgentEventKind.fileWrite ||
-        event.kind == _MiniAgentEventKind.diff ||
-        event.kind == _MiniAgentEventKind.toolCall;
+    final color = _localToolEventColor(event);
+    final isCodeLike = event.kind == _LocalToolEventKind.fileWrite ||
+        event.kind == _LocalToolEventKind.diff ||
+        event.kind == _LocalToolEventKind.toolCall;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -13048,7 +13739,7 @@ class _MiniAgentEventCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(_miniAgentEventIcon(event), color: color, size: 18),
+              Icon(_localToolEventIcon(event), color: color, size: 18),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -13879,6 +14570,14 @@ class _AgentTraceRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
                     ),
+                    if (step.details.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      _AgentTraceInlineDetails(
+                        details: step.details,
+                        color: color,
+                        initiallyExpanded: step.title == 'Call model provider',
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -13891,6 +14590,82 @@ class _AgentTraceRow extends StatelessWidget {
     );
   }
 
+}
+
+class _AgentTraceInlineDetails extends StatefulWidget {
+  const _AgentTraceInlineDetails({
+    required this.details,
+    required this.color,
+    this.initiallyExpanded = false,
+  });
+
+  final Map<String, String> details;
+  final Color color;
+  final bool initiallyExpanded;
+
+  @override
+  State<_AgentTraceInlineDetails> createState() => _AgentTraceInlineDetailsState();
+}
+
+class _AgentTraceInlineDetailsState extends State<_AgentTraceInlineDetails> {
+  late bool _expanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _expanded = widget.initiallyExpanded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleEntries = widget.details.entries
+        .where((entry) => entry.value.trim().isNotEmpty)
+        .toList(growable: false);
+    if (visibleEntries.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: _panel.withOpacity(0.68),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: widget.color.withOpacity(0.22)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: _expanded,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 10),
+          childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          visualDensity: VisualDensity.compact,
+          onExpansionChanged: (value) => setState(() => _expanded = value),
+          leading: Icon(Icons.account_tree_outlined, color: widget.color, size: 16),
+          title: Text(
+            _expanded ? 'Hide provider/local tool details' : 'Show provider/local tool details',
+            style: const TextStyle(color: _text, fontSize: 11.5, fontWeight: FontWeight.w900),
+          ),
+          children: [
+            for (final entry in visibleEntries) ...[
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  entry.key,
+                  style: TextStyle(color: widget.color, fontSize: 11, fontWeight: FontWeight.w900),
+                ),
+              ),
+              const SizedBox(height: 3),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: SelectableText(
+                  entry.value,
+                  style: const TextStyle(color: _muted, fontSize: 11, height: 1.34),
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _AgentTraceAvatar extends StatelessWidget {
@@ -14046,33 +14821,33 @@ Color _agentStepColor(_AgentStepState state) {
   };
 }
 
-Color _miniAgentEventColor(_MiniAgentEvent event) {
-  if (!event.ok || event.kind == _MiniAgentEventKind.error) return _rose;
+Color _localToolEventColor(_LocalToolEvent event) {
+  if (!event.ok || event.kind == _LocalToolEventKind.error) return _rose;
   return switch (event.kind) {
-    _MiniAgentEventKind.system => _cyan,
-    _MiniAgentEventKind.thought => _violet,
-    _MiniAgentEventKind.toolCall => _amber,
-    _MiniAgentEventKind.observation => _mint,
-    _MiniAgentEventKind.fileWrite => _blue,
-    _MiniAgentEventKind.diff => _lime,
-    _MiniAgentEventKind.preview => _violet,
-    _MiniAgentEventKind.finalAnswer => _mint,
-    _MiniAgentEventKind.error => _rose,
+    _LocalToolEventKind.system => _cyan,
+    _LocalToolEventKind.thought => _violet,
+    _LocalToolEventKind.toolCall => _amber,
+    _LocalToolEventKind.observation => _mint,
+    _LocalToolEventKind.fileWrite => _blue,
+    _LocalToolEventKind.diff => _lime,
+    _LocalToolEventKind.preview => _violet,
+    _LocalToolEventKind.finalAnswer => _mint,
+    _LocalToolEventKind.error => _rose,
   };
 }
 
-IconData _miniAgentEventIcon(_MiniAgentEvent event) {
-  if (!event.ok || event.kind == _MiniAgentEventKind.error) return Icons.error_outline;
+IconData _localToolEventIcon(_LocalToolEvent event) {
+  if (!event.ok || event.kind == _LocalToolEventKind.error) return Icons.error_outline;
   return switch (event.kind) {
-    _MiniAgentEventKind.system => Icons.memory_outlined,
-    _MiniAgentEventKind.thought => Icons.psychology_alt_outlined,
-    _MiniAgentEventKind.toolCall => Icons.play_circle_outline,
-    _MiniAgentEventKind.observation => Icons.check_circle_outline,
-    _MiniAgentEventKind.fileWrite => Icons.edit_note_outlined,
-    _MiniAgentEventKind.diff => Icons.compare_arrows_outlined,
-    _MiniAgentEventKind.preview => Icons.preview_outlined,
-    _MiniAgentEventKind.finalAnswer => Icons.task_alt_outlined,
-    _MiniAgentEventKind.error => Icons.error_outline,
+    _LocalToolEventKind.system => Icons.memory_outlined,
+    _LocalToolEventKind.thought => Icons.psychology_alt_outlined,
+    _LocalToolEventKind.toolCall => Icons.play_circle_outline,
+    _LocalToolEventKind.observation => Icons.check_circle_outline,
+    _LocalToolEventKind.fileWrite => Icons.edit_note_outlined,
+    _LocalToolEventKind.diff => Icons.compare_arrows_outlined,
+    _LocalToolEventKind.preview => Icons.preview_outlined,
+    _LocalToolEventKind.finalAnswer => Icons.task_alt_outlined,
+    _LocalToolEventKind.error => Icons.error_outline,
   };
 }
 
@@ -14122,7 +14897,7 @@ String _focusTitle(_HomeTab tab) {
 
 String _focusSubtitle(_HomeTab tab) {
   return switch (tab) {
-    _HomeTab.control => 'Provider, mini agent, GitHub, Runtime, and local demo surfaces stay one tap away.',
+    _HomeTab.control => 'Provider, local tool test, GitHub, Runtime, and demo surfaces stay one tap away.',
     _HomeTab.ai => 'Persistent chat plus visible tool traces for phone-first coding.',
     _HomeTab.ship => 'GitHub Release, Android APK, iOS simulator build, Pages, and preview paths.',
     _HomeTab.guard => 'Provider health, tool probes, install checks, and local storage checks.',
@@ -14172,7 +14947,7 @@ _ModuleAction _focusSecondaryAction(_HomeTab tab) {
 
 String _focusPrimaryLabel(_HomeTab tab) {
   return switch (tab) {
-    _HomeTab.control => 'Run mini agent',
+    _HomeTab.control => 'Run local test',
     _HomeTab.ai => 'Open AI chat',
     _HomeTab.ship => 'Open release tools',
     _HomeTab.guard => 'Check provider health',

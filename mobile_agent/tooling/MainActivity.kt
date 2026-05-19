@@ -21,15 +21,18 @@ import java.io.File
 class MainActivity : FlutterActivity() {
     private var lastCpuTotal: Long? = null
     private var lastCpuIdle: Long? = null
+    private var pendingDeepLink: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        captureDeepLink(intent)
         maybeStartHelperFromIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        captureDeepLink(intent)
         maybeStartHelperFromIntent(intent)
     }
 
@@ -75,6 +78,11 @@ class MainActivity : FlutterActivity() {
                 }
                 "getDeviceTelemetry" -> {
                     result.success(deviceTelemetry())
+                }
+                "consumeInitialDeepLink" -> {
+                    val link = pendingDeepLink
+                    pendingDeepLink = null
+                    result.success(link)
                 }
                 else -> result.notImplemented()
             }
@@ -235,6 +243,14 @@ class MainActivity : FlutterActivity() {
         if (intent?.getBooleanExtra(EXTRA_START_HELPER, false) == true) {
             Log.i(TAG, "mobilecode_start_helper intent received")
             startHelperService()
+        }
+    }
+
+    private fun captureDeepLink(intent: Intent?) {
+        val data = intent?.dataString
+        if (!data.isNullOrBlank()) {
+            Log.i(TAG, "Captured deep link: $data")
+            pendingDeepLink = data
         }
     }
 

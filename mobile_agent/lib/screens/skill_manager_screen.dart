@@ -8,8 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../models/skill_model.dart';
 import '../providers/skill_provider.dart';
+import '../services/model_provider_polish_service.dart';
 import '../services/skill_manager_service.dart';
-import 'mcp_manager_screen.dart';
 
 enum _SkillDiscoverySource { github, curated }
 
@@ -20,9 +20,8 @@ enum _SkillDiscoverySource { github, curated }
 /// Skill Manager Screen
 ///
 /// Tabbed interface:
-/// - 已安装: Installed skills list with enable/disable toggle
+/// - 已装载: Loaded skills list with enable/disable toggle
 /// - 发现: Skill marketplace (GitHub skills browser)
-/// - MCP: MCP server management overview
 ///
 /// Each skill card:
 /// - Icon + Name + Version
@@ -43,13 +42,18 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _githubUrlController = TextEditingController();
+  final TextEditingController _customSkillNameController = TextEditingController();
+  final TextEditingController _customSkillDescriptionController = TextEditingController();
+  final TextEditingController _customSkillTagsController = TextEditingController();
+  final TextEditingController _customSkillActionsController = TextEditingController();
+  final TextEditingController _customSkillPromptsController = TextEditingController();
   _SkillDiscoverySource _discoverySource = _SkillDiscoverySource.github;
   bool _isSearching = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
       ref.read(skillTabIndexProvider.notifier).state = _tabController.index;
       setState(() {});
@@ -70,6 +74,11 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
     _tabController.dispose();
     _searchController.dispose();
     _githubUrlController.dispose();
+    _customSkillNameController.dispose();
+    _customSkillDescriptionController.dispose();
+    _customSkillTagsController.dispose();
+    _customSkillActionsController.dispose();
+    _customSkillPromptsController.dispose();
     super.dispose();
   }
 
@@ -97,6 +106,11 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          IconButton(
+            tooltip: '自定义技能',
+            icon: const Icon(Icons.add_circle_outline, color: AppTheme.primary, size: 21),
+            onPressed: _showCustomSkillSheet,
+          ),
           // Stats badge
           Center(
             child: _buildStatsBadge(),
@@ -128,9 +142,8 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
                 fontWeight: FontWeight.w500,
               ),
               tabs: const [
-                Tab(text: '已安装'),
+                Tab(text: '已装载'),
                 Tab(text: '发现'),
-                Tab(text: 'MCP'),
               ],
             ),
           ),
@@ -143,26 +156,67 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
           _buildInstalledTab(),
           // Tab 2: Discover (marketplace)
           _buildDiscoverTab(),
-          // Tab 3: MCP overview
-          const McpManagerScreen(),
         ],
       ),
-      floatingActionButton: tabIndex == 1
-          ? FloatingActionButton.extended(
-              onPressed: _showGitHubImportSheet,
-              backgroundColor: AppTheme.primary,
-              icon: const Icon(Icons.code, color: AppTheme.textOnPrimary, size: 20),
-              label: const Text(
-                'GitHub 导入',
-                style: TextStyle(
-                  fontFamily: AppTheme.fontBody,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textOnPrimary,
-                ),
+      floatingActionButton: _buildSkillFab(tabIndex),
+    );
+  }
+
+  Widget? _buildSkillFab(int tabIndex) {
+    if (tabIndex == 1) {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.extended(
+            heroTag: 'custom-skill-fab',
+            onPressed: _showCustomSkillSheet,
+            backgroundColor: AppTheme.accent,
+            icon: const Icon(Icons.add, color: AppTheme.background, size: 20),
+            label: const Text(
+              '自定义技能',
+              style: TextStyle(
+                fontFamily: AppTheme.fontBody,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.background,
               ),
-            )
-          : null,
+            ),
+          ),
+          const SizedBox(height: 10),
+          FloatingActionButton.extended(
+            heroTag: 'github-skill-fab',
+            onPressed: _showGitHubImportSheet,
+            backgroundColor: AppTheme.primary,
+            icon: const Icon(Icons.code, color: AppTheme.textOnPrimary, size: 20),
+            label: const Text(
+              'GitHub 导入',
+              style: TextStyle(
+                fontFamily: AppTheme.fontBody,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textOnPrimary,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return FloatingActionButton.extended(
+      heroTag: 'custom-skill-installed-fab',
+      onPressed: _showCustomSkillSheet,
+      backgroundColor: AppTheme.accent,
+      icon: const Icon(Icons.add, color: AppTheme.background, size: 20),
+      label: const Text(
+        '自定义技能',
+        style: TextStyle(
+          fontFamily: AppTheme.fontBody,
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: AppTheme.background,
+        ),
+      ),
     );
   }
 
@@ -199,8 +253,8 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
     if (installed.isEmpty) {
       return _buildEmptyState(
         icon: Icons.extension_off_outlined,
-        title: '暂无已安装技能',
-        subtitle: '前往「发现」标签浏览并安装技能',
+        title: '暂无已装载技能',
+        subtitle: '前往「发现」标签浏览并装载技能',
       );
     }
 
@@ -388,6 +442,277 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
   // ═══════════════════════════════════════════════════════════════════════
   // GitHub Import Flow
   // ═══════════════════════════════════════════════════════════════════════
+
+  void _showCustomSkillSheet() {
+    _customSkillNameController.clear();
+    _customSkillDescriptionController.clear();
+    _customSkillTagsController.text = 'custom, mobilecode';
+    _customSkillActionsController.clear();
+    _customSkillPromptsController.clear();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+            left: 20,
+            right: 20,
+            top: 20,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppTheme.textTertiary.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Row(
+                  children: [
+                    Icon(Icons.add_circle_outline, color: AppTheme.accent, size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '自定义技能',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontBody,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '把常用 prompt、动作入口或工作习惯注册成轻量 Skill。保存前不会执行任何代码。',
+                  style: TextStyle(
+                    fontFamily: AppTheme.fontBody,
+                    fontSize: 13,
+                    height: 1.35,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _CustomSkillField(
+                  controller: _customSkillNameController,
+                  label: '技能名称',
+                  hint: '例如：移动端 HTML 打磨助手',
+                  icon: Icons.badge_outlined,
+                ),
+                const SizedBox(height: 10),
+                _CustomSkillField(
+                  controller: _customSkillDescriptionController,
+                  label: '一句话描述 / 用户意图',
+                  hint: '描述这个技能应该帮你做什么',
+                  icon: Icons.notes_outlined,
+                  maxLines: 3,
+                ),
+                const SizedBox(height: 10),
+                _CustomSkillField(
+                  controller: _customSkillTagsController,
+                  label: '标签',
+                  hint: 'custom, html, ui',
+                  icon: Icons.sell_outlined,
+                ),
+                const SizedBox(height: 10),
+                _CustomSkillField(
+                  controller: _customSkillActionsController,
+                  label: '动作 ID（可选，逗号分隔）',
+                  hint: 'html.polish, github.pages.publish',
+                  icon: Icons.bolt_outlined,
+                ),
+                const SizedBox(height: 10),
+                _CustomSkillField(
+                  controller: _customSkillPromptsController,
+                  label: 'Prompt ID（可选，逗号分隔）',
+                  hint: 'mobile_html_review',
+                  icon: Icons.chat_bubble_outline,
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _polishCustomSkillDraft(),
+                        icon: const Icon(Icons.auto_awesome_outlined, size: 17),
+                        label: const Text('AI 润色草案'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => _saveCustomSkill(context),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.accent,
+                          foregroundColor: AppTheme.background,
+                          elevation: 0,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        icon: const Icon(Icons.save_outlined, size: 17),
+                        label: const Text(
+                          '装载 Skill',
+                          style: TextStyle(
+                            fontFamily: AppTheme.fontBody,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _polishCustomSkillDraft() async {
+    final draft = SkillPolishDraft(
+      name: _customSkillNameController.text.trim(),
+      description: _customSkillDescriptionController.text.trim(),
+      tags: _parseCsv(_customSkillTagsController.text),
+      actions: _parseCsv(_customSkillActionsController.text),
+      prompts: _parseCsv(_customSkillPromptsController.text),
+    );
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(color: AppTheme.primary),
+      ),
+    );
+
+    final result = await ModelProviderPolishService.instance.polishSkillDraft(draft);
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    _applyPolishedSkillDraft(result.draft);
+    final usedProvider = result.usedProvider;
+    final reason = result.fallbackReason;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          usedProvider
+              ? '已调用模型 provider 标准化 Skill 草案'
+              : 'Provider 不可用，已使用离线 fallback${reason == null ? '' : ': $reason'}',
+        ),
+        backgroundColor: usedProvider ? AppTheme.success : AppTheme.warning,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _applyPolishedSkillDraft(SkillPolishDraft draft) {
+    _customSkillNameController.text = draft.name;
+    _customSkillDescriptionController.text = draft.description;
+    _customSkillTagsController.text = draft.tags.join(', ');
+    _customSkillActionsController.text = draft.actions.join(', ');
+    _customSkillPromptsController.text = draft.prompts.join(', ');
+  }
+
+  Future<void> _saveCustomSkill(BuildContext sheetContext) async {
+    final name = _customSkillNameController.text.trim();
+    final description = _customSkillDescriptionController.text.trim();
+    if (name.isEmpty || description.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('请填写技能名称和描述'),
+          backgroundColor: AppTheme.warning,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final service = ref.read(skillManagerServiceProvider);
+    var id = 'custom_${_slugify(name)}';
+    if (id == 'custom_') {
+      id = 'custom_skill_${DateTime.now().millisecondsSinceEpoch}';
+    }
+    if (service.getSkill(id) != null) {
+      id = '${id}_${DateTime.now().millisecondsSinceEpoch}';
+    }
+
+    final skill = Skill(
+      id: id,
+      name: name,
+      version: '1.0.0',
+      description: description,
+      author: 'local-user',
+      tags: _parseCsv(_customSkillTagsController.text),
+      actions: _parseCsv(_customSkillActionsController.text),
+      prompts: _parseCsv(_customSkillPromptsController.text),
+      mcpServers: const [],
+      source: SkillSource.userCreated,
+      isEnabled: true,
+      isInstalled: true,
+      installedAt: DateTime.now(),
+      readme:
+          '# $name\n\n$description\n\nSource: MobileCode custom skill. It is local metadata only and does not execute scripts by itself.',
+    );
+
+    try {
+      await service.install(skill);
+      if (!mounted) return;
+      Navigator.of(sheetContext).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('已装载自定义 Skill: $name'),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      _tabController.animateTo(0);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('创建失败: $e'),
+          backgroundColor: AppTheme.error,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  List<String> _parseCsv(String value) {
+    return value
+        .split(RegExp(r'[,，\n]'))
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  String _slugify(String value) {
+    final slug = value
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+    return slug;
+  }
 
   void _showGitHubImportSheet() {
     _githubUrlController.clear();
@@ -714,7 +1039,7 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
             ),
             icon: const Icon(Icons.download, size: 16),
             label: const Text(
-              '安装',
+              '装载',
               style: TextStyle(fontFamily: AppTheme.fontBody, fontWeight: FontWeight.w600),
             ),
           ),
@@ -776,7 +1101,7 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
           ),
           const SizedBox(height: 8),
           const Text(
-            'Install only after source, manifest, MCP commands, and permissions match what you expect.',
+            'Load only after source, manifest, MCP commands, and permissions match what you expect.',
             style: TextStyle(
               fontFamily: AppTheme.fontBody,
               fontSize: 11,
@@ -864,18 +1189,18 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('已安装: ${skill.name}'),
+          content: Text('已装载: ${skill.name}'),
           backgroundColor: AppTheme.success,
           behavior: SnackBarBehavior.floating,
         ),
       );
-      // Switch to installed tab
+      // Switch to loaded tab
       _tabController.animateTo(0);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('安装失败: $e'),
+          content: Text('装载失败: $e'),
           backgroundColor: AppTheme.error,
           behavior: SnackBarBehavior.floating,
         ),
@@ -1077,6 +1402,65 @@ class _SkillManagerScreenState extends ConsumerState<SkillManagerScreen>
           fontFamily: AppTheme.fontBody,
           fontSize: 11,
           color: AppTheme.primary,
+        ),
+      ),
+    );
+  }
+}
+
+class _CustomSkillField extends StatelessWidget {
+  const _CustomSkillField({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    required this.icon,
+    this.maxLines = 1,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final IconData icon;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      minLines: maxLines,
+      style: const TextStyle(
+        fontFamily: AppTheme.fontBody,
+        fontSize: 14,
+        color: AppTheme.textPrimary,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(
+          fontFamily: AppTheme.fontBody,
+          color: AppTheme.textSecondary,
+        ),
+        hintText: hint,
+        hintStyle: const TextStyle(
+          fontFamily: AppTheme.fontBody,
+          fontSize: 13,
+          color: AppTheme.textTertiary,
+        ),
+        prefixIcon: Icon(icon, size: 19, color: AppTheme.textTertiary),
+        filled: true,
+        fillColor: AppTheme.surfaceInput,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppTheme.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppTheme.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppTheme.accent, width: 1.5),
         ),
       ),
     );
@@ -1303,7 +1687,7 @@ class SkillCard extends StatelessWidget {
                             ),
                           ),
                           child: Text(
-                            skill.source == SkillSource.github ? '审核' : '安装',
+                            skill.source == SkillSource.github ? '审核装载' : '装载',
                             style: TextStyle(
                               fontFamily: AppTheme.fontBody,
                               fontSize: 12,

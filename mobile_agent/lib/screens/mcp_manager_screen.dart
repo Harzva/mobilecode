@@ -155,7 +155,7 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
                   ),
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text(
-                    '添加',
+                    '登记',
                     style: TextStyle(
                       fontFamily: AppTheme.fontBody,
                       fontSize: 12,
@@ -235,7 +235,7 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            '安装带有 MCP 服务器的技能，或手动添加自定义服务器',
+            '装载带有 MCP 服务器的 Skill，或手动登记自定义服务器',
             style: TextStyle(
               fontFamily: AppTheme.fontBody,
               fontSize: 13,
@@ -257,7 +257,7 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
             ),
             icon: const Icon(Icons.add, size: 18),
             label: const Text(
-              '添加 MCP 服务器',
+              '登记 MCP 服务器',
               style: TextStyle(
                 fontFamily: AppTheme.fontBody,
                 fontSize: 14,
@@ -456,7 +456,7 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
             side: const BorderSide(color: AppTheme.border),
           ),
           title: const Text(
-            '添加 MCP 服务器',
+            '登记 MCP 服务器',
             style: TextStyle(
               fontFamily: AppTheme.fontBody,
               fontSize: 18,
@@ -628,7 +628,7 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
               child: const Text(
-                '添加',
+                '登记',
                 style: TextStyle(fontFamily: AppTheme.fontBody, fontWeight: FontWeight.w600),
               ),
             ),
@@ -666,7 +666,7 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('已按 MCP 模板整理名称和入口；启用前仍需人工审核命令、密钥和权限范围。'),
+        content: Text('已按 MCP 模板整理名称和入口；登记前仍需人工审核命令、密钥和权限范围。'),
         backgroundColor: AppTheme.success,
         behavior: SnackBarBehavior.floating,
       ),
@@ -759,7 +759,7 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('MCP 服务器已添加'),
+          content: Text('MCP 服务器已登记，默认不会自动启动'),
           backgroundColor: AppTheme.success,
           behavior: SnackBarBehavior.floating,
         ),
@@ -768,7 +768,7 @@ class _McpManagerScreenState extends ConsumerState<McpManagerScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('添加失败: $e'),
+          content: Text('登记失败: $e'),
           backgroundColor: AppTheme.error,
           behavior: SnackBarBehavior.floating,
         ),

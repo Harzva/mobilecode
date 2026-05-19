@@ -502,7 +502,7 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
         if (ok == true) {
           await _skillManager.install(skill);
           if (!mounted) return;
-          _toast('Skill installed: ${skill.name}');
+          _toast('Skill 已装载: ${skill.name}');
           setState(() {});
         }
         return;
@@ -519,7 +519,7 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
       if (ok == true) {
         await _skillManager.registerReviewedMcpCandidate(candidate);
         if (!mounted) return;
-        _toast('MCP candidate registered disabled: ${candidate.name}');
+        _toast('MCP 候选已登记，默认未启用: ${candidate.name}');
         setState(() {});
       }
     } on Object catch (error) {
@@ -554,7 +554,7 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-              const Text('Review Skill install', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 18)),
+              const Text('审核并装载 Skill', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 18)),
               const SizedBox(height: 8),
               Text(skill.name, style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15)),
               const SizedBox(height: 4),
@@ -579,8 +579,8 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
               const _InlineInfoBox(
                 icon: Icons.verified_user_outlined,
                 color: _amber,
-                title: 'Install is reviewed, not silent',
-                detail: 'MobileCode imports the manifest or metadata first. Enable/runtime usage still stays under user control.',
+                title: '先审核，再装载',
+                detail: 'MobileCode 先导入 manifest 或 metadata。启用和运行仍由用户控制。',
               ),
               const SizedBox(height: 14),
               Row(
@@ -597,7 +597,7 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
                     child: FilledButton.icon(
                       onPressed: () => Navigator.of(context).pop(true),
                       icon: const Icon(Icons.download_done_outlined),
-                      label: const Text('Install reviewed Skill'),
+                      label: const Text('装载已审核 Skill'),
                     ),
                   ),
                 ],
@@ -661,7 +661,7 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
                     child: FilledButton.icon(
                       onPressed: () => Navigator.of(context).pop(true),
                       icon: const Icon(Icons.playlist_add_check_outlined),
-                      label: const Text('Register disabled MCP'),
+                      label: const Text('登记为未启用 MCP'),
                     ),
                   ),
                 ],
@@ -955,14 +955,14 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
 
   String? _installLabel(GitHubRepoHubItem item) {
     if (_source != 'skill' && _source != 'mcp') return null;
-    if (!_skillManager.isInitialized) return 'Install';
+    if (!_skillManager.isInitialized) return _source == 'skill' ? '装载' : '登记';
     try {
       if (_source == 'skill') {
-        return _skillManager.isGitHubSkillInstalled(item.repo.webUrl) ? 'Installed' : 'Install';
+        return _skillManager.isGitHubSkillInstalled(item.repo.webUrl) ? '已装载' : '装载';
       }
-      return _skillManager.isMcpRepoRegistered(item.repo.fullName) ? 'Registered' : 'Install';
+      return _skillManager.isMcpRepoRegistered(item.repo.fullName) ? '已登记' : '登记';
     } on Object {
-      return 'Install';
+      return _source == 'skill' ? '装载' : '登记';
     }
   }
 
@@ -1371,18 +1371,18 @@ class _RepoHubCard extends StatelessWidget {
             children: [
               if (installLabel != null)
                 FilledButton.icon(
-                  onPressed: installing || installLabel == 'Installed' || installLabel == 'Registered'
+                  onPressed: installing || installLabel == '已装载' || installLabel == '已登记'
                       ? null
                       : onInstall,
                   icon: installing
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : Icon(
-                          installLabel == 'Registered' || installLabel == 'Installed'
+                          installLabel == '已登记' || installLabel == '已装载'
                               ? Icons.check_circle_outline
                               : Icons.download_outlined,
                           size: 16,
                         ),
-                  label: Text(installing ? 'Installing...' : installLabel!),
+                  label: Text(installing ? (installLabel == '登记' ? '登记中...' : '装载中...') : installLabel!),
                 ),
               OutlinedButton.icon(
                 onPressed: onLinkWorkspace,
@@ -3806,8 +3806,8 @@ String _sourceSearchHint(String source) {
 String _sourceScopeCopy(String source) {
   return switch (source) {
     'owner' => 'Owner repos is the managed lane: your own account is smoothest; org repos still need collaborator permissions.',
-    'skill' => 'Skill search is a discovery lane. Install only after reviewing source, manifest, and trust signals.',
-    'mcp' => 'MCP search is a discovery lane. Connectors should stay sandboxed and reviewed before use.',
+    'skill' => 'Skill search is a discovery lane. Load only after reviewing source, manifest, and trust signals.',
+    'mcp' => 'MCP search is a discovery lane. Register connectors disabled first, then enable only after review.',
     'release' => 'Release search finds repos with downloadable builds; publishing or pushing still requires repo permission.',
     _ => 'Any repo search is discovery-first. Open, copy, chat, or link read-only; push requires fork or write access.',
   };

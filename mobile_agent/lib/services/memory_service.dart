@@ -865,6 +865,59 @@ class MemoryService extends ChangeNotifier {
     return List.unmodifiable(_ruleCache);
   }
 
+  /// Build a portable rules file, similar to CLAUDE.md / AGENTS.md.
+  ///
+  /// Rules are the explicit, user-approved instructions. Memory remains the
+  /// evidence layer that can propose new rules, but is not injected as a hard
+  /// instruction until the user accepts it here.
+  Future<String> buildRulesMarkdown() async {
+    _ensureInit();
+    final enabledRules = _ruleCache.where((rule) => rule.enabled).toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    final buffer = StringBuffer()
+      ..writeln('# MobileCode Rules')
+      ..writeln()
+      ..writeln('This file contains explicit, user-approved operating rules for MobileCode.')
+      ..writeln('Memory stores evidence and preferences; Rules are the durable instructions the app should follow.')
+      ..writeln()
+      ..writeln('Generated: ${DateTime.now().toIso8601String()}')
+      ..writeln();
+
+    if (enabledRules.isEmpty) {
+      buffer
+        ..writeln('## Active Rules')
+        ..writeln()
+        ..writeln('- No approved rules yet.')
+        ..writeln();
+    } else {
+      buffer
+        ..writeln('## Active Rules')
+        ..writeln();
+      for (final rule in enabledRules) {
+        buffer
+          ..writeln('### ${rule.title}')
+          ..writeln()
+          ..writeln('- Category: ${rule.category}')
+          ..writeln('- Source: ${rule.source}')
+          ..writeln('- Rule: ${rule.rule}');
+        if (rule.evidenceRepos.isNotEmpty) {
+          buffer.writeln('- Evidence repos: ${rule.evidenceRepos.join(', ')}');
+        }
+        buffer.writeln();
+      }
+    }
+
+    buffer
+      ..writeln('## Boundary')
+      ..writeln()
+      ..writeln('- Do not execute Hook or MCP scripts unless the user explicitly enables and confirms them.')
+      ..writeln('- Treat Memory as suggestions and evidence, not as hard instructions.')
+      ..writeln('- Keep mobile workflows lightweight; prefer GitHub Pages and GitHub Actions for heavy remote work.')
+      ..writeln();
+
+    return buffer.toString();
+  }
+
   /// Get pending memory rule proposals that still require approval.
   Future<List<MemoryRuleProposal>> pendingMemoryRuleProposals() async {
     _ensureInit();

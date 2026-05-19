@@ -13,6 +13,7 @@
 // Each item supports swipe-to-delete and tap-to-view details.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/theme.dart';
 import '../services/memory_service.dart';
@@ -96,7 +97,7 @@ class _MemoryManagerScreenState extends State<MemoryManagerScreen>
             Tab(text: '错误模式'),
             Tab(text: '常用片段'),
             Tab(text: '用户修正'),
-            Tab(text: '规则洞察'),
+            Tab(text: 'Rules'),
             Tab(text: '记忆统计'),
             Tab(text: '代码偏好'),
           ],
@@ -891,6 +892,9 @@ class _MemoryRulesTab extends StatefulWidget {
 
 class _MemoryRulesTabState extends State<_MemoryRulesTab> {
   late Future<List<MemoryRule>> _rules;
+  final TextEditingController _ruleTitleController = TextEditingController();
+  final TextEditingController _ruleBodyController = TextEditingController();
+  final TextEditingController _ruleCategoryController = TextEditingController(text: 'user-rule');
 
   @override
   void initState() {
@@ -898,10 +902,120 @@ class _MemoryRulesTabState extends State<_MemoryRulesTab> {
     _rules = widget.memory.getMemoryRules();
   }
 
+  @override
+  void dispose() {
+    _ruleTitleController.dispose();
+    _ruleBodyController.dispose();
+    _ruleCategoryController.dispose();
+    super.dispose();
+  }
+
   void _reload() {
     setState(() {
       _rules = widget.memory.getMemoryRules();
     });
+  }
+
+  Future<void> _copyRulesFile() async {
+    final markdown = await widget.memory.buildRulesMarkdown();
+    await Clipboard.setData(ClipboardData(text: markdown));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('MOBILECODE_RULES.md 内容已复制'),
+        backgroundColor: AppTheme.success,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _showAddRuleDialog() async {
+    _ruleTitleController.clear();
+    _ruleBodyController.clear();
+    _ruleCategoryController.text = 'user-rule';
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        surfaceTintColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppTheme.border),
+        ),
+        title: const Text(
+          '新增 Rule',
+          style: TextStyle(
+            fontFamily: AppTheme.fontBody,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _RuleInputField(
+                controller: _ruleTitleController,
+                label: '标题',
+                hint: '例如：HTML 默认走 GitHub Pages 发布',
+              ),
+              const SizedBox(height: 10),
+              _RuleInputField(
+                controller: _ruleCategoryController,
+                label: '分类',
+                hint: 'user-rule / repo-insight / workflow',
+              ),
+              const SizedBox(height: 10),
+              _RuleInputField(
+                controller: _ruleBodyController,
+                label: '规则内容',
+                hint: '写成短句，明确 MobileCode 以后应该如何执行。',
+                maxLines: 4,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              final title = _ruleTitleController.text.trim();
+              final body = _ruleBodyController.text.trim();
+              if (title.isEmpty || body.isEmpty) return;
+              await widget.memory.upsertMemoryRule(
+                MemoryRule(
+                  id: 'manual_rule_${DateTime.now().microsecondsSinceEpoch}',
+                  title: title,
+                  category: _ruleCategoryController.text.trim().isEmpty
+                      ? 'user-rule'
+                      : _ruleCategoryController.text.trim(),
+                  rule: body,
+                  source: 'manual',
+                  evidenceRepos: const [],
+                  createdAt: DateTime.now(),
+                  enabled: true,
+                ),
+              );
+              if (context.mounted) Navigator.of(context).pop();
+              _reload();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primary,
+              foregroundColor: AppTheme.textOnPrimary,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(9)),
+            ),
+            icon: const Icon(Icons.save_outlined, size: 16),
+            label: const Text('保存'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -913,15 +1027,26 @@ class _MemoryRulesTabState extends State<_MemoryRulesTab> {
           return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
         }
         final rules = snapshot.data!;
-        if (rules.isEmpty) {
-          return const _EmptyState(message: '还没有从仓库洞察中保存 Memory 规则');
-        }
         return ListView.separated(
           padding: const EdgeInsets.all(16),
-          itemCount: rules.length,
+          itemCount: rules.isEmpty ? 2 : rules.length + 1,
           separatorBuilder: (_, __) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
-            final rule = rules[index];
+            if (index == 0) {
+              return _RulesFileCard(
+                activeRuleCount: rules.where((rule) => rule.enabled).length,
+                onAddRule: _showAddRuleDialog,
+                onCopyRulesFile: _copyRulesFile,
+              );
+            }
+            if (rules.isEmpty) {
+              return const _RulesEmptyCard();
+            }
+            final ruleIndex = index - 1;
+            if (ruleIndex >= rules.length) {
+              return const SizedBox.shrink();
+            }
+            final rule = rules[ruleIndex];
             return _GlassCard(
               child: Padding(
                 padding: const EdgeInsets.all(14),
@@ -1004,6 +1129,185 @@ class _MemoryRulesTabState extends State<_MemoryRulesTab> {
           },
         );
       },
+    );
+  }
+}
+
+class _RulesFileCard extends StatelessWidget {
+  const _RulesFileCard({
+    required this.activeRuleCount,
+    required this.onAddRule,
+    required this.onCopyRulesFile,
+  });
+
+  final int activeRuleCount;
+  final VoidCallback onAddRule;
+  final VoidCallback onCopyRulesFile;
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassCard(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(11),
+                  ),
+                  child: const Icon(Icons.rule_outlined, color: AppTheme.primary, size: 20),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'MOBILECODE_RULES.md',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontBody,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                      SizedBox(height: 2),
+                      Text(
+                        'Rules 是用户批准后的行为准则；Memory 是证据、偏好和可提案的经验。',
+                        style: TextStyle(
+                          fontFamily: AppTheme.fontBody,
+                          fontSize: 12,
+                          height: 1.35,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _StatChip(label: '$activeRuleCount active rules'),
+                const _StatChip(label: 'user approved'),
+                const _StatChip(label: 'prompt injected later'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onAddRule,
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('新增 Rule'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: onCopyRulesFile,
+                  icon: const Icon(Icons.copy_all_outlined, size: 16),
+                  label: const Text('复制 RULES.md'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RulesEmptyCard extends StatelessWidget {
+  const _RulesEmptyCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassCard(
+      child: const Padding(
+        padding: EdgeInsets.all(18),
+        child: Column(
+          children: [
+            Icon(Icons.rule_outlined, color: AppTheme.textTertiary, size: 34),
+            SizedBox(height: 10),
+            Text(
+              '还没有批准的 Rules',
+              style: TextStyle(
+                fontFamily: AppTheme.fontBody,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+            SizedBox(height: 6),
+            Text(
+              '你可以手动新增，也可以从仓库分析、Role/Memory proposal 中接受规则。Memory 不会自动变成 Rule。',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: AppTheme.fontBody,
+                fontSize: 12,
+                height: 1.35,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RuleInputField extends StatelessWidget {
+  const _RuleInputField({
+    required this.controller,
+    required this.label,
+    required this.hint,
+    this.maxLines = 1,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final int maxLines;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      maxLines: maxLines,
+      style: const TextStyle(
+        fontFamily: AppTheme.fontBody,
+        fontSize: 14,
+        color: AppTheme.textPrimary,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: hint,
+        labelStyle: const TextStyle(color: AppTheme.textSecondary),
+        hintStyle: const TextStyle(color: AppTheme.textTertiary, fontSize: 12),
+        filled: true,
+        fillColor: AppTheme.surfaceInput,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppTheme.border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppTheme.border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: AppTheme.primary, width: 1.5),
+        ),
+      ),
     );
   }
 }

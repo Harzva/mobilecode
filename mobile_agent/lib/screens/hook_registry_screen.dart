@@ -128,18 +128,12 @@ class _SummaryCard extends StatelessWidget {
 void _showHookDraftDialog(BuildContext context) {
   showDialog<void>(
     context: context,
-    builder: (context) => AlertDialog(
-      backgroundColor: AppTheme.surface,
-      title: const Text('Hook 草案'),
-      content: const Text(
-        'V1 允许登记 hook 点和启用状态，但不执行任意脚本。下一步会把这里升级成“草案 -> 审核 -> 只读注册”的安全流程。',
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('知道了'),
-        ),
-      ],
+    barrierColor: Colors.black.withOpacity(0.62),
+    builder: (context) => _HookInfoDialog(
+      icon: Icons.add_link_outlined,
+      title: 'Hook 草案',
+      body:
+          'V1 允许登记 hook 点和启用状态，但不执行任意脚本。下一步会把这里升级成“草案 -> 审核 -> 只读注册”的安全流程。',
     ),
   );
 }
@@ -147,20 +141,97 @@ void _showHookDraftDialog(BuildContext context) {
 void _showHookPolishDialog(BuildContext context) {
   showDialog<void>(
     context: context,
-    builder: (context) => AlertDialog(
+    barrierColor: Colors.black.withOpacity(0.62),
+    builder: (context) => _HookInfoDialog(
+      icon: Icons.auto_awesome_outlined,
+      title: 'AI 润色 Hook 规范',
+      body:
+          'Hook 的 AI 润色会把用户意图标准化为 phase、trigger、scope、guardrails、confirmation policy。V1 只保存规范草案，不启动脚本。',
+    ),
+  );
+}
+
+class _HookInfoDialog extends StatelessWidget {
+  const _HookInfoDialog({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
       backgroundColor: AppTheme.surface,
-      title: const Text('AI 润色 Hook 规范'),
-      content: const Text(
-        'Hook 的 AI 润色会把用户意图标准化为 phase、trigger、scope、guardrails、confirmation policy。V1 只保存规范草案，不启动脚本。',
+      surfaceTintColor: AppTheme.surface,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: AppTheme.primary.withOpacity(0.28)),
+      ),
+      titlePadding: const EdgeInsets.fromLTRB(22, 20, 22, 0),
+      contentPadding: const EdgeInsets.fromLTRB(22, 12, 22, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+      title: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: AppTheme.primary, size: 19),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontFamily: AppTheme.fontBody,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textPrimary,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 560),
+        child: Text(
+          body,
+          style: const TextStyle(
+            fontFamily: AppTheme.fontBody,
+            fontSize: 14,
+            height: 1.55,
+            color: AppTheme.textSecondary,
+          ),
+        ),
       ),
       actions: [
         TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: AppTheme.textOnPrimary,
+            backgroundColor: AppTheme.primary,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('知道了'),
+          child: const Text(
+            '知道了',
+            style: TextStyle(
+              fontFamily: AppTheme.fontBody,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
         ),
       ],
-    ),
-  );
+    );
+  }
 }
 
 class _HookEntryCard extends StatelessWidget {

@@ -267,9 +267,8 @@ class SkillStats {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Currently selected skill tab index.
-/// 0 = 已安装 (Installed)
+/// 0 = 已装载 (Loaded)
 /// 1 = 发现 (Discover)
-/// 2 = MCP管理 (MCP)
 final skillTabIndexProvider = StateProvider<int>((ref) => 0);
 
 /// Search query for skill discovery.

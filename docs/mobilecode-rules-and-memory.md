@@ -22,6 +22,8 @@ Good examples:
 
 Rules should be short, explicit, stable, and user-approved.
 
+In the app, accepted Rules can be exported as `MOBILECODE_RULES.md`. This is the MobileCode equivalent of a lightweight `CLAUDE.md` / `AGENTS.md`: a portable, user-approved instruction file that can be copied into a project or injected into future planning prompts.
+
 ## Memory
 
 Memory is evidence and preference history. It can be learned from chats, repo READMEs, accepted role proposals, failed builds, and repeated user corrections.

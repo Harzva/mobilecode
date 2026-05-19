@@ -350,6 +350,60 @@ class GitHubDeepService {
     }
   }
 
+  /// Exchange a GitHub OAuth callback code for an access token, then persist the
+  /// resulting account just like PAT login. For production APKs, provide the
+  /// client id and redirect URI through build-time config; client secret is
+  /// optional because public mobile clients should avoid hard-coding secrets.
+  Future<bool> authenticateWithOAuthCode({
+    required String code,
+    required String clientId,
+    String? clientSecret,
+    String? redirectUri,
+  }) async {
+    if (clientId.trim().isEmpty) {
+      throw const GitHubDeepException(message: 'GitHub OAuth client id is not configured');
+    }
+    if (code.trim().isEmpty) {
+      throw const GitHubDeepException(message: 'GitHub OAuth callback did not include a code');
+    }
+
+    final body = <String, String>{
+      'client_id': clientId.trim(),
+      'code': code.trim(),
+      if (clientSecret != null && clientSecret.trim().isNotEmpty) 'client_secret': clientSecret.trim(),
+      if (redirectUri != null && redirectUri.trim().isNotEmpty) 'redirect_uri': redirectUri.trim(),
+    };
+    final response = await _httpClient.post(
+      Uri.parse('https://github.com/login/oauth/access_token'),
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'MobileAgent/1.0',
+      },
+      body: body,
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw GitHubDeepException(
+        message: response.body.isEmpty ? 'OAuth token exchange failed' : response.body,
+        endpoint: '/login/oauth/access_token',
+        statusCode: response.statusCode,
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map<String, dynamic>) {
+      throw const GitHubDeepException(message: 'OAuth token exchange returned an invalid response');
+    }
+    final error = decoded['error'];
+    if (error is String && error.isNotEmpty) {
+      final description = decoded['error_description'] as String? ?? error;
+      throw GitHubDeepException(message: description, endpoint: '/login/oauth/access_token');
+    }
+    final token = decoded['access_token'];
+    if (token is! String || token.trim().isEmpty) {
+      throw const GitHubDeepException(message: 'OAuth token exchange did not return an access token');
+    }
+    return authenticate(token);
+  }
+
   /// Switch to a different account by username.
   Future<bool> switchAccount(String username) async {
     final idx = _sessions.indexWhere((s) => s.username == username);

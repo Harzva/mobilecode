@@ -74,6 +74,19 @@ def main() -> None:
         '            android:theme="@android:style/Theme.NoDisplay" />'
     )
     text = ensure_application_child(text, helper_launcher, 'android:name=".MobileCodeHelperLauncherActivity"')
+    if 'android:scheme="mobilecode"' not in text:
+        oauth_filter = (
+            '            <intent-filter>\n'
+            '                <action android:name="android.intent.action.VIEW"/>\n'
+            '                <category android:name="android.intent.category.DEFAULT"/>\n'
+            '                <category android:name="android.intent.category.BROWSABLE"/>\n'
+            '                <data\n'
+            '                    android:scheme="mobilecode"\n'
+            '                    android:host="github"\n'
+            '                    android:pathPrefix="/oauth" />\n'
+            '            </intent-filter>'
+        )
+        text = text.replace('            </intent-filter>\n        </activity>', '            </intent-filter>\n' + oauth_filter + '\n        </activity>', 1)
     impeller_opt_out = (
         '        <meta-data\n'
         '            android:name="io.flutter.embedding.android.EnableImpeller"\n'

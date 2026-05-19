@@ -333,7 +333,11 @@ class VoiceService {
     if (!_speech.isListening) return _transcript;
 
     _stopAudioLevelSimulation();
-    await _speech.stop();
+    try {
+      await _speech.stop().timeout(const Duration(seconds: 2));
+    } on TimeoutException {
+      await _speech.cancel().timeout(const Duration(milliseconds: 800), onTimeout: () {});
+    }
 
     _setState(VoiceState.processing);
 
@@ -392,8 +396,10 @@ class VoiceService {
     switch (status) {
       case 'listening':
         _setState(VoiceState.listening);
+        break;
       case 'notListening':
         _stopAudioLevelSimulation();
+        break;
       case 'done':
         // Final result already handled in _onSpeechResult.
         break;

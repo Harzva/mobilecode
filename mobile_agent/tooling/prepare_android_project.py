@@ -21,6 +21,13 @@ def main() -> None:
     manifest = Path('android/app/src/main/AndroidManifest.xml')
     text = manifest.read_text()
     text = text.replace('android:label="mobile_agent"', 'android:label="MobileCode"')
+    text = text.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@drawable/mobilecode_launcher"')
+    if 'android:roundIcon=' not in text:
+        text = text.replace(
+            'android:icon="@drawable/mobilecode_launcher"',
+            'android:icon="@drawable/mobilecode_launcher"\n        android:roundIcon="@drawable/mobilecode_launcher"',
+            1,
+        )
     for permission in (
         '    <uses-permission android:name="android.permission.INTERNET" />',
         '    <uses-permission android:name="android.permission.RECORD_AUDIO" />',
@@ -126,6 +133,39 @@ def main() -> None:
     ):
         launch.parent.mkdir(parents=True, exist_ok=True)
         launch.write_text(launch_background)
+
+    launcher_icon = '''<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#061022"
+        android:pathData="M0,0h108v108h-108z" />
+    <path
+        android:fillColor="#0B1B35"
+        android:pathData="M23,18H85V90H23Z" />
+    <path
+        android:fillColor="#2DE2C5"
+        android:pathData="M45,37L28,54l17,17l8,-8l-9,-9l9,-9z" />
+    <path
+        android:fillColor="#6C7CFF"
+        android:pathData="M63,37l17,17l-17,17l-8,-8l9,-9l-9,-9z" />
+    <path
+        android:fillColor="#B7C4FF"
+        android:pathData="M61,26a4,4 0,0 1,3 5l-14,51a4,4 0,0 1,-8 -2l14,-51a4,4 0,0 1,5 -3z" />
+    <path
+        android:fillColor="#2DE2C5"
+        android:pathData="M17,50H25V58H17Z" />
+    <path
+        android:fillColor="#6C7CFF"
+        android:pathData="M83,56H91V64H83Z" />
+</vector>
+'''
+    launcher = Path('android/app/src/main/res/drawable/mobilecode_launcher.xml')
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.write_text(launcher_icon)
 
     activity = Path('android/app/src/main/kotlin/com/mobilecode/mobile_agent/MainActivity.kt')
     activity.parent.mkdir(parents=True, exist_ok=True)

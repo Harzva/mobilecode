@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag to upload the iOS simulator build to
         required: false
-        default: v0.1.24
+        default: v0.1.26
       upload_to_release:
         description: Upload simulator zip to the GitHub Release
         required: false
@@ -22,7 +22,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ios-simulator-${{ github.ref }}-${{ github.event.inputs.release_tag || 'v0.1.24' }}
+  group: ios-simulator-${{ github.ref }}-${{ github.event.inputs.release_tag || 'v0.1.26' }}
   cancel-in-progress: false
 
 jobs:
@@ -78,7 +78,7 @@ jobs:
       - name: Install and launch on iOS simulator
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.24' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.26' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -112,7 +112,7 @@ jobs:
         if: ${{ github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.24' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.26' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -175,7 +175,7 @@ jobs:
       - name: Package unsigned xcarchive
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.24' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.26' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -262,7 +262,7 @@ jobs:
         if: ${{ github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.24' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.26' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."

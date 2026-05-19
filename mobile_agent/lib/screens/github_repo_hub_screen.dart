@@ -331,10 +331,23 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
       await _runtimeManager.initialize();
       final capabilities = await _runtimeManager.capabilities();
       if (!capabilities.git) {
-        throw StateError(
-          'Active runtime does not expose git. Install git in Helper/Termux, '
-          'or keep using GitHub API file commits.',
+        final local = await _hub.ensureRemoteLinkedWorkspace(item.repo);
+        final next = <GitHubRepoHubItem>[];
+        for (final current in _items) {
+          next.add(current.key == key
+              ? GitHubRepoHubItem(
+                  repo: current.repo,
+                  localState: local,
+                  watched: current.watched,
+                )
+              : current);
+        }
+        if (!mounted) return;
+        setState(() => _items = next);
+        _toast(
+          '当前 runtime 没有 git，已改为 Remote-linked 工作区；可先用 Files/API 提交，安装 Helper/Termux git 后再做完整克隆。',
         );
+        return;
       }
 
       final target = await _hub.prepareCloneTarget(item.repo);
@@ -373,7 +386,7 @@ class _GitHubRepoHubScreenState extends State<GitHubRepoHubScreen> {
         await _hub.cleanupCloneTarget(target);
       }
       if (!mounted) return;
-      _toast(_compact(error.toString(), 180), isError: true);
+      _toast(_friendlyCloneError(error), isError: true);
     } finally {
       if (mounted) {
         setState(() => _cloningKeys = {..._cloningKeys}..remove(key));
@@ -1309,7 +1322,7 @@ class _RepoHubCard extends StatelessWidget {
                 OutlinedButton.icon(
                   onPressed: cloning ? null : onCloneWorkspace,
                   icon: const Icon(Icons.download_for_offline_outlined, size: 16),
-                  label: Text(cloning ? 'Cloning...' : '克隆到手机'),
+                  label: Text(cloning ? 'Cloning...' : 'Git 克隆'),
                 ),
               OutlinedButton.icon(
                 onPressed: onOpenChat,
@@ -1588,7 +1601,7 @@ class _RepoKnowledgeDigestSheetState extends State<_RepoKnowledgeDigestSheet> {
               _InlineInfoBox(
                 icon: Icons.info_outline,
                 color: _amber,
-                title: 'Fallback mode',
+                title: 'Local fallback',
                 detail: digest.fallbackReason!,
               ),
             ],
@@ -1947,6 +1960,8 @@ class _RoleProposalEditSheetState extends State<_RoleProposalEditSheet> {
   late final TextEditingController _successCriteria;
   late final TextEditingController _promptTemplate;
   String? _error;
+  String? _polishNote;
+  bool _polishing = false;
 
   @override
   void initState() {
@@ -1998,6 +2013,14 @@ class _RoleProposalEditSheetState extends State<_RoleProposalEditSheet> {
               '把建议角色改成你真正想长期使用的模板。保存后才会写入 Roles。',
               style: TextStyle(color: _muted, height: 1.35),
             ),
+            const SizedBox(height: 12),
+            _PolishActionBox(
+              title: 'AI 润色标准化',
+              detail: '先按你的想法粗改字段，再让模型整理成稳定的 Role Card；不可用时会用本地模板兜底。',
+              note: _polishNote,
+              polishing: _polishing,
+              onPressed: _polish,
+            ),
             const SizedBox(height: 14),
             _EditTextField(controller: _name, label: 'Role name', icon: Icons.badge_outlined),
             _EditTextField(controller: _summary, label: 'Summary', icon: Icons.short_text_outlined, maxLines: 2),
@@ -2047,7 +2070,7 @@ class _RoleProposalEditSheetState extends State<_RoleProposalEditSheet> {
                 Expanded(
                   flex: 2,
                   child: FilledButton.icon(
-                    onPressed: _save,
+                    onPressed: _polishing ? null : _save,
                     icon: const Icon(Icons.library_add_check_outlined),
                     label: const Text('Save edited Role'),
                   ),
@@ -2058,6 +2081,75 @@ class _RoleProposalEditSheetState extends State<_RoleProposalEditSheet> {
         ),
       ),
     );
+  }
+
+  Future<void> _polish() async {
+    final draft = _draftRole();
+    if (_roleDraftIsEmpty(draft)) {
+      setState(() => _error = 'Please write at least a role name, mission, or prompt template before polishing.');
+      return;
+    }
+    setState(() {
+      _polishing = true;
+      _error = null;
+      _polishNote = null;
+    });
+    try {
+      final result = await RepoKnowledgeDigestService().polishRole(draft);
+      if (!mounted) return;
+      _applyRole(result.role);
+      setState(() {
+        _polishing = false;
+        _polishNote = result.usedProvider
+            ? 'AI 已按 MobileCode Role 标准润色，保存前你仍可继续编辑。'
+            : 'AI 不可用，已用本地模板标准化：${result.fallbackReason ?? 'fallback used.'}';
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _polishing = false;
+        _error = _compact(error.toString(), 160);
+      });
+    }
+  }
+
+  MobileCodeRole _draftRole() {
+    return widget.role.copyWith(
+      name: _name.text.trim(),
+      summary: _summary.text.trim(),
+      mission: _mission.text.trim(),
+      personality: _personality.text.trim(),
+      responsibilities: _splitLines(_responsibilities.text),
+      guardrails: _splitLines(_guardrails.text),
+      successCriteria: _splitLines(_successCriteria.text),
+      promptTemplate: _promptTemplate.text.trim(),
+      builtIn: false,
+      enabled: true,
+    );
+  }
+
+  bool _roleDraftIsEmpty(MobileCodeRole role) {
+    return [
+      role.name,
+      role.summary,
+      role.mission,
+      role.personality,
+      role.promptTemplate,
+      ...role.responsibilities,
+      ...role.guardrails,
+      ...role.successCriteria,
+    ].every((item) => item.trim().isEmpty);
+  }
+
+  void _applyRole(MobileCodeRole role) {
+    _name.text = role.name;
+    _summary.text = role.summary;
+    _mission.text = role.mission;
+    _personality.text = role.personality;
+    _responsibilities.text = _joinLines(role.responsibilities);
+    _guardrails.text = _joinLines(role.guardrails);
+    _successCriteria.text = _joinLines(role.successCriteria);
+    _promptTemplate.text = role.promptTemplate;
   }
 
   void _save() {
@@ -2096,6 +2188,8 @@ class _MemoryRuleProposalEditSheetState extends State<_MemoryRuleProposalEditShe
   late final TextEditingController _category;
   late final TextEditingController _rule;
   String? _error;
+  String? _polishNote;
+  bool _polishing = false;
 
   @override
   void initState() {
@@ -2136,6 +2230,14 @@ class _MemoryRuleProposalEditSheetState extends State<_MemoryRuleProposalEditShe
               '只保存长期有价值的偏好、规范和工作流规则。保存后写入 App Memory，不改仓库文件。',
               style: TextStyle(color: _muted, height: 1.35),
             ),
+            const SizedBox(height: 12),
+            _PolishActionBox(
+              title: 'AI 润色记忆规则',
+              detail: '把粗略规则整理成长期可复用的 Memory；不会保存 prompt、response 或一次性任务内容。',
+              note: _polishNote,
+              polishing: _polishing,
+              onPressed: _polish,
+            ),
             const SizedBox(height: 14),
             _EditTextField(controller: _title, label: 'Title', icon: Icons.rule_outlined),
             _EditTextField(controller: _category, label: 'Category', icon: Icons.label_outline),
@@ -2170,7 +2272,7 @@ class _MemoryRuleProposalEditSheetState extends State<_MemoryRuleProposalEditShe
                 Expanded(
                   flex: 2,
                   child: FilledButton.icon(
-                    onPressed: _save,
+                    onPressed: _polishing ? null : _save,
                     icon: const Icon(Icons.library_add_check_outlined),
                     label: const Text('Save edited Memory'),
                   ),
@@ -2181,6 +2283,43 @@ class _MemoryRuleProposalEditSheetState extends State<_MemoryRuleProposalEditShe
         ),
       ),
     );
+  }
+
+  Future<void> _polish() async {
+    final draft = widget.rule.copyWith(
+      title: _title.text.trim(),
+      category: _category.text.trim(),
+      rule: _rule.text.trim(),
+      enabled: true,
+    );
+    if (draft.title.trim().isEmpty && draft.rule.trim().isEmpty) {
+      setState(() => _error = 'Please write a title or rule before polishing.');
+      return;
+    }
+    setState(() {
+      _polishing = true;
+      _error = null;
+      _polishNote = null;
+    });
+    try {
+      final result = await RepoKnowledgeDigestService().polishMemoryRule(draft);
+      if (!mounted) return;
+      _title.text = result.rule.title;
+      _category.text = result.rule.category;
+      _rule.text = result.rule.rule;
+      setState(() {
+        _polishing = false;
+        _polishNote = result.usedProvider
+            ? 'AI 已整理为可长期复用的 Memory 规则。'
+            : 'AI 不可用，已用本地模板标准化：${result.fallbackReason ?? 'fallback used.'}';
+      });
+    } on Object catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _polishing = false;
+        _error = _compact(error.toString(), 160);
+      });
+    }
   }
 
   void _save() {
@@ -2196,6 +2335,65 @@ class _MemoryRuleProposalEditSheetState extends State<_MemoryRuleProposalEditShe
           rule: rule,
           enabled: true,
         ));
+  }
+}
+
+class _PolishActionBox extends StatelessWidget {
+  const _PolishActionBox({
+    required this.title,
+    required this.detail,
+    required this.polishing,
+    required this.onPressed,
+    this.note,
+  });
+
+  final String title;
+  final String detail;
+  final String? note;
+  final bool polishing;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _violet.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _violet.withOpacity(0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_fix_high_outlined, color: _violet, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 13),
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: polishing ? null : onPressed,
+                icon: polishing
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.auto_awesome_outlined, size: 16),
+                label: Text(polishing ? '润色中...' : 'AI 润色'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(detail, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+          if (note != null) ...[
+            const SizedBox(height: 8),
+            Text(note!, style: const TextStyle(color: _violet, fontSize: 11.5, height: 1.3, fontWeight: FontWeight.w700)),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -3201,7 +3399,7 @@ String _repoChatPrompt(GitHubRepoHubItem item) {
 请先基于这个仓库上下文回答。若需要修改文件：
 - Remote-linked 模式优先通过 GitHub API 读取/提交文件。
 - Git clone 模式才使用本机 git 命令。
-- 若用户明确需要 git push，而当前不是 Git clone，引导先点“克隆到手机”按钮。
+- 若用户明确需要 git push，而当前不是 Git clone，引导先点“Git 克隆”按钮。
 - Not on phone 时先建议创建手机工作区或使用 GitHub API。
 '''.trim();
 }
@@ -3259,6 +3457,21 @@ String _cloneFailureMessage(RuntimeCommandResult result) {
     return 'Clone failed with exit code ${result.exitCode}.';
   }
   return 'Clone failed: ${_compact(output, 180)}';
+}
+
+String _friendlyCloneError(Object error) {
+  final message = error.toString().replaceFirst(RegExp(r'^Bad state:\s*'), '').trim();
+  final lower = message.toLowerCase();
+  if (message.contains('Phone workspace already contains files but no .git folder')) {
+    return '这个手机工作区已有非 Git 文件。请继续使用 Remote-linked/API 提交，或先清理该文件夹后再 Git 克隆。';
+  }
+  if (message.contains('does not expose git')) {
+    return '当前 runtime 没有 git。可继续使用 Remote-linked/API 工作区，或安装 Helper/Termux git 后再克隆。';
+  }
+  if (lower.contains('authentication failed') || lower.contains('could not read username')) {
+    return 'Git 克隆需要有效的 GitHub 凭据。公开仓库可先创建 Remote-linked 工作区；私有仓库请检查 token/权限。';
+  }
+  return _compact(message.isEmpty ? error.toString() : message, 180);
 }
 
 String _shellArg(String value) {

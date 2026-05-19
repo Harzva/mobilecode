@@ -73,6 +73,27 @@ Rules:
 - If evidence is thin, return fewer suggestions.
 ''';
 
+const memoryRulePolishSystemPrompt = '''
+You are MobileCode Memory Rule Standardizer.
+
+Turn a rough user-edited memory rule into one durable MobileCode memory rule.
+Return JSON only, no markdown fences.
+
+Schema:
+{
+  "title": "short title",
+  "category": "preference|workflow|stack|release|naming|repo-insight",
+  "rule": "one clear durable rule"
+}
+
+Rules:
+- Keep the rule about durable user preferences, engineering norms, repository
+  workflow, release process, naming, or mobile runtime constraints.
+- Do not store secrets, tokens, URLs with credentials, or one-off task details.
+- The rule must be useful in future MobileCode sessions.
+- Prefer one concise sentence for "rule".
+''';
+
 enum _DigestProviderFlavor { openAi, anthropic }
 
 @immutable
@@ -113,6 +134,32 @@ class RepoKnowledgeDigest {
   bool get usedProvider => source == 'provider';
 }
 
+@immutable
+class RolePolishResult {
+  const RolePolishResult({
+    required this.role,
+    required this.usedProvider,
+    this.fallbackReason,
+  });
+
+  final MobileCodeRole role;
+  final bool usedProvider;
+  final String? fallbackReason;
+}
+
+@immutable
+class MemoryRulePolishResult {
+  const MemoryRulePolishResult({
+    required this.rule,
+    required this.usedProvider,
+    this.fallbackReason,
+  });
+
+  final MemoryRule rule;
+  final bool usedProvider;
+  final String? fallbackReason;
+}
+
 class RepoKnowledgeDigestService {
   Future<RepoKnowledgeDigest> analyzeWatchedAndOwnerRepos(GitHubRepoHubService hub) async {
     await hub.initialize();
@@ -149,8 +196,19 @@ class RepoKnowledgeDigestService {
       if (response.statusCode < 200 || response.statusCode >= 300) {
         return fallback.copyWith(fallbackReason: 'Provider HTTP ${response.statusCode}.');
       }
-      final text = _extractProviderText(body);
-      return _parseDigest(text, samples, fallback);
+      final text = _extractProviderText(body).trim();
+      if (text.isEmpty) {
+        return fallback.copyWith(
+          fallbackReason: 'AI provider returned an empty response; local heuristic suggestions are shown.',
+        );
+      }
+      try {
+        return _parseDigest(text, samples, fallback);
+      } on FormatException {
+        return fallback.copyWith(
+          fallbackReason: 'AI provider response was not structured JSON; local heuristic suggestions are shown.',
+        );
+      }
     } on TimeoutException {
       return fallback.copyWith(fallbackReason: 'Provider timed out; heuristic suggestions shown.');
     } on SocketException catch (error) {
@@ -165,6 +223,96 @@ class RepoKnowledgeDigestService {
   List<RoleProposal> buildRoleProposals(RepoKnowledgeDigest digest) => digest.roleProposals;
 
   List<MemoryRuleProposal> buildMemoryRuleProposals(RepoKnowledgeDigest digest) => digest.memoryProposals;
+
+  Future<RolePolishResult> polishRole(MobileCodeRole draft) async {
+    final fallback = _fallbackPolishedRole(draft);
+    final config = await _loadProviderConfig();
+    if (config == null) {
+      return RolePolishResult(
+        role: fallback,
+        usedProvider: false,
+        fallbackReason: 'Provider is not configured; used local role template.',
+      );
+    }
+
+    try {
+      final text = await _completeWithProvider(
+        config: config,
+        systemPrompt: rolePolishSystemPrompt,
+        userPrompt: _rolePolishPrompt(draft),
+        maxTokens: 1200,
+      );
+      final polished = RoleLibraryService.instance
+          .parsePolishedOutput(text, fallbackIntent: _roleIntent(draft))
+          .copyWith(
+            id: draft.id,
+            avatarAsset: draft.avatarAsset,
+            colorValue: draft.colorValue,
+            builtIn: false,
+            enabled: true,
+          );
+      return RolePolishResult(role: polished, usedProvider: true);
+    } on TimeoutException {
+      return RolePolishResult(
+        role: fallback,
+        usedProvider: false,
+        fallbackReason: 'Provider timed out; used local role template.',
+      );
+    } on SocketException catch (error) {
+      return RolePolishResult(
+        role: fallback,
+        usedProvider: false,
+        fallbackReason: _friendlySocketError(error),
+      );
+    } on Object catch (error) {
+      return RolePolishResult(
+        role: fallback,
+        usedProvider: false,
+        fallbackReason: _compact(error.toString(), 140),
+      );
+    }
+  }
+
+  Future<MemoryRulePolishResult> polishMemoryRule(MemoryRule draft) async {
+    final fallback = _fallbackPolishedMemoryRule(draft);
+    final config = await _loadProviderConfig();
+    if (config == null) {
+      return MemoryRulePolishResult(
+        rule: fallback,
+        usedProvider: false,
+        fallbackReason: 'Provider is not configured; used local memory template.',
+      );
+    }
+
+    try {
+      final text = await _completeWithProvider(
+        config: config,
+        systemPrompt: memoryRulePolishSystemPrompt,
+        userPrompt: _memoryRulePolishPrompt(draft),
+        maxTokens: 500,
+      );
+      final polished = _parseMemoryRulePolish(text, fallback);
+      return MemoryRulePolishResult(rule: polished, usedProvider: true);
+    } on TimeoutException {
+      return MemoryRulePolishResult(
+        rule: fallback,
+        usedProvider: false,
+        fallbackReason: 'Provider timed out; used local memory template.',
+      );
+    } on SocketException catch (error) {
+      return MemoryRulePolishResult(
+        rule: fallback,
+        usedProvider: false,
+        fallbackReason: _friendlySocketError(error),
+      );
+    } on Object catch (error) {
+      return MemoryRulePolishResult(
+        rule: fallback,
+        usedProvider: false,
+        fallbackReason: _compact(error.toString(), 140),
+      );
+    }
+  }
 
   Future<List<GitHubRepo>> _selectRepos(GitHubRepoHubService hub) async {
     final watchlist = await hub.loadWatchlist();
@@ -241,6 +389,79 @@ class RepoKnowledgeDigestService {
     return _DigestProviderConfig(baseUrl: baseUrl.trim(), apiKey: apiKey.trim(), model: model.trim());
   }
 
+  Future<String> _completeWithProvider({
+    required _DigestProviderConfig config,
+    required String systemPrompt,
+    required String userPrompt,
+    required int maxTokens,
+  }) async {
+    final flavor = _detectFlavor(config.baseUrl, config.model);
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 10);
+    try {
+      final request = await client
+          .postUrl(flavor == _DigestProviderFlavor.anthropic
+              ? _anthropicMessagesUri(config.baseUrl)
+              : _openAiChatUri(config.baseUrl))
+          .timeout(const Duration(seconds: 10));
+      request.headers.contentType = ContentType.json;
+      if (flavor == _DigestProviderFlavor.anthropic) {
+        request.headers.set('anthropic-version', '2023-06-01');
+        request.headers.set('x-api-key', config.apiKey);
+      }
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${config.apiKey}');
+      request.write(jsonEncode(_completionRequestBody(
+        flavor: flavor,
+        model: config.model,
+        systemPrompt: systemPrompt,
+        userPrompt: userPrompt,
+        maxTokens: maxTokens,
+      )));
+
+      final response = await request.close().timeout(const Duration(seconds: 70));
+      final body = await utf8.decodeStream(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw StateError('Provider HTTP ${response.statusCode}: ${_compact(body, 180)}');
+      }
+      final text = _extractProviderText(body);
+      if (text.trim().isEmpty) {
+        throw const FormatException('Provider returned an empty response.');
+      }
+      return text;
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  Map<String, dynamic> _completionRequestBody({
+    required _DigestProviderFlavor flavor,
+    required String model,
+    required String systemPrompt,
+    required String userPrompt,
+    required int maxTokens,
+  }) {
+    final resolvedModel = model.isEmpty ? (flavor == _DigestProviderFlavor.anthropic ? _digestDefaultModel : 'gpt-4o-mini') : model;
+    if (flavor == _DigestProviderFlavor.anthropic) {
+      return {
+        'model': resolvedModel,
+        'system': systemPrompt,
+        'max_tokens': maxTokens,
+        'temperature': 0.2,
+        'messages': [
+          {'role': 'user', 'content': userPrompt},
+        ],
+      };
+    }
+    return {
+      'model': resolvedModel,
+      'temperature': 0.2,
+      'response_format': {'type': 'json_object'},
+      'messages': [
+        {'role': 'system', 'content': systemPrompt},
+        {'role': 'user', 'content': userPrompt},
+      ],
+    };
+  }
+
   Map<String, dynamic> _requestBody(
     _DigestProviderFlavor flavor,
     String model,
@@ -305,6 +526,118 @@ class _DigestProviderConfig {
   final String baseUrl;
   final String apiKey;
   final String model;
+}
+
+MobileCodeRole _fallbackPolishedRole(MobileCodeRole draft) {
+  final local = RoleLibraryService.instance.standardizeLocalIntent(_roleIntent(draft));
+  return local.copyWith(
+    id: draft.id,
+    name: draft.name.trim().isEmpty ? local.name : _compact(draft.name, 40),
+    summary: draft.summary.trim().isEmpty ? local.summary : _compact(draft.summary, 120),
+    mission: draft.mission.trim().isEmpty ? local.mission : _compact(draft.mission, 260),
+    personality: draft.personality.trim().isEmpty ? local.personality : _compact(draft.personality, 180),
+    responsibilities: draft.responsibilities.where((item) => item.trim().isNotEmpty).take(5).toList().isEmpty
+        ? local.responsibilities
+        : draft.responsibilities.where((item) => item.trim().isNotEmpty).take(5).toList(),
+    guardrails: draft.guardrails.where((item) => item.trim().isNotEmpty).take(4).toList().isEmpty
+        ? local.guardrails
+        : draft.guardrails.where((item) => item.trim().isNotEmpty).take(4).toList(),
+    successCriteria: draft.successCriteria.where((item) => item.trim().isNotEmpty).take(4).toList().isEmpty
+        ? local.successCriteria
+        : draft.successCriteria.where((item) => item.trim().isNotEmpty).take(4).toList(),
+    promptTemplate: draft.promptTemplate.trim().isEmpty ? local.promptTemplate : _compact(draft.promptTemplate, 900),
+    avatarAsset: draft.avatarAsset,
+    colorValue: draft.colorValue,
+    builtIn: false,
+    enabled: true,
+  );
+}
+
+MemoryRule _fallbackPolishedMemoryRule(MemoryRule draft) {
+  final rule = _compact(draft.rule.trim().isEmpty ? 'Use repository evidence before making durable MobileCode decisions.' : draft.rule, 420);
+  final title = draft.title.trim().isEmpty ? _titleFromRule(rule) : _compact(draft.title, 70);
+  final category = _memoryCategory(draft.category);
+  return draft.copyWith(
+    title: title,
+    category: category,
+    rule: rule,
+    source: draft.source.trim().isEmpty ? 'repo-knowledge-polish' : draft.source,
+    enabled: true,
+  );
+}
+
+String _rolePolishPrompt(MobileCodeRole draft) {
+  return jsonEncode({
+    'instruction': 'Standardize this user-edited MobileCode role. Preserve intent, improve structure, and keep it bounded.',
+    'role': {
+      'name': draft.name,
+      'summary': draft.summary,
+      'mission': draft.mission,
+      'personality': draft.personality,
+      'responsibilities': draft.responsibilities,
+      'guardrails': draft.guardrails,
+      'successCriteria': draft.successCriteria,
+      'promptTemplate': draft.promptTemplate,
+    },
+  });
+}
+
+String _memoryRulePolishPrompt(MemoryRule draft) {
+  return jsonEncode({
+    'instruction': 'Standardize this user-edited MobileCode memory rule. Keep only durable future-use guidance.',
+    'memoryRule': {
+      'title': draft.title,
+      'category': draft.category,
+      'rule': draft.rule,
+      'source': draft.source,
+      'evidenceRepos': draft.evidenceRepos,
+    },
+  });
+}
+
+String _roleIntent(MobileCodeRole draft) {
+  return [
+    draft.name,
+    draft.summary,
+    draft.mission,
+    draft.personality,
+    ...draft.responsibilities,
+    ...draft.guardrails,
+    ...draft.successCriteria,
+    draft.promptTemplate,
+  ].where((item) => item.trim().isNotEmpty).join('\n');
+}
+
+MemoryRule _parseMemoryRulePolish(String text, MemoryRule fallback) {
+  final jsonText = _extractJsonObject(text);
+  if (jsonText == null) return fallback;
+  final decoded = jsonDecode(jsonText);
+  if (decoded is! Map<String, dynamic>) return fallback;
+  final rule = decoded['rule']?.toString().trim();
+  return fallback.copyWith(
+    title: _compact(_nonEmptyText(decoded['title'], fallback.title), 70),
+    category: _memoryCategory(decoded['category']?.toString() ?? fallback.category),
+    rule: rule == null || rule.isEmpty ? fallback.rule : _compact(rule, 420),
+    enabled: true,
+  );
+}
+
+String _nonEmptyText(Object? value, String fallback) {
+  final text = value?.toString().trim();
+  return text == null || text.isEmpty ? fallback : text;
+}
+
+String _memoryCategory(String value) {
+  final normalized = value.trim().toLowerCase();
+  const allowed = {'preference', 'workflow', 'stack', 'release', 'naming', 'repo-insight'};
+  return allowed.contains(normalized) ? normalized : 'repo-insight';
+}
+
+String _titleFromRule(String rule) {
+  final normalized = rule.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (normalized.isEmpty) return 'Repo insight rule';
+  final firstSentence = normalized.split(RegExp(r'[。.!?]')).first.trim();
+  return _compact(firstSentence.isEmpty ? normalized : firstSentence, 70);
 }
 
 RepoKnowledgeDigest _parseDigest(

@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag to upload the unsigned iOS archive to
         required: false
-        default: v0.1.24
+        default: v0.1.26
       upload_to_release:
         description: Upload archive zip to the GitHub Release
         required: false
@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ios-archive-${{ github.ref }}-${{ github.event.inputs.release_tag || 'v0.1.24' }}
+  group: ios-archive-${{ github.ref }}-${{ github.event.inputs.release_tag || 'v0.1.26' }}
   cancel-in-progress: false
 
 jobs:
@@ -73,7 +73,7 @@ jobs:
       - name: Package unsigned xcarchive
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.24' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.26' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -160,7 +160,7 @@ jobs:
         if: ${{ github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.24' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.26' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -177,6 +177,6 @@ jobs:
         if: ${{ github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.24' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.26' }}
         run: |
           gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-archive-"$RELEASE_TAG".xcarchive.zip artifacts/ios-archive-summary.txt --clobber --repo "$GITHUB_REPOSITORY"

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../themes/app_theme.dart';
 import 'home_screen.dart';
 
@@ -181,15 +182,11 @@ class _SplashScreenState extends State<SplashScreen>
                     angle: _logoRotate.value,
                     child: Transform.scale(
                       scale: _logoScale.value,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: AppTheme.auroraGradient,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.bolt,
-                          size: 64,
-                          color: Colors.white,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(30),
+                        child: SvgPicture.asset(
+                          'assets/icons/mobilecode-logo.svg',
+                          fit: BoxFit.cover,
                         ),
                       ),
                     ),

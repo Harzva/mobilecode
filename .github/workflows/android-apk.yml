@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag to upload the APK to
         required: false
-        default: v0.1.24
+        default: v0.1.26
   push:
     tags:
       - 'v*'
@@ -90,7 +90,7 @@ jobs:
       - name: Stage APK
         id: stage_apk
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.24' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.26' }}
         run: |
           mkdir -p artifacts
           APK_PATH="artifacts/mobilecode-${RELEASE_TAG}.apk"
@@ -106,7 +106,7 @@ jobs:
       - name: Ensure GitHub Release exists
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.24' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.26' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -122,6 +122,6 @@ jobs:
       - name: Upload APK to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.24' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.26' }}
         run: |
           gh release upload "$RELEASE_TAG" "${{ steps.stage_apk.outputs.apk_path }}" --clobber --repo "$GITHUB_REPOSITORY"

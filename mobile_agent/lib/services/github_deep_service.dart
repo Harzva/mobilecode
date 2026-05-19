@@ -289,7 +289,7 @@ class GitHubDeepService {
     try {
       final saved = await _secureStorage.read(key: _storageKey);
       if (saved != null && saved.isNotEmpty) {
-        final List<dynamic> decoded = jsonDecode(saved);
+        final decoded = jsonDecode(saved) as List<dynamic>;
         _sessions.clear();
         for (final item in decoded) {
           _sessions.add(GitHubSession.fromJson(item as Map<String, dynamic>));
@@ -526,7 +526,9 @@ class GitHubDeepService {
     };
 
     final List<dynamic> data = await _getJsonList('/user/repos', query: query);
-    return data.map((item) => GitHubRepo.fromGitHubApi(item)).toList();
+    return data
+        .map((item) => GitHubRepo.fromGitHubApi(item as Map<String, dynamic>))
+        .toList();
   }
 
   /// List public repositories for a specific GitHub user or organization.
@@ -546,7 +548,9 @@ class GitHubDeepService {
       query: query,
       allowAnonymous: public,
     );
-    return data.map((item) => GitHubRepo.fromGitHubApi(item)).toList();
+    return data
+        .map((item) => GitHubRepo.fromGitHubApi(item as Map<String, dynamic>))
+        .toList();
   }
 
   /// Create a new repository.
@@ -704,7 +708,9 @@ class GitHubDeepService {
     };
 
     final List<dynamic> data = await _getJsonListCached('/user/repos', query: query);
-    final repos = data.map((item) => GitHubRepo.fromGitHubApi(item)).toList();
+    final repos = data
+        .map((item) => GitHubRepo.fromGitHubApi(item as Map<String, dynamic>))
+        .toList();
 
     // Determine if there's a next page by checking if we got a full page
     final hasNext = repos.length >= perPage;

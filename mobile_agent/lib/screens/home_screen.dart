@@ -14,6 +14,9 @@ import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
 import '../services/termux_service.dart';
 import '../services/voice_service.dart';
+import '../core/evidence/action_evidence_store.dart';
+import '../core/evidence/action_runner.dart';
+import '../core/evidence/evidence_model.dart';
 
 enum _ApiFlavor { openAi, anthropic }
 
@@ -354,19 +357,26 @@ class _HelperDaemonProbeResult {
 }
 
 class _AgentTraceStep {
-  const _AgentTraceStep({
+  _AgentTraceStep({
     required this.title,
     required this.detail,
     required this.icon,
+    required this.traceAction,
     this.state = _AgentStepState.queued,
     this.finishedAt,
-  });
+    String? evidenceId,
+  })  : evidenceId = evidenceId ?? generateEvidenceId(),
+        startedAt = DateTime.now();
 
   final String title;
   final String detail;
   final IconData icon;
+  final MobileCodeAction traceAction;
   final _AgentStepState state;
   final DateTime? finishedAt;
+  final String evidenceId;
+  DateTime startedAt;
+  ActionEvidence? evidence;
 
   _AgentTraceStep copyWith({
     String? title,
@@ -379,9 +389,13 @@ class _AgentTraceStep {
       title: title ?? this.title,
       detail: detail ?? this.detail,
       icon: icon ?? this.icon,
+      traceAction: traceAction,
       state: state ?? this.state,
       finishedAt: finishedAt ?? this.finishedAt,
-    );
+      evidenceId: evidenceId,
+    )
+      ..startedAt = startedAt
+      ..evidence = evidence;
   }
 }
 
@@ -610,30 +624,35 @@ String _agentToolNameForPrompt(String prompt) {
 List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
   final tool = _agentToolNameForPrompt(prompt);
   return [
-    const _AgentTraceStep(
+    _AgentTraceStep(
       title: 'Parse instruction',
       detail: 'Read the user request and decide whether this is chat, coding, preview, GitHub, or device tooling.',
       icon: Icons.manage_search_outlined,
+      traceAction: MobileCodeAction.traceParseInstruction,
     ),
     _AgentTraceStep(
       title: 'Select tool',
       detail: tool,
       icon: Icons.psychology_alt_outlined,
+      traceAction: MobileCodeAction.traceSelectTool,
     ),
-    const _AgentTraceStep(
+    _AgentTraceStep(
       title: 'Call model provider',
       detail: 'Send the prompt and chat context to the configured provider. If this fails, the agent must stop.',
       icon: Icons.cloud_sync_outlined,
+      traceAction: MobileCodeAction.traceCallProvider,
     ),
-    const _AgentTraceStep(
+    _AgentTraceStep(
       title: 'Write generated artifact',
       detail: 'Persist model-generated code only after the provider returns real output.',
       icon: Icons.account_tree_outlined,
+      traceAction: MobileCodeAction.traceWriteArtifact,
     ),
-    const _AgentTraceStep(
+    _AgentTraceStep(
       title: 'Report in chat',
       detail: 'Keep the process, generated content, paths, and failure state in this conversation.',
       icon: Icons.play_arrow_outlined,
+      traceAction: MobileCodeAction.traceReportChat,
     ),
   ];
 }
@@ -6382,6 +6401,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   StreamSubscription<VoiceState>? _voiceStateSub;
   String? _error;
   final List<_AgentTraceStep> _agentTrace = [];
+  final ActionEvidenceStore _agentEvidenceStore = ActionEvidenceStore();
 
   _ChatSession? get _activeSession {
     if (_sessions.isEmpty) return null;
@@ -6789,14 +6809,115 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   void _setAgentRunStep(int index, _AgentStepState state, {String? detail}) {
     if (!mounted || index < 0 || index >= _agentTrace.length) return;
+    final step = _agentTrace[index];
     setState(() {
-      _agentTrace[index] = _agentTrace[index].copyWith(
+      final next = step.copyWith(
         state: state,
-        detail: detail ?? _agentTrace[index].detail,
+        detail: detail ?? step.detail,
         finishedAt: state == _AgentStepState.done || state == _AgentStepState.failed ? DateTime.now() : null,
       );
+      if (state == _AgentStepState.running && step.evidence == null) {
+        next.startedAt = DateTime.now();
+      }
+      _agentTrace[index] = _withStepEvidence(next, state);
     });
     _scrollConversationToEnd();
+  }
+
+  _AgentTraceStep _withStepEvidence(_AgentTraceStep step, _AgentStepState state) {
+    switch (state) {
+      case _AgentStepState.running:
+        step.evidence = ActionEvidence(
+          evidenceId: step.evidenceId,
+          actionName: step.traceAction,
+          paramsSummary: step.detail,
+          startedAt: step.startedAt,
+          endedAt: DateTime.now(),
+          success: false,
+          logs: [step.detail],
+        );
+        break;
+      case _AgentStepState.done:
+        step.evidence = ActionEvidence(
+          evidenceId: step.evidenceId,
+          actionName: step.traceAction,
+          paramsSummary: step.detail,
+          startedAt: step.startedAt,
+          endedAt: DateTime.now(),
+          success: true,
+          artifactPaths: _traceArtifactPaths(step),
+          logs: [step.detail],
+        );
+        break;
+      case _AgentStepState.failed:
+        step.evidence = ActionEvidence(
+          evidenceId: step.evidenceId,
+          actionName: step.traceAction,
+          paramsSummary: step.detail,
+          startedAt: step.startedAt,
+          endedAt: DateTime.now(),
+          success: false,
+          failureKind: _traceFailureKind(step.detail),
+          recoveryActions: _traceRecoveryActions(step),
+          logs: [step.detail],
+        );
+        break;
+      case _AgentStepState.queued:
+        break;
+    }
+    final evidence = step.evidence;
+    if (evidence != null) {
+      _agentEvidenceStore.add(evidence);
+    }
+    return step;
+  }
+
+  List<String> _traceArtifactPaths(_AgentTraceStep step) {
+    if (step.traceAction != MobileCodeAction.traceWriteArtifact) {
+      return const [];
+    }
+    const marker = 'Saved generated artifact to ';
+    final detail = step.detail.trim();
+    if (!detail.startsWith(marker)) return const [];
+    final path = detail.substring(marker.length).trim();
+    return path.isEmpty ? const [] : [path];
+  }
+
+  String _traceFailureKind(String detail) {
+    final lower = detail.toLowerCase();
+    if (lower.contains('stopped') || lower.contains('cancel')) {
+      return ActionFailureKind.cancelled;
+    }
+    if (lower.contains('timeout') || lower.contains('timed out')) {
+      return ActionFailureKind.timeout;
+    }
+    if (lower.contains('api key') || lower.contains('token') || lower.contains('401') || lower.contains('403')) {
+      return ActionFailureKind.authFailed;
+    }
+    if (lower.contains('provider') || lower.contains('http') || lower.contains('network')) {
+      return ActionFailureKind.runtimeLost;
+    }
+    return ActionFailureKind.unknown;
+  }
+
+  List<String> _traceRecoveryActions(_AgentTraceStep step) {
+    final failureKind = _traceFailureKind(step.detail);
+    if (failureKind == ActionFailureKind.cancelled) {
+      return const ['Run the agent again when ready.'];
+    }
+    if (failureKind == ActionFailureKind.timeout) {
+      return const [
+        'Retry with a smaller request or shorter output.',
+        'Check provider latency before rerunning.',
+      ];
+    }
+    if (failureKind == ActionFailureKind.authFailed) {
+      return const ['Open Models & Settings and verify the provider token/base URL.'];
+    }
+    if (failureKind == ActionFailureKind.runtimeLost) {
+      return const ['Refresh provider/runtime health, then retry the step.'];
+    }
+    return const ['Open step details and inspect the captured log before retrying.'];
   }
 
   Future<void> _completeAgentRunStep(int index, {String? detail}) async {
@@ -6813,11 +6934,12 @@ class _ChatPanelState extends State<_ChatPanel> {
     final index = runningIndex == -1 ? _agentTrace.indexWhere((step) => step.state == _AgentStepState.queued) : runningIndex;
     if (index == -1) return;
     setState(() {
-      _agentTrace[index] = _agentTrace[index].copyWith(
+      final failed = _agentTrace[index].copyWith(
         detail: detail,
         state: _AgentStepState.failed,
         finishedAt: DateTime.now(),
       );
+      _agentTrace[index] = _withStepEvidence(failed, _AgentStepState.failed);
     });
     _scrollConversationToEnd();
   }
@@ -6863,26 +6985,54 @@ class _ChatPanelState extends State<_ChatPanel> {
     };
     final projectDirectory = Directory('${directory.path}/mobilecode_projects/$slug');
     await projectDirectory.create(recursive: true);
+    final actionRunner = ActionRunner(
+      workspaceRootPath: directory.path,
+      evidenceStore: _agentEvidenceStore,
+    );
 
     if (isWebArtifact) {
       final html = _extractHtmlDocument(modelAnswer);
       if (html == null) {
         throw Exception('Provider responded, but did not return a complete ```html block. No game file was written.');
       }
-      final tempFile = File('${projectDirectory.path}/index.html.tmp');
-      final file = File('${projectDirectory.path}/index.html');
-      await tempFile.writeAsString(html, flush: true);
-      if (await file.exists()) {
-        await file.delete();
+      final relativePath = 'mobilecode_projects/$slug/index.html';
+      final writeResult = await actionRunner.run(ActionSchema(
+        actionName: MobileCodeAction.writeFile,
+        paramsSummary: 'write generated HTML artifact',
+        params: {'path': relativePath, 'content': html, 'overwrite': true},
+      ));
+      if (!writeResult.success || writeResult.path == null) {
+        throw Exception(writeResult.evidence.logs.isEmpty ? 'Failed to write generated HTML artifact.' : writeResult.evidence.logs.first);
       }
-      await tempFile.rename(file.path);
-      return file.path;
+      await actionRunner.run(ActionSchema(
+        actionName: MobileCodeAction.readFile,
+        paramsSummary: 'verify generated HTML artifact',
+        params: {'path': relativePath, 'maxBytes': 16 * 1024},
+      ));
+      await actionRunner.run(ActionSchema(
+        actionName: MobileCodeAction.previewHtml,
+        paramsSummary: 'prepare generated HTML preview',
+        params: {'path': relativePath},
+      ));
+      return writeResult.path;
     }
 
     if (toolName.startsWith('mobile_coding.')) {
-      final file = File('${projectDirectory.path}/agent_response.md');
-      await file.writeAsString(modelAnswer, flush: true);
-      return file.path;
+      final relativePath = 'mobilecode_projects/$slug/agent_response.md';
+      final writeResult = await actionRunner.run(ActionSchema(
+        actionName: MobileCodeAction.writeFile,
+        paramsSummary: 'write generated markdown artifact',
+        params: {'path': relativePath, 'content': modelAnswer, 'overwrite': true},
+      ));
+      if (!writeResult.success || writeResult.path == null) {
+        throw Exception(writeResult.evidence.logs.isEmpty ? 'Failed to write generated markdown artifact.' : writeResult.evidence.logs.first);
+      }
+      await actionRunner.run(ActionSchema(
+        actionName: MobileCodeAction.readFile,
+        paramsSummary: 'verify generated markdown artifact',
+        params: {'path': relativePath, 'maxBytes': 16 * 1024},
+      ));
+      return writeResult.path;
     }
     return null;
   }
@@ -7029,6 +7179,13 @@ class _ChatPanelState extends State<_ChatPanel> {
             ),
             const SizedBox(width: 8),
             IconButton.filledTonal(
+              tooltip: 'Activity evidence',
+              visualDensity: VisualDensity.compact,
+              onPressed: _agentEvidenceStore.isEmpty ? null : _showActivityEvidenceSheet,
+              icon: const Icon(Icons.receipt_long_outlined, size: 18),
+            ),
+            const SizedBox(width: 6),
+            IconButton.filledTonal(
               tooltip: 'New chat',
               visualDensity: VisualDensity.compact,
               onPressed: _sending || _agentRunning ? null : _createSession,
@@ -7037,6 +7194,55 @@ class _ChatPanelState extends State<_ChatPanel> {
           ],
         ),
       ),
+    );
+  }
+
+  void _showActivityEvidenceSheet() {
+    final recent = _agentEvidenceStore.recent(count: 20);
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.receipt_long_outlined, color: _violet),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Activity evidence',
+                          style: TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Recent structured action evidence from this chat session.',
+                    style: TextStyle(color: _muted, height: 1.35),
+                  ),
+                  const SizedBox(height: 14),
+                  if (recent.isEmpty)
+                    const Text('No action evidence yet.', style: TextStyle(color: _muted))
+                  else
+                    for (final evidence in recent) ...[
+                      _ActionEvidenceTile(evidence: evidence),
+                      const SizedBox(height: 8),
+                    ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -8572,35 +8778,240 @@ class _AgentTraceRow extends StatelessWidget {
         Expanded(
           child: Padding(
             padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => _showAgentTraceEvidenceSheet(context, step),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(step.icon, color: color, size: 15),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        step.title,
-                        style: const TextStyle(color: _text, fontWeight: FontWeight.w800, fontSize: 13),
-                      ),
+                    Row(
+                      children: [
+                        Icon(step.icon, color: color, size: 15),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            step.title,
+                            style: const TextStyle(color: _text, fontWeight: FontWeight.w800, fontSize: 13),
+                          ),
+                        ),
+                        Text(
+                          _agentStepLabel(step.state),
+                          style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 11),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(Icons.chevron_right, color: color.withOpacity(0.75), size: 16),
+                      ],
                     ),
+                    const SizedBox(height: 4),
                     Text(
-                      _agentStepLabel(step.state),
-                      style: TextStyle(color: color, fontWeight: FontWeight.w800, fontSize: 11),
+                      step.detail,
+                      style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
                     ),
+                    const SizedBox(height: 4),
+                    _EvidenceChip(step: step),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  step.detail,
-                  style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
-                ),
-              ],
+              ),
             ),
           ),
         ),
       ],
+    );
+  }
+}
+
+void _showAgentTraceEvidenceSheet(BuildContext context, _AgentTraceStep step) {
+  final evidence = step.evidence;
+  final color = _agentStepColor(step.state);
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (context) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(step.icon, color: color, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        step.title,
+                        style: const TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    _Pill(
+                      label: _agentStepLabel(step.state),
+                      icon: _agentStepStatusIcon(step.state),
+                      color: color,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _EvidenceInfoRow(label: 'Evidence ID', value: step.evidenceId, monospace: true),
+                _EvidenceInfoRow(label: 'Action', value: step.traceAction.name),
+                _EvidenceInfoRow(label: 'State', value: _agentStepLabel(step.state)),
+                if (evidence != null) ...[
+                  _EvidenceInfoRow(label: 'Duration', value: _durationLabel(Duration(milliseconds: evidence.durationMs))),
+                  _EvidenceInfoRow(label: 'Started', value: evidence.startedAt.toIso8601String()),
+                  _EvidenceInfoRow(label: 'Ended', value: evidence.endedAt.toIso8601String()),
+                  if (evidence.failureKind != null) _EvidenceInfoRow(label: 'Failure kind', value: evidence.failureKind!),
+                  if (evidence.artifactPaths.isNotEmpty)
+                    _EvidenceInfoRow(label: 'Artifacts', value: evidence.artifactPaths.join('\n'), monospace: true),
+                  if (evidence.urls.isNotEmpty)
+                    _EvidenceInfoRow(label: 'URLs', value: evidence.urls.join('\n'), monospace: true),
+                  if (evidence.recoveryActions.isNotEmpty)
+                    _EvidenceInfoRow(label: 'Recovery', value: evidence.recoveryActions.join('\n')),
+                  if (evidence.logs.isNotEmpty)
+                    _EvidenceInfoRow(label: 'Logs', value: evidence.logs.join('\n'), monospace: true),
+                ] else ...[
+                  const Text(
+                    'Evidence record is not executed yet. The step already has a stable evidenceId and will fill runtime evidence when it starts.',
+                    style: TextStyle(color: _muted, height: 1.4),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _EvidenceChip extends StatelessWidget {
+  const _EvidenceChip({required this.step});
+
+  final _AgentTraceStep step;
+
+  @override
+  Widget build(BuildContext context) {
+    final evidence = step.evidence;
+    final evColor = _agentStepColor(step.state);
+    final statusLabel = switch (step.state) {
+      _AgentStepState.done => 'success',
+      _AgentStepState.failed => evidence?.failureKind ?? 'failed',
+      _AgentStepState.running => 'running',
+      _AgentStepState.queued => 'queued',
+    };
+    final durationLabel = evidence == null ? 'pending' : _durationLabel(Duration(milliseconds: evidence.durationMs));
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: evColor.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: evColor.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${step.evidenceId} · ${step.traceAction.name}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: evColor,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                fontFamily: 'monospace',
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(statusLabel, style: TextStyle(color: evColor, fontSize: 10, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 6),
+          Text(durationLabel, style: const TextStyle(color: _muted, fontSize: 10)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionEvidenceTile extends StatelessWidget {
+  const _ActionEvidenceTile({required this.evidence});
+
+  final ActionEvidence evidence;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = evidence.success ? _mint : _rose;
+    return _Panel(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(evidence.success ? Icons.check_circle_outline : Icons.error_outline, color: color, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  evidence.actionName.name,
+                  style: const TextStyle(color: _text, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text(_durationLabel(Duration(milliseconds: evidence.durationMs)), style: const TextStyle(color: _faint, fontSize: 11)),
+            ],
+          ),
+          if (evidence.paramsSummary.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(evidence.paramsSummary, style: const TextStyle(color: _muted, fontSize: 12, height: 1.35)),
+          ],
+          const SizedBox(height: 6),
+          Text(evidence.evidenceId, style: const TextStyle(color: _faint, fontSize: 10, fontFamily: 'monospace')),
+          if (evidence.artifactPaths.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(evidence.artifactPaths.join('\n'), style: const TextStyle(color: _muted, fontSize: 10, fontFamily: 'monospace')),
+          ],
+          if (evidence.failureKind != null) ...[
+            const SizedBox(height: 6),
+            Text(evidence.failureKind!, style: const TextStyle(color: _rose, fontSize: 11, fontWeight: FontWeight.w800)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EvidenceInfoRow extends StatelessWidget {
+  const _EvidenceInfoRow({
+    required this.label,
+    required this.value,
+    this.monospace = false,
+  });
+
+  final String label;
+  final String value;
+  final bool monospace;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: _faint, fontSize: 11, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 3),
+          SelectableText(
+            value,
+            style: TextStyle(
+              color: _text,
+              fontSize: 13,
+              height: 1.35,
+              fontFamily: monospace ? 'monospace' : null,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

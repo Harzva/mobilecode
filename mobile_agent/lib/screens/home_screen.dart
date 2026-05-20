@@ -1667,32 +1667,53 @@ class _HomeScreenState extends State<HomeScreen> {
               style: TextStyle(color: _text, fontWeight: FontWeight.w800, fontSize: 14),
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _BoundaryChip(
-                  title: '已实现',
-                  color: _mint,
-                  items: readyText,
-                  count: summary.implemented.length,
-                  icon: Icons.check_circle_outline,
-                ),
-                _BoundaryChip(
-                  title: '降级',
-                  color: _amber,
-                  items: degradedText,
-                  count: summary.degraded.length,
-                  icon: Icons.vertical_align_bottom_outlined,
-                ),
-                _BoundaryChip(
-                  title: '阻断',
-                  color: _rose,
-                  items: blockedText,
-                  count: summary.blocked.length,
-                  icon: Icons.block,
-                ),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final chips = [
+                  _BoundaryChip(
+                    title: '已实现',
+                    color: _mint,
+                    items: readyText,
+                    count: summary.implemented.length,
+                    icon: Icons.check_circle_outline,
+                  ),
+                  _BoundaryChip(
+                    title: '降级',
+                    color: _amber,
+                    items: degradedText,
+                    count: summary.degraded.length,
+                    icon: Icons.vertical_align_bottom_outlined,
+                  ),
+                  _BoundaryChip(
+                    title: '阻断',
+                    color: _rose,
+                    items: blockedText,
+                    count: summary.blocked.length,
+                    icon: Icons.block,
+                  ),
+                ];
+
+                if (constraints.maxWidth < 360) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final chip in chips) ...[
+                        chip,
+                        if (chip != chips.last) const SizedBox(height: 8),
+                      ],
+                    ],
+                  );
+                }
+
+                return Row(
+                  children: [
+                    for (final chip in chips) ...[
+                      Expanded(child: chip),
+                      if (chip != chips.last) const SizedBox(width: 8),
+                    ],
+                  ],
+                );
+              },
             ),
           ],
         ),
@@ -8415,35 +8436,41 @@ class _BoundaryChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withOpacity(0.25)),
-          color: color.withOpacity(0.05),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: color, size: 15),
-                const SizedBox(width: 6),
-                Text(title, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
-                const SizedBox(width: 4),
-                _Pill(label: '$count', icon: Icons.grid_view_outlined, color: color),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              items,
-              style: const TextStyle(color: _muted, fontSize: 10, height: 1.3),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.25)),
+        color: color.withOpacity(0.05),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 15),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800),
+                ),
+              ),
+              const SizedBox(width: 4),
+              _Pill(label: '$count', icon: Icons.grid_view_outlined, color: color),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            items,
+            style: const TextStyle(color: _muted, fontSize: 10, height: 1.3),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
       ),
     );
   }

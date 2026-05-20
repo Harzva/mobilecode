@@ -416,6 +416,12 @@ Codex review（2026-05-20）：
 - 已添加 `Tools` 一致性入口（并移除 ToolLab 的“能力边界”重复文本），减少聊天流首屏工程化感。
 - 该验收不新增 runtime 执行路径，仍保留 `Runtime`/`Diagnostics` 通道。
 
+Regression fix（2026-05-21，Codex）：
+
+- 修复 `v0.1.41-last` APK 中 Chat 首屏能力边界灰色大块问题。
+- 根因：`_BoundaryChip` 内部使用 `Expanded`，但父级为 `Wrap`，release 构建中触发 Flutter `ParentDataWidget` 错误并渲染为灰色错误区域。
+- 修复：将 `Expanded` 移到 `Row` 布局层；窄屏时切换为垂直堆叠，保持首屏轻量、可读。
+
 Remaining risks:
 
 - 该任务仍依赖 `CapabilityLayer` 的静态状态定义，当前边界口径可能与实际运行时动态能力有偏差；需在 H09 统一 Connector Readiness 后精化映射。

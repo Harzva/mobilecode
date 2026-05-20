@@ -227,6 +227,7 @@ Implementation evidence (2026-05-20, Codex):
 
 - `docs/import_phase_summarize/2026-05-20-mobilecode-h01-capability-baseline.md`（本轮基线盘点与对外边界同步）
 - `docs/mobilecode-capability-matrix.md`
+- `docs/mobilecode-last-capability-statement.md`（本轮 last 口径的对外能力声明与不可承诺项）
 - `docs/import_phase_summarize/Agent与Harness工程、工具泛化与移动端适配技术复盘总结.md`
 - `docs/import_phase_summarize/MobileCode 仅 “看起来调用工具” 的根源.md`
 - `docs/import_phase_summarize/2026-05-20-kimiclaw-mobile-harness-worklog.md`
@@ -455,6 +456,7 @@ Status：ACCEPTED
   - `mobile_agent/lib/screens/home_screen.dart`：`_ActionEvidenceCenterSheet`。
   - 支持“Recent Action Evidence”+“Failed Action Evidence”两段展示。
   - 每条失败记录可直接复制摘要并跳转到 `_showActionEvidenceSheet` 详情。
+- 对外口径统一页：`docs/mobilecode-last-capability-statement.md`（已声明对外能力、降级、阻断与不可承诺项边界）。
 
 简版读数评估（2026-05-20，Codex）：
 

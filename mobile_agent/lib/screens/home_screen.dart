@@ -1776,18 +1776,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         _buildCapabilityBoundaryStrip(),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-          child: _RuntimePermissionBanner(
-            activeRuntimeName: _activeRuntimeName,
-            ready: _runtimeReady,
-            capabilitiesLabel: _runtimeCapabilityLabel(_runtimeCapabilities),
-            checking: _runtimeChecking,
-            message: _runtimeMessage,
-            onCheck: () => _checkRuntime(),
-            onOpenRuntime: _openTermuxSheet,
-          ),
-        ),
+        const SizedBox(height: 4),
         Expanded(
           child: _ChatPanel(
             key: _chatPanelKey,

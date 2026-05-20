@@ -24,7 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _themeMode = 'dark'; // dark, light, system
 
   // AI settings
-  String _defaultApi = 'OpenAI GPT-4';
+  String _defaultApi = 'Custom Provider / Base URL';
   double _temperature = 0.7;
 
   // GitHub

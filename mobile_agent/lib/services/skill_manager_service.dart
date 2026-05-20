@@ -42,6 +42,13 @@ class McpServerException implements Exception {
   String toString() => 'McpServerException[$serverId]: $message';
 }
 
+class RegistrySourceException implements Exception {
+  final String message;
+  RegistrySourceException(this.message);
+  @override
+  String toString() => 'RegistrySourceException: $message';
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Skill Manager Service
 // ═══════════════════════════════════════════════════════════════════════════
@@ -77,6 +84,7 @@ class SkillManagerService extends ChangeNotifier {
   static const String _mcpServersKey = 'skill_manager_mcp_servers';
   static const String _logsKey = 'skill_manager_install_logs';
   static const String _enabledSkillsKey = 'skill_manager_enabled_skills';
+  static const String _builtInSkillStateKey = 'skill_manager_builtin_skill_state';
 
   // ── Internal State ─────────────────────────────
 
@@ -124,6 +132,9 @@ class SkillManagerService extends ChangeNotifier {
     // Load persisted installed skills
     await _loadPersistedSkills();
 
+    // Apply persisted built-in uninstall/enable overrides after defaults register.
+    await _loadPersistedBuiltInSkillState();
+
     // Load persisted MCP servers
     await _loadPersistedMcpServers();
 
@@ -165,7 +176,9 @@ class SkillManagerService extends ChangeNotifier {
 
   /// Search skills by query (matches name, description, tags, author).
   Future<List<Skill>> searchSkills(String query) async {
-    _ensureInitialized();
+    if (!_initialized) {
+      await initialize();
+    }
     final lowerQuery = query.toLowerCase();
     return List.unmodifiable(
       _skills.values.where((skill) {
@@ -193,69 +206,106 @@ class SkillManagerService extends ChangeNotifier {
     return getSkillsByInstallStatus(installed: false);
   }
 
+  /// Build a compact prompt context from enabled HTML/UI skills.
+  ///
+  /// This is the bridge from Skill Manager state into the mini-agent loop. It
+  /// intentionally returns guidance, not executable plugin code.
+  Future<String> buildHtmlGenerationSkillContext() async {
+    if (!_initialized) {
+      await initialize();
+    }
+
+    final active = _skills.values
+        .where((skill) => skill.isInstalled && skill.isEnabled)
+        .where((skill) =>
+            skill.tags.any((tag) {
+              final lower = tag.toLowerCase();
+              return lower == 'html' ||
+                  lower == 'ui' ||
+                  lower == 'ux' ||
+                  lower == 'accessibility' ||
+                  lower == 'animation' ||
+                  lower == 'design-system';
+            }) ||
+            skill.actions.any((action) => action.startsWith('html.') || action.startsWith('a11y.') || action.startsWith('motion.')))
+        .toList()
+      ..sort((a, b) => a.name.compareTo(b.name));
+
+    if (active.isEmpty) {
+      return 'No optional HTML/UI skills are enabled. Use the baseline mobile-first HTML requirements only.';
+    }
+
+    final buffer = StringBuffer()
+      ..writeln('Active MobileCode HTML/UI skills:')
+      ..writeln('- Apply these as product-native guidance, not as external tool execution.');
+
+    for (final skill in active.take(8)) {
+      buffer.writeln('- ${skill.id}: ${skill.description}');
+      if (skill.actions.isNotEmpty) {
+        buffer.writeln('  Actions: ${skill.actions.take(3).join(', ')}');
+      }
+      if (skill.prompts.isNotEmpty) {
+        buffer.writeln('  Prompt gates: ${skill.prompts.take(3).join(', ')}');
+      }
+    }
+
+    buffer.writeln('Required HTML output gates: mobile-first layout, semantic HTML, touch-friendly controls, accessible labels/focus states, reduced-motion fallback, cohesive visual system, no remote assets unless explicitly requested.');
+    return buffer.toString().trim();
+  }
+
   // ═══════════════════════════════════════════════════════════════════════
   // GitHub Skill Discovery
   // ═══════════════════════════════════════════════════════════════════════
 
-  /// Search GitHub for repositories tagged as mobilecode skills.
+  /// Search GitHub for public skill/MCP repositories.
   ///
-  /// Uses GitHub search API to find repositories with topic "mobilecode-skill".
+  /// This borrows the GitMarket-style discovery pattern (query + category-like
+  /// provenance + stars/recency ranking) but adapts it to skills instead of APKs.
+  /// Results are GitHub metadata only; installation still requires manifest
+  /// preview through [importFromGitHub].
   Future<List<Skill>> searchGitHubSkills({String? query, String language = ''}) async {
-    _ensureInitialized();
+    if (!_initialized) {
+      await initialize();
+    }
 
     try {
-      final q = StringBuffer('topic:mobilecode-skill');
-      if (query != null && query.isNotEmpty) {
-        q.write(' $query');
-      }
-      if (language.isNotEmpty) {
-        q.write(' language:$language');
-      }
+      final queries = _githubSkillDiscoveryQueries(query: query, language: language);
+      final byId = <String, Skill>{};
 
-      final uri = Uri.https(
-        'api.github.com',
-        '/search/repositories',
-        {'q': q.toString(), 'sort': 'stars', 'order': 'desc', 'per_page': '30'},
-      );
-
-      debugPrint('[SkillManager] Searching GitHub: ${uri.toString()}');
-      final response = await http.get(uri);
-
-      if (response.statusCode != 200) {
-        throw SkillException('GitHub API error: ${response.statusCode}');
-      }
-
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final items = data['items'] as List<dynamic>? ?? [];
-
-      final results = <Skill>[];
-      for (final item in items) {
-        final repo = item as Map<String, dynamic>;
-        final fullName = repo['full_name'] as String? ?? '';
-        final stars = repo['stargazers_count'] as int? ?? 0;
-
-        // Construct a Skill from GitHub repo metadata
-        // (Detailed skill.yaml will be fetched during import)
-        final skill = Skill(
-          id: fullName.replaceAll('/', '_'),
-          name: repo['name'] as String? ?? 'Unknown',
-          version: '1.0.0',
-          description: repo['description'] as String? ?? 'No description',
-          author: fullName.split('/').first,
-          tags: ['github', ...(repo['topics'] as List<dynamic>?)?.cast<String>() ?? []],
-          actions: const [],
-          prompts: const [],
-          mcpServers: const [],
-          source: SkillSource.github,
-          githubUrl: repo['html_url'] as String?,
-          rating: 0.0,
-          installCount: stars,
+      for (final q in queries) {
+        final uri = Uri.https(
+          'api.github.com',
+          '/search/repositories',
+          {'q': q, 'sort': 'stars', 'order': 'desc', 'per_page': '12'},
         );
-        results.add(skill);
+
+        debugPrint('[SkillManager] Searching GitHub skills: ${uri.toString()}');
+        final response = await http.get(uri).timeout(const Duration(seconds: 12));
+        if (response.statusCode != 200) {
+          debugPrint('[SkillManager] GitHub skill query failed HTTP ${response.statusCode}: $q');
+          continue;
+        }
+
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final items = data['items'] as List<dynamic>? ?? [];
+        for (final item in items) {
+          if (item is! Map<String, dynamic>) continue;
+          final skill = _skillFromGitHubRepo(item, queryText: query);
+          byId.putIfAbsent(skill.id, () => skill);
+        }
       }
 
+      final results = byId.values.toList(growable: false)
+        ..sort((a, b) {
+          final byRating = b.rating.compareTo(a.rating);
+          if (byRating != 0) return byRating;
+          return b.installCount.compareTo(a.installCount);
+        });
+      if (results.isEmpty) {
+        throw SkillException('GitHub skill discovery returned no public candidates');
+      }
       debugPrint('[SkillManager] Found ${results.length} skills on GitHub');
-      return results;
+      return List.unmodifiable(results.take(30));
     } catch (e) {
       debugPrint('[SkillManager] GitHub search failed: $e');
       // Return demo data if API fails
@@ -263,9 +313,126 @@ class SkillManagerService extends ChangeNotifier {
     }
   }
 
+  List<String> _githubSkillDiscoveryQueries({String? query, String language = ''}) {
+    final trimmed = query?.trim();
+    final userQuery = trimmed == null || trimmed.isEmpty ? '' : ' $trimmed';
+    final languageFilter = language.trim().isEmpty ? '' : ' language:${language.trim()}';
+    final baseQueries = [
+      'topic:mobilecode-skill$userQuery',
+      'topic:codex-skill$userQuery',
+      'topic:agent-skill$userQuery',
+      'SKILL.md$userQuery in:readme,description',
+      'mcp server$userQuery in:name,description,topics',
+    ];
+    return baseQueries.map((q) => '$q archived:false$languageFilter').toList(growable: false);
+  }
+
+  Skill _skillFromGitHubRepo(Map<String, dynamic> repo, {String? queryText}) {
+    final fullName = repo['full_name'] as String? ?? '';
+    final topics = ((repo['topics'] as List<dynamic>?) ?? const []).whereType<String>().toList(growable: false);
+    final stars = repo['stargazers_count'] as int? ?? 0;
+    final description = repo['description'] as String? ?? 'No description';
+    final score = _githubSkillScore(
+      name: repo['name'] as String? ?? '',
+      description: description,
+      topics: topics,
+      stars: stars,
+      queryText: queryText,
+    );
+
+    return Skill(
+      id: fullName.replaceAll('/', '_'),
+      name: repo['name'] as String? ?? 'Unknown',
+      version: '1.0.0',
+      description: description,
+      author: fullName.split('/').first,
+      tags: ['github', 'public-provenance', ...topics],
+      actions: const [],
+      prompts: const ['Preview manifest before install', 'Verify GitHub provenance'],
+      mcpServers: const [],
+      source: SkillSource.github,
+      githubUrl: repo['html_url'] as String?,
+      rating: score,
+      installCount: stars,
+    );
+  }
+
+  double _githubSkillScore({
+    required String name,
+    required String description,
+    required List<String> topics,
+    required int stars,
+    String? queryText,
+  }) {
+    var score = 0.0;
+    final haystack = '$name $description ${topics.join(' ')}'.toLowerCase();
+    for (final signal in const ['mobilecode-skill', 'codex-skill', 'agent-skill', 'skill', 'mcp', 'prompt']) {
+      if (haystack.contains(signal)) score += 1.5;
+    }
+    final query = queryText?.trim().toLowerCase();
+    if (query != null && query.isNotEmpty && haystack.contains(query)) score += 2;
+    score += stars.clamp(0, 5000) / 1000.0;
+    return double.parse(score.toStringAsFixed(2));
+  }
+
   /// Get trending/popular skills from GitHub.
   Future<List<Skill>> getTrendingSkills() async {
     return searchGitHubSkills(query: 'stars:>5');
+  }
+
+  /// Search the curated public skill source, then normalize results to GitHub-backed skills.
+  ///
+  /// MobileCode intentionally does not depend on account-gated marketplace web flows.
+  /// Results come from public GitHub provenance and still go through [importFromGitHub]
+  /// before installation.
+  Future<List<Skill>> searchCuratedSkillSources({String? query, int limit = 12}) async {
+    if (!_initialized) {
+      await initialize();
+    }
+    final searchQuery = (query == null || query.trim().isEmpty) ? 'html ui design mobile' : query.trim();
+    return _getCuratedGitHubSkills(searchQuery, limit: limit);
+  }
+
+  /// Search public MCP candidates and return disabled MCP server candidates.
+  ///
+  /// MobileCode does not depend on account-gated MCP registry web flows. GitHub metadata
+  /// is treated as provenance only. The returned servers are not started or enabled
+  /// until the user reviews and registers them.
+  Future<List<McpServer>> searchMcpRegistryServers({String? query, int limit = 12}) async {
+    if (!_initialized) {
+      await initialize();
+    }
+    final searchQuery = (query == null || query.trim().isEmpty) ? 'github fetch browser filesystem' : query.trim();
+
+    try {
+      final uri = Uri.https(
+        'api.github.com',
+        '/search/repositories',
+        {
+          'q': 'mcp server $searchQuery in:name,description,topics',
+          'sort': 'stars',
+          'order': 'desc',
+          'per_page': '$limit',
+        },
+      );
+      final response = await http.get(uri).timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) {
+        throw RegistrySourceException('MCP registry search returned HTTP ${response.statusCode}');
+      }
+      final decoded = jsonDecode(response.body) as Map<String, dynamic>;
+      final items = decoded['items'] as List<dynamic>? ?? const [];
+      final results = <McpServer>[];
+      for (final item in items) {
+        if (item is! Map<String, dynamic>) continue;
+        final server = _mcpServerFromGitHubRepo(item);
+        if (server != null) results.add(server);
+      }
+      if (results.isNotEmpty) return List.unmodifiable(results.take(limit));
+    } catch (e) {
+      debugPrint('[SkillManager] MCP registry search fallback: $e');
+    }
+
+    return _getCuratedMcpServers(searchQuery, limit: limit);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -402,6 +569,62 @@ class SkillManagerService extends ChangeNotifier {
     } catch (e) {
       throw SkillException('Failed to import from URL: $e');
     }
+  }
+
+  /// Preview a GitHub-backed skill install. The returned skill is not installed
+  /// until [install] is called from the review UI.
+  Future<Skill> previewSkillInstallFromRepo(String repoUrl) {
+    return importFromGitHub(repoUrl);
+  }
+
+  /// Build a disabled MCP candidate from public GitHub provenance.
+  ///
+  /// Registering this candidate must not start the server. The user reviews the
+  /// command and scope first, then [registerReviewedMcpCandidate] stores it.
+  Future<McpServer> previewMcpInstallFromRepo({
+    required String fullName,
+    required String repoUrl,
+    required String name,
+    String? description,
+  }) async {
+    _ensureInitialized();
+    final packageName = _guessNpmPackageName(fullName, name);
+    return McpServer(
+      id: _mcpRegistryId(fullName),
+      name: name.trim().isEmpty ? fullName.split('/').last : name.trim(),
+      type: 'stdio',
+      command: packageName == null ? '' : 'npx -y $packageName',
+      description: [
+        if (description != null && description.trim().isNotEmpty) description.trim(),
+        'Source: $repoUrl',
+      ].join('\n\n'),
+      version: 'registry-preview',
+      isEnabled: false,
+      status: McpServerStatus.stopped,
+      logs: const [
+        'Registered as disabled metadata. Review command, environment variables, and permissions before enabling.',
+      ],
+    );
+  }
+
+  Future<void> registerReviewedMcpCandidate(McpServer candidate) async {
+    _ensureInitialized();
+    await addCustomMcpServer(candidate.copyWith(
+      isEnabled: false,
+      status: McpServerStatus.stopped,
+    ));
+  }
+
+  bool isGitHubSkillInstalled(String repoUrl) {
+    _ensureInitialized();
+    final normalized = repoUrl.trim().toLowerCase();
+    return _skills.values.any((skill) =>
+        skill.isInstalled && (skill.githubUrl ?? '').trim().toLowerCase() == normalized);
+  }
+
+  bool isMcpRepoRegistered(String fullName) {
+    _ensureInitialized();
+    return _mcpServers.containsKey(_mcpRegistryId(fullName));
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -898,10 +1121,236 @@ class SkillManagerService extends ChangeNotifier {
       installedAt: DateTime.now(),
     ));
 
+    _registerBuiltInHtmlDesignSkills();
+
     // Add built-in skills to main registry
     for (final skill in _builtInSkills) {
       _skills[skill.id] = skill;
     }
+  }
+
+  void _registerBuiltInHtmlDesignSkills() {
+    final now = DateTime.now();
+    final skills = [
+      Skill(
+        id: 'frontend_design',
+        name: 'Frontend Design',
+        version: '1.0.0',
+        description: 'HTML-first visual direction, typography, color, layout, motion, and non-generic product UI guidance internalized for MobileCode artifacts.',
+        author: 'mobilecode-team',
+        tags: const ['html', 'frontend', 'design', 'built-in', 'default'],
+        actions: const [
+          'html.choose_visual_direction',
+          'html.compose_responsive_layout',
+          'html.refine_visual_system',
+        ],
+        prompts: const [
+          'frontend_design_brief',
+          'html_visual_quality_checklist',
+          'mobile_preview_polish',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/anthropics/skills',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'ui_ux_pro_max',
+        name: 'UI UX Pro Max',
+        version: '1.0.0',
+        description: 'Product-grade UX flow, information hierarchy, interaction states, and mobile-first polish for generated HTML experiences.',
+        author: 'mobilecode-team',
+        tags: const ['ux', 'mobile-ui', 'html', 'built-in', 'default'],
+        actions: const [
+          'ux.map_user_flow',
+          'ux.design_empty_loading_error_states',
+          'ux.audit_touch_targets',
+        ],
+        prompts: const [
+          'mobile_ux_flow_review',
+          'ui_state_completeness',
+          'tap_target_accessibility',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/nextlevelbuilder/ui-ux-pro-max-skill',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'shadcn_ui',
+        name: 'shadcn/ui Pattern Kit',
+        version: '1.0.0',
+        description: 'Ownership-oriented component patterns, variants, dialogs, forms, cards, and registry thinking adapted to plain HTML/CSS and future React exports.',
+        author: 'mobilecode-team',
+        tags: const ['components', 'shadcn', 'html', 'built-in', 'default'],
+        actions: const [
+          'ui.compose_component_variants',
+          'ui.design_dialog_form_controls',
+          'ui.normalize_component_tokens',
+        ],
+        prompts: const [
+          'component_variant_matrix',
+          'html_component_contract',
+          'registry_component_review',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/giuseppe-trisciuoglio/developer-kit',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'stitch_html_design',
+        name: 'Stitch HTML Design',
+        version: '1.0.0',
+        description: 'Prompt-to-interface structure, screenshot-inspired design translation, and high-fidelity HTML screen generation for MobileCode previews.',
+        author: 'mobilecode-team',
+        tags: const ['stitch', 'html', 'design-system', 'built-in', 'default'],
+        actions: const [
+          'html.translate_design_prompt',
+          'html.extract_design_tokens',
+          'html.generate_preview_screen',
+        ],
+        prompts: const [
+          'stitch_style_html_prompt',
+          'design_token_extraction',
+          'mobile_webview_screen_spec',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/google-labs-code/stitch-skills',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'web_accessibility',
+        name: 'Web Accessibility',
+        version: '1.0.0',
+        description: 'Accessibility defaults for generated HTML: semantic structure, focus order, contrast, motion reduction, labels, and keyboard affordances.',
+        author: 'mobilecode-team',
+        tags: const ['accessibility', 'wcag', 'html', 'built-in', 'default'],
+        actions: const [
+          'a11y.audit_semantics',
+          'a11y.check_focus_order',
+          'a11y.enforce_motion_preferences',
+        ],
+        prompts: const [
+          'html_accessibility_checklist',
+          'semantic_markup_review',
+          'keyboard_navigation_review',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/supercent-io/skills-template',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'web_design_guidelines',
+        name: 'Web Design Guidelines',
+        version: '1.0.0',
+        description: 'Vercel-style web craft guidance for responsive composition, performance-aware UI, hierarchy, and deployable web artifact quality.',
+        author: 'mobilecode-team',
+        tags: const ['web', 'guidelines', 'performance', 'built-in', 'default'],
+        actions: const [
+          'web.audit_visual_hierarchy',
+          'web.check_responsive_breakpoints',
+          'web.review_deployable_quality',
+        ],
+        prompts: const [
+          'web_design_review',
+          'responsive_artifact_gate',
+          'deployable_html_quality',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/vercel-labs/agent-skills',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'ui_animation',
+        name: 'UI Animation',
+        version: '1.0.0',
+        description: 'CSS-first motion patterns, micro-interactions, page reveal timing, and reduced-motion fallbacks for HTML previews.',
+        author: 'mobilecode-team',
+        tags: const ['animation', 'css', 'motion', 'built-in', 'default'],
+        actions: const [
+          'motion.plan_page_reveal',
+          'motion.add_micro_interactions',
+          'motion.add_reduced_motion_fallback',
+        ],
+        prompts: const [
+          'css_motion_direction',
+          'micro_interaction_review',
+          'reduced_motion_gate',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/mblode/agent-skills',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'figma_implement_design',
+        name: 'Figma Implement Design',
+        version: '1.0.0',
+        description: 'Figma-to-code discipline internalized as design context, asset fidelity, token translation, visual parity, and responsive validation.',
+        author: 'mobilecode-team',
+        tags: const ['figma', 'design-implementation', 'html', 'built-in', 'default'],
+        actions: const [
+          'figma.extract_design_context',
+          'figma.translate_tokens_to_html',
+          'figma.validate_visual_parity',
+        ],
+        prompts: const [
+          'figma_to_html_plan',
+          'design_asset_fidelity',
+          'visual_parity_checklist',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/figma/mcp-server-guide',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+      Skill(
+        id: 'tailwind_design_system',
+        name: 'Tailwind Design System',
+        version: '1.0.0',
+        description: 'Tokenized spacing, typography, color, utility naming, and reusable design-system rules adapted for generated HTML/CSS.',
+        author: 'mobilecode-team',
+        tags: const ['tailwind', 'design-system', 'tokens', 'built-in', 'default'],
+        actions: const [
+          'design_system.define_tokens',
+          'design_system.normalize_spacing',
+          'design_system.audit_consistency',
+        ],
+        prompts: const [
+          'tailwind_token_plan',
+          'html_css_tokenization',
+          'design_system_consistency_review',
+        ],
+        mcpServers: const [],
+        source: SkillSource.builtIn,
+        githubUrl: 'https://github.com/wshobson/agents',
+        isEnabled: true,
+        isInstalled: true,
+        installedAt: now,
+      ),
+    ];
+
+    _builtInSkills.addAll(skills);
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -913,6 +1362,7 @@ class SkillManagerService extends ChangeNotifier {
       final installed = _skills.values.where((s) => s.isInstalled && s.source != SkillSource.builtIn).toList();
       final jsonList = installed.map((s) => jsonEncode(s.toJson())).toList();
       await _prefs?.setStringList(_skillsKey, jsonList);
+      await _persistBuiltInSkillState();
     } catch (e) {
       debugPrint('[SkillManager] Failed to persist skills: $e');
     }
@@ -970,8 +1420,42 @@ class SkillManagerService extends ChangeNotifier {
     try {
       final enabled = _skills.values.where((s) => s.isEnabled).map((s) => s.id).toList();
       await _prefs?.setStringList(_enabledSkillsKey, enabled);
+      await _persistBuiltInSkillState();
     } catch (e) {
       debugPrint('[SkillManager] Failed to persist enabled skills: $e');
+    }
+  }
+
+  Future<void> _persistBuiltInSkillState() async {
+    final builtInState = <String, dynamic>{};
+    for (final skill in _skills.values.where((s) => s.source == SkillSource.builtIn)) {
+      builtInState[skill.id] = {
+        'isInstalled': skill.isInstalled,
+        'isEnabled': skill.isEnabled,
+      };
+    }
+    await _prefs?.setString(_builtInSkillStateKey, jsonEncode(builtInState));
+  }
+
+  Future<void> _loadPersistedBuiltInSkillState() async {
+    try {
+      final raw = _prefs?.getString(_builtInSkillStateKey);
+      if (raw == null || raw.isEmpty) return;
+
+      final state = jsonDecode(raw) as Map<String, dynamic>;
+      for (final entry in state.entries) {
+        final skill = _skills[entry.key];
+        final value = entry.value;
+        if (skill == null || skill.source != SkillSource.builtIn || value is! Map<String, dynamic>) {
+          continue;
+        }
+        _skills[entry.key] = skill.copyWith(
+          isInstalled: value['isInstalled'] as bool? ?? skill.isInstalled,
+          isEnabled: value['isEnabled'] as bool? ?? skill.isEnabled,
+        );
+      }
+    } catch (e) {
+      debugPrint('[SkillManager] Failed to load built-in skill state: $e');
     }
   }
 
@@ -1063,8 +1547,7 @@ class SkillManagerService extends ChangeNotifier {
       // Check if it's a list item
       if (trimmed.startsWith('- ')) {
         final value = trimmed.substring(2).trim();
-        // Remove quotes if present
-        currentList.add(value.replaceAll(RegExp(r"^['"""'"]|["'""'"]$"), ''));
+        currentList.add(_stripYamlQuotes(value));
         continue;
       }
 
@@ -1085,9 +1568,7 @@ class SkillManagerService extends ChangeNotifier {
           // This key likely has a list below it
           currentListKey = key;
         } else {
-          // Remove quotes
-          final cleanValue = value.replaceAll(RegExp(r"^['"""'"]|["'""'"]$"), '');
-          result[key] = cleanValue;
+          result[key] = _stripYamlQuotes(value);
         }
       }
     }
@@ -1098,6 +1579,197 @@ class SkillManagerService extends ChangeNotifier {
     }
 
     return result;
+  }
+
+  String _stripYamlQuotes(String value) {
+    final trimmed = value.trim();
+    if (trimmed.length < 2) return trimmed;
+
+    final first = trimmed[0];
+    final last = trimmed[trimmed.length - 1];
+    if ((first == "'" && last == "'") || (first == '"' && last == '"')) {
+      return trimmed.substring(1, trimmed.length - 1);
+    }
+    return trimmed;
+  }
+
+  McpServer? _mcpServerFromGitHubRepo(Map<String, dynamic> repo) {
+    final url = repo['html_url'] as String?;
+    final fullName = repo['full_name'] as String?;
+    if (url == null || fullName == null) return null;
+    final name = repo['name'] as String? ?? fullName.split('/').last;
+    final description = repo['description'] as String?;
+    final packageName = _guessNpmPackageName(fullName, name);
+    return McpServer(
+      id: _mcpRegistryId(fullName),
+      name: name,
+      type: 'stdio',
+      command: packageName == null ? '' : 'npx -y $packageName',
+      description: description == null ? 'MCP server discovered from public GitHub provenance: $url' : '$description\n\nSource: $url',
+      version: 'registry-preview',
+      isEnabled: false,
+      status: McpServerStatus.stopped,
+      logs: const [
+        'Imported as disabled metadata. Review command, environment variables, and permissions before enabling.',
+      ],
+    );
+  }
+
+  String _mcpRegistryId(String fullName) {
+    return 'mcp_registry_${fullName.replaceAll(RegExp(r'[^A-Za-z0-9_]+'), '_')}';
+  }
+
+  List<Skill> _getCuratedGitHubSkills(String query, {int limit = 12}) {
+    final curated = [
+      _curatedSkill(
+        id: 'curated_frontend_design',
+        name: 'Frontend Design',
+        description: 'HTML/UI design direction, typography, layout, visual quality, and mobile preview polish.',
+        githubUrl: 'https://github.com/anthropics/skills',
+      ),
+      _curatedSkill(
+        id: 'curated_ui_ux_pro_max',
+        name: 'UI UX Pro Max',
+        description: 'Mobile UX flow, interface state coverage, and product-grade UI hierarchy.',
+        githubUrl: 'https://github.com/nextlevelbuilder/ui-ux-pro-max-skill',
+      ),
+      _curatedSkill(
+        id: 'curated_shadcn_ui',
+        name: 'shadcn/ui Pattern Kit',
+        description: 'Owned component patterns, variants, dialogs, forms, and registry-style component thinking.',
+        githubUrl: 'https://github.com/giuseppe-trisciuoglio/developer-kit',
+      ),
+      _curatedSkill(
+        id: 'curated_stitch_html_design',
+        name: 'Stitch HTML Design',
+        description: 'Prompt-to-interface structure and high-fidelity HTML screen generation.',
+        githubUrl: 'https://github.com/google-labs-code/stitch-skills',
+      ),
+      _curatedSkill(
+        id: 'curated_web_accessibility',
+        name: 'Web Accessibility',
+        description: 'Semantic HTML, focus order, contrast, labels, and reduced-motion defaults.',
+        githubUrl: 'https://github.com/supercent-io/skills-template',
+      ),
+      _curatedSkill(
+        id: 'curated_web_design_guidelines',
+        name: 'Web Design Guidelines',
+        description: 'Responsive composition, deployable HTML quality, and performance-aware web UI.',
+        githubUrl: 'https://github.com/vercel-labs/agent-skills',
+      ),
+      _curatedSkill(
+        id: 'curated_ui_animation',
+        name: 'UI Animation',
+        description: 'CSS-first motion, micro-interactions, page reveals, and reduced-motion fallback.',
+        githubUrl: 'https://github.com/mblode/agent-skills',
+      ),
+      _curatedSkill(
+        id: 'curated_figma_implement_design',
+        name: 'Figma Implement Design',
+        description: 'Design context extraction, token translation, asset fidelity, and visual parity discipline.',
+        githubUrl: 'https://github.com/figma/mcp-server-guide',
+      ),
+      _curatedSkill(
+        id: 'curated_tailwind_design_system',
+        name: 'Tailwind Design System',
+        description: 'Tokenized spacing, typography, color, and reusable design-system rules.',
+        githubUrl: 'https://github.com/wshobson/agents',
+      ),
+    ];
+
+    final lower = query.toLowerCase();
+    final filtered = curated
+        .where((skill) =>
+            lower.trim().isEmpty ||
+            skill.name.toLowerCase().contains(lower) ||
+            skill.description.toLowerCase().contains(lower) ||
+            skill.tags.any((tag) => tag.toLowerCase().contains(lower)))
+        .toList();
+    return List.unmodifiable((filtered.isEmpty ? curated : filtered).take(limit));
+  }
+
+  Skill _curatedSkill({
+    required String id,
+    required String name,
+    required String description,
+    required String githubUrl,
+  }) {
+    return Skill(
+      id: id,
+      name: name,
+      version: '1.0.0',
+      description: description,
+      author: _repoOwnerFromGitHubUrl(githubUrl),
+      tags: const ['curated', 'github', 'html', 'ui', 'external-registry'],
+      actions: const [],
+      prompts: const [],
+      mcpServers: const [],
+      source: SkillSource.github,
+      githubUrl: githubUrl,
+    );
+  }
+
+  List<McpServer> _getCuratedMcpServers(String query, {int limit = 12}) {
+    final servers = [
+      McpServer(
+        id: 'mcp_registry_github',
+        name: 'GitHub MCP Server',
+        type: 'stdio',
+        command: 'npx -y @modelcontextprotocol/server-github',
+        description: 'Repository, issue, and pull request tools. Requires a reviewed GitHub token in env.',
+        version: 'registry-preview',
+        env: const {'GITHUB_TOKEN': '<required>'},
+      ),
+      McpServer(
+        id: 'mcp_registry_fetch',
+        name: 'Fetch MCP Server',
+        type: 'stdio',
+        command: 'npx -y @modelcontextprotocol/server-fetch',
+        description: 'HTTP fetch tools for documentation and public web content. Review network access before enabling.',
+        version: 'registry-preview',
+      ),
+      McpServer(
+        id: 'mcp_registry_filesystem',
+        name: 'Filesystem MCP Server',
+        type: 'stdio',
+        command: 'npx -y @modelcontextprotocol/server-filesystem <workspace>',
+        description: 'Workspace-bounded file access. Must be restricted to the MobileCode project directory.',
+        version: 'registry-preview',
+      ),
+      McpServer(
+        id: 'mcp_registry_playwright',
+        name: 'Browser/Playwright MCP Server',
+        type: 'stdio',
+        command: 'npx -y @playwright/mcp',
+        description: 'Browser automation for local preview QA. Keep disabled until the user confirms browser automation.',
+        version: 'registry-preview',
+      ),
+    ];
+    final lower = query.toLowerCase();
+    final filtered = servers
+        .where((server) =>
+            lower.trim().isEmpty ||
+            server.name.toLowerCase().contains(lower) ||
+            (server.description ?? '').toLowerCase().contains(lower) ||
+            server.command.toLowerCase().contains(lower))
+        .toList();
+    return List.unmodifiable((filtered.isEmpty ? servers : filtered).take(limit));
+  }
+
+  String _repoOwnerFromGitHubUrl(String githubUrl) {
+    final uri = Uri.tryParse(githubUrl);
+    if (uri == null || uri.pathSegments.isEmpty) return 'unknown';
+    return uri.pathSegments[0];
+  }
+
+  String? _guessNpmPackageName(String fullName, String name) {
+    final lower = name.toLowerCase();
+    if (!lower.contains('mcp')) return null;
+    if (lower.startsWith('@')) return name;
+    if (lower.startsWith('server-') || lower.startsWith('mcp-server-')) {
+      return name;
+    }
+    return null;
   }
 
   /// Compare two semantic versions.

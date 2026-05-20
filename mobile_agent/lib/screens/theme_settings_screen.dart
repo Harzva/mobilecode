@@ -467,6 +467,24 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen>
           const Color(0xFF0A0A0A),
           const Color(0xFF080808),
         ];
+      case AppTheme.claudeYellow:
+        return [
+          const Color(0xFFD97706),
+          const Color(0xFFEF925B),
+          const Color(0xFFFFB86B),
+          const Color(0xFFFFC18C),
+          const Color(0xFF24170C),
+          const Color(0xFF3A250F),
+        ];
+      case AppTheme.codexBlue:
+        return [
+          const Color(0xFF2555FF),
+          const Color(0xFF16B9C7),
+          const Color(0xFF6EA8FF),
+          const Color(0xFF6BE4EE),
+          const Color(0xFF0B1B33),
+          const Color(0xFF122A4D),
+        ];
     }
   }
 
@@ -482,6 +500,10 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen>
         return ['Neon', 'Warm', 'Retro-futurism', 'Bold', 'Energetic'];
       case AppTheme.monochromeGeek:
         return ['Minimal', 'Pure', 'Distraction-free', 'Clean', 'Precise'];
+      case AppTheme.claudeYellow:
+        return ['Warm', 'Readable', 'Reflective', 'Editorial', 'Calm'];
+      case AppTheme.codexBlue:
+        return ['Focused', 'Technical', 'Clear', 'Precise', 'Release-ready'];
     }
   }
 }
@@ -737,6 +759,16 @@ class _MiniBackgroundPreview extends StatelessWidget {
           const Color(0xFF0A0A0A),
           const Color(0xFF000000),
         ];
+      case AppTheme.claudeYellow:
+        return [
+          const Color(0xFF33200F),
+          const Color(0xFF19110A),
+        ];
+      case AppTheme.codexBlue:
+        return [
+          const Color(0xFF102544),
+          const Color(0xFF071326),
+        ];
     }
   }
 }
@@ -764,6 +796,14 @@ class _MiniPreviewPainter extends CustomPainter {
         break;
       case AppTheme.monochromeGeek:
         _drawNoise(canvas, size);
+        break;
+      case AppTheme.claudeYellow:
+        _drawOrbs(canvas, size, const Color(0xFFD97706), const Color(0xFFFFB86B));
+        _drawFireflies(canvas, size, const Color(0xFFFFB86B), const Color(0xFFEF925B));
+        break;
+      case AppTheme.codexBlue:
+        _drawAuroraStrip(canvas, size, const Color(0xFF2555FF), const Color(0xFF16B9C7));
+        _drawStars(canvas, size, const Color(0xFF6EA8FF), const Color(0xFF16B9C7));
         break;
     }
   }

@@ -1,0 +1,19 @@
+MobileCode 不是云端 IDE 的手机外壳。
+它把 AI coding harness 真正放到手机上。
+模型可以远程，但对话、文件、工具状态、预览和发布控制，都留在手机本机。
+
+手机写代码的痛点，不只是屏幕小。
+真正的问题，是执行层不清楚。
+用户不应该猜测任务到底跑在 App、Termux、云端 shell、GitHub，还是隐藏的预览环境。
+
+MobileCode 的答案，是手机保留控制面，重任务交给外部平台。
+它负责 agent trace、本地文件、WebView 预览、运行时诊断、仓库上下文和最终作品卡。
+
+RuntimeProvider 把执行能力变成可替换的契约。
+Helper、Termux、WebViewOnly、Embedded Lite、Cloud Runtime，都可以接在同一个接口后面。
+
+GitHub-first 让手机保持轻量，但工作流仍然真实。
+Repo Hub 发现仓库，Contents API 提交文件，GitHub Pages 发布网页，Actions 负责重型构建和产物。
+
+最终，手机可以成为 AI coding 的控制室。
+它不需要本地编译一切，而是把生成、预览、解释、恢复和发布决策，放回用户手里。

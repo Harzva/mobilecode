@@ -304,8 +304,8 @@ class AppTheme {
   // ── Component Themes ────────────────────────────────────────────────
 
   /// Card theme
-  static CardTheme get cardTheme {
-    return CardTheme(
+  static CardThemeData get cardTheme {
+    return CardThemeData(
       color: surface,
       elevation: 0,
       shape: RoundedRectangleBorder(
@@ -490,8 +490,8 @@ class AppTheme {
   }
 
   /// Tab bar theme
-  static TabBarTheme get tabBarTheme {
-    return TabBarTheme(
+  static TabBarThemeData get tabBarTheme {
+    return TabBarThemeData(
       labelColor: primary,
       unselectedLabelColor: textTertiary,
       indicatorColor: primary,
@@ -512,8 +512,8 @@ class AppTheme {
   }
 
   /// Dialog theme
-  static DialogTheme get dialogTheme {
-    return DialogTheme(
+  static DialogThemeData get dialogTheme {
+    return DialogThemeData(
       backgroundColor: surface,
       elevation: 0,
       shape: RoundedRectangleBorder(

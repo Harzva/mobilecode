@@ -1,0 +1,6 @@
+MobileCode 不是远程 IDE 外壳。
+它是真正运行在手机上的 AI coding harness。
+手机负责生成、预览和解释。
+Helper、Termux、GitHub Actions 负责执行和构建。
+从一句话到 HTML，从 WebView 到 GitHub Pages。
+MobileCode，让手机成为 AI coding 控制室。

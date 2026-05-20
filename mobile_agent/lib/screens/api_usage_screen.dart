@@ -1,10 +1,24 @@
-import 'package:flutter/material.dart';
-import '../themes/app_theme.dart';
-import '../widgets/glass_card_widget.dart';
+import 'dart:async';
 
-/// API Usage Screen - Tracks LLM API usage with monthly quota of 5000 calls
-/// Features: quota tracking, daily bar chart, provider breakdown,
-/// endpoint usage, optimization tips, and configurable alerts
+import 'package:flutter/material.dart';
+
+import '../services/token_pricing_service.dart';
+import '../services/token_usage_service.dart';
+
+const _usageBg = Color(0xFFF7FAFF);
+const _usagePanel = Color(0xFFFFFFFF);
+const _usageLine = Color(0xFFDDE7F7);
+const _usageText = Color(0xFF0B1020);
+const _usageMuted = Color(0xFF536079);
+const _usageFaint = Color(0xFF8B97AD);
+const _usageMint = Color(0xFF0B9B7E);
+const _usageCyan = Color(0xFF16B9C7);
+const _usageAmber = Color(0xFFB7791F);
+const _usageRose = Color(0xFFE0526E);
+const _usageViolet = Color(0xFF7557E8);
+
+enum _PricingSortMode { modelName, priceLowHigh, priceHighLow }
+
 class ApiUsageScreen extends StatefulWidget {
   const ApiUsageScreen({super.key});
 
@@ -13,833 +27,754 @@ class ApiUsageScreen extends StatefulWidget {
 }
 
 class _ApiUsageScreenState extends State<ApiUsageScreen> {
-  DateTime _currentMonth = DateTime.now();
-  int _usedCalls = 3247;
-  final int _quota = 5000;
-  int? _selectedDay;
+  final _usageService = TokenUsageService.instance;
+  final _pricingService = TokenPricingService.instance;
+  StreamSubscription<TokenUsageSummary>? _summarySub;
+  TokenUsageSummary _summary = TokenUsageSummary.empty;
+  var _checkingPricingUpdate = false;
 
-  // Mock daily usage data (tokens per day)
-  final List<Map<String, dynamic>> _dailyUsage = List.generate(30, (index) {
-    final providers = ['OpenAI', 'Claude', 'Gemini'];
-    final provider = providers[index % 3];
-    return {
-      'day': index + 1,
-      'tokens': (80 + (index * 7) % 150) * 1000,
-      'calls': 50 + (index * 13) % 120,
-      'provider': provider,
-    };
-  });
-
-  final List<Map<String, dynamic>> _providers = [
-    {'name': 'OpenAI', 'icon': Icons.auto_awesome, 'tokens': 1850000, 'calls': 1450, 'color': Color(0xFF10B981)},
-    {'name': 'Claude', 'icon': Icons.psychology, 'tokens': 1200000, 'calls': 980, 'color': Color(0xFF8B5CF6)},
-    {'name': 'Gemini', 'icon': Icons.smart_toy, 'tokens': 890000, 'calls': 817, 'color': Color(0xFF3B82F6)},
-  ];
-
-  final List<Map<String, dynamic>> _endpoints = [
-    {'name': 'Chat', 'icon': Icons.chat_bubble, 'requests': 1850, 'avgTokens': 1450},
-    {'name': 'Completion', 'icon': Icons.text_fields, 'requests': 980, 'avgTokens': 890},
-    {'name': 'Embedding', 'icon': Icons.data_array, 'requests': 417, 'avgTokens': 512},
-  ];
-
-  final List<Map<String, dynamic>> _tips = [
-    {
-      'icon': Icons.compress,
-      'title': '启用响应压缩',
-      'desc': '使用 gzip 压缩可减少 40% 的传输数据量',
-      'savings': '约 500 次/月',
-    },
-    {
-      'icon': Icons.cached,
-      'title': '启用缓存机制',
-      'desc': '缓存相似查询结果，避免重复调用',
-      'savings': '约 800 次/月',
-    },
-    {
-      'icon': Icons.tune,
-      'title': '优化 Token 长度',
-      'desc': '限制上下文长度，精简输入内容',
-      'savings': '约 300 次/月',
-    },
-  ];
-
-  final List<Map<String, dynamic>> _alerts = [
-    {'threshold': 80, 'enabled': true, 'triggered': true},
-    {'threshold': 95, 'enabled': true, 'triggered': false},
-    {'threshold': 100, 'enabled': false, 'triggered': false},
-  ];
-
-  double get _usagePercent => _usedCalls / _quota;
-  int get _remaining => _quota - _usedCalls;
-  Color get _statusColor {
-    final pct = _usagePercent;
-    if (pct < 0.5) return AppTheme.success;
-    if (pct < 0.8) return AppTheme.warning;
-    return AppTheme.error;
-  }
-
-  String get _resetDate {
-    final nextMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 1);
-    return '${nextMonth.year}-${nextMonth.month.toString().padLeft(2, '0')}-01';
-  }
-
-  void _prevMonth() {
-    setState(() {
-      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1);
-      _usedCalls = 1500 + (_currentMonth.month * 300) % 4800;
-      _selectedDay = null;
-    });
-  }
-
-  void _nextMonth() {
-    if (_currentMonth.year == DateTime.now().year &&
-        _currentMonth.month == DateTime.now().month) return;
-    setState(() {
-      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1);
-      _usedCalls = 1500 + (_currentMonth.month * 300) % 4800;
-      _selectedDay = null;
+  @override
+  void initState() {
+    super.initState();
+    _pricingService.addListener(_handlePricingChanged);
+    unawaited(_pricingService.initialize());
+    _summarySub = _usageService.watchSummary().listen((summary) {
+      if (mounted) setState(() => _summary = summary);
     });
   }
 
   @override
+  void dispose() {
+    _pricingService.removeListener(_handlePricingChanged);
+    _summarySub?.cancel();
+    super.dispose();
+  }
+
+  void _handlePricingChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openPricingOverrideSheet([TokenPrice? price]) async {
+    final override = await showModalBottomSheet<TokenPrice>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _usagePanel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+      builder: (context) => _PricingOverrideSheet(initialPrice: price),
+    );
+    if (override != null) {
+      await _pricingService.upsertOverride(override);
+    }
+  }
+
+  Future<void> _checkLiteLlmUpdate() async {
+    if (_checkingPricingUpdate) return;
+    setState(() => _checkingPricingUpdate = true);
+    try {
+      final update = await _pricingService.checkLiteLlmUpdate();
+      if (!mounted) return;
+      final apply = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: _usagePanel,
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+        builder: (context) => _PricingUpdateSheet(update: update),
+      );
+      if (apply == true) {
+        await _pricingService.applySnapshotUpdate(update);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Pricing snapshot updated: ${update.modelCount} models from LiteLLM.')),
+        );
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('LiteLLM update check failed: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _checkingPricingUpdate = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final events = _usageService.recentEvents.take(40).toList(growable: false);
+    final breakdown = _breakdownByProviderModel(_usageService.recentEvents);
+    final catalog = _pricingService.catalog;
     return Scaffold(
-      backgroundColor: AppTheme.deepSpace,
-      body: CustomScrollView(
-        slivers: [
-          // Header with month selector
-          SliverToBoxAdapter(
-            child: _buildHeader(),
-          ),
-
-          // Quota card with circular progress
-          SliverToBoxAdapter(
-            child: _buildQuotaCard(),
-          ),
-
-          // Warning banner if approaching limit
-          if (_usagePercent >= 0.8)
-            SliverToBoxAdapter(
-              child: _buildWarningBanner(),
-            ),
-
-          // Statistics row (4 glass cards)
-          SliverToBoxAdapter(
-            child: _buildStatisticsRow(),
-          ),
-
-          // Daily usage bar chart
-          SliverToBoxAdapter(
-            child: _buildUsageChart(),
-          ),
-
-          // Provider breakdown
-          SliverToBoxAdapter(
-            child: _buildProviderBreakdown(),
-          ),
-
-          // Endpoint usage grid
-          SliverToBoxAdapter(
-            child: _buildEndpointUsage(),
-          ),
-
-          // Optimization tips
-          SliverToBoxAdapter(
-            child: _buildOptimizationTips(),
-          ),
-
-          // Alerts section
-          SliverToBoxAdapter(
-            child: _buildAlertsSection(),
-          ),
-
-          const SliverToBoxAdapter(child: SizedBox(height: 40)),
-        ],
+      backgroundColor: _usageBg,
+      appBar: AppBar(
+        title: const Text('Token Usage'),
+        backgroundColor: _usageBg,
+        foregroundColor: _usageText,
+        elevation: 0,
       ),
-    );
-  }
-
-  Widget _buildHeader() {
-    final monthStr = '${_currentMonth.year}年${_currentMonth.month}月';
-    final isCurrentMonth = _currentMonth.year == DateTime.now().year &&
-        _currentMonth.month == DateTime.now().month;
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-      child: Row(
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'API 用量',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: _prevMonth,
-                      icon: const Icon(Icons.chevron_left, color: AppTheme.textSecondary),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    ),
-                    Text(
-                      monthStr,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: isCurrentMonth ? null : _nextMonth,
-                      icon: Icon(
-                        Icons.chevron_right,
-                        color: isCurrentMonth ? AppTheme.textTertiary : AppTheme.textSecondary,
-                      ),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              gradient: AppTheme.violetGradient,
-              borderRadius: BorderRadius.circular(14),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.violet.withOpacity(0.3),
-                  blurRadius: 12,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child: const Icon(Icons.show_chart, color: Colors.white, size: 24),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuotaCard() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: GlassCardWidget(
-        glowEffect: true,
-        glowColors: [_statusColor.withOpacity(0.4), AppTheme.violet.withOpacity(0.2)],
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              // Circular progress
-              SizedBox(
-                width: 160,
-                height: 160,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    // Background circle
-                    SizedBox(
-                      width: 160,
-                      height: 160,
-                      child: CircularProgressIndicator(
-                        value: 1,
-                        strokeWidth: 12,
-                        backgroundColor: AppTheme.surfaceElevated,
-                        valueColor: const AlwaysStoppedAnimation(Colors.transparent),
-                      ),
-                    ),
-                    // Progress arc
-                    SizedBox(
-                      width: 160,
-                      height: 160,
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0, end: _usagePercent),
-                        duration: const Duration(milliseconds: 1200),
-                        curve: Curves.easeOutCubic,
-                        builder: (context, value, child) {
-                          return CircularProgressIndicator(
-                            value: value,
-                            strokeWidth: 12,
-                            backgroundColor: Colors.transparent,
-                            valueColor: AlwaysStoppedAnimation(_statusColor),
-                            strokeCap: StrokeCap.round,
-                          );
-                        },
-                      ),
-                    ),
-                    // Center text
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '${(_usagePercent * 100).toInt()}%',
-                          style: TextStyle(
-                            fontSize: 36,
-                            fontWeight: FontWeight.bold,
-                            color: _statusColor,
-                          ),
-                        ),
-                        const Text(
-                          '已使用',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textTertiary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              // Usage text
-              Text(
-                '已使用 $_usedCalls / $_quota 次',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              // Remaining with color
-              Text(
-                '剩余 $_remaining 次',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: _statusColor,
-                ),
-              ),
-              const SizedBox(height: 12),
-              // Reset date
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: AppTheme.surfaceCard.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.refresh, size: 14, color: AppTheme.textTertiary),
-                    const SizedBox(width: 6),
-                    Text(
-                      '额度重置于 $_resetDate',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textTertiary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildWarningBanner() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              AppTheme.error.withOpacity(0.3),
-              AppTheme.warning.withOpacity(0.2),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.error.withOpacity(0.4)),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.warning_amber_rounded, color: AppTheme.warning, size: 24),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '用量警报',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.warning,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '您已使用超过 80% 的月度额度，请注意控制用量或升级套餐',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStatisticsRow() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildStatCard('总请求数', '3,247', Icons.request_page, AppTheme.cyanLight),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _buildStatCard('总Token数', '3.94M', Icons.data_usage, AppTheme.violet),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _buildStatCard('成功率', '99.2%', Icons.check_circle, AppTheme.success),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _buildStatCard('预估费用', '\$48.5', Icons.attach_money, AppTheme.cyan),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
-    return GlassCardWidget(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Icon(icon, size: 20, color: color),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppTheme.textTertiary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildUsageChart() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: GlassCardWidget(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    '每日用量',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  // Legend
-                  Row(
+          _UsageHero(summary: _summary),
+          const SizedBox(height: 12),
+          _UsageStatGrid(summary: _summary),
+          const SizedBox(height: 12),
+          _UsagePanel(
+            title: 'Provider / model breakdown',
+            icon: Icons.account_tree_outlined,
+            color: _usageViolet,
+            child: breakdown.isEmpty
+                ? const _EmptyUsageText(text: 'No provider usage has been recorded yet.')
+                : Column(
                     children: [
-                      _buildLegendDot('OpenAI', const Color(0xFF10B981)),
-                      const SizedBox(width: 12),
-                      _buildLegendDot('Claude', const Color(0xFF8B5CF6)),
-                      const SizedBox(width: 12),
-                      _buildLegendDot('Gemini', const Color(0xFF3B82F6)),
+                      for (final entry in breakdown.entries)
+                        _BreakdownRow(
+                          label: entry.key,
+                          value: entry.value,
+                          total: _summary.totalTokens,
+                        ),
                     ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              // Bar chart
-              SizedBox(
-                height: 160,
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: _dailyUsage.map((day) {
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _selectedDay = _selectedDay == day['day'] ? null : day['day'];
-                          });
-                        },
-                        child: _buildBar(day),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              // X axis labels (every 5 days)
-              Row(
-                children: List.generate(6, (i) {
-                  return Expanded(
-                    flex: i < 5 ? 5 : 5,
-                    child: Text(
-                      '${i * 5 + 1}日',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: AppTheme.textTertiary,
-                      ),
-                      textAlign: TextAlign.left,
-                    ),
-                  );
-                }),
-              ),
-              // Tooltip for selected day
-              if (_selectedDay != null) ...[
-                const SizedBox(height: 12),
-                _buildDayTooltip(),
-              ],
-            ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLegendDot(String label, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(2),
+          const SizedBox(height: 12),
+          _PricingPanel(
+            catalog: catalog,
+            prices: _pricingService.snapshotPrices,
+            overrides: _pricingService.overrides,
+            checkingUpdate: _checkingPricingUpdate,
+            onCheckUpdate: () => unawaited(_checkLiteLlmUpdate()),
+            onAdd: () => unawaited(_openPricingOverrideSheet()),
+            onEdit: (price) => unawaited(_openPricingOverrideSheet(price)),
+            onRemove: (price) => unawaited(_pricingService.removeOverride(price.key)),
           ),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBar(Map<String, dynamic> day) {
-    final maxTokens = 250000;
-    final barHeight = (day['tokens'] as int) / maxTokens * 140;
-    final isSelected = _selectedDay == day['day'];
-    final Color barColor;
-    switch (day['provider']) {
-      case 'Claude':
-        barColor = const Color(0xFF8B5CF6);
-        break;
-      case 'Gemini':
-        barColor = const Color(0xFF3B82F6);
-        break;
-      default:
-        barColor = const Color(0xFF10B981);
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 1.5),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            width: double.infinity,
-            height: barHeight.clamp(4, 140),
-            decoration: BoxDecoration(
-              color: barColor.withOpacity(isSelected ? 1.0 : 0.7),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
-              boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: barColor.withOpacity(0.4),
-                        blurRadius: 6,
-                        spreadRadius: 1,
-                      ),
-                    ]
-                  : null,
-            ),
+          const SizedBox(height: 12),
+          _UsagePanel(
+            title: 'Recent runs',
+            icon: Icons.timeline_outlined,
+            color: _usageCyan,
+            child: events.isEmpty
+                ? const _EmptyUsageText(text: 'Run chat or RR mode once; usage metadata will appear here.')
+                : Column(
+                    children: [
+                      for (final event in events) _UsageEventTile(event: event),
+                    ],
+                  ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildDayTooltip() {
-    final day = _dailyUsage.firstWhere((d) => d['day'] == _selectedDay);
+Map<String, int> _breakdownByProviderModel(List<TokenUsageEvent> events) {
+  final breakdown = <String, int>{};
+  for (final event in events) {
+    final key = '${event.provider} / ${event.model}';
+    breakdown[key] = (breakdown[key] ?? 0) + event.usage.totalTokens;
+  }
+  final entries = breakdown.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+  return Map<String, int>.fromEntries(entries.take(12));
+}
+
+List<TokenPrice> _combinedPrices({
+  required List<TokenPrice> prices,
+  required List<TokenPrice> overrides,
+}) {
+  final combined = <String, TokenPrice>{};
+  for (final price in prices) {
+    combined[price.key] = price;
+  }
+  for (final price in overrides) {
+    combined[price.key] = price;
+  }
+  final values = combined.values.toList(growable: false)
+    ..sort((a, b) {
+      final provider = a.provider.compareTo(b.provider);
+      if (provider != 0) return provider;
+      return a.model.compareTo(b.model);
+    });
+  return values;
+}
+
+String _providerBucket(TokenPrice price) {
+  final text = '${price.provider} ${price.model} ${price.sourceName}'.toLowerCase();
+  if (price.custom || text.contains('custom') || text.contains('override')) return 'custom';
+  if (text.contains('openai') || text.contains('gpt')) return 'openai';
+  if (text.contains('anthropic') || text.contains('claude') || text.contains('mimo')) return 'anthropic';
+  if (text.contains('google') || text.contains('gemini')) return 'google';
+  return 'other';
+}
+
+class _UsageHero extends StatelessWidget {
+  const _UsageHero({required this.summary});
+
+  final TokenUsageSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return _UsagePanel(
+      title: 'AI cost observability',
+      icon: Icons.token_outlined,
+      color: _usageMint,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _formatInt(summary.totalTokens),
+            style: const TextStyle(color: _usageText, fontSize: 36, fontWeight: FontWeight.w900, height: 1),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'total tokens across ${summary.requestCount} recorded runs',
+            style: const TextStyle(color: _usageMuted, fontSize: 12, height: 1.35),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _UsageBadge(
+                label: summary.cacheReadTokens + summary.cacheWriteTokens + summary.cacheMissTokens == 0
+                    ? 'cache unknown'
+                    : 'cache hit ${(summary.cacheHitRate * 100).toStringAsFixed(1)}%',
+                color: _usageMint,
+              ),
+              _UsageBadge(label: '${summary.estimatedCount} estimated', color: _usageAmber),
+              _UsageBadge(label: '\$${summary.costEstimate.toStringAsFixed(4)} est.', color: _usageViolet),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'MobileCode stores usage metadata only. Prompt and response text are not saved in this statistics store.',
+            style: TextStyle(color: _usageFaint, fontSize: 11, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UsageStatGrid extends StatelessWidget {
+  const _UsageStatGrid({required this.summary});
+
+  final TokenUsageSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth > 560 ? 4 : 2;
+        return GridView.count(
+          crossAxisCount: columns,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: columns == 4 ? 1.95 : 1.45,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          children: [
+            _UsageStatTile(label: 'Input', value: _formatInt(summary.inputTokens), icon: Icons.input_outlined, color: _usageCyan),
+            _UsageStatTile(label: 'Output', value: _formatInt(summary.outputTokens), icon: Icons.output_outlined, color: _usageViolet),
+            _UsageStatTile(label: 'Cache read', value: _formatInt(summary.cacheReadTokens), icon: Icons.cached_outlined, color: _usageMint),
+            _UsageStatTile(label: 'Success', value: '${summary.successCount}/${summary.requestCount}', icon: Icons.verified_outlined, color: _usageAmber),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _UsageStatTile extends StatelessWidget {
+  const _UsageStatTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceElevated,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.border),
+        color: _usagePanel,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _usageLine),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: AppTheme.violet.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.calendar_today, size: 16, color: AppTheme.violet),
+          Icon(icon, color: color, size: 20),
+          Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _usageText, fontSize: 20, fontWeight: FontWeight.w900)),
+          Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: _usageMuted, fontSize: 11, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+}
+
+class _UsagePanel extends StatelessWidget {
+  const _UsagePanel({
+    required this.title,
+    required this.icon,
+    required this.color,
+    required this.child,
+  });
+
+  final String title;
+  final IconData icon;
+  final Color color;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _usagePanel,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: _usageLine),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text(title, style: const TextStyle(color: _usageText, fontSize: 14, fontWeight: FontWeight.w900))),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_currentMonth.month}月${day['day']}日',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '请求: ${day['calls']} 次  |  Tokens: ${(day['tokens'] as int) ~/ 1000}K  |  提供商: ${day['provider']}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-              ],
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _BreakdownRow extends StatelessWidget {
+  const _BreakdownRow({
+    required this.label,
+    required this.value,
+    required this.total,
+  });
+
+  final String label;
+  final int value;
+  final int total;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = total <= 0 ? 0.0 : value / total;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text(label, style: const TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900))),
+              Text(_formatInt(value), style: const TextStyle(color: _usageMuted, fontSize: 11, fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress.clamp(0, 1),
+              minHeight: 8,
+              backgroundColor: _usageViolet.withOpacity(0.12),
+              valueColor: const AlwaysStoppedAnimation<Color>(_usageViolet),
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildProviderBreakdown() {
-    final totalTokens = _providers.fold<int>(0, (sum, p) => sum + (p['tokens'] as int));
+class _PricingPanel extends StatelessWidget {
+  const _PricingPanel({
+    required this.catalog,
+    required this.prices,
+    required this.overrides,
+    required this.checkingUpdate,
+    required this.onCheckUpdate,
+    required this.onAdd,
+    required this.onEdit,
+    required this.onRemove,
+  });
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: GlassCardWidget(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                '提供商分布',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 16),
-              ..._providers.map((provider) {
-                final pct = (provider['tokens'] as int) / totalTokens;
-                return _buildProviderRow(provider, pct);
-              }).toList(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  final TokenPricingCatalog catalog;
+  final List<TokenPrice> prices;
+  final List<TokenPrice> overrides;
+  final bool checkingUpdate;
+  final VoidCallback onCheckUpdate;
+  final VoidCallback onAdd;
+  final ValueChanged<TokenPrice> onEdit;
+  final ValueChanged<TokenPrice> onRemove;
 
-  Widget _buildProviderRow(Map<String, dynamic> provider, double pct) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+  @override
+  Widget build(BuildContext context) {
+    final previewPrices = prices.take(8).toList(growable: false);
+    final totalVisible = _combinedPrices(prices: prices, overrides: overrides).length;
+    return _UsagePanel(
+      title: 'Pricing table',
+      icon: Icons.price_change_outlined,
+      color: _usageAmber,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Text(
+            '${catalog.sourceName} · ${catalog.snapshotCount} models · updated ${_dateLabel(catalog.updatedAt)}',
+            style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: (provider['color'] as Color).withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(
-                  provider['icon'] as IconData,
-                  size: 18,
-                  color: provider['color'] as Color,
-                ),
+              OutlinedButton.icon(
+                onPressed: checkingUpdate ? null : onCheckUpdate,
+                icon: checkingUpdate
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.cloud_sync_outlined, size: 16),
+                label: Text(checkingUpdate ? 'Checking...' : 'Check LiteLLM update'),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          provider['name'] as String,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: AppTheme.textPrimary,
-                          ),
-                        ),
-                        Text(
-                          '${(pct * 100).toInt()}%',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: provider['color'] as Color,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${(provider['tokens'] as int) ~/ 1000}K tokens · ${provider['calls']} 次调用',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textTertiary,
-                      ),
-                    ),
-                  ],
-                ),
+              TextButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.add_outlined, size: 16),
+                label: const Text('Override'),
+              ),
+              TextButton.icon(
+                onPressed: totalVisible == 0 ? null : () => _openPriceBrowser(context),
+                icon: const Icon(Icons.search_outlined, size: 16),
+                label: const Text('Search all'),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          // Progress bar
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: pct,
-              minHeight: 6,
-              backgroundColor: AppTheme.surfaceElevated,
-              valueColor: AlwaysStoppedAnimation<Color>(provider['color'] as Color),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEndpointUsage() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 12),
-            child: Text(
-              '端点用量',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary,
+          if (overrides.isNotEmpty) ...[
+            const Text('User overrides', style: TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            for (final price in overrides)
+              _PriceRow(
+                price: price,
+                onEdit: () => onEdit(price),
+                onRemove: () => onRemove(price),
               ),
-            ),
+            const SizedBox(height: 8),
+          ],
+          const Text('Current snapshot', style: TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          Text(
+            prices.length <= previewPrices.length
+                ? 'Showing all ${prices.length} snapshot models.'
+                : 'Showing ${previewPrices.length} of ${prices.length} snapshot models. Use Search all for the full table.',
+            style: const TextStyle(color: _usageFaint, fontSize: 10.5, height: 1.3),
           ),
-          Row(
-            children: _endpoints.map((endpoint) {
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 10),
-                  child: _buildEndpointCard(endpoint),
-                ),
-              );
-            }).toList(),
-          ),
+          const SizedBox(height: 8),
+          if (previewPrices.isEmpty)
+            const _EmptyUsageText(text: 'No snapshot prices loaded yet. Check LiteLLM update or add an override.')
+          else
+            for (final price in previewPrices)
+              _PriceRow(
+                price: price,
+                onEdit: () => onEdit(price),
+                onRemove: price.custom ? () => onRemove(price) : null,
+              ),
         ],
       ),
     );
   }
 
-  Widget _buildEndpointCard(Map<String, dynamic> endpoint) {
-    final colors = [AppTheme.violet, AppTheme.cyan, AppTheme.cyanLight];
-    final idx = _endpoints.indexOf(endpoint);
-    final color = colors[idx % colors.length];
+  void _openPriceBrowser(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _usagePanel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+      builder: (context) => FractionallySizedBox(
+        heightFactor: 0.92,
+        child: _PricingCatalogSearchSheet(
+          catalog: catalog,
+          prices: prices,
+          overrides: overrides,
+          onAdd: onAdd,
+          onEdit: onEdit,
+          onRemove: onRemove,
+        ),
+      ),
+    );
+  }
+}
 
-    return GlassCardWidget(
+class _PriceRow extends StatelessWidget {
+  const _PriceRow({
+    required this.price,
+    required this.onEdit,
+    this.onRemove,
+  });
+
+  final TokenPrice price;
+  final VoidCallback onEdit;
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: price.custom ? _usageAmber.withOpacity(0.08) : _usageCyan.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: (price.custom ? _usageAmber : _usageLine).withOpacity(0.55)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${price.provider} / ${price.model}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'in \$${price.inputPerMillion.toStringAsFixed(3)} / out \$${price.outputPerMillion.toStringAsFixed(3)} per 1M tokens',
+                  style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.3),
+                ),
+                Text(
+                  '${price.custom ? 'User override' : price.sourceName} · ${_dateLabel(price.updatedAt)}',
+                  style: const TextStyle(color: _usageFaint, fontSize: 10.5, height: 1.3),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: price.custom ? 'Edit override' : 'Create override from this price',
+            onPressed: onEdit,
+            icon: const Icon(Icons.tune_outlined, size: 18),
+          ),
+          if (onRemove != null)
+            IconButton(
+              tooltip: 'Remove override',
+              onPressed: onRemove,
+              icon: const Icon(Icons.delete_outline, size: 18),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PricingCatalogSearchSheet extends StatefulWidget {
+  const _PricingCatalogSearchSheet({
+    required this.catalog,
+    required this.prices,
+    required this.overrides,
+    required this.onAdd,
+    required this.onEdit,
+    required this.onRemove,
+  });
+
+  final TokenPricingCatalog catalog;
+  final List<TokenPrice> prices;
+  final List<TokenPrice> overrides;
+  final VoidCallback onAdd;
+  final ValueChanged<TokenPrice> onEdit;
+  final ValueChanged<TokenPrice> onRemove;
+
+  @override
+  State<_PricingCatalogSearchSheet> createState() => _PricingCatalogSearchSheetState();
+}
+
+class _PricingCatalogSearchSheetState extends State<_PricingCatalogSearchSheet> {
+  static const _providerFilters = ['all', 'openai', 'anthropic', 'google', 'custom', 'other'];
+
+  final _query = TextEditingController();
+  var _providerFilter = 'all';
+  var _sortMode = _PricingSortMode.modelName;
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final prices = _filteredPrices;
+    return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.15),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                endpoint['icon'] as IconData,
-                size: 20,
-                color: color,
-              ),
+            Row(
+              children: [
+                const Icon(Icons.manage_search_outlined, color: _usageAmber, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Pricing table · ${_formatInt(prices.length)} / ${_formatInt(_allPrices.length)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _usageText, fontSize: 16, fontWeight: FontWeight.w900),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Close',
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_outlined),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${widget.catalog.sourceName} · updated ${_dateLabel(widget.catalog.updatedAt)}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.35),
             ),
             const SizedBox(height: 12),
-            Text(
-              endpoint['name'] as String,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary,
+            TextField(
+              controller: _query,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search_outlined),
+                suffixIcon: _query.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () => setState(_query.clear),
+                        icon: const Icon(Icons.close_outlined),
+                      ),
+                hintText: 'Search provider, model, source...',
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                isDense: true,
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              '${endpoint['requests']} 次请求',
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppTheme.textSecondary,
-              ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final filter in _providerFilters)
+                  FilterChip(
+                    showCheckmark: false,
+                    selected: _providerFilter == filter,
+                    onSelected: (_) => setState(() => _providerFilter = filter),
+                    label: Text('${_providerFilterLabel(filter)} ${_formatInt(_providerCount(filter))}'),
+                    selectedColor: _usageAmber.withOpacity(0.16),
+                    backgroundColor: _usageBg,
+                    side: BorderSide(
+                      color: _providerFilter == filter ? _usageAmber.withOpacity(0.55) : _usageLine,
+                    ),
+                    labelStyle: TextStyle(
+                      color: _providerFilter == filter ? _usageAmber : _usageMuted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              '平均 ${endpoint['avgTokens']} tokens',
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppTheme.textTertiary,
-              ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _UsageBadge(label: '${_formatInt(widget.prices.length)} snapshot', color: _usageCyan),
+                _UsageBadge(label: '${_formatInt(widget.overrides.length)} overrides', color: _usageAmber),
+                PopupMenuButton<_PricingSortMode>(
+                  tooltip: 'Sort pricing rows',
+                  initialValue: _sortMode,
+                  onSelected: (mode) => setState(() => _sortMode = mode),
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                      value: _PricingSortMode.modelName,
+                      child: Text('Model A-Z'),
+                    ),
+                    PopupMenuItem(
+                      value: _PricingSortMode.priceLowHigh,
+                      child: Text('Price low-high'),
+                    ),
+                    PopupMenuItem(
+                      value: _PricingSortMode.priceHighLow,
+                      child: Text('Price high-low'),
+                    ),
+                  ],
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: _usageViolet.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: _usageViolet.withOpacity(0.28)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.sort_outlined, color: _usageViolet, size: 16),
+                        const SizedBox(width: 6),
+                        Text(
+                          _sortModeLabel(_sortMode),
+                          style: const TextStyle(color: _usageViolet, fontSize: 11, fontWeight: FontWeight.w900),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.expand_more_outlined, color: _usageViolet, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    widget.onAdd();
+                  },
+                  icon: const Icon(Icons.add_outlined, size: 16),
+                  label: const Text('Add override'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: prices.isEmpty
+                  ? const Center(child: _EmptyUsageText(text: 'No pricing rows match this search.'))
+                  : ListView.builder(
+                      itemCount: prices.length,
+                      itemBuilder: (context, index) {
+                        final price = prices[index];
+                        return _PriceRow(
+                          price: price,
+                          onEdit: () {
+                            Navigator.of(context).pop();
+                            widget.onEdit(price);
+                          },
+                          onRemove: price.custom
+                              ? () {
+                                  Navigator.of(context).pop();
+                                  widget.onRemove(price);
+                                }
+                              : null,
+                        );
+                      },
+                    ),
             ),
           ],
         ),
@@ -847,249 +782,470 @@ class _ApiUsageScreenState extends State<ApiUsageScreen> {
     );
   }
 
-  Widget _buildOptimizationTips() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+  List<TokenPrice> get _allPrices => _combinedPrices(
+        prices: widget.prices,
+        overrides: widget.overrides,
+      );
+
+  List<TokenPrice> get _filteredPrices {
+    final needle = _query.text.trim().toLowerCase();
+    final providerFiltered = _allPrices.where((price) {
+      if (_providerFilter == 'all') return true;
+      return _providerBucket(price) == _providerFilter;
+    });
+    final filtered = needle.isEmpty
+        ? providerFiltered
+        : providerFiltered.where((price) {
+            final haystack = '${price.provider} ${price.model} ${price.sourceName} ${price.notes}'.toLowerCase();
+            return haystack.contains(needle);
+          });
+    return filtered.toList(growable: false)
+      ..sort(_compareBySortMode);
+  }
+
+  int _compareBySortMode(TokenPrice a, TokenPrice b) {
+    switch (_sortMode) {
+      case _PricingSortMode.priceLowHigh:
+        return _comparePrice(a, b);
+      case _PricingSortMode.priceHighLow:
+        return _comparePrice(b, a);
+      case _PricingSortMode.modelName:
+        final model = a.model.compareTo(b.model);
+        if (model != 0) return model;
+        return a.provider.compareTo(b.provider);
+    }
+  }
+
+  int _providerCount(String filter) {
+    if (filter == 'all') return _allPrices.length;
+    return _allPrices.where((price) => _providerBucket(price) == filter).length;
+  }
+
+  String _providerFilterLabel(String filter) {
+    switch (filter) {
+      case 'openai':
+        return 'OpenAI';
+      case 'anthropic':
+        return 'Anthropic';
+      case 'google':
+        return 'Google';
+      case 'custom':
+        return 'Custom';
+      case 'other':
+        return 'Other';
+      default:
+        return 'All';
+    }
+  }
+
+  int _comparePrice(TokenPrice a, TokenPrice b) {
+    final price = _combinedPricePerMillion(a).compareTo(_combinedPricePerMillion(b));
+    if (price != 0) return price;
+    final model = a.model.compareTo(b.model);
+    if (model != 0) return model;
+    return a.provider.compareTo(b.provider);
+  }
+
+  double _combinedPricePerMillion(TokenPrice price) {
+    return price.inputPerMillion + price.outputPerMillion;
+  }
+
+  String _sortModeLabel(_PricingSortMode mode) {
+    switch (mode) {
+      case _PricingSortMode.priceLowHigh:
+        return 'Price low-high';
+      case _PricingSortMode.priceHighLow:
+        return 'Price high-low';
+      case _PricingSortMode.modelName:
+        return 'Model A-Z';
+    }
+  }
+}
+
+class _PricingUpdateSheet extends StatelessWidget {
+  const _PricingUpdateSheet({required this.update});
+
+  final TokenPricingSnapshotUpdate update;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.cloud_sync_outlined, color: _usageAmber, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('LiteLLM pricing update', style: TextStyle(color: _usageText, fontSize: 16, fontWeight: FontWeight.w900)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'This is a manual snapshot update. MobileCode will not update prices in the background, and user overrides still take priority.',
+                style: TextStyle(color: _usageMuted, fontSize: 12, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              _PricingUpdateMetric(label: 'Models', value: _formatInt(update.modelCount), color: _usageViolet),
+              _PricingUpdateMetric(label: 'New', value: _formatInt(update.newCount), color: _usageMint),
+              _PricingUpdateMetric(label: 'Price changes', value: _formatInt(update.changedCount), color: _usageAmber),
+              _PricingUpdateMetric(label: 'Unchanged', value: _formatInt(update.unchangedCount), color: _usageCyan),
+              const SizedBox(height: 10),
+              Text(
+                '${update.sourceName} · updated ${_dateLabel(update.updatedAt)}',
+                style: const TextStyle(color: _usageText, fontSize: 12, fontWeight: FontWeight.w900, height: 1.35),
+              ),
+              const SizedBox(height: 4),
+              SelectableText(
+                update.sourceUrl,
+                style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: update.modelCount == 0 ? null : () => Navigator.of(context).pop(true),
+                      icon: const Icon(Icons.download_done_outlined),
+                      label: const Text('Apply snapshot'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PricingUpdateMetric extends StatelessWidget {
+  const _PricingUpdateMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.28)),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(color: _usageMuted, fontSize: 12, fontWeight: FontWeight.w700))),
+          Text(value, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w900)),
+        ],
+      ),
+    );
+  }
+}
+
+class _PricingOverrideSheet extends StatefulWidget {
+  const _PricingOverrideSheet({this.initialPrice});
+
+  final TokenPrice? initialPrice;
+
+  @override
+  State<_PricingOverrideSheet> createState() => _PricingOverrideSheetState();
+}
+
+class _PricingOverrideSheetState extends State<_PricingOverrideSheet> {
+  late final TextEditingController _provider;
+  late final TextEditingController _model;
+  late final TextEditingController _inputPerMillion;
+  late final TextEditingController _outputPerMillion;
+  late final TextEditingController _cacheReadPerMillion;
+  late final TextEditingController _cacheWritePerMillion;
+
+  @override
+  void initState() {
+    super.initState();
+    final price = widget.initialPrice;
+    _provider = TextEditingController(text: price?.provider ?? '');
+    _model = TextEditingController(text: price?.model ?? '');
+    _inputPerMillion = TextEditingController(text: price == null ? '' : price.inputPerMillion.toStringAsFixed(6));
+    _outputPerMillion = TextEditingController(text: price == null ? '' : price.outputPerMillion.toStringAsFixed(6));
+    _cacheReadPerMillion = TextEditingController(text: price == null || price.cacheReadPerMillion == 0 ? '' : price.cacheReadPerMillion.toStringAsFixed(6));
+    _cacheWritePerMillion = TextEditingController(text: price == null || price.cacheWritePerMillion == 0 ? '' : price.cacheWritePerMillion.toStringAsFixed(6));
+  }
+
+  @override
+  void dispose() {
+    _provider.dispose();
+    _model.dispose();
+    _inputPerMillion.dispose();
+    _outputPerMillion.dispose();
+    _cacheReadPerMillion.dispose();
+    _cacheWritePerMillion.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final provider = _provider.text.trim();
+    final model = _model.text.trim();
+    final input = _moneyPerMillion(_inputPerMillion.text);
+    final output = _moneyPerMillion(_outputPerMillion.text);
+    final cacheRead = _moneyPerMillion(_cacheReadPerMillion.text);
+    final cacheWrite = _moneyPerMillion(_cacheWritePerMillion.text);
+    if (provider.isEmpty || model.isEmpty || input == null || output == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Provider, model, input and output prices are required.')));
+      return;
+    }
+    Navigator.of(context).pop(TokenPrice(
+      provider: provider,
+      model: model,
+      inputCostPerToken: input,
+      outputCostPerToken: output,
+      cacheReadCostPerToken: cacheRead ?? 0,
+      cacheWriteCostPerToken: cacheWrite ?? 0,
+      sourceName: 'User override',
+      sourceUrl: '',
+      updatedAt: DateTime.now(),
+      custom: true,
+      notes: 'User-configured MobileCode price override.',
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 16,
+          right: 16,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.price_change_outlined, color: _usageAmber, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text('Pricing override', style: TextStyle(color: _usageText, fontSize: 16, fontWeight: FontWeight.w900)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Enter USD prices per 1M tokens. MobileCode stores only the price table, not prompts or responses.',
+                style: TextStyle(color: _usageMuted, fontSize: 12, height: 1.35),
+              ),
+              const SizedBox(height: 12),
+              TextField(controller: _provider, decoration: const InputDecoration(labelText: 'Provider, e.g. openai / anthropic / custom')),
+              const SizedBox(height: 8),
+              TextField(controller: _model, decoration: const InputDecoration(labelText: 'Model, e.g. gpt-4o-mini')),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _inputPerMillion,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Input USD / 1M tokens'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _outputPerMillion,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Output USD / 1M tokens'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _cacheReadPerMillion,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Cache read USD / 1M tokens (optional)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _cacheWritePerMillion,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Cache write USD / 1M tokens (optional)'),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _save,
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UsageEventTile extends StatelessWidget {
+  const _UsageEventTile({required this.event});
+
+  final TokenUsageEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = event.cancelled
+        ? _usageAmber
+        : event.success
+            ? _usageMint
+            : _usageRose;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.07),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.28)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 12),
-            child: Text(
-              '优化建议',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-          ),
-          ..._tips.map((tip) => _buildTipCard(tip)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTipCard(Map<String, dynamic> tip) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: GlassCardWidget(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
+          Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  gradient: AppTheme.auroraGradient,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  tip['icon'] as IconData,
-                  size: 22,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 14),
+              Icon(event.cancelled ? Icons.pause_circle_outline : event.success ? Icons.check_circle_outline : Icons.error_outline, color: color, size: 18),
+              const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      tip['title'] as String,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      tip['desc'] as String,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: AppTheme.success.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
                 child: Text(
-                  tip['savings'] as String,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.success,
-                  ),
+                  event.endpoint,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _usageText, fontSize: 13, fontWeight: FontWeight.w900),
                 ),
               ),
+              if (event.usage.estimated) const _UsageBadge(label: 'estimated', color: _usageAmber),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAlertsSection() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-      child: GlassCardWidget(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 8),
+          Text(
+            '${event.provider} · ${event.model} · ${event.durationMs}ms · ${_timeLabel(event.createdAt)}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _usageMuted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'price: ${event.pricingSource} · ${_dateLabel(event.pricingUpdatedAt)}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _usageFaint, fontSize: 10.5, height: 1.3),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    '用量警报',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _showAddAlertDialog,
-                    icon: const Icon(Icons.add, size: 16, color: AppTheme.violet),
-                    label: const Text(
-                      '添加',
-                      style: TextStyle(fontSize: 12, color: AppTheme.violet),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              ..._alerts.asMap().entries.map((entry) {
-                final idx = entry.key;
-                final alert = entry.value;
-                return _buildAlertRow(alert, idx);
-              }).toList(),
+              _UsageBadge(label: 'total ${_formatInt(event.usage.totalTokens)}', color: _usageViolet),
+              _UsageBadge(label: 'in ${_formatInt(event.usage.inputTokens)}', color: _usageCyan),
+              _UsageBadge(label: 'out ${_formatInt(event.usage.outputTokens)}', color: _usageMint),
+              if (event.usage.cacheReadTokens > 0) _UsageBadge(label: 'cache read ${_formatInt(event.usage.cacheReadTokens)}', color: _usageMint),
+              if (event.usage.cacheWriteTokens > 0) _UsageBadge(label: 'cache write ${_formatInt(event.usage.cacheWriteTokens)}', color: _usageAmber),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAlertRow(Map<String, dynamic> alert, int index) {
-    final threshold = alert['threshold'] as int;
-    final enabled = alert['enabled'] as bool;
-    final triggered = alert['triggered'] as bool;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: triggered ? AppTheme.error.withOpacity(0.1) : AppTheme.surfaceCard.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: triggered ? AppTheme.error.withOpacity(0.3) : AppTheme.border,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              triggered ? Icons.notifications_active : Icons.notifications_none,
-              size: 20,
-              color: triggered ? AppTheme.error : AppTheme.textTertiary,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '用量达到 $threshold% 时提醒',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: triggered ? AppTheme.error : AppTheme.textPrimary,
-                    ),
-                  ),
-                  if (triggered)
-                    const Text(
-                      '已触发 - 当前用量超过此阈值',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppTheme.error,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-            Switch(
-              value: enabled,
-              onChanged: (v) => setState(() => _alerts[index]['enabled'] = v),
-              activeColor: AppTheme.violet,
-              activeTrackColor: AppTheme.violetGlow,
-              inactiveTrackColor: AppTheme.border,
-            ),
-            if (triggered)
-              IconButton(
-                onPressed: () => setState(() => _alerts[index]['triggered'] = false),
-                icon: const Icon(Icons.close, size: 18, color: AppTheme.textTertiary),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showAddAlertDialog() {
-    final TextEditingController controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surfaceCard,
-        title: const Text(
-          '添加警报阈值',
-          style: TextStyle(color: AppTheme.textPrimary),
-        ),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          style: const TextStyle(color: AppTheme.textPrimary),
-          decoration: const InputDecoration(
-            hintText: '输入百分比 (1-100)',
-            hintStyle: TextStyle(color: AppTheme.textTertiary),
-            suffixText: '%',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () {
-              final val = int.tryParse(controller.text);
-              if (val != null && val > 0 && val <= 100) {
-                setState(() {
-                  _alerts.add({
-                    'threshold': val,
-                    'enabled': true,
-                    'triggered': false,
-                  });
-                });
-              }
-              Navigator.pop(context);
-            },
-            child: const Text('添加', style: TextStyle(color: AppTheme.violet)),
           ),
         ],
       ),
     );
   }
+}
+
+class _UsageBadge extends StatelessWidget {
+  const _UsageBadge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w900)),
+    );
+  }
+}
+
+class _EmptyUsageText extends StatelessWidget {
+  const _EmptyUsageText({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(text, style: const TextStyle(color: _usageMuted, fontSize: 12, height: 1.35));
+  }
+}
+
+String _formatInt(int value) {
+  final raw = value.toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < raw.length; i++) {
+    final reverseIndex = raw.length - i;
+    buffer.write(raw[i]);
+    if (reverseIndex > 1 && reverseIndex % 3 == 1) buffer.write(',');
+  }
+  return buffer.toString();
+}
+
+double? _moneyPerMillion(String value) {
+  final parsed = double.tryParse(value.trim());
+  if (parsed == null || parsed < 0) return null;
+  return parsed / 1000000;
+}
+
+String _dateLabel(DateTime value) {
+  final y = value.year.toString().padLeft(4, '0');
+  final m = value.month.toString().padLeft(2, '0');
+  final d = value.day.toString().padLeft(2, '0');
+  return '$y-$m-$d';
+}
+
+String _timeLabel(DateTime value) {
+  final h = value.hour.toString().padLeft(2, '0');
+  final m = value.minute.toString().padLeft(2, '0');
+  return '$h:$m';
 }

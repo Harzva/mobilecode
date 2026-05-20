@@ -29,7 +29,7 @@ Release APK workflow: `.github/workflows/android-apk.yml`
 
 - Builds the release APK.
 - Injects the managed debug provider only from GitHub Secret `MOBILECODE_MANAGED_API_KEY`.
-- Uploads `mobilecode-v0.1.0.apk` to the GitHub Release.
+- Uploads `mobilecode-v0.1.24.apk` to the GitHub Release.
 
 ## iOS
 
@@ -43,12 +43,20 @@ Checks:
 - Builds a debug iOS Simulator `.app`.
 - Installs and launches the app on an available iPhone simulator.
 - Captures a simulator screenshot and Runner logs.
-- Uploads `mobilecode-ios-simulator-v0.1.0.zip` to the GitHub Release.
+- Uploads `mobilecode-ios-simulator-v0.1.24.zip` to the GitHub Release.
 
-This is an iOS Simulator build, not a signed App Store IPA. A physical-device IPA requires an Apple Developer team, signing certificate, provisioning profile, and an export options plist.
+Archive workflow: `.github/workflows/ios-archive.yml`
+
+- Builds an unsigned release iOS device app with `flutter build ios --release --no-codesign`.
+- Packages the device app as `mobilecode-ios-archive-v0.1.24.xcarchive.zip`.
+- Uploads the unsigned archive and `ios-archive-summary.txt` to the GitHub Release.
+- Does not create an installable `.ipa`.
+
+The simulator zip and unsigned archive do not require Apple Developer signing secrets. A physical-device IPA still requires an Apple Developer team, signing certificate, provisioning profile, and export options plist.
 
 ## Local Plugin Findings
 
 - Build iOS Apps / XcodeBuildMCP was available, but the local machine had no Xcode defaults configured.
 - `xcrun` was missing locally, so iOS simulator testing must run on macOS CI.
+- Unsigned iOS archive packaging must also run on macOS CI because it needs Xcode and the iOS toolchain.
 - Android SDK tools such as `adb` were missing locally, so Android device testing must run on emulator CI.

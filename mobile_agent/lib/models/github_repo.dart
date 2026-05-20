@@ -217,7 +217,10 @@ class GitHubRepo {
     }
 
     // Extract license name if available
-    final licenseName = (json['license'] as Map<String, dynamic>?)?.['name'] as String?;
+    final licenseData = json['license'];
+    final licenseName = licenseData is Map<String, dynamic>
+        ? licenseData['name'] as String?
+        : null;
 
     // Get the language from API
     final primaryLanguage = json['language'] as String?;
@@ -295,9 +298,7 @@ class GitHubRepo {
       language: json['language'] as String?,
       languageColor: json['languageColor'] as String? ??
           GitHubLanguage.getColor(json['language'] as String?),
-      topics: (json['topics'] as List<dynamic>?)?
-              .whereType<String>()
-              .toList() ??
+      topics: ((json['topics'] as List<dynamic>?)?.whereType<String>().toList()) ??
           const [],
       license: json['license'] as String?,
       isTemplate: json['isTemplate'] as bool? ?? false,

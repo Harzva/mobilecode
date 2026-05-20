@@ -67,6 +67,76 @@ class GitHubPagesService {
     return base.replace(queryParameters: query);
   }
 
+  static GitHubPagesFailureDetails describeFailure(Object error) {
+    if (error is GitHubDeepException) {
+      final status = error.statusCode;
+      final lower = error.message.toLowerCase();
+      if (status == 401) {
+        return GitHubPagesFailureDetails(
+          message: 'GitHub token is invalid or expired.',
+          recoveryHint: 'Open GitHub login and save a fresh token before publishing again.',
+          failureKind: 'auth_invalid',
+          statusCode: status,
+          endpoint: error.endpoint,
+        );
+      }
+      if (status == 403) {
+        final rateLimited = lower.contains('rate limit') || lower.contains('secondary rate');
+        return GitHubPagesFailureDetails(
+          message: rateLimited
+              ? 'GitHub rejected the request because this token or device is rate limited.'
+              : 'GitHub token does not have enough repository or Pages permission.',
+          recoveryHint: rateLimited
+              ? 'Wait for the rate limit window to reset, then retry. If this keeps happening, use an authenticated token.'
+              : 'Fine-grained tokens need Repository contents read/write, Pages read/write, and Administration read/write. Classic PATs need the repo scope.',
+          failureKind: rateLimited ? 'rate_limited' : 'permission_denied',
+          statusCode: status,
+          endpoint: error.endpoint,
+        );
+      }
+      if (status == 404) {
+        return GitHubPagesFailureDetails(
+          message: 'GitHub repository or Pages endpoint is not visible to this token.',
+          recoveryHint: 'Confirm the owner/repo name, repository visibility, and token access. Private repos require a token that can read and write that repo.',
+          failureKind: 'not_found_or_not_visible',
+          statusCode: status,
+          endpoint: error.endpoint,
+        );
+      }
+      if (status == 409) {
+        return GitHubPagesFailureDetails(
+          message: 'GitHub Pages is already configured but the Pages source could not be updated.',
+          recoveryHint: 'Retry after a moment. If it still fails, check that the gh-pages branch exists and the token can administer Pages.',
+          failureKind: 'pages_conflict',
+          statusCode: status,
+          endpoint: error.endpoint,
+        );
+      }
+      if (status == 422) {
+        return GitHubPagesFailureDetails(
+          message: 'GitHub rejected the repository or Pages configuration.',
+          recoveryHint: 'Use a simpler repository name, publish to a public repo when possible, and make sure the Pages source branch/path is valid.',
+          failureKind: 'validation_failed',
+          statusCode: status,
+          endpoint: error.endpoint,
+        );
+      }
+      return GitHubPagesFailureDetails(
+        message: error.message,
+        recoveryHint: 'Review the GitHub response and retry after correcting the repository, token, or Pages settings.',
+        failureKind: 'github_api_failed',
+        statusCode: status,
+        endpoint: error.endpoint,
+      );
+    }
+
+    return GitHubPagesFailureDetails(
+      message: error.toString(),
+      recoveryHint: 'Check network connectivity and retry. If this repeats, run the GitHub connectivity test from Tools.',
+      failureKind: 'unexpected_failure',
+    );
+  }
+
   // ── Deployment ──────────────────────────────────────────────────────
 
   /// Deploy a local project to GitHub Pages.
@@ -154,23 +224,31 @@ class GitHubPagesService {
         steps: steps,
       );
     } on GitHubDeepException catch (e) {
-      steps.add('Error: ${e.message}');
+      final failure = describeFailure(e);
+      steps.add('Error: ${failure.message}');
       return DeploymentResult(
         success: false,
         url: null,
         customDomain: customDomain,
         deployedAt: DateTime.now(),
-        error: e.message,
+        error: failure.message,
+        recoveryHint: failure.recoveryHint,
+        failureKind: failure.failureKind,
+        statusCode: failure.statusCode,
         steps: steps,
       );
     } catch (e) {
-      steps.add('Unexpected error: $e');
+      final failure = describeFailure(e);
+      steps.add('Unexpected error: ${failure.message}');
       return DeploymentResult(
         success: false,
         url: null,
         customDomain: customDomain,
         deployedAt: DateTime.now(),
-        error: e.toString(),
+        error: failure.message,
+        recoveryHint: failure.recoveryHint,
+        failureKind: failure.failureKind,
+        statusCode: failure.statusCode,
         steps: steps,
       );
     }
@@ -223,9 +301,31 @@ class GitHubPagesService {
       }),
     );
     if (response.statusCode == 201 || response.statusCode == 204 || response.statusCode == 409) {
-      // 409 = Pages already enabled.
+      if (response.statusCode == 409) {
+        await _updatePagesSource(owner, repo, branch: branch, path: path);
+      }
       return;
     }
+    _handleError(response, '/repos/$owner/$repo/pages');
+  }
+
+  Future<void> _updatePagesSource(
+    String owner,
+    String repo, {
+    required String branch,
+    required String path,
+  }) async {
+    final response = await _httpClient.put(
+      _uri('/repos/$owner/$repo/pages'),
+      headers: _headers,
+      body: jsonEncode({
+        'source': {
+          'branch': branch,
+          'path': path,
+        },
+      }),
+    );
+    if (response.statusCode >= 200 && response.statusCode < 300) return;
     _handleError(response, '/repos/$owner/$repo/pages');
   }
 
@@ -583,6 +683,9 @@ class DeploymentResult {
   final String? customDomain;
   final DateTime deployedAt;
   final String? error;
+  final String? recoveryHint;
+  final String? failureKind;
+  final int? statusCode;
   final List<String> steps;
 
   const DeploymentResult({
@@ -591,12 +694,32 @@ class DeploymentResult {
     this.customDomain,
     required this.deployedAt,
     this.error,
+    this.recoveryHint,
+    this.failureKind,
+    this.statusCode,
     this.steps = const [],
   });
 
   @override
   String toString() =>
       'DeploymentResult[success=$success, url=$url, steps=${steps.length}]';
+}
+
+/// User-facing explanation for GitHub Pages failures.
+class GitHubPagesFailureDetails {
+  const GitHubPagesFailureDetails({
+    required this.message,
+    required this.recoveryHint,
+    required this.failureKind,
+    this.statusCode,
+    this.endpoint,
+  });
+
+  final String message;
+  final String recoveryHint;
+  final String failureKind;
+  final int? statusCode;
+  final String? endpoint;
 }
 
 /// Current status of GitHub Pages for a repository.

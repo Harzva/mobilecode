@@ -60,6 +60,18 @@ class AnimatedBackground extends StatelessWidget {
         return CyberSunsetOrbs(animate: animate);
       case AppTheme.monochromeGeek:
         return MonochromeNoise(animate: animate);
+      case AppTheme.claudeYellow:
+        return const ThemedSoftGlowBackground(
+          base: Color(0xFF19110A),
+          primary: Color(0xFFD97706),
+          accent: Color(0xFFFFB86B),
+        );
+      case AppTheme.codexBlue:
+        return const ThemedSoftGlowBackground(
+          base: Color(0xFF071326),
+          primary: Color(0xFF2555FF),
+          accent: Color(0xFF16B9C7),
+        );
     }
   }
 
@@ -94,8 +106,95 @@ class AnimatedBackground extends StatelessWidget {
         return const Color(0xFF0D0B2B);
       case AppTheme.monochromeGeek:
         return const Color(0xFF000000);
+      case AppTheme.claudeYellow:
+        return const Color(0xFF19110A);
+      case AppTheme.codexBlue:
+        return const Color(0xFF071326);
     }
   }
+}
+
+// ============================================================
+// SECTION 1.5: Soft Brand Background — Lightweight themed glow
+// ============================================================
+
+class ThemedSoftGlowBackground extends StatelessWidget {
+  final Color base;
+  final Color primary;
+  final Color accent;
+
+  const ThemedSoftGlowBackground({
+    Key? key,
+    required this.base,
+    required this.primary,
+    required this.accent,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _ThemedSoftGlowPainter(
+        base: base,
+        primary: primary,
+        accent: accent,
+      ),
+      size: Size.infinite,
+    );
+  }
+}
+
+class _ThemedSoftGlowPainter extends CustomPainter {
+  final Color base;
+  final Color primary;
+  final Color accent;
+
+  const _ThemedSoftGlowPainter({
+    required this.base,
+    required this.primary,
+    required this.accent,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            base,
+            Color.lerp(base, primary, 0.16)!,
+            Color.lerp(base, accent, 0.12)!,
+          ],
+        ).createShader(rect),
+    );
+
+    final glowPaint = Paint()..maskFilter = const MaskFilter.blur(BlurStyle.normal, 70);
+    canvas.drawCircle(
+      Offset(size.width * 0.22, size.height * 0.24),
+      size.shortestSide * 0.34,
+      glowPaint..color = primary.withOpacity(0.12),
+    );
+    canvas.drawCircle(
+      Offset(size.width * 0.82, size.height * 0.72),
+      size.shortestSide * 0.28,
+      glowPaint..color = accent.withOpacity(0.10),
+    );
+
+    final linePaint = Paint()
+      ..color = accent.withOpacity(0.045)
+      ..strokeWidth = 0.8;
+    for (int i = 0; i < 8; i++) {
+      final y = size.height * (0.16 + i * 0.11);
+      canvas.drawLine(Offset(0, y), Offset(size.width, y + size.height * 0.04), linePaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ThemedSoftGlowPainter old) =>
+      old.base != base || old.primary != primary || old.accent != accent;
 }
 
 // ============================================================

@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag to upload the APK to
         required: false
-        default: v0.1.0
+        default: v0.1.24
   push:
     tags:
       - 'v*'
@@ -14,19 +14,16 @@ on:
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build-apk:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -50,7 +47,7 @@ jobs:
 
       - name: Analyze Flutter sources
         working-directory: mobile_agent
-        run: flutter analyze lib/main.dart lib/screens/home_screen.dart --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart --no-fatal-infos --no-fatal-warnings
 
       - name: Configure stable Android release signing
         working-directory: mobile_agent
@@ -91,19 +88,40 @@ jobs:
           fi
 
       - name: Stage APK
+        id: stage_apk
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.24' }}
         run: |
           mkdir -p artifacts
-          cp mobile_agent/build/app/outputs/flutter-apk/app-release.apk artifacts/mobilecode-v0.1.0.apk
+          APK_PATH="artifacts/mobilecode-${RELEASE_TAG}.apk"
+          cp mobile_agent/build/app/outputs/flutter-apk/app-release.apk "$APK_PATH"
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mobilecode-apk
-          path: artifacts/mobilecode-v0.1.0.apk
+          path: ${{ steps.stage_apk.outputs.apk_path }}
+
+      - name: Ensure GitHub Release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.24' }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+          else
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "MobileCode $RELEASE_TAG" \
+              --notes "Automated MobileCode Android APK build." \
+              --prerelease \
+              --repo "$GITHUB_REPOSITORY"
+          fi
 
       - name: Upload APK to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.24' }}
         run: |
-          gh release upload "$RELEASE_TAG" artifacts/mobilecode-v0.1.0.apk --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$RELEASE_TAG" "${{ steps.stage_apk.outputs.apk_path }}" --clobber --repo "$GITHUB_REPOSITORY"

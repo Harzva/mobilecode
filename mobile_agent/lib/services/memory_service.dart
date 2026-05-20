@@ -362,6 +362,138 @@ class UserCorrection {
       );
 }
 
+enum MemoryRuleProposalStatus { pending, accepted, dismissed }
+
+/// A user-approved operating rule learned from repository patterns.
+@immutable
+class MemoryRule {
+  final String id;
+  final String title;
+  final String category;
+  final String rule;
+  final String source;
+  final List<String> evidenceRepos;
+  final DateTime createdAt;
+  bool enabled;
+
+  MemoryRule({
+    required this.id,
+    required this.title,
+    required this.category,
+    required this.rule,
+    required this.source,
+    required this.evidenceRepos,
+    required this.createdAt,
+    this.enabled = true,
+  });
+
+  MemoryRule copyWith({
+    String? id,
+    String? title,
+    String? category,
+    String? rule,
+    String? source,
+    List<String>? evidenceRepos,
+    DateTime? createdAt,
+    bool? enabled,
+  }) {
+    return MemoryRule(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      category: category ?? this.category,
+      rule: rule ?? this.rule,
+      source: source ?? this.source,
+      evidenceRepos: evidenceRepos ?? this.evidenceRepos,
+      createdAt: createdAt ?? this.createdAt,
+      enabled: enabled ?? this.enabled,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'category': category,
+        'rule': rule,
+        'source': source,
+        'evidenceRepos': evidenceRepos,
+        'createdAt': createdAt.toIso8601String(),
+        'enabled': enabled,
+      };
+
+  factory MemoryRule.fromJson(Map<String, dynamic> json) => MemoryRule(
+        id: json['id'] as String? ?? _newMemoryRuleId(),
+        title: json['title'] as String? ?? 'Memory rule',
+        category: json['category'] as String? ?? 'repo-insight',
+        rule: json['rule'] as String? ?? '',
+        source: json['source'] as String? ?? 'manual',
+        evidenceRepos: _jsonStringList(json['evidenceRepos']),
+        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+        enabled: json['enabled'] as bool? ?? true,
+      );
+}
+
+/// A proposed memory rule that needs user approval before persistence.
+@immutable
+class MemoryRuleProposal {
+  final String proposalId;
+  final MemoryRule rule;
+  final String rationale;
+  final List<String> evidenceRepos;
+  final MemoryRuleProposalStatus status;
+  final DateTime createdAt;
+
+  const MemoryRuleProposal({
+    required this.proposalId,
+    required this.rule,
+    required this.rationale,
+    required this.evidenceRepos,
+    required this.status,
+    required this.createdAt,
+  });
+
+  MemoryRuleProposal copyWith({
+    String? proposalId,
+    MemoryRule? rule,
+    String? rationale,
+    List<String>? evidenceRepos,
+    MemoryRuleProposalStatus? status,
+    DateTime? createdAt,
+  }) {
+    return MemoryRuleProposal(
+      proposalId: proposalId ?? this.proposalId,
+      rule: rule ?? this.rule,
+      rationale: rationale ?? this.rationale,
+      evidenceRepos: evidenceRepos ?? this.evidenceRepos,
+      status: status ?? this.status,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'proposalId': proposalId,
+        'rule': rule.toJson(),
+        'rationale': rationale,
+        'evidenceRepos': evidenceRepos,
+        'status': status.name,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory MemoryRuleProposal.fromJson(Map<String, dynamic> json) {
+    final statusName = json['status'] as String? ?? MemoryRuleProposalStatus.pending.name;
+    return MemoryRuleProposal(
+      proposalId: json['proposalId'] as String? ?? _newMemoryRuleProposalId(),
+      rule: MemoryRule.fromJson(Map<String, dynamic>.from(json['rule'] as Map? ?? const {})),
+      rationale: json['rationale'] as String? ?? '',
+      evidenceRepos: _jsonStringList(json['evidenceRepos']),
+      status: MemoryRuleProposalStatus.values.firstWhere(
+        (item) => item.name == statusName,
+        orElse: () => MemoryRuleProposalStatus.pending,
+      ),
+      createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+}
+
 /// Aggregate memory statistics.
 @immutable
 class MemoryStats {
@@ -369,6 +501,7 @@ class MemoryStats {
   final int totalConversations;
   final int totalErrorPatterns;
   final int totalSnippets;
+  final int totalRules;
   final int memorySizeKB;
   final DateTime lastSync;
 
@@ -377,22 +510,33 @@ class MemoryStats {
     required this.totalConversations,
     required this.totalErrorPatterns,
     required this.totalSnippets,
+    this.totalRules = 0,
     required this.memorySizeKB,
     required this.lastSync,
   });
 
   int get totalItems =>
-      totalProjects + totalConversations + totalErrorPatterns + totalSnippets;
+      totalProjects + totalConversations + totalErrorPatterns + totalSnippets + totalRules;
 
   Map<String, dynamic> toJson() => {
         'totalProjects': totalProjects,
         'totalConversations': totalConversations,
         'totalErrorPatterns': totalErrorPatterns,
         'totalSnippets': totalSnippets,
+        'totalRules': totalRules,
         'memorySizeKB': memorySizeKB,
         'lastSync': lastSync.toIso8601String(),
       };
 }
+
+List<String> _jsonStringList(dynamic value) {
+  if (value is! List) return const [];
+  return value.map((item) => item.toString()).where((item) => item.trim().isNotEmpty).toList();
+}
+
+String _newMemoryRuleId() => 'memory_rule_${DateTime.now().microsecondsSinceEpoch}';
+
+String _newMemoryRuleProposalId() => 'memory_rule_proposal_${DateTime.now().microsecondsSinceEpoch}';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Memory Service
@@ -416,6 +560,8 @@ class MemoryService extends ChangeNotifier {
   final List<ErrorPattern> _errorCache = [];
   final List<FrequentSnippet> _snippetCache = [];
   final List<UserCorrection> _correctionCache = [];
+  final List<MemoryRule> _ruleCache = [];
+  final List<MemoryRuleProposal> _ruleProposalCache = [];
 
   // Storage keys
   static const String _keyProjects = 'memory_projects';
@@ -424,6 +570,8 @@ class MemoryService extends ChangeNotifier {
   static const String _keyErrors = 'memory_errors';
   static const String _keySnippets = 'memory_snippets';
   static const String _keyCorrections = 'memory_corrections';
+  static const String _keyRules = 'memory_rules';
+  static const String _keyRuleProposals = 'memory_rule_proposals';
   static const String _keyLastSync = 'memory_last_sync';
 
   // Singleton
@@ -709,6 +857,95 @@ class MemoryService extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── Memory Rules ──────────────────────────────────────────────────
+
+  /// Get user-approved memory rules learned from repo insights.
+  Future<List<MemoryRule>> getMemoryRules() async {
+    _ensureInit();
+    return List.unmodifiable(_ruleCache);
+  }
+
+  /// Get pending memory rule proposals that still require approval.
+  Future<List<MemoryRuleProposal>> pendingMemoryRuleProposals() async {
+    _ensureInit();
+    return List.unmodifiable(
+      _ruleProposalCache.where((p) => p.status == MemoryRuleProposalStatus.pending),
+    );
+  }
+
+  /// Add or update an approved memory rule.
+  Future<void> upsertMemoryRule(MemoryRule rule) async {
+    _ensureInit();
+    final index = _ruleCache.indexWhere((item) => item.id == rule.id);
+    if (index >= 0) {
+      _ruleCache[index] = rule;
+    } else {
+      _ruleCache.add(rule);
+    }
+    await _persistRules();
+    notifyListeners();
+  }
+
+  /// Delete an approved memory rule.
+  Future<void> removeMemoryRule(String id) async {
+    _ensureInit();
+    _ruleCache.removeWhere((rule) => rule.id == id);
+    await _persistRules();
+    notifyListeners();
+  }
+
+  /// Store a proposal without accepting it.
+  Future<void> addMemoryRuleProposal(MemoryRuleProposal proposal) async {
+    _ensureInit();
+    final index = _ruleProposalCache.indexWhere((item) => item.proposalId == proposal.proposalId);
+    if (index >= 0) {
+      _ruleProposalCache[index] = proposal;
+    } else {
+      _ruleProposalCache.add(proposal);
+    }
+    await _persistRuleProposals();
+    notifyListeners();
+  }
+
+  /// Store multiple proposals without accepting them.
+  Future<void> addMemoryRuleProposals(List<MemoryRuleProposal> proposals) async {
+    _ensureInit();
+    for (final proposal in proposals) {
+      final index = _ruleProposalCache.indexWhere((item) => item.proposalId == proposal.proposalId);
+      if (index >= 0) {
+        _ruleProposalCache[index] = proposal;
+      } else {
+        _ruleProposalCache.add(proposal);
+      }
+    }
+    await _persistRuleProposals();
+    notifyListeners();
+  }
+
+  /// Accept a proposed rule and persist it to the approved Memory list.
+  Future<void> acceptMemoryRuleProposal(String proposalId, {MemoryRule? editedRule}) async {
+    _ensureInit();
+    final index = _ruleProposalCache.indexWhere((item) => item.proposalId == proposalId);
+    if (index == -1) return;
+    final proposal = _ruleProposalCache[index];
+    final rule = editedRule ?? proposal.rule;
+    await upsertMemoryRule(rule.copyWith(enabled: true));
+    _ruleProposalCache[index] = proposal.copyWith(status: MemoryRuleProposalStatus.accepted);
+    await _persistRuleProposals();
+    notifyListeners();
+  }
+
+  /// Dismiss a proposed memory rule without persisting it.
+  Future<void> dismissMemoryRuleProposal(String proposalId) async {
+    _ensureInit();
+    final index = _ruleProposalCache.indexWhere((item) => item.proposalId == proposalId);
+    if (index == -1) return;
+    _ruleProposalCache[index] =
+        _ruleProposalCache[index].copyWith(status: MemoryRuleProposalStatus.dismissed);
+    await _persistRuleProposals();
+    notifyListeners();
+  }
+
   // ── Memory Statistics ──────────────────────────────────────────────
 
   /// Get aggregate statistics about all stored memories.
@@ -719,12 +956,14 @@ class MemoryService extends ChangeNotifier {
     size += _conversationCache.length * 2; // ~2KB per conversation
     size += _snippetCache.length; // ~1KB per snippet
     size += _correctionCache.length; // ~1KB per correction
+    size += _ruleCache.length; // ~1KB per approved rule
 
     return MemoryStats(
       totalProjects: _projectCache.length,
       totalConversations: _conversationCache.length,
       totalErrorPatterns: _errorCache.length,
       totalSnippets: _snippetCache.length,
+      totalRules: _ruleCache.length,
       memorySizeKB: size,
       lastSync: DateTime.now(),
     );
@@ -744,6 +983,8 @@ class MemoryService extends ChangeNotifier {
       'errorPatterns': _errorCache.map((e) => e.toJson()).toList(),
       'snippets': _snippetCache.map((s) => s.toJson()).toList(),
       'corrections': _correctionCache.map((c) => c.toJson()).toList(),
+      'rules': _ruleCache.map((rule) => rule.toJson()).toList(),
+      'ruleProposals': _ruleProposalCache.map((proposal) => proposal.toJson()).toList(),
     };
     return jsonEncode(export);
   }
@@ -790,6 +1031,19 @@ class MemoryService extends ChangeNotifier {
             .addAll(list.map((j) => UserCorrection.fromJson(j as Map<String, dynamic>)));
       }
 
+      if (decoded['rules'] != null) {
+        final list = decoded['rules'] as List<dynamic>;
+        _ruleCache.clear();
+        _ruleCache.addAll(list.map((j) => MemoryRule.fromJson(j as Map<String, dynamic>)));
+      }
+
+      if (decoded['ruleProposals'] != null) {
+        final list = decoded['ruleProposals'] as List<dynamic>;
+        _ruleProposalCache.clear();
+        _ruleProposalCache
+            .addAll(list.map((j) => MemoryRuleProposal.fromJson(j as Map<String, dynamic>)));
+      }
+
       await _persistAll();
       notifyListeners();
       debugPrint('[MemoryService] Memories imported successfully');
@@ -808,6 +1062,8 @@ class MemoryService extends ChangeNotifier {
     _errorCache.clear();
     _snippetCache.clear();
     _correctionCache.clear();
+    _ruleCache.clear();
+    _ruleProposalCache.clear();
     await _persistAll();
     notifyListeners();
     debugPrint('[MemoryService] All memories cleared');
@@ -822,6 +1078,8 @@ class MemoryService extends ChangeNotifier {
     await _loadErrors();
     await _loadSnippets();
     await _loadCorrections();
+    await _loadRules();
+    await _loadRuleProposals();
   }
 
   Future<void> _persistAll() async {
@@ -831,6 +1089,8 @@ class MemoryService extends ChangeNotifier {
     await _persistErrors();
     await _persistSnippets();
     await _persistCorrections();
+    await _persistRules();
+    await _persistRuleProposals();
   }
 
   Future<void> _loadProjects() async {
@@ -956,6 +1216,49 @@ class MemoryService extends ChangeNotifier {
       await _prefs?.setString(_keyCorrections, jsonEncode(data));
     } catch (e) {
       debugPrint('[MemoryService] Failed to persist corrections: $e');
+    }
+  }
+
+  Future<void> _loadRules() async {
+    try {
+      final jsonStr = _prefs?.getString(_keyRules);
+      if (jsonStr == null) return;
+      final list = jsonDecode(jsonStr) as List<dynamic>;
+      _ruleCache.clear();
+      _ruleCache.addAll(list.map((j) => MemoryRule.fromJson(j as Map<String, dynamic>)));
+    } catch (e) {
+      debugPrint('[MemoryService] Failed to load memory rules: $e');
+    }
+  }
+
+  Future<void> _persistRules() async {
+    try {
+      final data = _ruleCache.map((rule) => rule.toJson()).toList();
+      await _prefs?.setString(_keyRules, jsonEncode(data));
+    } catch (e) {
+      debugPrint('[MemoryService] Failed to persist memory rules: $e');
+    }
+  }
+
+  Future<void> _loadRuleProposals() async {
+    try {
+      final jsonStr = _prefs?.getString(_keyRuleProposals);
+      if (jsonStr == null) return;
+      final list = jsonDecode(jsonStr) as List<dynamic>;
+      _ruleProposalCache.clear();
+      _ruleProposalCache
+          .addAll(list.map((j) => MemoryRuleProposal.fromJson(j as Map<String, dynamic>)));
+    } catch (e) {
+      debugPrint('[MemoryService] Failed to load memory rule proposals: $e');
+    }
+  }
+
+  Future<void> _persistRuleProposals() async {
+    try {
+      final data = _ruleProposalCache.map((proposal) => proposal.toJson()).toList();
+      await _prefs?.setString(_keyRuleProposals, jsonEncode(data));
+    } catch (e) {
+      debugPrint('[MemoryService] Failed to persist memory rule proposals: $e');
     }
   }
 }

@@ -2,7 +2,8 @@
 // Skill Provider - Riverpod providers for skill state management
 // 技能管理 Riverpod 状态管理
 
-import 'package:flutter/foundation.dart';
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/skill_model.dart';
@@ -19,7 +20,8 @@ import '../services/skill_manager_service.dart';
 /// final service = ref.read(skillManagerServiceProvider);
 /// final skills = ref.watch(allSkillsProvider);
 /// ```
-final skillManagerServiceProvider = Provider<SkillManagerService>((ref) {
+final Provider<SkillManagerService> skillManagerServiceProvider =
+    Provider<SkillManagerService>((ref) {
   final service = SkillManagerService.instance;
 
   // Listen to ChangeNotifier and invalidate downstream providers
@@ -178,6 +180,20 @@ final trendingSkillsProvider = FutureProvider<List<Skill>>((ref) async {
   return service.getTrendingSkills();
 });
 
+/// Async provider for account-free curated GitHub discovery.
+final curatedSkillSearchProvider =
+    FutureProvider.family<List<Skill>, ({String? query, int limit})>((ref, params) async {
+  final service = ref.read(skillManagerServiceProvider);
+  return service.searchCuratedSkillSources(query: params.query, limit: params.limit);
+});
+
+/// Async provider for account-free MCP registry discovery.
+final mcpRegistrySearchProvider =
+    FutureProvider.family<List<McpServer>, ({String? query, int limit})>((ref, params) async {
+  final service = ref.read(skillManagerServiceProvider);
+  return service.searchMcpRegistryServers(query: params.query, limit: params.limit);
+});
+
 /// Async provider for checking skill updates.
 final skillUpdateCheckProvider = FutureProvider.family<Skill?, String>((ref, skillId) async {
   final service = ref.read(skillManagerServiceProvider);
@@ -318,7 +334,7 @@ class SkillLifecycleNotifier extends AsyncNotifier<void> {
   }
 
   /// Update a skill.
-  Future<void> update(String skillId) async {
+  Future<void> updateSkill(String skillId) async {
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _service.update(skillId));
   }

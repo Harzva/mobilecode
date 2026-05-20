@@ -13,8 +13,25 @@ pubspec.lock
 android/key.properties
 *.jks
 *.keystore
+<<<<<<< HEAD
 __pycache__/
 *.pyc
 reference_ui/
 qa/**/*.apk
 qa/**/*.zip
+
+# Raw local screen recordings are usually large/private; keep the manifest and rendered promo outputs instead.
+promo/mobilecode-remotion/public/recordings/*.mp4
+promo/mobilecode-remotion/public/recordings/*.mov
+promo/mobilecode-remotion/public/recordings/*.webm
+!promo/mobilecode-remotion/public/recordings/.gitkeep
+!promo/mobilecode-remotion/public/recordings/README.md
+=======
+
+# Raw local screen recordings are usually large/private; keep the manifest and rendered promo outputs instead.
+promo/mobilecode-remotion/public/recordings/*.mp4
+promo/mobilecode-remotion/public/recordings/*.mov
+promo/mobilecode-remotion/public/recordings/*.webm
+!promo/mobilecode-remotion/public/recordings/.gitkeep
+!promo/mobilecode-remotion/public/recordings/README.md
+>>>>>>> v011-streaming-fix

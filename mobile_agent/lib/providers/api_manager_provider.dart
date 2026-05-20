@@ -522,6 +522,11 @@ final isGitHubPagesDeployEnabledProvider = Provider<bool>((ref) {
   return ref.watch(featureEnabledProvider('github_pages_deploy'));
 });
 
+/// Provider that checks if Lark CLI connector is enabled.
+final isLarkCliEnabledProvider = Provider<bool>((ref) {
+  return ref.watch(featureEnabledProvider('lark_cli'));
+});
+
 /// Provider that checks if multi-step agent is enabled.
 final isMultiStepAgentEnabledProvider = Provider<bool>((ref) {
   return ref.watch(featureEnabledProvider('agent_multi_step'));

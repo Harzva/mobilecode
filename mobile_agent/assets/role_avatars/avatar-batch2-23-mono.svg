@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Avatar batch 2 23">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#eeeeee"/><stop offset="1" stop-color="#bdbdbd"/></linearGradient></defs>
+  <rect width="512" height="512" rx="48" fill="url(#bg)"/>
+  <path fill='none' stroke='#5bb08a' stroke-width='2' opacity='.28' d='M58 84h396M58 428h396M84 58v396M428 58v396'/>
+  <g transform="translate(3 0)">
+    <path fill="#202020" d="M88 512c17-116 80-181 168-181s151 65 168 181z"/>
+    <path fill="#d99f82" d="M211 319h90v68c-22 23-68 23-90 0z"/>
+    <path fill="#f0c7ad"  d="M140 170c0-75 46-124 116-124s116 49 116 124v61c0 88-46 145-116 145s-116-57-116-145z"/>
+    <path fill="#181817"  d="M126 172c10-88 65-142 137-139 65 2 109 50 122 132-41-28-78-40-122-38-53 1-96 15-137 45z"/>
+
+    <circle cx="288" cy="154" r="4.8" fill="#5b4037"/>
+    <path fill="#2b2420" d="M171 196c29-16 60-15 89 2l-9 14c-25-10-47-10-72 1zm88 2c30-16 64-14 91 4l-10 14c-25-12-48-13-74-2z"/>
+    <g fill='none' stroke='#151819' stroke-width='8'><rect x='166' y='220' width='76' height='48' rx='15'/><rect x='270' y='220' width='76' height='48' rx='15'/><path d='M242 244c9-6 19-6 28 0'/></g>
+    <path fill="#111" d="M202 240c13 9 29 9 42 0-5-7-12-11-21-11s-16 4-21 11zm67 0c14 9 31 9 44 0-5-7-12-11-22-11s-17 4-22 11z"/>
+    <path fill="#e3aa8d" opacity=".38" d="M150 262c34 19 80 18 106 3-23 37-79 38-106-3zm114 3c31 17 72 17 105-2-28 40-82 40-105 2z"/>
+    <path fill="none" stroke="#b97862" stroke-width="6" stroke-linecap="round" d="M256 248c-8 22-10 39 0 51"/>
+    <path fill="none" stroke="#8e5054" stroke-width="8" stroke-linecap="round" d="M220 323c23 14 49 14 72 0"/>
+    <path fill="#f0f0f0" d="M178 389c21 35 47 52 78 52s57-17 78-52c-43-22-113-22-156 0z"/>
+  </g>
+</svg>

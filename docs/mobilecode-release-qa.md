@@ -21,7 +21,176 @@ Required GitHub Actions before publishing:
 - `.github/workflows/android-apk.yml`
   - Builds the release APK.
   - Uses stable signing when release keystore secrets are configured.
-  - Uploads `mobilecode-v0.1.0.apk` as an artifact and GitHub Release asset.
+  - Uploads `mobilecode-v0.1.10.apk` as an artifact and GitHub Release asset.
+
+## v0.1.10 Release Candidate
+
+Release candidate:
+
+- Branch: `v011-streaming-fix`
+- App/build content commit: `39316ab0f1f466d1a9973bda5556ada06d9f2cf2`
+- CI smoke workflow commit: `c0dc62fe0329b912a8337be353c3819f4fb1096f`
+- Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.10`
+- APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.10/mobilecode-v0.1.10.apk`
+- APK SHA256: `2603fc0b1ad4f5b5e4bb9b0a3c9f961b078e545174f6792972b87f81c5c8166c`
+
+Required CI evidence:
+
+| Gate | Run | Result |
+| --- | --- | --- |
+| Mobile Runtime CI | `https://github.com/Harzva/mobilecode/actions/runs/26015207199` | Passed |
+| Build Android APK | `https://github.com/Harzva/mobilecode/actions/runs/26015207331` | Passed |
+| Android App Smoke Test | `https://github.com/Harzva/mobilecode/actions/runs/26015653307` | Passed |
+
+Validated coverage:
+
+- Flutter scoped analyzer passed for runtime and Home entry surfaces.
+- RuntimeProvider tests passed.
+- Helper daemon protocol smoke passed.
+- Android release APK built and uploaded as the `v0.1.10` release asset.
+- Android emulator smoke verified Helper health/execute, launched the main app, captured screenshot/logcat artifacts, and checked common crash signatures.
+- Runtime UX polish is included: folded long code viewing, bottom agent trace progress, respectful chat scrolling, and visual Role Recruit / RR mode without real multi-agent parallelism.
+
+Manual device coverage:
+
+- Verify GitHub Repo Hub with a signed-in account: current-user repos load, search/language/Pages/local filters work, watchlist survives app restart, and a repo can be added to the phone workspace.
+- Verify repo cards show public/private, stars, language, Pages, default branch, recent push time, and local status without overflowing on a 360dp-wide screen.
+- Verify an artifact stored under a remote-linked repo folder defaults the GitHub Pages deploy target to that bound owner/repo and explains token visibility errors.
+- Verify Actions sheet refreshes workflow jobs, can dispatch a workflow, downloads artifact zip to the app-owned workspace, records it in Recent downloads, opens the zip/folder when Android allows it, and copies the local zip path.
+- Verify Files sheet can browse repository folders, open a text file, edit it, commit through the GitHub Contents API with an explicit commit message, and recover from SHA conflicts by reloading the remote file.
+
+## v0.1.6 Release Evidence
+
+Release candidate:
+
+- Branch: `v011-streaming-fix`
+- App/build content commit: `f1a6381abbc9912c35d8ff712ef7ac0e9d0edd89`
+- Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.6`
+- APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.6/mobilecode-v0.1.6.apk`
+- APK SHA256: `4dd3a7e6fd266874b54d4ed060b27172e915716061ce16ff5ef6e2bb03641622`
+
+Required CI evidence:
+
+| Gate | Run | Result |
+| --- | --- | --- |
+| Mobile Runtime CI | `https://github.com/Harzva/mobilecode/actions/runs/25986990236` | Passed |
+| Build Android APK | `https://github.com/Harzva/mobilecode/actions/runs/25986990949` | Passed |
+| Android App Smoke Test | `https://github.com/Harzva/mobilecode/actions/runs/25986991684` | Passed |
+
+Validated coverage:
+
+- Flutter scoped analyzer passed for runtime and Home entry surfaces.
+- RuntimeProvider tests passed.
+- Helper daemon protocol smoke passed.
+- Android release APK built and uploaded as the v0.1.6 release asset.
+- Android emulator smoke installed and launched the debug APK, captured screenshot/logcat artifacts, and checked common crash signatures.
+- GitHub Pages deploy passed for the demo Pages site.
+
+Manual device coverage:
+
+- Physical-device validation remains required before promoting `v0.1.6` beyond prerelease.
+- Verify generated HTML can pass/fail the pre-publish check, GitHub Pages errors explain token/permission recovery, the published work card opens Pages/repo and shows a live thumbnail, Lark CLI structured actions remain dry-run unless explicitly reviewed, and the new theme/avatar polish does not create small-screen overflow.
+
+## v0.1.5 Release Evidence
+
+Release candidate:
+
+- Branch: `v011-streaming-fix`
+- App/build content commit: pending CI
+- Release: pending
+- APK asset: pending
+- APK SHA256: pending
+
+Required CI evidence:
+
+| Gate | Run | Result |
+| --- | --- | --- |
+| Mobile Runtime CI | pending | Pending |
+| Build Android APK | pending | Pending |
+| Android App Smoke Test | pending | Pending |
+
+Validated coverage:
+
+- Pending after GitHub Pages pre-publish checks, published work cards with live Pages thumbnail, and Lark CLI structured dry-run actions pass CI.
+
+## v0.1.4 Release Evidence
+
+Release candidate:
+
+- Branch: `v011-streaming-fix`
+- App/build content commit: pending CI
+- Release: pending
+- APK asset: pending
+- APK SHA256: pending
+
+Required CI evidence:
+
+| Gate | Run | Result |
+| --- | --- | --- |
+| Mobile Runtime CI | pending | Pending |
+| Build Android APK | pending | Pending |
+| Android App Smoke Test | pending | Pending |
+
+Validated coverage:
+
+- Pending after HTML/UI skill prompt injection, account-free curated GitHub skill/MCP source adapter, and Node 24 Actions updates pass CI.
+
+## v0.1.3 Release Evidence
+
+Release candidate:
+
+- Branch: `v011-streaming-fix`
+- App/build content commit: `1f266ca3c85810efdc0e609f8db6a99947898acf`
+- Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.3`
+- APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.3/mobilecode-v0.1.3.apk`
+- APK SHA256: `50e53bd2fb820aa3658bc6e6ff0fc3afab1a6c1ec69722013f4247a027561390`
+
+Required CI evidence:
+
+| Gate | Run | Result |
+| --- | --- | --- |
+| Mobile Runtime CI | `https://github.com/Harzva/mobilecode/actions/runs/25982172509` | Passed |
+| Build Android APK | `https://github.com/Harzva/mobilecode/actions/runs/25982172502` | Passed |
+| Android App Smoke Test | `https://github.com/Harzva/mobilecode/actions/runs/25982172557` | Passed |
+
+Validated coverage:
+
+- Flutter scoped analyzer passed for runtime and Home entry surfaces.
+- RuntimeProvider tests passed.
+- Helper daemon protocol smoke passed for health, execute, stream, task history, task logs, cancel, and project preflight.
+- Android release APK build passed and uploaded the v0.1.3 release asset.
+- Android emulator smoke built the debug APK, installed and launched the app, captured screenshot/logcat artifacts, and checked common crash signatures.
+
+## v0.1.2 Release Evidence
+
+Release candidate:
+
+- Branch: `v011-streaming-fix`
+- App/build content commit: `1e53204`
+- Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.2`
+- APK asset: `https://github.com/Harzva/mobilecode/releases/download/v0.1.2/mobilecode-v0.1.2.apk`
+- APK SHA256: `69295185daa8f07af5d3d9145e85d961993a4ee80432acbff104961ef19c9f4f`
+
+Required CI evidence:
+
+| Gate | Run | Result |
+| --- | --- | --- |
+| Mobile Runtime CI | `https://github.com/Harzva/mobilecode/actions/runs/25980342388` | Passed |
+| Build Android APK | `https://github.com/Harzva/mobilecode/actions/runs/25980342638` | Passed |
+| Android App Smoke Test | `https://github.com/Harzva/mobilecode/actions/runs/25980342398` | Passed |
+
+Validated coverage:
+
+- Flutter scoped analyzer passed for runtime and Home entry surfaces.
+- RuntimeProvider tests passed.
+- Helper daemon protocol smoke passed for health, execute, stream, task history, task logs, cancel, and project preflight.
+- Android release APK build passed and uploaded the release asset.
+- Android emulator smoke installed the debug APK, started the Helper launcher, verified localhost Helper health and execute, launched the main app, captured screenshot/logcat artifacts, and checked common crash signatures.
+
+Manual device coverage:
+
+- Local `adb devices` showed no online device on 2026-05-17, so physical-device validation remains a manual release step.
+- Before promoting `v0.1.2` beyond prerelease, verify provider/base URL settings, normal chat streaming, agent pause, new chat creation, recent chat turn counts, generated artifact browser preview, trace-step detail sheets, and Runtime Diagnostics on a real Android device.
 
 ## CI Artifact & Run References
 
@@ -354,7 +523,7 @@ All 7 steps report `ok: true`. The JSON output has `"passed": true`.
 After downloading the release APK from the `mobilecode-apk` artifact (Build Android APK workflow) or from a local build output:
 
 ```bash
-adb install -r mobilecode-v0.1.0.apk
+adb install -r mobilecode-v0.1.10.apk
 adb shell monkey -p com.mobilecode.mobile_agent -c android.intent.category.LAUNCHER 1
 adb shell pidof com.mobilecode.mobile_agent
 adb logcat -d -t 1200 > android-logcat.txt

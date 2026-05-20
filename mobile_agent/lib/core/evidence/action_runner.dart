@@ -52,7 +52,7 @@ class ActionRunner {
     required String workspaceRootPath,
     ActionEvidenceStore? evidenceStore,
   })  : workspaceRootPath = p.normalize(p.absolute(workspaceRootPath)),
-        evidenceStore = evidenceStore ?? ActionEvidenceStore();
+        evidenceStore = evidenceStore ?? ActionEvidenceStore.shared;
 
   final String workspaceRootPath;
   final ActionEvidenceStore evidenceStore;

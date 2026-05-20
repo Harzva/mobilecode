@@ -11,6 +11,10 @@ import 'evidence_model.dart';
 /// Provides add, getById, recent, clear, and JSON roundtrip.
 /// Thread-safe for single-isolate Flutter usage.
 class ActionEvidenceStore {
+  static final shared = ActionEvidenceStore._internal();
+
+  ActionEvidenceStore._internal();
+
   final List<ActionEvidence> _records = [];
 
   /// All stored evidence records (insertion order).

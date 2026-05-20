@@ -44,6 +44,7 @@ enum _ModuleAction {
   aiChat,
   apiConfig,
   healthCheck,
+  activityCenter,
   webDemo,
   githubTest,
   diary,
@@ -168,6 +169,18 @@ class _ActivityLog {
   final IconData icon;
   final Color color;
   final DateTime time;
+}
+
+class _CapabilityBoundarySummary {
+  const _CapabilityBoundarySummary({
+    required this.implemented,
+    required this.degraded,
+    required this.blocked,
+  });
+
+  final List<String> implemented;
+  final List<String> degraded;
+  final List<String> blocked;
 }
 
 class _DraftFile {
@@ -1251,6 +1264,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case _ModuleAction.healthCheck:
         _checkHealth();
         break;
+      case _ModuleAction.activityCenter:
+        _openActionEvidenceCenterSheet();
+        break;
       case _ModuleAction.webDemo:
         _openMobileCodingLabSheet(autoGenerate: true);
         break;
@@ -1423,6 +1439,18 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _openActionEvidenceCenterSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => const _ActionEvidenceCenterSheet(),
+    );
+  }
+
   void _openTermuxSheet() {
     showModalBottomSheet<void>(
       context: context,
@@ -1579,6 +1607,105 @@ class _HomeScreenState extends State<HomeScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  _CapabilityBoundarySummary get _homepageCapabilityBoundary {
+    final implemented = <String>[];
+    final degraded = <String>[];
+    final blocked = <String>[];
+
+    for (final layer in _layers) {
+      for (final capability in layer.capabilities) {
+        final title = capability.title;
+        switch (capability.status) {
+          case _CapabilityStatus.ready:
+            implemented.add(title);
+            break;
+          case _CapabilityStatus.local:
+            degraded.add(title);
+            break;
+          case _CapabilityStatus.preview:
+            degraded.add(title);
+            break;
+          case _CapabilityStatus.needsConfig:
+            blocked.add(title);
+            break;
+        }
+      }
+    }
+
+    if (_runtimeReady) {
+      implemented.add('Runtime providers');
+    } else if (!blocked.contains('Runtime providers')) {
+      blocked.add('Runtime providers');
+    }
+
+    if (_runtimeChecking) {
+      degraded.add('Runtime checking');
+    }
+
+    return _CapabilityBoundarySummary(
+      implemented: implemented,
+      degraded: degraded,
+      blocked: blocked,
+    );
+  }
+
+  Widget _buildCapabilityBoundaryStrip() {
+    final summary = _homepageCapabilityBoundary;
+    final readyText = _previewBoundaryItems(summary.implemented, 'writeFile / readFile / previewHtml');
+    final degradedText = _previewBoundaryItems(summary.degraded, 'Local-only execution path');
+    final blockedText = _previewBoundaryItems(summary.blocked, 'runCommand / gitCommit / gitPush');
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+      child: _Panel(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '能力边界',
+              style: TextStyle(color: _text, fontWeight: FontWeight.w800, fontSize: 14),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _BoundaryChip(
+                  title: '已实现',
+                  color: _mint,
+                  items: readyText,
+                  count: summary.implemented.length,
+                  icon: Icons.check_circle_outline,
+                ),
+                _BoundaryChip(
+                  title: '降级',
+                  color: _amber,
+                  items: degradedText,
+                  count: summary.degraded.length,
+                  icon: Icons.vertical_align_bottom_outlined,
+                ),
+                _BoundaryChip(
+                  title: '阻断',
+                  color: _rose,
+                  items: blockedText,
+                  count: summary.blocked.length,
+                  icon: Icons.block,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _previewBoundaryItems(List<String> items, String fallback) {
+    if (items.isEmpty) return fallback;
+    if (items.length <= 3) return items.join(' / ');
+    return '${items.take(3).join(' / ')} / +${items.length - 3}';
+  }
+
   void _syncDrawerSessions(List<_ChatSession> sessions, String? activeSessionId) {
     if (!mounted) return;
     setState(() {
@@ -1648,6 +1775,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
+        _buildCapabilityBoundaryStrip(),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
           child: _RuntimePermissionBanner(
@@ -1761,6 +1889,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildToolsTab() {
     final tools = [
       _CommandShortcut(
+        icon: Icons.receipt_long_outlined,
+        title: 'Activity / Logs',
+        subtitle: 'Read recent action evidence and failures from one lightweight entry.',
+        color: _violet,
+        action: _ModuleAction.activityCenter,
+      ),
+      _CommandShortcut(
         icon: Icons.handyman_outlined,
         title: 'Tool tests',
         subtitle: '测试 provider、GitHub、WebView、storage、runtime、root。',
@@ -1804,6 +1939,8 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.menu_rounded),
           ),
         ),
+        const SizedBox(height: 12),
+        _buildCapabilityBoundaryStrip(),
         const SizedBox(height: 12),
         _RuntimePermissionBanner(
           activeRuntimeName: _activeRuntimeName,
@@ -6401,7 +6538,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   StreamSubscription<VoiceState>? _voiceStateSub;
   String? _error;
   final List<_AgentTraceStep> _agentTrace = [];
-  final ActionEvidenceStore _agentEvidenceStore = ActionEvidenceStore();
+  final ActionEvidenceStore _agentEvidenceStore = ActionEvidenceStore.shared;
 
   _ChatSession? get _activeSession {
     if (_sessions.isEmpty) return null;
@@ -7198,51 +7335,16 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   void _showActivityEvidenceSheet() {
-    final recent = _agentEvidenceStore.recent(count: 20);
     showModalBottomSheet<void>(
       context: context,
-      showDragHandle: true,
       isScrollControlled: true,
-      builder: (context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.receipt_long_outlined, color: _violet),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Activity evidence',
-                          style: TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w900),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Recent structured action evidence from this chat session.',
-                    style: TextStyle(color: _muted, height: 1.35),
-                  ),
-                  const SizedBox(height: 14),
-                  if (recent.isEmpty)
-                    const Text('No action evidence yet.', style: TextStyle(color: _muted))
-                  else
-                    for (final evidence in recent) ...[
-                      _ActionEvidenceTile(evidence: evidence),
-                      const SizedBox(height: 8),
-                    ],
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (context) => const _ActionEvidenceCenterSheet(
+        showHeaderOnlyWhenEmpty: true,
+      ),
     );
   }
 
@@ -8307,6 +8409,57 @@ class _SheetScaffold extends StatelessWidget {
   }
 }
 
+class _BoundaryChip extends StatelessWidget {
+  const _BoundaryChip({
+    required this.title,
+    required this.color,
+    required this.items,
+    required this.count,
+    required this.icon,
+  });
+
+  final String title;
+  final Color color;
+  final String items;
+  final int count;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.25)),
+          color: color.withOpacity(0.05),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(icon, color: color, size: 15),
+                const SizedBox(width: 6),
+                Text(title, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+                const SizedBox(width: 4),
+                _Pill(label: '$count', icon: Icons.grid_view_outlined, color: color),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              items,
+              style: const TextStyle(color: _muted, fontSize: 10, height: 1.3),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _Panel extends StatelessWidget {
   const _Panel({
     required this.child,
@@ -8933,6 +9086,273 @@ class _EvidenceChip extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ActionEvidenceCenterSheet extends StatelessWidget {
+  const _ActionEvidenceCenterSheet({
+    this.showHeaderOnlyWhenEmpty = false,
+  });
+
+  final bool showHeaderOnlyWhenEmpty;
+
+  @override
+  Widget build(BuildContext context) {
+    const maxItems = 12;
+    final recent = ActionEvidenceStore.shared.recent(count: maxItems);
+    final failures = ActionEvidenceStore.shared
+        .failures()
+        .where((evidence) => !evidence.success)
+        .toList()
+      ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+    if (recent.isEmpty && failures.isEmpty) {
+      if (!showHeaderOnlyWhenEmpty) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+            child: const Text('No action evidence yet.', style: TextStyle(color: _muted)),
+          ),
+        );
+      }
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: const Text('No action evidence yet.', style: TextStyle(color: _muted)),
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.receipt_long_outlined, color: _violet),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Activity / Logs',
+                      style: TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Local evidence from this app process only.',
+                style: TextStyle(color: _muted, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              if (recent.isNotEmpty) ...[
+                const Text('Recent Action Evidence', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                for (final evidence in recent) ...[
+                  _ActionEvidenceCenterItem(
+                    evidence: evidence,
+                    onOpenDetails: () => _showActionEvidenceSheet(context, evidence),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                const SizedBox(height: 10),
+              ],
+              if (failures.isNotEmpty) ...[
+                const Text('Failed Action Evidence', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                for (final evidence in failures) ...[
+                  _ActionEvidenceCenterItem(
+                    evidence: evidence,
+                    onOpenDetails: () => _showActionEvidenceSheet(context, evidence),
+                    showFailureCopy: true,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionEvidenceCenterItem extends StatelessWidget {
+  const _ActionEvidenceCenterItem({
+    required this.evidence,
+    this.onOpenDetails,
+    this.showFailureCopy = false,
+  });
+
+  final ActionEvidence evidence;
+  final VoidCallback? onOpenDetails;
+  final bool showFailureCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = evidence.success ? 'success' : (evidence.failureKind ?? 'failed');
+    final clickable = onOpenDetails != null && !evidence.success;
+    final card = _Panel(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                evidence.success ? Icons.check_circle_outline : Icons.error_outline,
+                color: evidence.success ? _mint : _rose,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  evidence.actionName.name,
+                  style: const TextStyle(color: _text, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text(
+                status,
+                style: TextStyle(color: evidence.success ? _mint : _rose, fontSize: 11, fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _durationLabel(Duration(milliseconds: evidence.durationMs)),
+            style: const TextStyle(color: _faint, fontSize: 11),
+          ),
+          if (evidence.artifactPaths.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Artifacts: ${evidence.artifactPaths.join(', ')}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted, fontSize: 10),
+            ),
+          ],
+          if (evidence.urls.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'URLs: ${evidence.urls.join(', ')}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted, fontSize: 10),
+            ),
+          ],
+          if (showFailureCopy && evidence.failureKind != null) ...[
+            const SizedBox(height: 10),
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                const SizedBox(width: 0),
+                IconButton(
+                  tooltip: 'Copy failure summary',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: _buildEvidenceFailureSummary(evidence)));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failure summary copied')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.copy_outlined, size: 18),
+                ),
+                const SizedBox(width: 2),
+                const Text(
+                  'Copy failure summary',
+                  style: TextStyle(color: _muted, fontSize: 10),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (!clickable) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onOpenDetails,
+        borderRadius: BorderRadius.circular(8),
+        child: card,
+      ),
+    );
+  }
+}
+
+void _showActionEvidenceSheet(BuildContext context, ActionEvidence evidence) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) {
+      final evidenceDurationLabel = _durationLabel(Duration(milliseconds: evidence.durationMs));
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(evidence.success ? Icons.check_circle_outline : Icons.error_outline, color: evidence.success ? _mint : _rose),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        evidence.actionName.name,
+                        style: const TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    _Pill(
+                      label: evidence.success ? 'success' : (evidence.failureKind ?? 'failed'),
+                      icon: evidence.success ? Icons.check_circle_outline : Icons.error_outline,
+                      color: evidence.success ? _mint : _rose,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _EvidenceInfoRow(label: 'Evidence ID', value: evidence.evidenceId, monospace: true),
+                _EvidenceInfoRow(label: 'Status', value: evidence.success ? 'success' : 'failed'),
+                _EvidenceInfoRow(label: 'Duration', value: evidenceDurationLabel),
+                _EvidenceInfoRow(label: 'Started', value: evidence.startedAt.toIso8601String()),
+                _EvidenceInfoRow(label: 'Ended', value: evidence.endedAt.toIso8601String()),
+                if (evidence.failureKind != null) _EvidenceInfoRow(label: 'Failure kind', value: evidence.failureKind!),
+                if (evidence.paramsSummary.isNotEmpty) _EvidenceInfoRow(label: 'Params', value: evidence.paramsSummary),
+                if (evidence.artifactPaths.isNotEmpty)
+                  _EvidenceInfoRow(label: 'Artifacts', value: evidence.artifactPaths.join('\n'), monospace: true),
+                if (evidence.urls.isNotEmpty)
+                  _EvidenceInfoRow(label: 'URLs', value: evidence.urls.join('\n'), monospace: true),
+                if (evidence.recoveryActions.isNotEmpty)
+                  _EvidenceInfoRow(label: 'Recovery', value: evidence.recoveryActions.join('\n')),
+                if (evidence.logs.isNotEmpty)
+                  _EvidenceInfoRow(label: 'Logs', value: evidence.logs.join('\n'), monospace: true),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+String _buildEvidenceFailureSummary(ActionEvidence evidence) {
+  final duration = _durationLabel(Duration(milliseconds: evidence.durationMs));
+  final failure = evidence.failureKind ?? 'failed';
+  final summary = <String>['Action: ${evidence.actionName.name}', 'Status: $failure', 'Duration: $duration'];
+  if (evidence.artifactPaths.isNotEmpty) {
+    summary.add('Artifacts: ${evidence.artifactPaths.join(' | ')}');
+  }
+  if (evidence.urls.isNotEmpty) {
+    summary.add('URLs: ${evidence.urls.join(' | ')}');
+  }
+  return summary.join('\n');
 }
 
 class _ActionEvidenceTile extends StatelessWidget {

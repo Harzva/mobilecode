@@ -1,0 +1,213 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="720" viewBox="0 0 1800 720" role="img" aria-labelledby="title desc">
+  <title id="title">MobileCode horizontal logo v2</title>
+  <desc id="desc">Horizontal MobileCode logo with detailed mascot, hot phone, and Chinese slogan.</desc>
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4ED7FF"/>
+      <stop offset="55%" stop-color="#25CBEF"/>
+      <stop offset="100%" stop-color="#7CF1D5"/>
+    </linearGradient>
+    <linearGradient id="furGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#A6CDF6"/>
+      <stop offset="52%" stop-color="#78AEE3"/>
+      <stop offset="100%" stop-color="#4F80C1"/>
+    </linearGradient>
+    <linearGradient id="hoodieGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#EFFFFF"/>
+      <stop offset="45%" stop-color="#54DDF5"/>
+      <stop offset="100%" stop-color="#74F0C9"/>
+    </linearGradient>
+    <linearGradient id="phoneGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1D3B73"/>
+      <stop offset="100%" stop-color="#071B42"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#0B2A63" flood-opacity="0.18"/>
+    </filter>
+
+    <radialGradient id="heatGlow" cx="50%" cy="52%" r="52%">
+      <stop offset="0%" stop-color="#FFB703" stop-opacity="0.72"/>
+      <stop offset="45%" stop-color="#FF6B35" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="#FF6B35" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="flameGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFE66D"/>
+      <stop offset="45%" stop-color="#FF8A35"/>
+      <stop offset="100%" stop-color="#FF3D5A"/>
+    </linearGradient>
+    <linearGradient id="brandTextGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0B2E75"/>
+      <stop offset="54%" stop-color="#09245C"/>
+      <stop offset="55%" stop-color="#18D9D3"/>
+      <stop offset="100%" stop-color="#24C7EA"/>
+    </linearGradient>
+    <linearGradient id="tagGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFF3C2"/>
+      <stop offset="48%" stop-color="#FFE9A8"/>
+      <stop offset="100%" stop-color="#DFFFFA"/>
+    </linearGradient>
+    <filter id="orangeGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.95  0 0.55 0 0 0.22  0 0 0.1 0 0.02  0 0 0 0.72 0" result="glow"/>
+      <feMerge><feMergeNode in="glow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="tinyShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#0B2A63" flood-opacity="0.16"/>
+    </filter>
+
+  </defs>
+
+  <rect width="1800" height="720" fill="#FFFFFF"/>
+  <g id="logo-icon" transform="translate(70 90)">
+    <rect x="0" y="0" width="390" height="390" rx="92" fill="url(#bgGrad)" stroke="#092C6B" stroke-width="14"/>
+    <path d="M44 50 C126 9 266 17 353 72 C260 64 126 87 55 161 C36 122 33 76 44 50Z" fill="url(#shine)" opacity="0.5"/>
+    <path d="M328 42 L340 70 L369 82 L340 94 L328 124 L315 94 L286 82 L315 70Z" fill="#A9FFF2" opacity="0.9"/>
+    <g transform="translate(3 -18) scale(.77)">
+  <g id="mobilecode-mascot" transform="translate(12 8)">
+    <!-- soft ground shadow -->
+    <ellipse cx="244" cy="474" rx="150" ry="22" fill="#8BBDEE" opacity="0.25"/>
+
+    <!-- tail -->
+    <path d="M138 360 C65 369 53 455 128 462 C173 466 208 429 202 383 C199 358 170 352 138 360Z" fill="url(#furGrad)" stroke="#092C6B" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M113 421 C139 438 169 422 181 389 C186 407 180 442 145 452 C125 458 105 448 113 421Z" fill="#FFF6DB" opacity="0.92"/>
+
+    <!-- body -->
+    <path d="M143 248 C121 290 116 390 161 445 C196 487 293 489 328 444 C374 386 367 284 338 246 C305 205 178 206 143 248Z" fill="url(#furGrad)" stroke="#092C6B" stroke-width="10" stroke-linejoin="round"/>
+    <ellipse cx="244" cy="356" rx="82" ry="106" fill="#FFF6DB" opacity="0.96"/>
+
+    <!-- hoodie body -->
+    <path d="M127 252 C151 222 185 209 244 209 C303 209 339 224 361 254 C351 298 330 328 305 348 C285 362 257 369 244 369 C231 369 203 362 183 348 C158 328 137 296 127 252Z" fill="url(#hoodieGrad)" opacity="0.92" stroke="#0B73B7" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M139 252 C159 233 187 224 244 224 C301 224 331 236 348 254 C318 286 294 303 244 303 C194 303 169 285 139 252Z" fill="#35D4F4" opacity="0.55"/>
+    <path d="M205 279 C215 305 226 330 244 369" stroke="#0B73B7" stroke-width="5" stroke-linecap="round" opacity="0.55"/>
+    <path d="M283 279 C273 305 262 330 244 369" stroke="#0B73B7" stroke-width="5" stroke-linecap="round" opacity="0.55"/>
+
+    <!-- feet -->
+    <g stroke="#092C6B" stroke-width="8" stroke-linejoin="round">
+      <ellipse cx="184" cy="444" rx="44" ry="31" fill="#77AEE4"/>
+      <ellipse cx="304" cy="444" rx="44" ry="31" fill="#77AEE4"/>
+    </g>
+    <g fill="#123E7B">
+      <ellipse cx="184" cy="452" rx="15" ry="12"/>
+      <circle cx="164" cy="439" r="6"/>
+      <circle cx="181" cy="435" r="6"/>
+      <circle cx="199" cy="440" r="6"/>
+      <ellipse cx="304" cy="452" rx="15" ry="12"/>
+      <circle cx="284" cy="440" r="6"/>
+      <circle cx="302" cy="435" r="6"/>
+      <circle cx="320" cy="440" r="6"/>
+    </g>
+
+    <!-- arms/paws behind phone -->
+    <g stroke="#092C6B" stroke-width="9" stroke-linejoin="round">
+      <path d="M146 304 C120 330 122 374 165 386 C189 391 202 373 196 350 C188 318 170 299 146 304Z" fill="#DFFBFF"/>
+      <path d="M342 304 C368 330 366 374 323 386 C299 391 286 373 292 350 C300 318 318 299 342 304Z" fill="#DFFBFF"/>
+      <path d="M149 337 C124 359 133 401 170 404 C200 407 211 371 187 350 C174 339 162 333 149 337Z" fill="#7FAFE6"/>
+      <path d="M339 337 C364 359 355 401 318 404 C288 407 277 371 301 350 C314 339 326 333 339 337Z" fill="#7FAFE6"/>
+    </g>
+
+
+    <!-- phone heat + thermal coding detail -->
+    <g id="phone-heat" opacity="0.95">
+      <ellipse cx="244" cy="357" rx="88" ry="112" fill="url(#heatGlow)" opacity="0.86"/>
+      <g filter="url(#orangeGlow)" opacity="0.94">
+        <path d="M181 292 C159 316 162 353 185 373 C178 345 201 338 194 312 C192 303 188 296 181 292Z" fill="url(#flameGrad)" opacity="0.65"/>
+        <path d="M308 289 C334 317 331 357 305 380 C316 347 291 339 298 311 C300 301 304 294 308 289Z" fill="url(#flameGrad)" opacity="0.65"/>
+        <path d="M236 270 C219 295 224 318 244 335 C239 310 260 303 251 282 C248 276 242 271 236 270Z" fill="url(#flameGrad)" opacity="0.55"/>
+      </g>
+      <g fill="none" stroke="#FF8A35" stroke-width="5" stroke-linecap="round" opacity="0.68">
+        <path d="M168 309 C152 323 152 343 168 356"/>
+        <path d="M319 309 C337 325 337 346 319 359"/>
+        <path d="M244 251 C255 263 256 278 246 290"/>
+      </g>
+      <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-weight="900" text-anchor="middle" opacity="0.88">
+        <text x="160" y="286" font-size="22" fill="#FF6B35">&#123; &#125;</text>
+        <text x="328" y="286" font-size="20" fill="#FFD166">//</text>
+      </g>
+    </g>
+
+    <!-- phone: the back says the product promise -->
+    <g id="phone-back" filter="url(#softShadow)">
+      <rect x="181" y="276" width="126" height="168" rx="26" fill="url(#phoneGrad)" stroke="#061A44" stroke-width="8"/>
+      <path d="M190 291 C214 279 260 279 294 304" fill="none" stroke="#FFFFFF" stroke-width="4" opacity="0.11" stroke-linecap="round"/>
+      <rect x="201" y="296" width="31" height="52" rx="13" fill="#2A508D" stroke="#071B42" stroke-width="4"/>
+      <circle cx="214" cy="311" r="6.2" fill="#A7D7FF"/>
+      <circle cx="214" cy="332" r="6.2" fill="#A7D7FF"/>
+      <circle cx="225" cy="321" r="3.5" fill="#31F4E0" opacity="0.92"/>
+      <rect x="198" y="354" width="92" height="54" rx="14" fill="#102A60" stroke="#31F4E0" stroke-width="3.2" opacity="0.98"/>
+      <text x="244" y="371" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15.5" font-weight="900" letter-spacing="1" fill="#EFFFFF">HARNESS</text>
+      <text x="244" y="388" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15.5" font-weight="900" letter-spacing="1" fill="#EFFFFF">ON PHONE</text>
+      <rect x="198" y="415" width="92" height="18" rx="9" fill="#1DE5CF" opacity="0.17"/>
+      <text x="244" y="428" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="9.3" font-weight="800" fill="#7CF1D5">mobile-vibe coding</text>
+      <path d="M272 436 C279 427 295 430 295 442 C295 454 276 461 272 462 C268 461 250 454 250 442 C250 430 266 427 272 436Z" fill="#FFD75E"/>
+    </g>
+
+
+    <!-- head -->
+    <g id="head">
+      <circle cx="159" cy="142" r="38" fill="#78AEE3" stroke="#092C6B" stroke-width="9"/>
+      <circle cx="329" cy="142" r="38" fill="#78AEE3" stroke="#092C6B" stroke-width="9"/>
+      <circle cx="159" cy="145" r="20" fill="#4479BD" opacity="0.75"/>
+      <circle cx="329" cy="145" r="20" fill="#4479BD" opacity="0.75"/>
+      <path d="M170 89 C202 47 287 45 320 91 C353 133 355 209 318 247 C282 284 206 284 170 247 C132 208 135 132 170 89Z" fill="url(#furGrad)" stroke="#092C6B" stroke-width="10" stroke-linejoin="round"/>
+      <path d="M235 63 C251 41 277 29 267 67 C291 48 315 50 291 76" fill="#A6CDF6" stroke="#092C6B" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M155 167 C173 119 214 102 238 161 C222 227 179 240 148 205 C142 191 147 178 155 167Z" fill="#FFF6DB"/>
+      <path d="M333 167 C315 119 274 102 250 161 C266 227 309 240 340 205 C346 191 341 178 333 167Z" fill="#FFF6DB"/>
+      <ellipse cx="244" cy="214" rx="84" ry="55" fill="#FFF6DB"/>
+      <circle cx="199" cy="169" r="22" fill="#071B42"/>
+      <circle cx="289" cy="169" r="22" fill="#071B42"/>
+      <circle cx="191" cy="160" r="7" fill="#FFFFFF"/>
+      <circle cx="207" cy="177" r="4" fill="#FFFFFF" opacity="0.85"/>
+      <circle cx="281" cy="160" r="7" fill="#FFFFFF"/>
+      <circle cx="297" cy="177" r="4" fill="#FFFFFF" opacity="0.85"/>
+      <ellipse cx="244" cy="198" rx="20" ry="13" fill="#071B42"/>
+      <ellipse cx="244" cy="193" rx="9" ry="4" fill="#FFFFFF" opacity="0.45"/>
+      <path d="M244 208 C239 222 221 222 216 211" fill="none" stroke="#071B42" stroke-width="5" stroke-linecap="round"/>
+      <path d="M244 208 C249 222 267 222 272 211" fill="none" stroke="#071B42" stroke-width="5" stroke-linecap="round"/>
+      <path d="M225 227 C236 246 252 248 264 228 C252 237 238 237 225 227Z" fill="#ED6D7D" stroke="#071B42" stroke-width="4" stroke-linejoin="round"/>
+      <circle cx="168" cy="209" r="15" fill="#FFB7BA" opacity="0.8"/>
+      <circle cx="320" cy="209" r="15" fill="#FFB7BA" opacity="0.8"/>
+      <circle cx="160" cy="206" r="4" fill="#FFFFFF" opacity="0.65"/>
+      <circle cx="314" cy="206" r="4" fill="#FFFFFF" opacity="0.65"/>
+    </g>
+
+    <!-- watch -->
+    <g transform="translate(132 337) rotate(-17)">
+      <rect x="0" y="0" width="42" height="50" rx="12" fill="#0B1F4D" stroke="#092C6B" stroke-width="6"/>
+      <path d="M14 23 L7 30 L14 37" stroke="#31F4E0" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M27 23 L34 30 L27 37" stroke="#31F4E0" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M23 21 L18 39" stroke="#31F4E0" stroke-width="3" fill="none" stroke-linecap="round"/>
+    </g>
+
+    <!-- floating code sparkles -->
+    <g opacity="0.95">
+      <path d="M58 183 C40 193 40 213 58 224" fill="none" stroke="#37DCCF" stroke-width="9" stroke-linecap="round"/>
+      <path d="M85 183 C103 193 103 213 85 224" fill="none" stroke="#37DCCF" stroke-width="9" stroke-linecap="round"/>
+      <path d="M391 189 L402 213 L426 224 L402 235 L391 259 L380 235 L356 224 L380 213Z" fill="#FFD75E"/>
+      <circle cx="420" cy="285" r="10" fill="#34D8F0"/>
+      <circle cx="450" cy="315" r="8" fill="#34D8F0" opacity="0.72"/>
+    </g>
+  </g>
+    </g>
+  </g>
+  <g id="wordmark" transform="translate(535 180)">
+    <text x="0" y="100" font-family="Arial Rounded MT Bold, Avenir Next, Nunito, Noto Sans, sans-serif" font-size="136" font-weight="900" letter-spacing="-6">
+      <tspan fill="#09245C">mobile</tspan><tspan fill="#19D7CF">code</tspan>
+    </text>
+    <g transform="translate(0 146)">
+      <rect x="0" y="0" width="1062" height="86" rx="30" fill="url(#tagGrad)" stroke="#092C6B" stroke-width="5"/>
+      <path d="M36 43 C84 20 138 18 183 42" stroke="#FF8A35" stroke-width="7" stroke-linecap="round" fill="none" opacity="0.84"/>
+      <text x="72" y="55" font-family="Noto Sans CJK SC, PingFang SC, Microsoft YaHei, sans-serif" font-size="36" font-weight="900" fill="#092C6B">让手机发烧的何止是游戏，</text>
+      <text x="556" y="55" font-family="Noto Sans CJK SC, PingFang SC, Microsoft YaHei, sans-serif" font-size="36" font-weight="900" fill="#0B7E93">还有写的每一行代码！</text>
+    </g>
+    <g transform="translate(0 258)">
+      <rect x="0" y="0" width="286" height="44" rx="22" fill="#E8FFFB" stroke="#19D7CF" stroke-width="3"/>
+      <text x="143" y="29" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="900" fill="#0B7E93">HARNESS ON PHONE</text>
+      <rect x="306" y="0" width="296" height="44" rx="22" fill="#FFF2D8" stroke="#FF8A35" stroke-width="3"/>
+      <text x="454" y="29" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="18" font-weight="900" fill="#D45A19">MOBILE-VIBE CODING</text>
+    </g>
+  </g>
+</svg>

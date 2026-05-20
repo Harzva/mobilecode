@@ -21,6 +21,7 @@ const releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.0';
 const repoUrl = 'https://github.com/Harzva/mobilecode';
 const demo2048Url = `${pageBase}demo/2048/`;
 const githubTestUrl = `${pageBase}github-test/`;
+const showcaseAsset = (file: string) => `${pageBase}showcase/${file}`;
 
 const heroStats = [
   { value: 'v0.1.0+5', label: 'Android APK' },
@@ -92,6 +93,64 @@ const layers = [
   'Analytics',
   'Tools',
   'Performance',
+];
+
+const showcaseFeatures = [
+  {
+    title: '品牌识别板',
+    text: '统一 Logo、角色、色彩、移动端标语和使用场景，让项目首页先有产品感。',
+    image: 'mobilecode-brand-identity-sheet.png',
+    alt: 'MobileCode CodeLoong brand identity sheet',
+  },
+  {
+    title: '发布主视觉',
+    text: '用于 README 和 GitHub Pages 的首屏宣传图，强调手机端 AI 编程和开源发布。',
+    image: 'mobilecode-code-with-your-buddy.png',
+    alt: 'MobileCode CodeLoong launch poster',
+  },
+];
+
+const showcaseWall = [
+  {
+    title: '横向标识',
+    image: 'mobilecode-mascot-wordmark.png',
+    alt: 'MobileCode mascot wordmark',
+  },
+  {
+    title: 'Logo SVG',
+    image: 'mobilecode-logo-v2.svg',
+    alt: 'MobileCode logo svg',
+  },
+  {
+    title: 'App Icon',
+    image: 'mobilecode-icon-v2.svg',
+    alt: 'MobileCode app icon svg',
+  },
+  {
+    title: '角色标识',
+    image: 'mobilecode-mascot-v2.svg',
+    alt: 'MobileCode mascot svg',
+  },
+  {
+    title: 'Coding',
+    image: 'codeloong-state-coding-heat.png',
+    alt: 'CodeLoong coding state',
+  },
+  {
+    title: 'Thinking',
+    image: 'codeloong-state-thinking.png',
+    alt: 'CodeLoong thinking state',
+  },
+  {
+    title: 'Loading',
+    image: 'codeloong-state-loading.png',
+    alt: 'CodeLoong loading state',
+  },
+  {
+    title: 'Mobile vibe',
+    image: 'mobilecode-logo-v2-mobile-vibe.svg',
+    alt: 'MobileCode mobile vibe logo svg',
+  },
 ];
 
 function HeroProof() {
@@ -184,6 +243,37 @@ export default function Home() {
                 <p>{text}</p>
                 <span>{label}</span>
               </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="section-band showcase-section" id="ui-showcase">
+        <div className="section-container">
+          <div className="section-heading">
+            <p className="eyebrow">UI Design Wall</p>
+            <h2>把视觉参考变成可公开引用的产品展示墙</h2>
+            <p>
+              从本地参考包中筛选出 MobileCode / CodeLoong 方向的品牌资产与界面气质图，统一放进可复用的展示目录。
+            </p>
+          </div>
+          <div className="showcase-feature-grid">
+            {showcaseFeatures.map((item) => (
+              <article className="showcase-feature-card" key={item.title}>
+                <img src={showcaseAsset(item.image)} alt={item.alt} loading="lazy" />
+                <div>
+                  <h3>{item.title}</h3>
+                  <p>{item.text}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="showcase-wall" aria-label="MobileCode visual asset wall">
+            {showcaseWall.map((item) => (
+              <article className="showcase-tile" key={item.title}>
+                <img src={showcaseAsset(item.image)} alt={item.alt} loading="lazy" />
+                <span>{item.title}</span>
+              </article>
             ))}
           </div>
         </div>

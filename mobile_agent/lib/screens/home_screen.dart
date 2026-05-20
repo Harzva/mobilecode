@@ -12,6 +12,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../core/evidence/action_evidence_store.dart';
+import '../core/evidence/action_runner.dart';
+import '../core/evidence/evidence_model.dart';
 import 'agent_dashboard_screen.dart';
 import 'api_usage_screen.dart';
 import 'device_telemetry_screen.dart';
@@ -83,6 +86,7 @@ enum _ModuleAction {
   tokenUsage,
   deviceTelemetry,
   downloadsShared,
+  activityCenter,
   inspect,
 }
 
@@ -458,16 +462,20 @@ class _HelperDaemonProbeResult {
 }
 
 class _AgentTraceStep {
-  const _AgentTraceStep({
+  _AgentTraceStep({
     required this.title,
     required this.detail,
     required this.icon,
     this.avatarAsset,
     this.toolName,
     this.details = const {},
+    this.traceAction = MobileCodeAction.traceParseInstruction,
+    String? evidenceId,
     this.state = _AgentStepState.queued,
+    DateTime? startedAt,
     this.finishedAt,
-  });
+  })  : evidenceId = evidenceId ?? generateEvidenceId(),
+        startedAt = startedAt ?? DateTime.now();
 
   final String title;
   final String detail;
@@ -475,8 +483,12 @@ class _AgentTraceStep {
   final String? avatarAsset;
   final String? toolName;
   final Map<String, String> details;
+  final MobileCodeAction traceAction;
+  final String evidenceId;
   final _AgentStepState state;
+  final DateTime startedAt;
   final DateTime? finishedAt;
+  ActionEvidence? evidence;
 
   _AgentTraceStep copyWith({
     String? title,
@@ -485,19 +497,28 @@ class _AgentTraceStep {
     String? avatarAsset,
     String? toolName,
     Map<String, String>? details,
+    MobileCodeAction? traceAction,
+    String? evidenceId,
     _AgentStepState? state,
+    DateTime? startedAt,
     DateTime? finishedAt,
+    ActionEvidence? evidence,
   }) {
-    return _AgentTraceStep(
+    final next = _AgentTraceStep(
       title: title ?? this.title,
       detail: detail ?? this.detail,
       icon: icon ?? this.icon,
       avatarAsset: avatarAsset ?? this.avatarAsset,
       toolName: toolName ?? this.toolName,
       details: details ?? this.details,
+      traceAction: traceAction ?? this.traceAction,
+      evidenceId: evidenceId ?? this.evidenceId,
       state: state ?? this.state,
+      startedAt: startedAt ?? this.startedAt,
       finishedAt: finishedAt ?? this.finishedAt,
     );
+    next.evidence = evidence ?? this.evidence;
+    return next;
   }
 }
 
@@ -1012,6 +1033,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       detail: 'Read the user request and decide whether this is chat, coding, preview, GitHub, or device tooling.',
       icon: Icons.manage_search_outlined,
       avatarAsset: 'assets/role_avatars/claude-pet-animated-magic.svg',
+      traceAction: MobileCodeAction.traceParseInstruction,
       details: {
         'Input': _compact(prompt, limit: 420),
         'Decision rule': 'Classify the prompt before any provider call or file write.',
@@ -1023,6 +1045,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       icon: Icons.psychology_alt_outlined,
       avatarAsset: 'assets/role_avatars/claude-pet-animated-coder.svg',
       toolName: tool,
+      traceAction: MobileCodeAction.traceSelectTool,
       details: _agentToolCallDetails(tool, prompt),
     ),
     _AgentTraceStep(
@@ -1031,6 +1054,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
           'Send the prompt and chat context to the configured provider, then continue into visible local tool actions.',
       icon: Icons.cloud_sync_outlined,
       avatarAsset: 'assets/role_avatars/claude-girl-dancer.svg',
+      traceAction: MobileCodeAction.traceCallProvider,
       details: {
         'Provider call': 'Uses the configured Base URL, model, API flavor, and current chat context.',
         'Streaming': 'Tokens are streamed into this trace while the provider responds.',
@@ -1045,6 +1069,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       detail: 'Persist model-generated code only after the provider returns real output.',
       icon: Icons.account_tree_outlined,
       avatarAsset: 'assets/role_avatars/claude-pet-animated-rocket.svg',
+      traceAction: MobileCodeAction.traceWriteArtifact,
       details: {
         'Write rule': 'Generated files are written only after provider text is received and validated.',
         'Web validation': 'HTML tools require a complete HTML document before index.html is replaced.',
@@ -1056,6 +1081,7 @@ List<_AgentTraceStep> _agentRunTraceTemplate(String prompt) {
       detail: 'Keep the process, generated content, paths, and failure state in this conversation.',
       icon: Icons.play_arrow_outlined,
       avatarAsset: 'assets/role_avatars/claude-pet-animated-wave.svg',
+      traceAction: MobileCodeAction.traceReportChat,
       details: {
         'Chat report': 'The final assistant message includes the selected tool, saved path, and generated content.',
         'Artifact actions': 'Generated artifacts can be opened as code, previewed in WebView, copied, or opened in a browser when HTML.',
@@ -1945,10 +1971,24 @@ class _HomeScreenState extends State<HomeScreen> {
       case _ModuleAction.downloadsShared:
         _openManagementScreen('Downloads / Shared folders', const DownloadsSharedFoldersScreen());
         break;
+      case _ModuleAction.activityCenter:
+        _openActionEvidenceCenterSheet();
+        break;
       case _ModuleAction.inspect:
         if (capability != null) _openCapabilitySheet(capability);
         break;
     }
+  }
+
+  void _openActionEvidenceCenterSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+      builder: (context) => const _ActionEvidenceCenterSheet(),
+    );
   }
 
   void _openCapabilitySheet(_Capability capability) {
@@ -2535,6 +2575,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildToolsTab() {
     final tools = [
+      _CommandShortcut(
+        icon: Icons.receipt_long_outlined,
+        title: 'Activity / Logs',
+        subtitle: 'Read recent action evidence and failures from one lightweight entry.',
+        color: _violet,
+        action: _ModuleAction.activityCenter,
+      ),
       _CommandShortcut(
         icon: Icons.handyman_outlined,
         title: 'Tool tests',
@@ -9525,6 +9572,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   List<MobileCodeRole>? _activeRunRoles;
   RoleProposal? _activeRunProposal;
   final List<_AgentTraceStep> _agentTrace = [];
+  final ActionEvidenceStore _agentEvidenceStore = ActionEvidenceStore.shared;
   final Map<String, GlobalKey> _turnKeys = {};
   Timer? _navPreviewTimer;
   _ChatNavPreview? _navPreview;
@@ -10369,13 +10417,112 @@ class _ChatPanelState extends State<_ChatPanel> {
   void _setAgentRunStep(int index, _AgentStepState state, {String? detail}) {
     if (!mounted || index < 0 || index >= _agentTrace.length) return;
     setState(() {
-      _agentTrace[index] = _agentTrace[index].copyWith(
+      final step = _agentTrace[index];
+      final next = step.copyWith(
         state: state,
-        detail: detail ?? _agentTrace[index].detail,
+        detail: detail ?? step.detail,
+        startedAt: state == _AgentStepState.running && step.evidence == null ? DateTime.now() : step.startedAt,
         finishedAt: state == _AgentStepState.done || state == _AgentStepState.failed ? DateTime.now() : null,
       );
+      _agentTrace[index] = _withStepEvidence(next, state);
     });
     _scrollConversationToEnd();
+  }
+
+  _AgentTraceStep _withStepEvidence(_AgentTraceStep step, _AgentStepState state) {
+    switch (state) {
+      case _AgentStepState.running:
+        step.evidence = ActionEvidence(
+          evidenceId: step.evidenceId,
+          actionName: step.traceAction,
+          paramsSummary: step.detail,
+          startedAt: step.startedAt,
+          endedAt: DateTime.now(),
+          success: false,
+          logs: [step.detail],
+        );
+        break;
+      case _AgentStepState.done:
+        step.evidence = ActionEvidence(
+          evidenceId: step.evidenceId,
+          actionName: step.traceAction,
+          paramsSummary: step.detail,
+          startedAt: step.startedAt,
+          endedAt: DateTime.now(),
+          success: true,
+          artifactPaths: _traceArtifactPaths(step),
+          logs: [step.detail],
+        );
+        break;
+      case _AgentStepState.failed:
+        step.evidence = ActionEvidence(
+          evidenceId: step.evidenceId,
+          actionName: step.traceAction,
+          paramsSummary: step.detail,
+          startedAt: step.startedAt,
+          endedAt: DateTime.now(),
+          success: false,
+          failureKind: _traceFailureKind(step.detail),
+          recoveryActions: _traceRecoveryActions(step),
+          logs: [step.detail],
+        );
+        break;
+      case _AgentStepState.queued:
+        break;
+    }
+    final evidence = step.evidence;
+    if (evidence != null) {
+      _agentEvidenceStore.add(evidence);
+    }
+    return step;
+  }
+
+  List<String> _traceArtifactPaths(_AgentTraceStep step) {
+    if (step.traceAction != MobileCodeAction.traceWriteArtifact) {
+      return const [];
+    }
+    const marker = 'Saved generated artifact to ';
+    final detail = step.detail.trim();
+    if (!detail.startsWith(marker)) return const [];
+    final path = detail.substring(marker.length).trim();
+    return path.isEmpty ? const [] : [path];
+  }
+
+  String _traceFailureKind(String detail) {
+    final lower = detail.toLowerCase();
+    if (lower.contains('stopped') || lower.contains('cancel')) {
+      return ActionFailureKind.cancelled;
+    }
+    if (lower.contains('timeout') || lower.contains('timed out')) {
+      return ActionFailureKind.timeout;
+    }
+    if (lower.contains('api key') || lower.contains('token') || lower.contains('401') || lower.contains('403')) {
+      return ActionFailureKind.authFailed;
+    }
+    if (lower.contains('provider') || lower.contains('http') || lower.contains('network')) {
+      return ActionFailureKind.runtimeLost;
+    }
+    return ActionFailureKind.unknown;
+  }
+
+  List<String> _traceRecoveryActions(_AgentTraceStep step) {
+    final failureKind = _traceFailureKind(step.detail);
+    if (failureKind == ActionFailureKind.cancelled) {
+      return const ['Run the agent again when ready.'];
+    }
+    if (failureKind == ActionFailureKind.timeout) {
+      return const [
+        'Retry with a smaller request or shorter output.',
+        'Check provider latency before rerunning.',
+      ];
+    }
+    if (failureKind == ActionFailureKind.authFailed) {
+      return const ['Open Models & Settings and verify the provider token/base URL.'];
+    }
+    if (failureKind == ActionFailureKind.runtimeLost) {
+      return const ['Refresh provider/runtime health, then retry the step.'];
+    }
+    return const ['Open step details and inspect the captured log before retrying.'];
   }
 
   Future<void> _completeAgentRunStep(int index, {String? detail}) async {
@@ -10394,11 +10541,12 @@ class _ChatPanelState extends State<_ChatPanel> {
     final index = runningIndex == -1 ? _agentTrace.indexWhere((step) => step.state == _AgentStepState.queued) : runningIndex;
     if (index == -1) return;
     setState(() {
-      _agentTrace[index] = _agentTrace[index].copyWith(
+      final failed = _agentTrace[index].copyWith(
         detail: detail,
         state: _AgentStepState.failed,
         finishedAt: DateTime.now(),
       );
+      _agentTrace[index] = _withStepEvidence(failed, _AgentStepState.failed);
     });
     _scrollConversationToEnd();
   }
@@ -10545,26 +10693,54 @@ class _ChatPanelState extends State<_ChatPanel> {
     final rootDirectory = await _mobileCodeProjectsRootDirectory();
     final projectDirectory = Directory(p.join(rootDirectory.path, slug));
     await projectDirectory.create(recursive: true);
+    final actionRunner = ActionRunner(
+      workspaceRootPath: rootDirectory.path,
+      evidenceStore: _agentEvidenceStore,
+    );
 
     if (isWebArtifact) {
       final html = _extractHtmlDocument(modelAnswer);
       if (html == null) {
         throw Exception('Provider responded, but did not return a complete ```html block. No game file was written.');
       }
-      final tempFile = File('${projectDirectory.path}/index.html.tmp');
-      final file = File('${projectDirectory.path}/index.html');
-      await tempFile.writeAsString(html, flush: true);
-      if (await file.exists()) {
-        await file.delete();
+      final relativePath = '$slug/index.html';
+      final writeResult = await actionRunner.run(ActionSchema(
+        actionName: MobileCodeAction.writeFile,
+        paramsSummary: 'write generated HTML artifact',
+        params: {'path': relativePath, 'content': html, 'overwrite': true},
+      ));
+      if (!writeResult.success || writeResult.path == null) {
+        throw Exception(writeResult.evidence.logs.isEmpty ? 'Failed to write generated HTML artifact.' : writeResult.evidence.logs.first);
       }
-      await tempFile.rename(file.path);
-      return file.path;
+      await actionRunner.run(ActionSchema(
+        actionName: MobileCodeAction.readFile,
+        paramsSummary: 'verify generated HTML artifact',
+        params: {'path': relativePath, 'maxBytes': 16 * 1024},
+      ));
+      await actionRunner.run(ActionSchema(
+        actionName: MobileCodeAction.previewHtml,
+        paramsSummary: 'prepare generated HTML preview',
+        params: {'path': relativePath},
+      ));
+      return writeResult.path;
     }
 
     if (toolName.startsWith('mobile_coding.')) {
-      final file = File('${projectDirectory.path}/agent_response.md');
-      await file.writeAsString(modelAnswer, flush: true);
-      return file.path;
+      final relativePath = '$slug/agent_response.md';
+      final writeResult = await actionRunner.run(ActionSchema(
+        actionName: MobileCodeAction.writeFile,
+        paramsSummary: 'write generated markdown artifact',
+        params: {'path': relativePath, 'content': modelAnswer, 'overwrite': true},
+      ));
+      if (!writeResult.success || writeResult.path == null) {
+        throw Exception(writeResult.evidence.logs.isEmpty ? 'Failed to write generated markdown artifact.' : writeResult.evidence.logs.first);
+      }
+      await actionRunner.run(ActionSchema(
+        actionName: MobileCodeAction.readFile,
+        paramsSummary: 'verify generated markdown artifact',
+        params: {'path': relativePath, 'maxBytes': 16 * 1024},
+      ));
+      return writeResult.path;
     }
     return null;
   }
@@ -14735,10 +14911,13 @@ class _AgentTraceDetailSheet extends StatelessWidget {
             runSpacing: 8,
             children: [
               _Pill(label: _agentStepLabel(step.state), icon: _agentStepStatusIcon(step.state), color: color),
+              _Pill(label: 'evidence', icon: Icons.receipt_long_outlined, color: _violet),
               if (step.finishedAt != null) _Pill(label: _clockLabel(step.finishedAt!), icon: Icons.schedule_outlined, color: _cyan),
             ],
           ),
           const SizedBox(height: 12),
+          _TraceDetailItem(label: 'Evidence ID', value: '${step.evidenceId} · ${step.traceAction.name}'),
+          const SizedBox(height: 10),
           _Panel(
             padding: const EdgeInsets.all(12),
             child: SelectableText(
@@ -14751,6 +14930,296 @@ class _AgentTraceDetailSheet extends StatelessWidget {
             _TraceDetailItem(label: entry.key, value: entry.value),
             const SizedBox(height: 10),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionEvidenceCenterSheet extends StatelessWidget {
+  const _ActionEvidenceCenterSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    const maxItems = 12;
+    final recent = ActionEvidenceStore.shared.recent(count: maxItems);
+    final failures = ActionEvidenceStore.shared
+        .failures()
+        .where((evidence) => !evidence.success)
+        .toList()
+      ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.receipt_long_outlined, color: _violet),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Activity / Logs',
+                      style: TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Local evidence from this app process only.',
+                style: TextStyle(color: _muted, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              if (recent.isEmpty && failures.isEmpty)
+                const Text('No action evidence yet.', style: TextStyle(color: _muted))
+              else ...[
+                if (recent.isNotEmpty) ...[
+                  const Text('Recent Action Evidence', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  for (final evidence in recent.take(maxItems)) ...[
+                    _ActionEvidenceCenterItem(
+                      evidence: evidence,
+                      onOpenDetails: evidence.success ? null : () => _showActionEvidenceSheet(context, evidence),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  const SizedBox(height: 10),
+                ],
+                if (failures.isNotEmpty) ...[
+                  const Text('Failed Action Evidence', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  for (final evidence in failures.take(maxItems)) ...[
+                    _ActionEvidenceCenterItem(
+                      evidence: evidence,
+                      onOpenDetails: () => _showActionEvidenceSheet(context, evidence),
+                      showFailureCopy: true,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionEvidenceCenterItem extends StatelessWidget {
+  const _ActionEvidenceCenterItem({
+    required this.evidence,
+    this.onOpenDetails,
+    this.showFailureCopy = false,
+  });
+
+  final ActionEvidence evidence;
+  final VoidCallback? onOpenDetails;
+  final bool showFailureCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = evidence.success ? 'success' : (evidence.failureKind ?? 'failed');
+    final card = _Panel(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                evidence.success ? Icons.check_circle_outline : Icons.error_outline,
+                color: evidence.success ? _mint : _rose,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  evidence.actionName.name,
+                  style: const TextStyle(color: _text, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text(
+                status,
+                style: TextStyle(color: evidence.success ? _mint : _rose, fontSize: 11, fontWeight: FontWeight.w800),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _durationLabel(Duration(milliseconds: evidence.durationMs)),
+            style: const TextStyle(color: _faint, fontSize: 11),
+          ),
+          if (evidence.artifactPaths.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Artifacts: ${evidence.artifactPaths.join(', ')}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted, fontSize: 10),
+            ),
+          ],
+          if (evidence.urls.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'URLs: ${evidence.urls.join(', ')}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted, fontSize: 10),
+            ),
+          ],
+          if (showFailureCopy && evidence.failureKind != null) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                IconButton(
+                  tooltip: 'Copy failure summary',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: _buildEvidenceFailureSummary(evidence)));
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Failure summary copied')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.copy_outlined, size: 18),
+                ),
+                const SizedBox(width: 2),
+                const Text(
+                  'Copy failure summary',
+                  style: TextStyle(color: _muted, fontSize: 10),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (onOpenDetails == null) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onOpenDetails,
+        borderRadius: BorderRadius.circular(8),
+        child: card,
+      ),
+    );
+  }
+}
+
+void _showActionEvidenceSheet(BuildContext context, ActionEvidence evidence) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    backgroundColor: _panel,
+    builder: (context) {
+      final evidenceDurationLabel = _durationLabel(Duration(milliseconds: evidence.durationMs));
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(evidence.success ? Icons.check_circle_outline : Icons.error_outline, color: evidence.success ? _mint : _rose),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        evidence.actionName.name,
+                        style: const TextStyle(color: _text, fontSize: 18, fontWeight: FontWeight.w900),
+                      ),
+                    ),
+                    _Pill(
+                      label: evidence.success ? 'success' : (evidence.failureKind ?? 'failed'),
+                      icon: evidence.success ? Icons.check_circle_outline : Icons.error_outline,
+                      color: evidence.success ? _mint : _rose,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _EvidenceInfoRow(label: 'Evidence ID', value: evidence.evidenceId, monospace: true),
+                _EvidenceInfoRow(label: 'Status', value: evidence.success ? 'success' : 'failed'),
+                _EvidenceInfoRow(label: 'Duration', value: evidenceDurationLabel),
+                _EvidenceInfoRow(label: 'Started', value: evidence.startedAt.toIso8601String()),
+                _EvidenceInfoRow(label: 'Ended', value: evidence.endedAt.toIso8601String()),
+                if (evidence.failureKind != null) _EvidenceInfoRow(label: 'Failure kind', value: evidence.failureKind!),
+                if (evidence.paramsSummary.isNotEmpty) _EvidenceInfoRow(label: 'Params', value: evidence.paramsSummary),
+                if (evidence.artifactPaths.isNotEmpty)
+                  _EvidenceInfoRow(label: 'Artifacts', value: evidence.artifactPaths.join('\n'), monospace: true),
+                if (evidence.urls.isNotEmpty)
+                  _EvidenceInfoRow(label: 'URLs', value: evidence.urls.join('\n'), monospace: true),
+                if (evidence.recoveryActions.isNotEmpty)
+                  _EvidenceInfoRow(label: 'Recovery', value: evidence.recoveryActions.join('\n')),
+                if (evidence.logs.isNotEmpty)
+                  _EvidenceInfoRow(label: 'Logs', value: evidence.logs.join('\n'), monospace: true),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+String _buildEvidenceFailureSummary(ActionEvidence evidence) {
+  final duration = _durationLabel(Duration(milliseconds: evidence.durationMs));
+  final failure = evidence.failureKind ?? 'failed';
+  final summary = <String>['Action: ${evidence.actionName.name}', 'Status: $failure', 'Duration: $duration'];
+  if (evidence.artifactPaths.isNotEmpty) {
+    summary.add('Artifacts: ${evidence.artifactPaths.join(' | ')}');
+  }
+  if (evidence.urls.isNotEmpty) {
+    summary.add('URLs: ${evidence.urls.join(' | ')}');
+  }
+  if (evidence.recoveryActions.isNotEmpty) {
+    summary.add('Recovery: ${evidence.recoveryActions.join(' | ')}');
+  }
+  if (evidence.logs.isNotEmpty) {
+    summary.add('Logs: ${evidence.logs.take(6).join(' | ')}');
+  }
+  return summary.join('\n');
+}
+
+class _EvidenceInfoRow extends StatelessWidget {
+  const _EvidenceInfoRow({
+    required this.label,
+    required this.value,
+    this.monospace = false,
+  });
+
+  final String label;
+  final String value;
+  final bool monospace;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(color: _faint, fontSize: 11, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 3),
+          SelectableText(
+            value,
+            style: TextStyle(
+              color: _muted,
+              fontSize: 12,
+              height: 1.35,
+              fontFamily: monospace ? 'monospace' : null,
+            ),
+          ),
         ],
       ),
     );

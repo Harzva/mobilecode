@@ -4,6 +4,7 @@ import Home from './pages/Home';
 import Features from './pages/Features';
 import Docs from './pages/Docs';
 import Changelog from './pages/Changelog';
+import Experiments from './pages/Experiments';
 import About from './pages/About';
 import Contact from './pages/Contact';
 
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/pricing" element={<Navigate to="/features" replace />} />
         <Route path="/docs" element={<Docs />} />
         <Route path="/changelog" element={<Changelog />} />
+        <Route path="/experiments" element={<Experiments />} />
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
       </Routes>

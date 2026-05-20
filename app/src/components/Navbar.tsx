@@ -7,6 +7,7 @@ const apkUrl = 'https://github.com/Harzva/mobilecode/releases/download/v0.1.0/mo
 const navLinks = [
   { label: '产品特性', path: '/features' },
   { label: '文档中心', path: '/docs' },
+  { label: '实验日志', path: '/experiments' },
   { label: '更新日志', path: '/changelog' },
   { label: '关于我们', path: '/about' },
 ];

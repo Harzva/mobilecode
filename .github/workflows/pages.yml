@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - last
     paths:
       - 'app/**'
       - 'docs/**'

@@ -31,6 +31,23 @@ branch: origin/v011-streaming-fix
 - 覆盖 `v0.1.39` Chat / Tools / Skills / Roles 主视觉的 H04 UI 改动。
 - H05 搜索、分类、远程日志、持久化查询。
 
+## Experiment Log（2026-05-21）
+
+公开复盘口径：
+
+- `v0.1.43-last` 当前是 `single-shot generation + ActionRunner + Evidence`，不是完整 provider-native tool-calling Agent。
+- 当前真实闭环：模型输出内容 -> App 提取/保存产物 -> `ActionRunner.writeFile/readFile/previewHtml` -> `ActionEvidenceStore` -> `Activity / Logs` 复盘。
+- 当前缺口：模型尚未通过 provider-native `tool_call/tool_use` 分步请求工具，工具执行结果也尚未回传给模型形成 observation loop。
+- 下一阶段目标：从“保存模型完整输出”升级为 `model intent -> tool call -> ActionRunner -> evidence -> observation -> next action`。
+
+任务关系：
+
+- H07：给不支持原生 tool call 的 provider 提供 JSON action fallback。
+- H08：接 OpenAI tools / Anthropic tool_use，输出统一 `ActionSchema`。
+- H15：把失败 evidence/logs 反馈为修复建议、用户确认和重试循环。
+
+GitHub Pages 公开实验日志入口：`/experiments`，主题为 `From Single-Shot Generation to Tool-Calling Harness`。
+
 当前先保持为单文件任务索引。后续如果任务继续膨胀，再单独开小任务拆成：
 
 ```text
@@ -587,6 +604,11 @@ Status：TODO
 - JSON 可解析时走 ActionRunner。
 - JSON 不可解析时降级普通生成，并明确标记。
 
+Experiment Log Note（2026-05-21）：
+
+- H07 是 H08 的降级兄弟任务：provider 不支持原生 tool call 时，才使用 JSON action plan。
+- JSON plan 仍必须经过 `ActionRunner`，不能把普通模型文本伪装成真实工具执行。
+
 ### H08：Provider ToolCall Adapter
 
 Priority：P1
@@ -603,6 +625,11 @@ Stop line：
 验收：
 
 - provider adapter 输出统一 MobileCode action。
+
+Experiment Log Note（2026-05-21）：
+
+- H08 是从 `single-shot generation with executable evidence` 进入 `multi-step tool-calling agent loop` 的关键门。
+- 最小安全范围先只开放 `write_file`、`read_file`、`preview_html`、`report_result`，不开放 shell、Git push、发布、远程日志或任意命令。
 
 ### H09：Connector Readiness 模型
 
@@ -773,6 +800,11 @@ Status：TODO
 验收：
 
 - 失败不是终点，而是进入可解释修复流程。
+
+Experiment Log Note（2026-05-21）：
+
+- H15 依赖 H05/H06/H08：必须先有 evidence、ActionRunner 和 tool-call/observation 入口，才谈得上自动修复循环。
+- 第一版必须保留用户确认，不允许失败后静默写入、静默发布或静默执行高风险操作。
 
 ### H16：审批与审计
 

@@ -13,3 +13,8 @@ pubspec.lock
 android/key.properties
 *.jks
 *.keystore
+__pycache__/
+*.pyc
+reference_ui/
+qa/**/*.apk
+qa/**/*.zip

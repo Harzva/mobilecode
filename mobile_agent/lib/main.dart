@@ -98,10 +98,7 @@ class _MobileAgentAppState extends State<MobileAgentApp> {
       theme: theme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.light,
-      home: HomeScreen(
-        brandTheme: _brandTheme,
-        onBrandThemeChanged: _setBrandTheme,
-      ),
+      home: const HomeScreen(),
     );
   }
 }

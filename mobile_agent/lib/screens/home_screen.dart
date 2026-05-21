@@ -10221,7 +10221,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
 
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
-    final body = _requestBody(
+    final requestBody = _requestBody(
       flavor,
       history,
       systemPrompt: systemPrompt,
@@ -10244,17 +10244,17 @@ class _ChatPanelState extends State<_ChatPanel> {
         throw Exception('Agent run stopped by user.');
       }
       _configureProviderRequestHeaders(request, flavor);
-      request.write(jsonEncode(_usesManagedRelay ? _relayEnvelope(flavor, body) : body));
+      request.write(jsonEncode(_usesManagedRelay ? _relayEnvelope(flavor, requestBody) : requestBody));
 
       final response = await request.close().timeout(responseTimeout);
       if (isCancelled?.call() == true) {
         throw Exception('Agent run stopped by user.');
       }
-      final body = await utf8.decodeStream(response);
+      final rawBody = await utf8.decodeStream(response);
       if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('Provider HTTP ${response.statusCode}: ${_compact(body)}');
+        throw Exception('Provider HTTP ${response.statusCode}: ${_compact(rawBody)}');
       }
-      final answer = _extractAssistantText(body);
+      final answer = _extractAssistantText(rawBody);
       if (answer.trim().isEmpty) {
         throw Exception('Provider returned an empty response.');
       }
@@ -10299,7 +10299,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
 
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
-    final body = _requestBody(
+    final requestBody = _requestBody(
       flavor,
       history,
       systemPrompt: systemPrompt,
@@ -10325,7 +10325,7 @@ class _ChatPanelState extends State<_ChatPanel> {
 
       _configureProviderRequestHeaders(request, flavor);
       request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
-      request.write(jsonEncode(_usesManagedRelay ? _relayEnvelope(flavor, body) : body));
+      request.write(jsonEncode(_usesManagedRelay ? _relayEnvelope(flavor, requestBody) : requestBody));
 
       final response = await request.close().timeout(responseTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {

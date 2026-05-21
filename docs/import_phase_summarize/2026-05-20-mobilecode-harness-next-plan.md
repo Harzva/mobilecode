@@ -74,6 +74,8 @@ Token Relay / Mimo 修复记录（2026-05-21）：
 - Mimo generated-only 路径若没有返回完整 ```html fenced block，不再直接失败为终点，而是只追加一次严格 HTML artifact repair 请求；仍然不伪造文件，retry 后仍无 HTML 才失败。
 - DeepSeek native tool-call 路径保持增量不破坏：继续复用 `ToolCallAdapter -> ActionRunner -> ActionEvidence -> observation`。
 - Relay 第一版仅转发 Mimo Anthropic-compatible `/v1/messages` 与 DeepSeek OpenAI-compatible `/chat/completions`，不提供 shell/Git/publish/remote logs。
+- CI evidence：`Mobile Runtime CI` on `last` passed on 2026-05-21，run `https://github.com/Harzva/mobilecode/actions/runs/26209494628`。
+- APK evidence：`Build Android APK` on `last` passed on 2026-05-21，run `https://github.com/Harzva/mobilecode/actions/runs/26209556851`，release `https://github.com/Harzva/mobilecode/releases/tag/v0.1.46-last`，asset `mobilecode-v0.1.46-last.apk`。
 
 当前先保持为单文件任务索引。后续如果任务继续膨胀，再单独开小任务拆成：
 
@@ -679,6 +681,7 @@ Follow-up Fix Note（2026-05-21）：
 - Adjusted completed agent trace visibility: a completed `Last agent process` can sit below a finished result, but once a new user message exists, the new message becomes the bottom focus.
 - Added optional `MOBILECODE_MANAGED_RELAY_URL` / `MOBILECODE_MANAGED_RELAY_TOKEN` path for built-in presets, so managed provider keys can move behind a backend relay while Custom provider remains direct.
 - Added a one-shot Mimo HTML artifact repair retry for generated-only web tasks; this is not H15 auto-repair because it only corrects missing fenced HTML before `ActionRunner.writeFile`.
+- Validation evidence: Runtime CI `26209494628` passed; APK release `v0.1.46-last` uploaded with target commit `0601fc3e3517fda7fdc3750adcb5b2049792eaf1`.
 
 ### H09：Connector Readiness 模型
 

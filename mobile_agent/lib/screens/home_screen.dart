@@ -117,6 +117,16 @@ const _managedModel = String.fromEnvironment(
   defaultValue: _defaultModel,
 );
 const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
+const _managedDeepSeekProviderEnabled = bool.fromEnvironment('MOBILECODE_MANAGED_DEEPSEEK_PROVIDER');
+const _managedDeepSeekBaseUrl = String.fromEnvironment(
+  'MOBILECODE_MANAGED_DEEPSEEK_BASE_URL',
+  defaultValue: 'https://api.deepseek.com/v1',
+);
+const _managedDeepSeekModel = String.fromEnvironment(
+  'MOBILECODE_MANAGED_DEEPSEEK_MODEL',
+  defaultValue: 'deepseek-chat',
+);
+const _managedDeepSeekApiKey = String.fromEnvironment('MOBILECODE_MANAGED_DEEPSEEK_API_KEY');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
 const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.30';
@@ -707,6 +717,54 @@ String _providerPresetModel(_ProviderPreset preset) {
     _ProviderPreset.openAi => 'gpt-4o-mini',
     _ProviderPreset.custom => '',
   };
+}
+
+bool _managedProviderPresetAvailable(_ProviderPreset preset) {
+  return switch (preset) {
+    _ProviderPreset.mimo => _managedProviderEnabled && _managedApiKey.trim().isNotEmpty,
+    _ProviderPreset.deepSeek => _managedDeepSeekProviderEnabled && _managedDeepSeekApiKey.trim().isNotEmpty,
+    _ => false,
+  };
+}
+
+String _managedProviderBaseUrl(_ProviderPreset preset) {
+  return switch (preset) {
+    _ProviderPreset.deepSeek => _managedDeepSeekBaseUrl,
+    _ => _managedBaseUrl,
+  };
+}
+
+String _managedProviderModel(_ProviderPreset preset) {
+  return switch (preset) {
+    _ProviderPreset.deepSeek => _managedDeepSeekModel,
+    _ => _managedModel,
+  };
+}
+
+String _managedProviderApiKey(_ProviderPreset preset) {
+  return switch (preset) {
+    _ProviderPreset.deepSeek => _managedDeepSeekApiKey,
+    _ => _managedApiKey,
+  };
+}
+
+List<_ProviderPreset> _availableManagedProviderPresets() {
+  return [
+    if (_managedProviderPresetAvailable(_ProviderPreset.mimo)) _ProviderPreset.mimo,
+    if (_managedProviderPresetAvailable(_ProviderPreset.deepSeek)) _ProviderPreset.deepSeek,
+  ];
+}
+
+_ProviderPreset _providerPresetFromName(String? value, {_ProviderPreset fallback = _ProviderPreset.mimo}) {
+  for (final preset in _ProviderPreset.values) {
+    if (preset.name == value) return preset;
+  }
+  return fallback;
+}
+
+_ProviderPreset _firstManagedProviderPreset() {
+  final available = _availableManagedProviderPresets();
+  return available.isEmpty ? _ProviderPreset.custom : available.first;
 }
 
 Uri _parseBaseUrl(String baseUrl) {
@@ -1319,6 +1377,7 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _apiKeyKey = 'mobilecode.apiKey';
   static const _modelKey = 'mobilecode.model';
   static const _providerModeKey = 'mobilecode.providerMode';
+  static const _managedProviderPresetKey = 'mobilecode.managedProviderPreset';
   static const _brandThemeKey = 'mobilecode.brandTheme';
   static const _browserOpenModeKey = 'mobilecode.browserOpenMode';
 
@@ -1336,6 +1395,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showCapabilityMap = false;
   bool _runtimeChecking = false;
   bool _customProviderOverride = false;
+  _ProviderPreset _managedProviderPreset = _ProviderPreset.mimo;
   String _brandTheme = 'codexBlue';
   String _browserOpenMode = _browserOpenModeSystem;
   bool? _termuxInstalled;
@@ -1371,15 +1431,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   _CapabilityLayer get _activeLayer => _layers[_safeLayerIndex];
 
-  bool get _managedProviderAvailable => _managedProviderEnabled && _managedApiKey.trim().isNotEmpty;
+  List<_ProviderPreset> get _managedProviderPresets => _availableManagedProviderPresets();
 
-  bool get _managedProviderActive => _managedProviderAvailable && !_customProviderOverride;
+  bool get _managedProviderAvailable => _managedProviderPresets.isNotEmpty;
 
-  String get _effectiveBaseUrl => _managedProviderActive ? _managedBaseUrl : _baseUrlController.text.trim();
+  _ProviderPreset get _activeManagedProviderPreset {
+    if (_managedProviderPresetAvailable(_managedProviderPreset)) {
+      return _managedProviderPreset;
+    }
+    return _firstManagedProviderPreset();
+  }
 
-  String get _effectiveApiKey => _managedProviderActive ? _managedApiKey : _apiKeyController.text.trim();
+  bool get _managedProviderActive => _managedProviderAvailable && !_customProviderOverride && _managedProviderPresetAvailable(_activeManagedProviderPreset);
 
-  String get _effectiveModel => _managedProviderActive ? _managedModel : _modelController.text.trim();
+  String get _effectiveBaseUrl => _managedProviderActive ? _managedProviderBaseUrl(_activeManagedProviderPreset) : _baseUrlController.text.trim();
+
+  String get _effectiveApiKey => _managedProviderActive ? _managedProviderApiKey(_activeManagedProviderPreset) : _apiKeyController.text.trim();
+
+  String get _effectiveModel => _managedProviderActive ? _managedProviderModel(_activeManagedProviderPreset) : _modelController.text.trim();
 
   _ApiFlavor get _flavor {
     return _detectApiFlavor(_effectiveBaseUrl, _effectiveModel);
@@ -1441,7 +1510,9 @@ class _HomeScreenState extends State<HomeScreen> {
       final prefs = await SharedPreferences.getInstance();
       if (!mounted) return;
       setState(() {
-        _customProviderOverride = prefs.getString(_providerModeKey) == 'custom';
+        final savedManagedPreset = _providerPresetFromName(prefs.getString(_managedProviderPresetKey));
+        _managedProviderPreset = _managedProviderPresetAvailable(savedManagedPreset) ? savedManagedPreset : _firstManagedProviderPreset();
+        _customProviderOverride = prefs.getString(_providerModeKey) == 'custom' || !_managedProviderPresetAvailable(_managedProviderPreset);
         _brandTheme = _normalizeBrandTheme(
           prefs.getString(_brandThemeKey) ?? widget.brandTheme,
         );
@@ -1471,10 +1542,15 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     final prefs = await SharedPreferences.getInstance();
+    final nextManagedPreset = _managedProviderPresetAvailable(_managedProviderPreset) ? _managedProviderPreset : _firstManagedProviderPreset();
     await prefs.setString(_providerModeKey, useCustom ? 'custom' : 'managed');
+    if (!useCustom) {
+      await prefs.setString(_managedProviderPresetKey, nextManagedPreset.name);
+    }
     if (!mounted) return;
     setState(() {
       _customProviderOverride = useCustom;
+      if (!useCustom) _managedProviderPreset = nextManagedPreset;
       if (useCustom) {
         _baseUrlController.text = _savedOrDefault(prefs.getString(_baseUrlKey), _defaultBaseUrl);
         _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
@@ -1487,9 +1563,53 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     _addLog(
       useCustom ? 'Custom provider enabled' : 'Managed provider enabled',
-      useCustom ? 'Base URL, API key, and model fields are editable.' : 'Bundled managed provider credentials are active.',
+      useCustom ? 'Base URL, API key, and model fields are editable.' : '${_providerPresetLabel(_managedProviderPreset)} bundled credentials are active and hidden in the UI.',
       Icons.tune_outlined,
       useCustom ? _cyan : _mint,
+    );
+  }
+
+  Future<void> _selectProviderFromComposer(_ProviderPreset preset) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (preset != _ProviderPreset.custom && _managedProviderPresetAvailable(preset)) {
+      await prefs.setString(_providerModeKey, 'managed');
+      await prefs.setString(_managedProviderPresetKey, preset.name);
+      if (!mounted) return;
+      setState(() {
+        _customProviderOverride = false;
+        _managedProviderPreset = preset;
+        _baseUrlController.clear();
+        _apiKeyController.clear();
+        _modelController.clear();
+      });
+      _addLog(
+        '${_providerPresetLabel(preset)} model selected',
+        'Built-in provider credentials stay hidden. Chat and Agent now use ${_managedProviderModel(preset)}.',
+        Icons.tune_outlined,
+        preset == _ProviderPreset.deepSeek ? _violet : _mint,
+      );
+      return;
+    }
+
+    final presetBaseUrl = _providerPresetBaseUrl(preset);
+    final presetModel = _providerPresetModel(preset);
+    await prefs.setString(_providerModeKey, 'custom');
+    if (presetBaseUrl.isNotEmpty) await prefs.setString(_baseUrlKey, presetBaseUrl);
+    if (presetModel.isNotEmpty) await prefs.setString(_modelKey, presetModel);
+    if (!mounted) return;
+    setState(() {
+      _customProviderOverride = true;
+      if (presetBaseUrl.isNotEmpty) _baseUrlController.text = presetBaseUrl;
+      if (presetModel.isNotEmpty) _modelController.text = presetModel;
+      _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
+    });
+    _addLog(
+      '${_providerPresetLabel(preset)} custom profile selected',
+      preset == _ProviderPreset.custom
+          ? 'Custom provider keeps the saved Base URL, model, and local key.'
+          : 'No bundled key is active for this profile; paste a key in Models & Provider if needed.',
+      Icons.tune_outlined,
+      _cyan,
     );
   }
 
@@ -2052,9 +2172,12 @@ class _HomeScreenState extends State<HomeScreen> {
         baseUrl: _effectiveBaseUrl,
         apiKey: _effectiveApiKey,
         model: _effectiveModel,
+        providerPreset: _managedProviderActive ? _activeManagedProviderPreset : _detectProviderPreset(_effectiveBaseUrl, _effectiveModel),
+        managedProviderPresets: _managedProviderPresets,
         browserOpenMode: _browserOpenMode,
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
         onAgentPrompt: _handleAgentPrompt,
+        onProviderPresetSelected: (preset) => unawaited(_selectProviderFromComposer(preset)),
       ),
     );
   }
@@ -2503,10 +2626,13 @@ class _HomeScreenState extends State<HomeScreen> {
             baseUrl: _effectiveBaseUrl,
             apiKey: _effectiveApiKey,
             model: _effectiveModel,
+            providerPreset: _managedProviderActive ? _activeManagedProviderPreset : _detectProviderPreset(_effectiveBaseUrl, _effectiveModel),
+            managedProviderPresets: _managedProviderPresets,
             browserOpenMode: _browserOpenMode,
             embedded: true,
             onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
             onAgentPrompt: _handleAgentPrompt,
+            onProviderPresetSelected: (preset) => unawaited(_selectProviderFromComposer(preset)),
             onSessionsChanged: _syncDrawerSessions,
           ),
         ),
@@ -9547,9 +9673,12 @@ class _ChatPanel extends StatefulWidget {
     required this.baseUrl,
     required this.apiKey,
     required this.model,
+    required this.providerPreset,
+    required this.managedProviderPresets,
     required this.browserOpenMode,
     required this.onLog,
     required this.onAgentPrompt,
+    required this.onProviderPresetSelected,
     this.onSessionsChanged,
     this.embedded = false,
   });
@@ -9557,9 +9686,12 @@ class _ChatPanel extends StatefulWidget {
   final String baseUrl;
   final String apiKey;
   final String model;
+  final _ProviderPreset providerPreset;
+  final List<_ProviderPreset> managedProviderPresets;
   final String browserOpenMode;
   final void Function(String title, String detail, IconData icon, Color color) onLog;
   final Future<void> Function(String prompt) onAgentPrompt;
+  final ValueChanged<_ProviderPreset> onProviderPresetSelected;
   final void Function(List<_ChatSession> sessions, String? activeSessionId)? onSessionsChanged;
   final bool embedded;
 
@@ -11528,11 +11660,28 @@ class _ChatPanelState extends State<_ChatPanel> {
     _showMessage(nextTurn.bookmarked ? '已设为书签，可在右侧导航条快速跳转。' : '已取消书签。');
   }
 
+  void _openModelSelectionSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
+      builder: (context) => _ModelSelectionSheet(
+        selected: widget.providerPreset,
+        managedPresets: widget.managedProviderPresets,
+        onSelect: (preset) {
+          Navigator.pop(context);
+          widget.onProviderPresetSelected(preset);
+        },
+      ),
+    );
+  }
+
   Widget _buildConversationBody(_ChatSession? active) {
     final allTurns = active?.turns ?? const <_ChatTurn>[];
     final finalResultTurn = allTurns.isNotEmpty && allTurns.last.role == 'assistant' && _isFinalResultTurn(allTurns.last.content)
         ? allTurns.last
         : null;
+    final showAgentTrace = _agentRunning || finalResultTurn != null;
     final conversationTurns = finalResultTurn == null ? allTurns : allTurns.sublist(0, allTurns.length - 1);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -11566,7 +11715,7 @@ class _ChatPanelState extends State<_ChatPanel> {
                   ),
           ),
         ),
-        if (_agentTrace.isNotEmpty) ...[
+        if (showAgentTrace && _agentTrace.isNotEmpty) ...[
           const SizedBox(height: 12),
           if (_agentModeEnabled) ...[
             _AgentRecruitmentPanel(
@@ -11690,6 +11839,13 @@ class _ChatPanelState extends State<_ChatPanel> {
                     ),
                   ),
                   const SizedBox(width: 6),
+                  _ComposerModelButton(
+                    preset: widget.providerPreset,
+                    model: widget.model,
+                    managed: widget.managedProviderPresets.contains(widget.providerPreset),
+                    onTap: _sending || _agentRunning ? null : _openModelSelectionSheet,
+                  ),
+                  const SizedBox(width: 4),
                   _VoiceInputButton(
                     enabled: !_sending && (!_agentRunning || voiceActive),
                     available: _voiceAvailable,
@@ -13221,6 +13377,223 @@ class _ActionChipButton extends StatelessWidget {
       backgroundColor: color.withOpacity(0.10),
       labelStyle: const TextStyle(color: _text, fontWeight: FontWeight.w800),
       onPressed: onTap,
+    );
+  }
+}
+
+class _ComposerModelButton extends StatelessWidget {
+  const _ComposerModelButton({
+    required this.preset,
+    required this.model,
+    required this.managed,
+    required this.onTap,
+  });
+
+  final _ProviderPreset preset;
+  final String model;
+  final bool managed;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = preset == _ProviderPreset.deepSeek ? _violet : _blue;
+    final label = _providerPresetLabel(preset);
+    final modelLabel = model.trim().isEmpty ? _providerPresetModel(preset) : model.trim();
+    return Tooltip(
+      message: managed ? '$label built-in model: $modelLabel' : '$label custom model: $modelLabel',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          height: 42,
+          constraints: const BoxConstraints(minWidth: 78, maxWidth: 122),
+          padding: const EdgeInsets.symmetric(horizontal: 9),
+          decoration: BoxDecoration(
+            color: color.withOpacity(managed ? 0.14 : 0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(managed ? 0.34 : 0.18)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(preset == _ProviderPreset.deepSeek ? Icons.psychology_alt_outlined : Icons.auto_awesome_outlined, color: color, size: 16),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900),
+                ),
+              ),
+              const SizedBox(width: 3),
+              Icon(Icons.keyboard_arrow_down_rounded, color: color, size: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ModelSelectionSheet extends StatelessWidget {
+  const _ModelSelectionSheet({
+    required this.selected,
+    required this.managedPresets,
+    required this.onSelect,
+  });
+
+  final _ProviderPreset selected;
+  final List<_ProviderPreset> managedPresets;
+  final ValueChanged<_ProviderPreset> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final choices = const [
+      _ProviderPreset.mimo,
+      _ProviderPreset.deepSeek,
+      _ProviderPreset.openAi,
+      _ProviderPreset.anthropic,
+      _ProviderPreset.custom,
+    ];
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(Icons.auto_awesome_outlined, color: _blue, size: 19),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text('选择模型', style: TextStyle(color: _text, fontSize: 16, fontWeight: FontWeight.w900)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '内置模型隐藏凭据，用户可以直接体验；Custom 仍然用于粘贴自己的 provider key。',
+              style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+            ),
+            const SizedBox(height: 12),
+            for (final preset in choices) ...[
+              _ModelSelectionRow(
+                preset: preset,
+                selected: selected == preset,
+                managed: managedPresets.contains(preset),
+                onTap: () => onSelect(preset),
+              ),
+              if (preset != choices.last) const SizedBox(height: 8),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ModelSelectionRow extends StatelessWidget {
+  const _ModelSelectionRow({
+    required this.preset,
+    required this.selected,
+    required this.managed,
+    required this.onTap,
+  });
+
+  final _ProviderPreset preset;
+  final bool selected;
+  final bool managed;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = preset == _ProviderPreset.deepSeek
+        ? _violet
+        : preset == _ProviderPreset.mimo
+            ? _mint
+            : _blue;
+    final subtitle = switch (preset) {
+      _ProviderPreset.mimo => managed ? '内置体验模型，稳定聊天与中文移动开发任务' : '需要构建时配置 Mimo managed key',
+      _ProviderPreset.deepSeek => managed ? '内置 DeepSeek，推荐用于 tool call / 编码任务' : '推荐接入 DeepSeek key 后用于编码任务',
+      _ProviderPreset.openAi => 'OpenAI-compatible，自带 key 时使用',
+      _ProviderPreset.anthropic => 'Anthropic-compatible，自带 key 时使用',
+      _ProviderPreset.custom => '保留当前自定义 Base URL / Model / API Key',
+    };
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected ? color.withOpacity(0.12) : _panelSoft,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: selected ? color.withOpacity(0.44) : _line),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              preset == _ProviderPreset.custom
+                  ? Icons.tune_outlined
+                  : preset == _ProviderPreset.deepSeek
+                      ? Icons.psychology_alt_outlined
+                      : Icons.auto_awesome_outlined,
+              color: color,
+              size: 20,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          _providerPresetLabel(preset),
+                          style: const TextStyle(color: _text, fontSize: 14, fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                      if (managed) ...[
+                        const SizedBox(width: 8),
+                        _TinyBadge(label: 'Built-in', color: color),
+                      ],
+                      if (preset == _ProviderPreset.deepSeek) ...[
+                        const SizedBox(width: 6),
+                        const _TinyBadge(label: '推荐编码', color: _violet),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(subtitle, style: const TextStyle(color: _muted, fontSize: 11.5, height: 1.25)),
+                ],
+              ),
+            ),
+            if (selected) const Icon(Icons.check_circle_outline, color: _mint, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TinyBadge extends StatelessWidget {
+  const _TinyBadge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.28)),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900)),
     );
   }
 }

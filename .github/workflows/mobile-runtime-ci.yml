@@ -65,6 +65,7 @@ jobs:
             lib/services/token_usage_service.dart \
             lib/services/token_pricing_service.dart \
             lib/services/device_telemetry_service.dart \
+            lib/services/tool_call_adapter.dart \
             lib/services/runtime_provider.dart \
             lib/services/runtime_manager.dart \
             lib/services/runtime_actions.dart \
@@ -83,6 +84,7 @@ jobs:
             test/services/token_usage_service_test.dart \
             test/services/token_pricing_service_test.dart \
             test/services/device_telemetry_service_test.dart \
+            test/services/tool_call_adapter_test.dart \
             --no-fatal-infos \
             --no-fatal-warnings
 
@@ -97,7 +99,8 @@ jobs:
             test/services/role_library_service_test.dart \
             test/services/token_usage_service_test.dart \
             test/services/token_pricing_service_test.dart \
-            test/services/device_telemetry_service_test.dart
+            test/services/device_telemetry_service_test.dart \
+            test/services/tool_call_adapter_test.dart
 
   helper-daemon-smoke:
     runs-on: ubuntu-latest

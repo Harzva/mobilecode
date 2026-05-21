@@ -76,11 +76,13 @@ class ProviderToolCallResponse {
     required this.content,
     required this.toolCalls,
     this.finishReason,
+    this.reasoningContent,
   });
 
   final String content;
   final List<ProviderToolCall> toolCalls;
   final String? finishReason;
+  final String? reasoningContent;
 
   bool get hasToolCalls => toolCalls.isNotEmpty;
 }
@@ -178,7 +180,9 @@ class OpenAiCompatibleToolCallAdapter {
       'stream': stream,
       if (stream) 'stream_options': {'include_usage': true},
       'tools': toolDefinitions(strict: profile.strictTools),
-      'tool_choice': toolChoice.name,
+      // DeepSeek defaults to auto when tools are present. Omitting tool_choice
+      // keeps reasoning/tool-call models on the widest compatible request path.
+      if (!profile.isDeepSeek) 'tool_choice': toolChoice.name,
     };
   }
 
@@ -198,9 +202,15 @@ class OpenAiCompatibleToolCallAdapter {
     }
 
     final content = _messageContent(message['content']);
+    final reasoningContent = _messageContent(message['reasoning_content']);
     final rawToolCalls = message['tool_calls'];
     if (rawToolCalls is! List) {
-      return ProviderToolCallResponse(content: content, toolCalls: const [], finishReason: finishReason);
+      return ProviderToolCallResponse(
+        content: content,
+        toolCalls: const [],
+        finishReason: finishReason,
+        reasoningContent: reasoningContent.isEmpty ? null : reasoningContent,
+      );
     }
 
     final calls = <ProviderToolCall>[];
@@ -223,6 +233,7 @@ class OpenAiCompatibleToolCallAdapter {
       content: content,
       toolCalls: calls,
       finishReason: finishReason,
+      reasoningContent: reasoningContent.isEmpty ? null : reasoningContent,
     );
   }
 
@@ -230,6 +241,8 @@ class OpenAiCompatibleToolCallAdapter {
     return {
       'role': 'assistant',
       'content': response.content,
+      if (response.reasoningContent != null && response.reasoningContent!.isNotEmpty)
+        'reasoning_content': response.reasoningContent,
       'tool_calls': response.toolCalls.map((call) => call.toProviderJson()).toList(),
     };
   }

@@ -76,11 +76,18 @@ jobs:
         working-directory: mobile_agent
         env:
           MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
+          MOBILECODE_DEEPSEEK_API_KEY: ${{ secrets.MOBILECODE_DEEPSEEK_API_KEY || secrets.DEEPSEEK_API_KEY }}
           MOBILECODE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.MOBILECODE_GITHUB_OAUTH_CLIENT_ID }}
           MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET }}
           MOBILECODE_GITHUB_OAUTH_REDIRECT_URI: ${{ vars.MOBILECODE_GITHUB_OAUTH_REDIRECT_URI }}
         run: |
           DART_DEFINES=()
+          if [ -n "$MOBILECODE_DEEPSEEK_API_KEY" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_PROVIDER=true)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_BASE_URL=https://api.deepseek.com/v1)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_MODEL=deepseek-chat)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_API_KEY="$MOBILECODE_DEEPSEEK_API_KEY")
+          fi
           if [ -n "$MOBILECODE_GITHUB_OAUTH_CLIENT_ID" ]; then
             DART_DEFINES+=(--dart-define=MOBILECODE_GITHUB_OAUTH_CLIENT_ID="$MOBILECODE_GITHUB_OAUTH_CLIENT_ID")
           fi

@@ -82,6 +82,48 @@ void main() {
     expect(schema.params['overwrite'], true);
   });
 
+  test('preserves DeepSeek reasoning_content when returning tool observations', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect('https://api.deepseek.com/v1', 'deepseek-chat'),
+    );
+
+    final request = adapter.buildChatCompletionRequest(
+      model: 'deepseek-chat',
+      systemPrompt: 'system',
+      messages: const [
+        {'role': 'user', 'content': 'build snake'},
+      ],
+    );
+    expect(request.containsKey('tool_choice'), false);
+
+    final parsed = adapter.parseChatCompletion({
+      'choices': [
+        {
+          'finish_reason': 'tool_calls',
+          'message': {
+            'role': 'assistant',
+            'content': '',
+            'reasoning_content': 'Need to create one HTML file.',
+            'tool_calls': [
+              {
+                'id': 'call_write',
+                'type': 'function',
+                'function': {
+                  'name': 'write_file',
+                  'arguments': '{"path":"snake/index.html","content":"<!doctype html>","overwrite":true}',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    expect(parsed.reasoningContent, 'Need to create one HTML file.');
+    final assistantMessage = adapter.assistantToolCallMessage(parsed);
+    expect(assistantMessage['reasoning_content'], 'Need to create one HTML file.');
+  });
+
   test('assembles streaming delta.tool_calls fragments', () {
     final assembler = OpenAiToolCallStreamAssembler()
       ..addChunk({

@@ -663,6 +663,13 @@ Implementation Note（2026-05-21）：
 - CI evidence: `Mobile Runtime CI` on `last` passed on 2026-05-21, run `https://github.com/Harzva/mobilecode/actions/runs/26203216744`.
 - Remaining risks: no local Flutter/Dart on PATH in this workstation; Anthropic adapter, JSON fallback implementation, H15 auto-repair, and live DeepSeek API run are not included in this first pass.
 
+Follow-up Fix Note（2026-05-21）：
+
+- Fixed DeepSeek reasoning/tool-call loop compatibility by preserving `reasoning_content` in assistant tool-call messages and omitting explicit `tool_choice` for DeepSeek requests.
+- Added chat composer model switcher near the voice button so users can switch between built-in Mimo and built-in DeepSeek without opening Settings.
+- Added build-time managed DeepSeek secret support via `MOBILECODE_DEEPSEEK_API_KEY`; credentials remain hidden in the UI and are not committed.
+- Adjusted completed agent trace visibility: a completed `Last agent process` can sit below a finished result, but once a new user message exists, the new message becomes the bottom focus.
+
 ### H09：Connector Readiness 模型
 
 Priority：P1

@@ -95,7 +95,7 @@ jobs:
             DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic)
             DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro)
           fi
-          if [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
+          if [ -z "$MOBILECODE_MANAGED_RELAY_URL" ] && [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
             DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY")
           fi
           if [ -n "$MOBILECODE_DEEPSEEK_API_KEY" ] || [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
@@ -103,7 +103,7 @@ jobs:
             DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_BASE_URL=https://api.deepseek.com/v1)
             DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_MODEL=deepseek-chat)
           fi
-          if [ -n "$MOBILECODE_DEEPSEEK_API_KEY" ]; then
+          if [ -z "$MOBILECODE_MANAGED_RELAY_URL" ] && [ -n "$MOBILECODE_DEEPSEEK_API_KEY" ]; then
             DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_API_KEY="$MOBILECODE_DEEPSEEK_API_KEY")
           fi
           if [ -n "$MOBILECODE_GITHUB_OAUTH_CLIENT_ID" ]; then

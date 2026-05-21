@@ -70,6 +70,7 @@ GitHub Pages 公开实验日志入口：`/experiments`，主题为 `From Single-
 Token Relay / Mimo 修复记录（2026-05-21）：
 
 - 新增可选后端 token relay 方案：内置 Mimo / DeepSeek preset 可以走 `MOBILECODE_MANAGED_RELAY_URL`，provider key 留在后端环境变量，APK 不需要嵌入 provider key。
+- APK workflow 约束：一旦配置 `MOBILECODE_MANAGED_RELAY_URL`，构建脚本不再注入 `MOBILECODE_MANAGED_API_KEY` 或 `MOBILECODE_DEEPSEEK_API_KEY` 到 dart-define，避免 relay 与嵌入式 key 同时存在。
 - Custom provider 继续保持用户本地自填 Base URL / API Key / Model 的直连路径，不强制经过 relay。
 - Mimo generated-only 路径若没有返回完整 ```html fenced block，不再直接失败为终点，而是只追加一次严格 HTML artifact repair 请求；仍然不伪造文件，retry 后仍无 HTML 才失败。
 - DeepSeek native tool-call 路径保持增量不破坏：继续复用 `ToolCallAdapter -> ActionRunner -> ActionEvidence -> observation`。

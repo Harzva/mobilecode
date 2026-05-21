@@ -15,7 +15,7 @@ class ApiConfigScreen extends StatefulWidget {
   State<ApiConfigScreen> createState() => _ApiConfigScreenState();
 }
 
-enum _ProviderPreset { mimo, anthropic, openAi, custom }
+enum _ProviderPreset { mimo, deepSeek, anthropic, openAi, custom }
 
 class _ProviderDefinition {
   const _ProviderDefinition({
@@ -48,6 +48,13 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
       baseUrl: _defaultBaseUrl,
       model: _defaultModel,
       icon: Icons.auto_awesome_outlined,
+    ),
+    _ProviderDefinition(
+      preset: _ProviderPreset.deepSeek,
+      label: 'DeepSeek',
+      baseUrl: 'https://api.deepseek.com/v1',
+      model: 'deepseek-chat',
+      icon: Icons.psychology_alt_outlined,
     ),
     _ProviderDefinition(
       preset: _ProviderPreset.anthropic,
@@ -111,6 +118,9 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
     final probe = '$baseUrl $model'.toLowerCase();
     if (probe.contains('xiaomimimo') || probe.contains('mimo-')) {
       return _ProviderPreset.mimo;
+    }
+    if (probe.contains('deepseek')) {
+      return _ProviderPreset.deepSeek;
     }
     if (probe.contains('anthropic') || probe.contains('claude')) {
       return _ProviderPreset.anthropic;
@@ -250,7 +260,7 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
                         ),
                         const SizedBox(height: 10),
                         const Text(
-                          'Custom Provider 会按 Base URL 自动识别 Anthropic 或 OpenAI-compatible 调用路径。保存后 Home/Chat 会立即读取同一份配置。',
+                          'DeepSeek 使用 OpenAI-compatible 调用路径；/beta Base URL 可用于后续 strict tool calling 验证。保存后 Home/Chat 会立即读取同一份配置。',
                           style: TextStyle(color: AppTheme.auroraTextMuted, fontSize: 12, height: 1.35),
                         ),
                       ],

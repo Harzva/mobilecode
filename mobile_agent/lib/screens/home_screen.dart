@@ -40,11 +40,12 @@ import '../services/device_telemetry_service.dart';
 import '../services/skill_manager_service.dart';
 import '../services/termux_service.dart';
 import '../services/token_usage_service.dart';
+import '../services/tool_call_adapter.dart';
 import '../services/voice_service.dart';
 
 enum _ApiFlavor { openAi, anthropic }
 
-enum _ProviderPreset { mimo, anthropic, openAi, custom }
+enum _ProviderPreset { mimo, deepSeek, anthropic, openAi, custom }
 
 enum _HealthState { unknown, checking, healthy, failed }
 
@@ -557,6 +558,22 @@ class _LocalToolEvent {
   }
 }
 
+class _ProviderNativeToolLoopResult {
+  const _ProviderNativeToolLoopResult({
+    required this.answer,
+    required this.usedNativeToolCalls,
+    required this.rounds,
+    required this.toolCallCount,
+    this.generatedPath,
+  });
+
+  final String answer;
+  final bool usedNativeToolCalls;
+  final int rounds;
+  final int toolCallCount;
+  final String? generatedPath;
+}
+
 class _LocalToolSpec {
   const _LocalToolSpec({
     required this.name,
@@ -650,6 +667,9 @@ _ProviderPreset _detectProviderPreset(String baseUrl, String model) {
   if (probe.contains('xiaomimimo') || probe.contains('mimo-')) {
     return _ProviderPreset.mimo;
   }
+  if (probe.contains('deepseek')) {
+    return _ProviderPreset.deepSeek;
+  }
   if (probe.contains('anthropic') || probe.contains('claude')) {
     return _ProviderPreset.anthropic;
   }
@@ -662,6 +682,7 @@ _ProviderPreset _detectProviderPreset(String baseUrl, String model) {
 String _providerPresetLabel(_ProviderPreset preset) {
   return switch (preset) {
     _ProviderPreset.mimo => 'Mimo',
+    _ProviderPreset.deepSeek => 'DeepSeek',
     _ProviderPreset.anthropic => 'Anthropic',
     _ProviderPreset.openAi => 'OpenAI',
     _ProviderPreset.custom => 'Custom',
@@ -671,6 +692,7 @@ String _providerPresetLabel(_ProviderPreset preset) {
 String _providerPresetBaseUrl(_ProviderPreset preset) {
   return switch (preset) {
     _ProviderPreset.mimo => _defaultBaseUrl,
+    _ProviderPreset.deepSeek => 'https://api.deepseek.com/v1',
     _ProviderPreset.anthropic => 'https://api.anthropic.com',
     _ProviderPreset.openAi => 'https://api.openai.com/v1',
     _ProviderPreset.custom => '',
@@ -680,6 +702,7 @@ String _providerPresetBaseUrl(_ProviderPreset preset) {
 String _providerPresetModel(_ProviderPreset preset) {
   return switch (preset) {
     _ProviderPreset.mimo => _defaultModel,
+    _ProviderPreset.deepSeek => 'deepseek-chat',
     _ProviderPreset.anthropic => 'claude-3-5-sonnet-latest',
     _ProviderPreset.openAi => 'gpt-4o-mini',
     _ProviderPreset.custom => '',
@@ -4035,7 +4058,9 @@ class _ApiConfigCard extends StatelessWidget {
                         ? Icons.tune_outlined
                         : preset == _ProviderPreset.openAi
                             ? Icons.api_outlined
-                            : Icons.hub_outlined,
+                            : preset == _ProviderPreset.deepSeek
+                                ? Icons.psychology_alt_outlined
+                                : Icons.hub_outlined,
                     size: 16,
                     color: providerPreset == preset ? _blue : _muted,
                   ),
@@ -10191,6 +10216,205 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
   }
 
+  OpenAiCompatibleToolCallAdapter? _providerNativeToolCallAdapter() {
+    final profile = ToolCallProviderProfile.detect(widget.baseUrl, widget.model);
+    if (!profile.supportsNativeToolCalls || !profile.isOpenAiCompatible) {
+      return null;
+    }
+    return OpenAiCompatibleToolCallAdapter(profile: profile);
+  }
+
+  Future<Map<String, dynamic>> _postOpenAiCompatibleToolCallRequest(
+    Map<String, dynamic> body, {
+    required Duration responseTimeout,
+    bool Function()? isCancelled,
+  }) async {
+    if (widget.baseUrl.trim().isEmpty) {
+      throw Exception('Provider is not configured: Base URL is empty.');
+    }
+    if (widget.apiKey.trim().isEmpty) {
+      throw Exception('Provider is not configured: API key is empty.');
+    }
+    if (isCancelled?.call() == true) {
+      throw Exception('Agent run stopped by user.');
+    }
+
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
+    _agentProviderClient = client;
+    try {
+      final request = await client.postUrl(_openAiChatUri(widget.baseUrl)).timeout(const Duration(seconds: 12));
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
+      request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
+      request.write(jsonEncode(body));
+
+      final response = await request.close().timeout(responseTimeout);
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
+      final rawBody = await utf8.decodeStream(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Provider HTTP ${response.statusCode}: ${_compact(rawBody)}');
+      }
+      final decoded = jsonDecode(rawBody);
+      if (decoded is Map<String, dynamic>) return decoded;
+      throw Exception('Provider returned a non-object tool-call response.');
+    } on SocketException catch (error) {
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
+      throw Exception('Provider network error: ${_friendlySocketError(error)}');
+    } on HttpException catch (error) {
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
+      throw Exception('Provider HTTP error: ${error.message}');
+    } on TimeoutException {
+      throw Exception('Provider timed out after ${responseTimeout.inSeconds}s while waiting for a tool-call response.');
+    } finally {
+      if (identical(_agentProviderClient, client)) {
+        _agentProviderClient = null;
+      }
+      client.close(force: true);
+    }
+  }
+
+  Future<_ProviderNativeToolLoopResult?> _runProviderNativeToolLoop(
+    List<_ChatTurn> history, {
+    required String systemPrompt,
+    required TokenUsageAccumulator usageAccumulator,
+    required void Function(String detail) onStatus,
+    bool Function()? isCancelled,
+  }) async {
+    final adapter = _providerNativeToolCallAdapter();
+    if (adapter == null) return null;
+
+    final rootDirectory = await _mobileCodeProjectsRootDirectory();
+    final actionRunner = ActionRunner(
+      workspaceRootPath: rootDirectory.path,
+      evidenceStore: _agentEvidenceStore,
+    );
+    final messages = _providerMessages(history).map((message) => Map<String, dynamic>.from(message)).toList();
+    final observations = <String>[];
+    String? generatedPath;
+    var usedNativeToolCalls = false;
+    var toolCallCount = 0;
+    final model = widget.model.trim().isEmpty ? 'deepseek-chat' : widget.model.trim();
+
+    for (var round = 0; round < 4; round++) {
+      if (isCancelled?.call() == true) {
+        throw Exception('Agent run stopped by user.');
+      }
+      onStatus('${adapter.profile.label} native tool loop round ${round + 1}: asking model for structured tool calls.');
+      final decoded = await _postOpenAiCompatibleToolCallRequest(
+        adapter.buildChatCompletionRequest(
+          model: model,
+          systemPrompt: systemPrompt,
+          messages: messages,
+          maxTokens: 4096,
+          stream: false,
+          toolChoice: ToolChoiceMode.auto,
+        ),
+        responseTimeout: const Duration(minutes: 3),
+        isCancelled: isCancelled,
+      );
+      usageAccumulator.addChunk(decoded);
+      final parsed = adapter.parseChatCompletion(decoded);
+
+      if (!parsed.hasToolCalls) {
+        final answer = parsed.content.trim();
+        if (answer.isNotEmpty) {
+          return _ProviderNativeToolLoopResult(
+            answer: answer,
+            usedNativeToolCalls: usedNativeToolCalls,
+            rounds: round + 1,
+            toolCallCount: toolCallCount,
+            generatedPath: generatedPath,
+          );
+        }
+        if (observations.isNotEmpty) {
+          return _ProviderNativeToolLoopResult(
+            answer: 'Native tool loop completed.\n\n${observations.join('\n')}',
+            usedNativeToolCalls: usedNativeToolCalls,
+            rounds: round + 1,
+            toolCallCount: toolCallCount,
+            generatedPath: generatedPath,
+          );
+        }
+        return const _ProviderNativeToolLoopResult(
+          answer: '',
+          usedNativeToolCalls: false,
+          rounds: 1,
+          toolCallCount: 0,
+        );
+      }
+
+      usedNativeToolCalls = true;
+      toolCallCount += parsed.toolCalls.length;
+      messages.add(adapter.assistantToolCallMessage(parsed));
+
+      for (final call in parsed.toolCalls) {
+        if (isCancelled?.call() == true) {
+          throw Exception('Agent run stopped by user.');
+        }
+        if (call.isReportResult) {
+          messages.add(adapter.buildReportResultToolMessage(call));
+          final report = adapter.reportResultText(call);
+          if (report.trim().isNotEmpty) {
+            return _ProviderNativeToolLoopResult(
+              answer: report,
+              usedNativeToolCalls: true,
+              rounds: round + 1,
+              toolCallCount: toolCallCount,
+              generatedPath: generatedPath,
+            );
+          }
+          observations.add('report_result accepted by MobileCode.');
+          continue;
+        }
+
+        final schema = adapter.toActionSchema(call);
+        final result = schema == null ? _blockedProviderToolResult(call) : await actionRunner.run(schema);
+        messages.add(adapter.buildToolResultMessage(call, result));
+        if (result.path != null && result.path!.trim().isNotEmpty) {
+          generatedPath = result.path;
+        }
+        final evidence = result.evidence;
+        final status = result.success ? 'ok' : 'failed';
+        observations.add('${call.name}: $status · evidence ${evidence.evidenceId}');
+        onStatus(
+          '${adapter.profile.label} tool ${call.name}: $status · ${_compact(evidence.logs.join(' '), limit: 180)}',
+        );
+      }
+    }
+
+    return _ProviderNativeToolLoopResult(
+      answer: 'Native tool loop stopped after the 4-round safety limit.\n\n${observations.join('\n')}',
+      usedNativeToolCalls: usedNativeToolCalls,
+      rounds: 4,
+      toolCallCount: toolCallCount,
+      generatedPath: generatedPath,
+    );
+  }
+
+  ActionRunnerResult _blockedProviderToolResult(ProviderToolCall call) {
+    final evidence = ActionEvidence.failed(
+      evidenceId: call.id,
+      actionName: MobileCodeAction.traceCallProvider,
+      paramsSummary: 'blocked provider tool ${call.name}',
+      startedAt: DateTime.now(),
+      failureKind: ActionFailureKind.commandBlocked,
+      recoveryActions: const [
+        'Use only write_file, read_file, preview_html, or report_result in the provider-native loop.',
+      ],
+      logs: ['Blocked unsupported provider-native tool: ${call.name}.'],
+    );
+    _agentEvidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence);
+  }
+
   Future<void> _runAgentWithTrace() async {
     await _ensureSessionsLoaded();
     if (!mounted) return;
@@ -10256,6 +10480,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     String? failure;
     String? modelAnswer;
     String? generatedPath;
+    var providerNativeHandledArtifacts = false;
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
     final usageAccumulator = TokenUsageAccumulator(providerKind: _usageProviderKind(flavor));
     final agentStarted = DateTime.now();
@@ -10280,55 +10505,89 @@ class _ChatPanelState extends State<_ChatPanel> {
       _setAgentRunStep(
         2,
         _AgentStepState.running,
-        detail: 'Streaming ${_flavorLabel(flavor)} provider response. Use Pause to stop this run.',
+        detail: 'Calling ${_flavorLabel(flavor)} provider. DeepSeek/OpenAI-compatible providers may return native tool calls.',
       );
-      final streamBuffer = StringBuffer();
-      var lastPreviewAt = DateTime.fromMillisecondsSinceEpoch(0);
-      var lastPreviewLength = 0;
-      await for (final chunk in _streamProvider(
+
+      final agentSystemPrompt = _agentSystemPrompt(
+        toolName,
+        skillContext: skillContext,
+        roleContext: _agentModeEnabled ? _roleRecruitmentContext() : '',
+      );
+      final nativeLoop = await _runProviderNativeToolLoop(
         pending.turns,
-        systemPrompt: _agentSystemPrompt(
-          toolName,
-          skillContext: skillContext,
-          roleContext: _agentModeEnabled ? _roleRecruitmentContext() : '',
-        ),
-        maxTokens: 4096,
-        responseTimeout: const Duration(minutes: 3),
-        trackAgentRequest: true,
+        systemPrompt: agentSystemPrompt,
+        usageAccumulator: usageAccumulator,
         isCancelled: () => _agentCancelRequested,
-        onUsageChunk: usageAccumulator.addChunk,
-      )) {
-        if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
-        streamBuffer.write(chunk);
-        final currentText = streamBuffer.toString();
-        final now = DateTime.now();
-        if (now.difference(lastPreviewAt).inMilliseconds > 350 ||
-            currentText.length - lastPreviewLength >= 240) {
-          lastPreviewAt = now;
-          lastPreviewLength = currentText.length;
-          final tailStart = currentText.length > 240 ? currentText.length - 240 : 0;
-          final previewTail = currentText.substring(tailStart);
-          final elapsed = now.difference(providerStarted).inSeconds;
-          _setAgentRunStep(
-            2,
-            _AgentStepState.running,
-            detail: 'Streaming ${currentText.length} chars in ${elapsed}s...\n${_compact(previewTail, limit: 240)}',
-          );
+        onStatus: (detail) => _setAgentRunStep(2, _AgentStepState.running, detail: detail),
+      );
+
+      if (nativeLoop != null) {
+        if (nativeLoop.answer.trim().isEmpty) {
+          throw Exception('Provider native tool-call request completed without text or tool observations.');
         }
+        modelAnswer = nativeLoop.answer;
+        generatedPath = nativeLoop.generatedPath;
+        providerNativeHandledArtifacts = nativeLoop.usedNativeToolCalls;
+        final elapsed = DateTime.now().difference(providerStarted).inSeconds;
+        _setAgentRunStep(
+          2,
+          _AgentStepState.done,
+          detail: nativeLoop.usedNativeToolCalls
+              ? 'Ran ${nativeLoop.toolCallCount} provider-native tool call(s) across ${nativeLoop.rounds} round(s) in ${elapsed}s.'
+              : 'Provider returned no native tool calls; using generated-only fallback response in ${elapsed}s.',
+        );
+      } else {
+        final streamBuffer = StringBuffer();
+        var lastPreviewAt = DateTime.fromMillisecondsSinceEpoch(0);
+        var lastPreviewLength = 0;
+        await for (final chunk in _streamProvider(
+          pending.turns,
+          systemPrompt: agentSystemPrompt,
+          maxTokens: 4096,
+          responseTimeout: const Duration(minutes: 3),
+          trackAgentRequest: true,
+          isCancelled: () => _agentCancelRequested,
+          onUsageChunk: usageAccumulator.addChunk,
+        )) {
+          if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
+          streamBuffer.write(chunk);
+          final currentText = streamBuffer.toString();
+          final now = DateTime.now();
+          if (now.difference(lastPreviewAt).inMilliseconds > 350 ||
+              currentText.length - lastPreviewLength >= 240) {
+            lastPreviewAt = now;
+            lastPreviewLength = currentText.length;
+            final tailStart = currentText.length > 240 ? currentText.length - 240 : 0;
+            final previewTail = currentText.substring(tailStart);
+            final elapsed = now.difference(providerStarted).inSeconds;
+            _setAgentRunStep(
+              2,
+              _AgentStepState.running,
+              detail: 'Streaming ${currentText.length} chars in ${elapsed}s...\n${_compact(previewTail, limit: 240)}',
+            );
+          }
+        }
+        final streamedAnswer = streamBuffer.toString();
+        if (streamedAnswer.trim().isEmpty) {
+          throw Exception('Provider stream completed without text.');
+        }
+        modelAnswer = streamedAnswer;
+        final elapsed = DateTime.now().difference(providerStarted).inSeconds;
+        _setAgentRunStep(2, _AgentStepState.done, detail: 'Streamed ${streamedAnswer.length} chars from ${_flavorLabel(flavor)} in ${elapsed}s.');
       }
-      final streamedAnswer = streamBuffer.toString();
-      if (streamedAnswer.trim().isEmpty) {
-        throw Exception('Provider stream completed without text.');
-      }
-      modelAnswer = streamedAnswer;
+
       if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
-      final elapsed = DateTime.now().difference(providerStarted).inSeconds;
-      _setAgentRunStep(2, _AgentStepState.done, detail: 'Streamed ${streamedAnswer.length} chars from ${_flavorLabel(flavor)} in ${elapsed}s.');
-      generatedPath = await _persistAgentGeneratedArtifact(toolName, modelAnswer);
+      if (!providerNativeHandledArtifacts) {
+        generatedPath = await _persistAgentGeneratedArtifact(toolName, modelAnswer);
+      }
       if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
       await _completeAgentRunStep(
         3,
-        detail: generatedPath == null ? 'No file artifact required for this tool.' : 'Saved generated artifact to $generatedPath',
+        detail: generatedPath == null
+            ? 'No file artifact required for this tool.'
+            : providerNativeHandledArtifacts
+                ? 'Provider-native tool call produced artifact at $generatedPath'
+                : 'Saved generated artifact to $generatedPath',
       );
       if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
       await _completeAgentRunStep(4);

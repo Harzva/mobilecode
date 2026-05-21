@@ -127,6 +127,8 @@ const _managedDeepSeekModel = String.fromEnvironment(
   defaultValue: 'deepseek-chat',
 );
 const _managedDeepSeekApiKey = String.fromEnvironment('MOBILECODE_MANAGED_DEEPSEEK_API_KEY');
+const _managedRelayUrl = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_URL');
+const _managedRelayToken = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_TOKEN');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
 const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.30';
@@ -721,8 +723,10 @@ String _providerPresetModel(_ProviderPreset preset) {
 
 bool _managedProviderPresetAvailable(_ProviderPreset preset) {
   return switch (preset) {
-    _ProviderPreset.mimo => _managedProviderEnabled && _managedApiKey.trim().isNotEmpty,
-    _ProviderPreset.deepSeek => _managedDeepSeekProviderEnabled && _managedDeepSeekApiKey.trim().isNotEmpty,
+    _ProviderPreset.mimo =>
+      _managedProviderEnabled && (_managedApiKey.trim().isNotEmpty || _managedRelayUrl.trim().isNotEmpty),
+    _ProviderPreset.deepSeek =>
+      _managedDeepSeekProviderEnabled && (_managedDeepSeekApiKey.trim().isNotEmpty || _managedRelayUrl.trim().isNotEmpty),
     _ => false,
   };
 }
@@ -2174,6 +2178,8 @@ class _HomeScreenState extends State<HomeScreen> {
         model: _effectiveModel,
         providerPreset: _managedProviderActive ? _activeManagedProviderPreset : _detectProviderPreset(_effectiveBaseUrl, _effectiveModel),
         managedProviderPresets: _managedProviderPresets,
+        relayUrl: _managedProviderActive ? _managedRelayUrl : '',
+        relayToken: _managedProviderActive ? _managedRelayToken : '',
         browserOpenMode: _browserOpenMode,
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
         onAgentPrompt: _handleAgentPrompt,
@@ -2628,6 +2634,8 @@ class _HomeScreenState extends State<HomeScreen> {
             model: _effectiveModel,
             providerPreset: _managedProviderActive ? _activeManagedProviderPreset : _detectProviderPreset(_effectiveBaseUrl, _effectiveModel),
             managedProviderPresets: _managedProviderPresets,
+            relayUrl: _managedProviderActive ? _managedRelayUrl : '',
+            relayToken: _managedProviderActive ? _managedRelayToken : '',
             browserOpenMode: _browserOpenMode,
             embedded: true,
             onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
@@ -9675,6 +9683,8 @@ class _ChatPanel extends StatefulWidget {
     required this.model,
     required this.providerPreset,
     required this.managedProviderPresets,
+    required this.relayUrl,
+    required this.relayToken,
     required this.browserOpenMode,
     required this.onLog,
     required this.onAgentPrompt,
@@ -9688,6 +9698,8 @@ class _ChatPanel extends StatefulWidget {
   final String model;
   final _ProviderPreset providerPreset;
   final List<_ProviderPreset> managedProviderPresets;
+  final String relayUrl;
+  final String relayToken;
   final String browserOpenMode;
   final void Function(String title, String detail, IconData icon, Color color) onLog;
   final Future<void> Function(String prompt) onAgentPrompt;
@@ -10158,6 +10170,38 @@ class _ChatPanelState extends State<_ChatPanel> {
     return systemPrompt.length + turns.fold<int>(0, (total, turn) => total + turn.content.length + turn.role.length + 8);
   }
 
+  bool get _usesManagedRelay => widget.relayUrl.trim().isNotEmpty && widget.providerPreset != _ProviderPreset.custom;
+
+  Uri _managedRelayUri() {
+    final normalized = _normalizedBaseUrl(widget.relayUrl.trim());
+    if (normalized.endsWith('/v1/provider')) return Uri.parse(normalized);
+    return Uri.parse('$normalized/v1/provider');
+  }
+
+  Map<String, dynamic> _relayEnvelope(_ApiFlavor flavor, Map<String, dynamic> body) {
+    return {
+      'provider': widget.providerPreset.name,
+      'flavor': _usageProviderKind(flavor),
+      'body': body,
+    };
+  }
+
+  void _configureProviderRequestHeaders(HttpClientRequest request, _ApiFlavor flavor) {
+    request.headers.contentType = ContentType.json;
+    if (_usesManagedRelay) {
+      if (widget.relayToken.trim().isNotEmpty) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.relayToken.trim()}');
+      }
+      request.headers.set('x-mobilecode-provider', widget.providerPreset.name);
+      return;
+    }
+    if (flavor == _ApiFlavor.anthropic) {
+      request.headers.set('anthropic-version', '2023-06-01');
+      request.headers.set('x-api-key', widget.apiKey);
+    }
+    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
+  }
+
   Future<String> _callProvider(
     List<_ChatTurn> history, {
     required String systemPrompt,
@@ -10169,7 +10213,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
     }
-    if (widget.apiKey.trim().isEmpty) {
+    if (!_usesManagedRelay && widget.apiKey.trim().isEmpty) {
       throw Exception('Provider is not configured: API key is empty.');
     }
     if (isCancelled?.call() == true) {
@@ -10177,34 +10221,30 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
 
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
+    final body = _requestBody(
+      flavor,
+      history,
+      systemPrompt: systemPrompt,
+      maxTokens: maxTokens,
+      stream: false,
+    );
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
     if (trackAgentRequest) {
       _agentProviderClient = client;
     }
     try {
-      final request = await client
-          .postUrl(flavor == _ApiFlavor.anthropic
-              ? _anthropicMessagesUri(widget.baseUrl)
-              : _openAiChatUri(widget.baseUrl))
-          .timeout(const Duration(seconds: 12));
+      final request = await client.postUrl(
+        _usesManagedRelay
+            ? _managedRelayUri()
+            : flavor == _ApiFlavor.anthropic
+                ? _anthropicMessagesUri(widget.baseUrl)
+                : _openAiChatUri(widget.baseUrl),
+      ).timeout(const Duration(seconds: 12));
       if (isCancelled?.call() == true) {
         throw Exception('Agent run stopped by user.');
       }
-      request.headers.contentType = ContentType.json;
-      if (flavor == _ApiFlavor.anthropic) {
-        request.headers.set('anthropic-version', '2023-06-01');
-      }
-      if (flavor == _ApiFlavor.anthropic) {
-        request.headers.set('x-api-key', widget.apiKey);
-      }
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
-      request.write(jsonEncode(_requestBody(
-        flavor,
-        history,
-        systemPrompt: systemPrompt,
-        maxTokens: maxTokens,
-        stream: false,
-      )));
+      _configureProviderRequestHeaders(request, flavor);
+      request.write(jsonEncode(_usesManagedRelay ? _relayEnvelope(flavor, body) : body));
 
       final response = await request.close().timeout(responseTimeout);
       if (isCancelled?.call() == true) {
@@ -10251,7 +10291,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
     }
-    if (widget.apiKey.trim().isEmpty) {
+    if (!_usesManagedRelay && widget.apiKey.trim().isEmpty) {
       throw Exception('Provider is not configured: API key is empty.');
     }
     if (isCancelled?.call() == true) {
@@ -10259,35 +10299,33 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
 
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
+    final body = _requestBody(
+      flavor,
+      history,
+      systemPrompt: systemPrompt,
+      maxTokens: maxTokens,
+      stream: true,
+    );
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
     if (trackAgentRequest) {
       _agentProviderClient = client;
     }
 
     try {
-      final request = await client
-          .postUrl(flavor == _ApiFlavor.anthropic
-              ? _anthropicMessagesUri(widget.baseUrl)
-              : _openAiChatUri(widget.baseUrl))
-          .timeout(const Duration(seconds: 12));
+      final request = await client.postUrl(
+        _usesManagedRelay
+            ? _managedRelayUri()
+            : flavor == _ApiFlavor.anthropic
+                ? _anthropicMessagesUri(widget.baseUrl)
+                : _openAiChatUri(widget.baseUrl),
+      ).timeout(const Duration(seconds: 12));
       if (isCancelled?.call() == true) {
         throw Exception('Agent run stopped by user.');
       }
 
-      request.headers.contentType = ContentType.json;
+      _configureProviderRequestHeaders(request, flavor);
       request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
-      if (flavor == _ApiFlavor.anthropic) {
-        request.headers.set('anthropic-version', '2023-06-01');
-        request.headers.set('x-api-key', widget.apiKey);
-      }
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
-      request.write(jsonEncode(_requestBody(
-        flavor,
-        history,
-        systemPrompt: systemPrompt,
-        maxTokens: maxTokens,
-        stream: true,
-      )));
+      request.write(jsonEncode(_usesManagedRelay ? _relayEnvelope(flavor, body) : body));
 
       final response = await request.close().timeout(responseTimeout);
       if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -10364,7 +10402,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
     }
-    if (widget.apiKey.trim().isEmpty) {
+    if (!_usesManagedRelay && widget.apiKey.trim().isEmpty) {
       throw Exception('Provider is not configured: API key is empty.');
     }
     if (isCancelled?.call() == true) {
@@ -10374,13 +10412,12 @@ class _ChatPanelState extends State<_ChatPanel> {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
     _agentProviderClient = client;
     try {
-      final request = await client.postUrl(_openAiChatUri(widget.baseUrl)).timeout(const Duration(seconds: 12));
+      final request = await client.postUrl(_usesManagedRelay ? _managedRelayUri() : _openAiChatUri(widget.baseUrl)).timeout(const Duration(seconds: 12));
       if (isCancelled?.call() == true) {
         throw Exception('Agent run stopped by user.');
       }
-      request.headers.contentType = ContentType.json;
-      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
-      request.write(jsonEncode(body));
+      _configureProviderRequestHeaders(request, _ApiFlavor.openAi);
+      request.write(jsonEncode(_usesManagedRelay ? _relayEnvelope(_ApiFlavor.openAi, body) : body));
 
       final response = await request.close().timeout(responseTimeout);
       if (isCancelled?.call() == true) {
@@ -10709,6 +10746,27 @@ class _ChatPanelState extends State<_ChatPanel> {
       }
 
       if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
+      if (!providerNativeHandledArtifacts &&
+          _toolRequiresHtmlArtifact(toolName) &&
+          _extractHtmlDocument(modelAnswer ?? '') == null) {
+        _setAgentRunStep(
+          2,
+          _AgentStepState.running,
+          detail: 'Provider response missed the required HTML artifact; asking once for a strict repair response.',
+        );
+        modelAnswer = await _repairMissingHtmlArtifactResponse(
+          toolName: toolName,
+          originalTurns: pending.turns,
+          systemPrompt: agentSystemPrompt,
+          originalAnswer: modelAnswer ?? '',
+          isCancelled: () => _agentCancelRequested,
+        );
+        _setAgentRunStep(
+          2,
+          _AgentStepState.done,
+          detail: 'Recovered a complete HTML artifact after one repair retry.',
+        );
+      }
       if (!providerNativeHandledArtifacts) {
         generatedPath = await _persistAgentGeneratedArtifact(toolName, modelAnswer);
       }
@@ -11071,10 +11129,59 @@ class _ChatPanelState extends State<_ChatPanel> {
     ].join('\n');
   }
 
-  Future<String?> _persistAgentGeneratedArtifact(String toolName, String modelAnswer) async {
-    final isWebArtifact = toolName == 'mobile_coding.generate_snake_preview' ||
+  bool _toolRequiresHtmlArtifact(String toolName) {
+    return toolName == 'mobile_coding.generate_snake_preview' ||
         toolName == 'mobile_coding.generate_2048_preview' ||
         toolName == 'mobile_coding.generate_web_preview';
+  }
+
+  Future<String> _repairMissingHtmlArtifactResponse({
+    required String toolName,
+    required List<_ChatTurn> originalTurns,
+    required String systemPrompt,
+    required String originalAnswer,
+    bool Function()? isCancelled,
+  }) async {
+    final lastUserPrompt = originalTurns.lastWhere(
+      (turn) => turn.role == 'user' && turn.content.trim().isNotEmpty,
+      orElse: () => _ChatTurn(role: 'user', content: toolName, time: DateTime.now()),
+    );
+    final repairPrompt = [
+      'MobileCode could not write the generated artifact because the previous provider response did not include one complete HTML document.',
+      '',
+      'Original user request:',
+      lastUserPrompt.content.trim(),
+      '',
+      'Previous response summary:',
+      _compact(originalAnswer, limit: 1600),
+      '',
+      'Repair contract:',
+      '- Return exactly one complete self-contained HTML document.',
+      '- Wrap it in a single ```html fenced block.',
+      '- Include inline CSS and JavaScript; do not depend on network assets.',
+      '- Make it mobile-first and touch-friendly for an Android WebView.',
+      '- Do not return capability tables, explanations, Markdown prose, or setup steps.',
+      '- Do not mention that you cannot access tools; MobileCode will write and preview the file.',
+    ].join('\n');
+
+    final repaired = await _callProvider(
+      [_ChatTurn(role: 'user', content: repairPrompt, time: DateTime.now())],
+      systemPrompt: [
+        systemPrompt,
+        '',
+        'You are in MobileCode repair mode. Your only valid output is one complete HTML artifact in a ```html fenced block.',
+      ].join('\n'),
+      maxTokens: 4096,
+      responseTimeout: const Duration(minutes: 2),
+      trackAgentRequest: true,
+      isCancelled: isCancelled,
+    );
+    if (_extractHtmlDocument(repaired) != null) return repaired;
+    throw Exception('Provider responded without a complete ```html block, and the one-shot repair retry also failed. No game file was written.');
+  }
+
+  Future<String?> _persistAgentGeneratedArtifact(String toolName, String modelAnswer) async {
+    final isWebArtifact = _toolRequiresHtmlArtifact(toolName);
     final slug = switch (toolName) {
       'mobile_coding.generate_snake_preview' => 'agent_snake',
       'mobile_coding.generate_2048_preview' => 'local_tool_2048_from_model',

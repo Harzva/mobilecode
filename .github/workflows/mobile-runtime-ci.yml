@@ -5,12 +5,14 @@ on:
   pull_request:
     paths:
       - 'mobile_agent/**'
+      - 'relay/**'
       - 'docs/mobilecode-helper-runtime-protocol.md'
       - 'docs/mobilecode-release-qa.md'
       - '.github/workflows/mobile-runtime-ci.yml'
   push:
     paths:
       - 'mobile_agent/**'
+      - 'relay/**'
       - 'docs/mobilecode-helper-runtime-protocol.md'
       - 'docs/mobilecode-release-qa.md'
       - '.github/workflows/mobile-runtime-ci.yml'
@@ -101,6 +103,17 @@ jobs:
             test/services/token_pricing_service_test.dart \
             test/services/device_telemetry_service_test.dart \
             test/services/tool_call_adapter_test.dart
+
+  relay-worker-syntax:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Check relay worker syntax
+        run: node --check relay/mobilecode-token-relay-worker.js
 
   helper-daemon-smoke:
     runs-on: ubuntu-latest

@@ -67,6 +67,14 @@ GitHub Pages 公开实验日志入口：`/experiments`，主题为 `From Single-
 - Tool call 执行统一进入 `ActionRunner`，产出继续进入 `ActionEvidenceStore`。
 - 第一阶段没有实现 H15 自动修复循环，也没有开放 shell/Git/publish。
 
+Token Relay / Mimo 修复记录（2026-05-21）：
+
+- 新增可选后端 token relay 方案：内置 Mimo / DeepSeek preset 可以走 `MOBILECODE_MANAGED_RELAY_URL`，provider key 留在后端环境变量，APK 不需要嵌入 provider key。
+- Custom provider 继续保持用户本地自填 Base URL / API Key / Model 的直连路径，不强制经过 relay。
+- Mimo generated-only 路径若没有返回完整 ```html fenced block，不再直接失败为终点，而是只追加一次严格 HTML artifact repair 请求；仍然不伪造文件，retry 后仍无 HTML 才失败。
+- DeepSeek native tool-call 路径保持增量不破坏：继续复用 `ToolCallAdapter -> ActionRunner -> ActionEvidence -> observation`。
+- Relay 第一版仅转发 Mimo Anthropic-compatible `/v1/messages` 与 DeepSeek OpenAI-compatible `/chat/completions`，不提供 shell/Git/publish/remote logs。
+
 当前先保持为单文件任务索引。后续如果任务继续膨胀，再单独开小任务拆成：
 
 ```text
@@ -669,6 +677,8 @@ Follow-up Fix Note（2026-05-21）：
 - Added chat composer model switcher near the voice button so users can switch between built-in Mimo and built-in DeepSeek without opening Settings.
 - Added build-time managed DeepSeek secret support via `MOBILECODE_DEEPSEEK_API_KEY`; credentials remain hidden in the UI and are not committed.
 - Adjusted completed agent trace visibility: a completed `Last agent process` can sit below a finished result, but once a new user message exists, the new message becomes the bottom focus.
+- Added optional `MOBILECODE_MANAGED_RELAY_URL` / `MOBILECODE_MANAGED_RELAY_TOKEN` path for built-in presets, so managed provider keys can move behind a backend relay while Custom provider remains direct.
+- Added a one-shot Mimo HTML artifact repair retry for generated-only web tasks; this is not H15 auto-repair because it only corrects missing fenced HTML before `ActionRunner.writeFile`.
 
 ### H09：Connector Readiness 模型
 

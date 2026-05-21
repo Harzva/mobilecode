@@ -77,15 +77,33 @@ jobs:
         env:
           MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
           MOBILECODE_DEEPSEEK_API_KEY: ${{ secrets.MOBILECODE_DEEPSEEK_API_KEY || secrets.DEEPSEEK_API_KEY }}
+          MOBILECODE_MANAGED_RELAY_URL: ${{ vars.MOBILECODE_MANAGED_RELAY_URL }}
+          MOBILECODE_MANAGED_RELAY_TOKEN: ${{ secrets.MOBILECODE_MANAGED_RELAY_TOKEN }}
           MOBILECODE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.MOBILECODE_GITHUB_OAUTH_CLIENT_ID }}
           MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET }}
           MOBILECODE_GITHUB_OAUTH_REDIRECT_URI: ${{ vars.MOBILECODE_GITHUB_OAUTH_REDIRECT_URI }}
         run: |
           DART_DEFINES=()
-          if [ -n "$MOBILECODE_DEEPSEEK_API_KEY" ]; then
+          if [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_RELAY_URL="$MOBILECODE_MANAGED_RELAY_URL")
+          fi
+          if [ -n "$MOBILECODE_MANAGED_RELAY_TOKEN" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_RELAY_TOKEN="$MOBILECODE_MANAGED_RELAY_TOKEN")
+          fi
+          if [ -n "$MOBILECODE_MANAGED_API_KEY" ] || [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_PROVIDER=true)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro)
+          fi
+          if [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY")
+          fi
+          if [ -n "$MOBILECODE_DEEPSEEK_API_KEY" ] || [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
             DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_PROVIDER=true)
             DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_BASE_URL=https://api.deepseek.com/v1)
             DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_MODEL=deepseek-chat)
+          fi
+          if [ -n "$MOBILECODE_DEEPSEEK_API_KEY" ]; then
             DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_API_KEY="$MOBILECODE_DEEPSEEK_API_KEY")
           fi
           if [ -n "$MOBILECODE_GITHUB_OAUTH_CLIENT_ID" ]; then
@@ -97,16 +115,7 @@ jobs:
           if [ -n "$MOBILECODE_GITHUB_OAUTH_REDIRECT_URI" ]; then
             DART_DEFINES+=(--dart-define=MOBILECODE_GITHUB_OAUTH_REDIRECT_URI="$MOBILECODE_GITHUB_OAUTH_REDIRECT_URI")
           fi
-          if [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
-            flutter build apk --release --target lib/main.dart \
-              --dart-define=MOBILECODE_MANAGED_PROVIDER=true \
-              --dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic \
-              --dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro \
-              --dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY" \
-              "${DART_DEFINES[@]}"
-          else
-            flutter build apk --release --target lib/main.dart "${DART_DEFINES[@]}"
-          fi
+          flutter build apk --release --target lib/main.dart "${DART_DEFINES[@]}"
 
       - name: Stage APK
         id: stage_apk

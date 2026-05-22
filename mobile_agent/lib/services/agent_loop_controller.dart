@@ -160,13 +160,23 @@ class AgentLoopController {
     required this.adapter,
     required this.actionRunner,
     required this.preset,
+    List<String>? allowedToolNames,
     this.maxRounds = 6,
-  });
+  }) : _allowedToolNames = allowedToolNames;
 
   final OpenAiCompatibleToolCallAdapter adapter;
   final ActionRunner actionRunner;
   final AgentPreset preset;
+  final List<String>? _allowedToolNames;
   final int maxRounds;
+
+  List<String> get allowedToolNames {
+    final base = _allowedToolNames ?? preset.allowedToolNames;
+    if (actionRunner.webToolInvoker != null) return List<String>.unmodifiable(base);
+    return List<String>.unmodifiable(
+      base.where((name) => name != 'web_search' && name != 'fetch_url'),
+    );
+  }
 
   Future<AgentLoopResult> run({
     required List<Map<String, dynamic>> initialMessages,
@@ -183,7 +193,7 @@ class AgentLoopController {
 
     onEvent?.call(AgentLoopEvent(
       type: AgentLoopEventType.started,
-      message: '${preset.label} started with ${preset.allowedToolNames.join(', ')}.',
+      message: '${preset.label} started with ${allowedToolNames.join(', ')}.',
     ));
 
     for (var round = 1; round <= maxRounds; round++) {
@@ -294,11 +304,12 @@ class AgentLoopController {
   }
 
   Future<ActionRunnerResult> _executeCall(ProviderToolCall call) async {
-    if (!preset.allowedToolNames.contains(call.name)) {
+    final currentAllowedToolNames = allowedToolNames;
+    if (!currentAllowedToolNames.contains(call.name)) {
       return _blockedProviderToolResult(
         call,
         'Tool ${call.name} is not allowed for ${preset.label}.',
-        ['Switch agent preset or use an allowed tool: ${preset.allowedToolNames.join(', ')}.'],
+        ['Switch agent preset or use an allowed tool: ${currentAllowedToolNames.join(', ')}.'],
       );
     }
 

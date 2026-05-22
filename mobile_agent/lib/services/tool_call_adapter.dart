@@ -270,11 +270,11 @@ class OpenAiCompatibleToolCallAdapter {
 
   String get systemInstruction => [
         'When a mobile coding request needs a file or preview, use the provided tools instead of only describing the result.',
-        'Allowed tools are list_files, web_search, fetch_url, write_file, read_file, move_file, preview_html, preview_snapshot, and report_result.',
+        'MobileCode tools may include list_files, web_search, fetch_url, write_file, read_file, move_file, preview_html, preview_snapshot, and report_result; only call tools exposed in the current request.',
         'Use web_search/fetch_url only for public reference gathering. Use preview_snapshot after preview_html when the user asks for a visible product check.',
         'Use list_files instead of shell ls, and move_file instead of shell mv. Do not ask for raw Android or Termux commands.',
         'Never request shell, Git push, publishing, remote logging, or arbitrary commands.',
-        'Use paths relative to the MobileCode workspace. Do not include secrets in arguments.',
+        'Use paths relative to the MobileCode workspace. If writing one web artifact and no path is obvious, use index.html. Do not include secrets in arguments.',
         'For complex web demos, choose the smallest safe next tool yourself. You may list, search, fetch, write, read, move, preview, snapshot, or report depending on the current observation.',
         'After tool observations, call report_result or answer with a concise final summary.',
       ].join('\n');
@@ -286,17 +286,23 @@ class OpenAiCompatibleToolCallAdapter {
     int maxTokens = 4096,
     bool stream = false,
     ToolChoiceMode toolChoice = ToolChoiceMode.auto,
+    List<String>? allowedToolNames,
   }) {
+    final tools = toolDefinitions(strict: profile.strictTools, allowedToolNames: allowedToolNames);
+    final exposedToolNames = tools
+        .map((tool) => (tool['function'] as Map<String, dynamic>)['name'])
+        .whereType<String>()
+        .join(', ');
     return {
       'model': model,
       'messages': [
-        {'role': 'system', 'content': '$systemPrompt\n\n$systemInstruction'},
+        {'role': 'system', 'content': '$systemPrompt\n\n$systemInstruction\n\nCurrently exposed tools: $exposedToolNames.'},
         ...messages,
       ],
       'max_tokens': maxTokens,
       'stream': stream,
       if (stream) 'stream_options': {'include_usage': true},
-      'tools': toolDefinitions(strict: profile.strictTools),
+      'tools': tools,
       // DeepSeek defaults to auto when tools are present. Omitting tool_choice
       // keeps reasoning/tool-call models on the widest compatible request path.
       if (!profile.isDeepSeek) 'tool_choice': toolChoice.name,
@@ -379,14 +385,23 @@ class OpenAiCompatibleToolCallAdapter {
           },
         );
       case 'write_file':
+        final content = _stringArgAny(args, const ['content', 'html', 'body']);
+        final path = _safeWritePath(args, content);
+        final repairNotes = [
+          _stringArg(args, '_adapterArgumentRepair'),
+          _writePathRepairNote(args, path),
+        ].where((note) => note.isNotEmpty).toList();
         return ActionSchema(
           actionName: MobileCodeAction.writeFile,
           requestId: call.id,
-          paramsSummary: 'provider-native write_file',
+          paramsSummary: repairNotes.isEmpty
+              ? 'provider-native write_file'
+              : 'provider-native write_file; adapter repaired ${repairNotes.join('; ')}',
           params: {
-            'path': _stringArg(args, 'path'),
-            'content': _stringArg(args, 'content'),
+            'path': path,
+            'content': content,
             'overwrite': _boolArg(args, 'overwrite', defaultValue: true),
+            if (repairNotes.isNotEmpty) 'adapterRepair': repairNotes.join('; '),
           },
         );
       case 'read_file':
@@ -491,7 +506,10 @@ class OpenAiCompatibleToolCallAdapter {
     ].join('\n\n').trim();
   }
 
-  static List<Map<String, dynamic>> toolDefinitions({bool strict = false}) {
+  static List<Map<String, dynamic>> toolDefinitions({
+    bool strict = false,
+    List<String>? allowedToolNames,
+  }) {
     Map<String, dynamic> functionTool({
       required String name,
       required String description,
@@ -514,7 +532,7 @@ class OpenAiCompatibleToolCallAdapter {
       };
     }
 
-    return [
+    final tools = [
       functionTool(
         name: 'list_files',
         description: 'List files inside the MobileCode workspace. Safe replacement for ls; cannot read outside the workspace.',
@@ -604,6 +622,13 @@ class OpenAiCompatibleToolCallAdapter {
         required: const ['status', 'summary', 'detail'],
       ),
     ];
+    if (allowedToolNames == null) return tools;
+    final allowed = allowedToolNames.toSet();
+    return tools.where((tool) {
+      final function = tool['function'];
+      if (function is! Map<String, dynamic>) return false;
+      return allowed.contains(function['name']);
+    }).toList();
   }
 
   Map<String, dynamic> _actionResultPayload(ActionRunnerResult result) {
@@ -683,20 +708,120 @@ Map<String, dynamic> _parseArguments(Object? value) {
   if (value is Map<String, dynamic>) return value;
   if (value is Map) return Map<String, dynamic>.from(value);
   if (value is String && value.trim().isNotEmpty) {
+    final trimmed = value.trim();
     try {
-      final decoded = jsonDecode(value);
+      final decoded = jsonDecode(trimmed);
       if (decoded is Map<String, dynamic>) return decoded;
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
     } catch (_) {
+      final repaired = _repairMalformedArguments(trimmed);
+      if (repaired.isNotEmpty) return repaired;
       return const {};
     }
   }
   return const {};
 }
 
+Map<String, dynamic> _repairMalformedArguments(String raw) {
+  final candidates = <String>[
+    raw,
+    if (!raw.startsWith('{')) '{$raw',
+    if (!raw.endsWith('}')) '$raw}',
+    if (!raw.startsWith('{') && !raw.endsWith('}')) '{$raw}',
+  ];
+  for (final candidate in candidates) {
+    try {
+      final decoded = jsonDecode(candidate);
+      if (decoded is Map<String, dynamic>) {
+        return {
+          ...decoded,
+          '_adapterArgumentRepair': 'recovered malformed JSON tool arguments',
+        };
+      }
+      if (decoded is Map) {
+        return {
+          ...Map<String, dynamic>.from(decoded),
+          '_adapterArgumentRepair': 'recovered malformed JSON tool arguments',
+        };
+      }
+    } catch (_) {
+      // Try the next repair shape, then fall back to HTML extraction.
+    }
+  }
+
+  final html = _extractHtmlFromMalformedArguments(raw);
+  if (html != null) {
+    return {
+      'content': html,
+      'overwrite': true,
+      '_adapterArgumentRepair': 'recovered complete HTML from malformed tool arguments',
+    };
+  }
+  return const {};
+}
+
+String? _extractHtmlFromMalformedArguments(String raw) {
+  final lower = raw.toLowerCase();
+  final doctypeStart = lower.indexOf('<!doctype html');
+  final htmlStart = doctypeStart >= 0 ? doctypeStart : lower.indexOf('<html');
+  if (htmlStart < 0) return null;
+  final htmlEnd = lower.lastIndexOf('</html>');
+  if (htmlEnd >= htmlStart) {
+    return raw.substring(htmlStart, htmlEnd + '</html>'.length).trim();
+  }
+  return raw.substring(htmlStart).trim();
+}
+
 String _stringArg(Map<String, dynamic> args, String key) {
   final value = args[key];
   return value is String ? value.trim() : '';
+}
+
+String _stringArgAny(Map<String, dynamic> args, List<String> keys) {
+  for (final key in keys) {
+    final value = _stringArg(args, key);
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
+String _firstPresentKey(Map<String, dynamic> args, List<String> keys) {
+  for (final key in keys) {
+    final value = args[key];
+    if (value is String && value.trim().isNotEmpty) return key;
+  }
+  return '';
+}
+
+String _safeWritePath(Map<String, dynamic> args, String content) {
+  final explicit = _stringArgAny(args, const [
+    'path',
+    'file_path',
+    'filepath',
+    'filename',
+    'fileName',
+    'name',
+  ]);
+  if (explicit.isNotEmpty) return explicit;
+  final lowerContent = content.toLowerCase();
+  if (lowerContent.contains('<!doctype html') || lowerContent.contains('<html')) {
+    return 'index.html';
+  }
+  return '';
+}
+
+String _writePathRepairNote(Map<String, dynamic> args, String resolvedPath) {
+  if (_stringArg(args, 'path').isNotEmpty) return '';
+  final aliasKey = _firstPresentKey(args, const [
+    'file_path',
+    'filepath',
+    'filename',
+    'fileName',
+    'name',
+  ]);
+  if (aliasKey.isNotEmpty) return 'normalized path from `$aliasKey`';
+  if (resolvedPath == 'index.html') return 'inferred safe workspace path `index.html` for complete HTML';
+  return '';
 }
 
 bool _boolArg(Map<String, dynamic> args, String key, {required bool defaultValue}) {

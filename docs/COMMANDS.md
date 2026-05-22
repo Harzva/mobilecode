@@ -23,8 +23,8 @@ This is intentionally closer to DeepSeek-TUI's typed tool registry than to `exec
 | Tool | Unix idea | Risk | Scope | Status |
 |---|---|---:|---|---|
 | `list_files` | `ls`, `dir`, limited `find` | Read | Workspace only | Supported |
-| `web_search` | web search, not shell | Network read | Relay-backed public web | Supported |
-| `fetch_url` | safe `curl` / `wget` | Network read | Public HTTPS via relay | Supported |
+| `web_search` | web search, not shell | Network read | Relay-backed public web | Supported when relay configured |
+| `fetch_url` | safe `curl` / `wget` | Network read | Public HTTPS via relay | Supported when relay configured |
 | `write_file` | `cat > file` | Write | Workspace only | Supported |
 | `read_file` | `cat`, `head`, `tail` | Read | Workspace only | Supported |
 | `move_file` | `mv` | Guarded write | File-only, workspace only | Supported |
@@ -79,7 +79,9 @@ Notes:
 
 - Cannot write outside the app workspace.
 - Writes are evidence-backed.
-- The model must provide `path`; missing `path` is a schema/argument failure, not an Android permission failure.
+- The model should provide `path`; MobileCode also accepts common aliases such as `filename` and `file_path`.
+- If a complete HTML artifact is provided without a path, MobileCode safely defaults to `index.html` inside the workspace.
+- If the provider sends malformed tool arguments that still contain a complete HTML document, MobileCode attempts to recover the HTML content and records the repair in ActionEvidence.
 
 ### `move_file`
 
@@ -110,6 +112,7 @@ Notes:
 
 - Does not expose search provider secrets in the APK.
 - Produces compact references for the model.
+- If the managed relay endpoint is not configured, this tool is not exposed to the provider request.
 
 ### `fetch_url`
 
@@ -124,6 +127,7 @@ Notes:
 
 - Local/private URLs are blocked.
 - This is the safe equivalent of a constrained `curl`.
+- If the managed relay endpoint is not configured, this tool is not exposed to the provider request.
 
 ### `preview_html`
 
@@ -196,4 +200,3 @@ Use provider-native typed tools instead of raw shell commands.
 Translate ls/cat/mv/curl-style requests into list_files/read_file/move_file/fetch_url when possible.
 Never attempt sudo, package installation, system Android commands, or writes outside the workspace.
 ```
-

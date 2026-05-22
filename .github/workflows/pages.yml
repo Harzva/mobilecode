@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - last
+      - last-recover-from-v039
     paths:
       - 'app/**'
       - 'docs/**'

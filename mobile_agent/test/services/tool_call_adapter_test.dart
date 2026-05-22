@@ -101,6 +101,19 @@ void main() {
     }
   });
 
+  test('filters tool schema to currently exposed MobileCode tools', () {
+    final tools = OpenAiCompatibleToolCallAdapter.toolDefinitions(
+      allowedToolNames: const ['list_files', 'write_file', 'read_file', 'report_result'],
+    );
+    final names = tools
+        .map((tool) => ((tool['function'] as Map<String, dynamic>)['name'] as String))
+        .toList();
+
+    expect(names, ['list_files', 'write_file', 'read_file', 'report_result']);
+    expect(names, isNot(contains('web_search')));
+    expect(names, isNot(contains('fetch_url')));
+  });
+
   test('parses non-streaming tool_calls and maps write_file to ActionSchema', () {
     final adapter = OpenAiCompatibleToolCallAdapter(
       profile: ToolCallProviderProfile.detect(
@@ -138,6 +151,85 @@ void main() {
     expect(schema.params['path'], 'game/index.html');
     expect(schema.params['content'], '<!doctype html>');
     expect(schema.params['overwrite'], true);
+  });
+
+  test('write_file defaults missing path for complete HTML content', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-flash',
+      ),
+    );
+
+    final schema = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_write',
+      name: 'write_file',
+      arguments: {
+        'content': '<!doctype html><html><body>Hi</body></html>',
+        'overwrite': true,
+      },
+    ))!;
+
+    expect(schema.params['path'], 'index.html');
+    expect(schema.params['content'], contains('<body>Hi</body>'));
+    expect(schema.params['adapterRepair'], contains('inferred safe workspace path'));
+  });
+
+  test('write_file accepts common file path aliases', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-flash',
+      ),
+    );
+
+    final schema = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_write',
+      name: 'write_file',
+      arguments: {
+        'filename': 'demo.html',
+        'content': '<!doctype html><html></html>',
+      },
+    ))!;
+
+    expect(schema.params['path'], 'demo.html');
+    expect(schema.params['adapterRepair'], contains('normalized path from `filename`'));
+  });
+
+  test('repairs malformed write_file arguments that contain a complete HTML document', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-flash',
+      ),
+    );
+
+    final parsed = adapter.parseChatCompletion({
+      'choices': [
+        {
+          'finish_reason': 'tool_calls',
+          'message': {
+            'role': 'assistant',
+            'content': '',
+            'tool_calls': [
+              {
+                'id': 'call_write',
+                'type': 'function',
+                'function': {
+                  'name': 'write_file',
+                  'arguments': '<!doctype html><html><body>Recovered</body></html>',
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    final schema = adapter.toActionSchema(parsed.toolCalls.single)!;
+    expect(schema.params['path'], 'index.html');
+    expect(schema.params['content'], contains('Recovered'));
+    expect(schema.params['adapterRepair'], contains('recovered complete HTML'));
   });
 
   test('maps relay web tools and preview snapshot to ActionSchema', () {
@@ -614,6 +706,38 @@ void main() {
       expect(message['tool_call_id'], 'call_write');
       expect(message['content'], contains('"success":true'));
       expect(message['content'], contains('"evidenceId":"call_write"'));
+    } finally {
+      if (await workspace.exists()) {
+        await workspace.delete(recursive: true);
+      }
+    }
+  });
+
+  test('tool result records adapter repair evidence when arguments are recovered', () async {
+    final workspace = await Directory.systemTemp.createTemp('mobilecode_tool_adapter_repair_');
+    final store = ActionEvidenceStore();
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-flash',
+      ),
+    );
+    try {
+      final call = const ProviderToolCall(
+        id: 'call_write',
+        name: 'write_file',
+        arguments: {
+          'content': '<!doctype html><html><body>Repair evidence</body></html>',
+          'overwrite': true,
+        },
+      );
+      final result = await runner.run(adapter.toActionSchema(call)!);
+
+      expect(result.success, true);
+      expect(result.evidence.logs.join(' '), contains('Adapter repaired tool arguments'));
+      expect(result.evidence.metadata['adapterRepair'], contains('inferred safe workspace path'));
+      expect(await File('${workspace.path}/index.html').exists(), true);
     } finally {
       if (await workspace.exists()) {
         await workspace.delete(recursive: true);

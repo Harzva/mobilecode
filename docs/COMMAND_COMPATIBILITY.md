@@ -35,8 +35,8 @@ This lets models reuse Linux/macOS development habits while MobileCode keeps And
 | Replace text | `sed -i`, editor replace | Risky without diff preview | Planned | `edit_file` / `apply_patch` later |
 | Diff | `diff`, `git diff` | Can be snapshot-based | Planned | `git_diff_virtual` later |
 | Patch | `patch`, `git apply` | Safe with workspace validation | Planned | `apply_patch` later |
-| Web fetch | `curl`, `wget` | App should not fetch private/local targets | Supported | `fetch_url` relay |
-| Web search | search CLI / browser | Requires managed relay | Supported | `web_search` relay |
+| Web fetch | `curl`, `wget` | App should not fetch private/local targets | Supported when relay configured | `fetch_url` relay |
+| Web search | search CLI / browser | Requires managed relay | Supported when relay configured | `web_search` relay |
 | Preview | browser open | App has WebView | Supported | `preview_html` |
 | Preview evidence | screenshot | Native bitmap capture not implemented | Partial | `preview_snapshot` metadata |
 | Package managers | `npm`, `pip`, `brew`, `apt` | Not guaranteed on Android app sandbox | Runtime only | Helper/Termux/CI later |
@@ -67,8 +67,8 @@ macOS is not Linux, but it still offers a broad Unix command surface. Android ap
 Supported today in provider-native Agent Loop:
 
 - `list_files`
-- `web_search`
-- `fetch_url`
+- `web_search` when managed relay is configured
+- `fetch_url` when managed relay is configured
 - `write_file`
 - `read_file`
 - `move_file`
@@ -98,7 +98,7 @@ that usually means:
 - the tool arguments were incomplete;
 - MobileCode correctly rejected the call before execution.
 
-This is not an Android storage permission issue. It is a provider/tool schema adherence issue, and the recovery path is to feed back the failed evidence and ask the model to call the same tool with valid required parameters.
+This is not an Android storage permission issue. It is a provider/tool schema adherence issue. MobileCode now accepts common path aliases, can safely default complete HTML writes to `index.html`, and can recover HTML content from some malformed tool argument strings; if the content itself is missing or cannot be recovered, the correct recovery path is still to feed back the failed evidence and ask the model for valid arguments.
 
 ## Expansion Roadmap
 
@@ -144,4 +144,3 @@ Status: in progress.
 - `copy_to_downloads`
 - `request_workspace_permission`
 - optional Termux bridge, explicit user opt-in only
-

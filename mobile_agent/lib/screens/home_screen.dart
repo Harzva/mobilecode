@@ -11003,6 +11003,7 @@ class _ChatPanelState extends State<_ChatPanel> {
             maxTokens: 4096,
             stream: true,
             toolChoice: ToolChoiceMode.auto,
+            allowedToolNames: controller.allowedToolNames,
           ),
           responseTimeout: const Duration(minutes: 3),
           isCancelled: isCancelled,

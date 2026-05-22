@@ -13,21 +13,31 @@ import {
 } from 'lucide-react';
 
 const implemented = [
-  'v0.1.43-last restores the v0.1.39 product UI baseline.',
-  'ActionRunner now executes writeFile, readFile, and previewHtml.',
-  'ActionEvidence records action name, success, duration, artifact paths, URLs, logs, and recovery hints.',
-  'Tools -> Activity / Logs reads recent and failed evidence without search, remote logging, or new execution paths.',
+  'v0.1.43-last restored the v0.1.39 product UI baseline and kept it as the recovery line.',
+  'DeepSeek now has a provider-native tool-calling Agent Loop path; Mimo and unsupported providers keep Single-shot fallback.',
+  'ActionRunner executes safe typed tools and ActionEvidence records action name, success, duration, artifact paths, URLs, logs, and recovery hints.',
+  'Tools now exposes Activity / Logs, provider tool list, preset permissions, and Android/Linux/macOS command compatibility.',
 ];
 
 const missing = [
-  'The model still usually returns one complete answer, and the app extracts/saves the artifact.',
-  'The model does not yet choose tools through provider-native tool calls.',
-  'Tool results are not yet fed back into a multi-step observation loop.',
-  'Failure evidence does not yet trigger model reflection, repair actions, and reviewed retry.',
+  'The Agent Loop is still minimal and safety-bounded, not a full autonomous coding runtime.',
+  'Search, patch, copy, mkdir, delete, virtual git diff, rollback, and project summary tools are not all exposed yet.',
+  'Native bitmap preview screenshots and rich visual verification are not implemented yet.',
+  'Multi-agent collaboration is still a product design target, not a default execution mode.',
 ];
 
-const safeTools = ['write_file', 'read_file', 'preview_html', 'report_result'];
-const blockedTools = ['shell', 'git push', 'publish', 'remote logs', 'arbitrary command'];
+const safeTools = [
+  'list_files',
+  'web_search',
+  'fetch_url',
+  'write_file',
+  'read_file',
+  'move_file',
+  'preview_html',
+  'preview_snapshot',
+  'report_result',
+];
+const blockedTools = ['shell', 'rm', 'sudo', 'git push', 'publish', 'remote logs', 'arbitrary command'];
 
 const loop = [
   { title: 'Model intent', text: 'The model expresses what should happen, not a claim that it already happened.' },
@@ -38,36 +48,103 @@ const loop = [
   { title: 'Next action', text: 'A loop can repair, preview, report, or stop with an honest final answer.' },
 ];
 
+const dailyLogs = [
+  {
+    date: '2026-05-22',
+    title: 'DeepSeek Agent Loop and Mobile Unix Facade',
+    points: [
+      'DeepSeek is the first provider-native Agent Loop validation line; unsupported providers do not pretend to be Agent Loop.',
+      'MobileCode added a visible tool list and command compatibility map so users can see exactly which mobile-safe coding actions are supported.',
+      'The first facade tools are list_files and move_file, mapped from ls/find and mv while staying inside the app workspace.',
+      'The product direction is a mobile-safe command layer: familiar coding workflow for the model, Android-safe typed tools underneath.',
+      'A phone build must also hide unavailable tools: if web relay is not configured, web_search and fetch_url are not offered to the model.',
+      'When a model returns a malformed write_file call that still contains a complete HTML artifact, MobileCode can recover the content, save it as index.html inside the workspace, and record that repair as evidence.',
+    ],
+  },
+  {
+    date: '2026-05-21',
+    title: 'From Single-Shot Generation to Tool-Calling Harness',
+    points: [
+      'The project clarified that natural language is not an execution protocol.',
+      'The honest baseline was single-shot generation with executable evidence.',
+      'The next target became model intent -> tool call -> ActionRunner -> evidence -> observation -> next action.',
+    ],
+  },
+];
+
+const deepSeekTuiLessons = [
+  {
+    title: 'Mobile sandbox first',
+    text: 'A phone app cannot behave like an unrestricted desktop terminal. Every file, preview, and network action must stay inside clear app boundaries.',
+  },
+  {
+    title: 'Typed tools before shell',
+    text: 'Users should see familiar coding actions such as list, read, write, preview, and move, while MobileCode executes them through safe app-native tools.',
+  },
+  {
+    title: 'Observation over claims',
+    text: 'The app should not trust a sentence like “I wrote the file.” It should show the real path, result, preview state, evidence, and recovery hint.',
+  },
+  {
+    title: 'Small agents, clear roles',
+    text: 'Builder, Research, Repair, and Reviewer are user-facing work modes. They make the mobile experience understandable without exposing unsafe internals.',
+  },
+];
+
 export default function Experiments() {
   return (
     <section className="page-section experiment-page">
       <div className="section-container">
         <div className="experiment-hero">
           <div>
-            <p className="eyebrow">Experiment Log / 2026-05-21</p>
+            <p className="eyebrow">Experiment Logs / Daily</p>
             <h1>From Single-Shot Generation to Tool-Calling Harness</h1>
             <p>
-              This note records a turning point in MobileCode: the project now has executable evidence,
-              but it should not be described as a complete provider-native tool-calling agent yet.
+              MobileCode keeps a public daily engineering log here. The rule is simple: every important
+              harness decision should be visible in GitHub Pages, not only hidden in local plans.
             </p>
           </div>
           <div className="experiment-ledger" aria-label="Experiment status">
             <span>Baseline</span>
-            <strong>v0.1.43-last</strong>
+            <strong>last-recover-from-v039</strong>
             <span>Truth line</span>
-            <strong>v0.1.39 UI + ActionRunner evidence</strong>
+            <strong>v0.1.39 UI + DeepSeek Agent Loop</strong>
             <span>Next gate</span>
-            <strong>ToolCallAdapter</strong>
+            <strong>Search / patch / rollback tools</strong>
           </div>
         </div>
 
         <div className="experiment-callout">
           <ShieldCheck size={22} />
           <p>
-            Current version is <strong>single-shot generation with executable evidence</strong>. The next
-            engineering target is a <strong>multi-step tool-calling agent loop</strong>.
+            Current version is <strong>a mixed harness</strong>: Single-shot remains the stable default,
+            while DeepSeek can use a <strong>minimal provider-native Agent Loop</strong>. The next target
+            is a richer typed tool surface without opening raw shell.
           </p>
         </div>
+
+        <article className="experiment-panel">
+          <div className="experiment-panel-title">
+            <FileCode2 size={24} />
+            <div>
+              <span>Daily log</span>
+              <h2>Public experiment notes</h2>
+            </div>
+          </div>
+          <div className="experiment-grid">
+            {dailyLogs.map((log) => (
+              <article className="experiment-card" key={log.date}>
+                <h2>{log.date}</h2>
+                <h3>{log.title}</h3>
+                <ul>
+                  {log.points.map((point) => (
+                    <li key={point}>{point}</li>
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </article>
 
         <div className="experiment-grid">
           <article className="experiment-card">
@@ -110,10 +187,29 @@ export default function Experiments() {
           </div>
         </article>
 
+        <article className="experiment-panel">
+          <div className="experiment-panel-title">
+            <GitBranch size={24} />
+            <div>
+              <span>Mobile challenge</span>
+              <h2>Building an agent on a phone is not the same as wrapping a desktop shell</h2>
+            </div>
+          </div>
+          <div className="experiment-flow">
+            {deepSeekTuiLessons.map((lesson, index) => (
+              <div className="experiment-step" key={lesson.title}>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                <h3>{lesson.title}</h3>
+                <p>{lesson.text}</p>
+              </div>
+            ))}
+          </div>
+        </article>
+
         <div className="experiment-split">
           <article className="experiment-card">
             <Braces size={24} />
-            <h2>Minimal provider-native tool call</h2>
+            <h2>Provider-native tool call</h2>
             <p>
               Instead of placing a tool list only in natural-language prompts, MobileCode should pass
               structured tools to providers that support OpenAI tools or Anthropic tool_use.

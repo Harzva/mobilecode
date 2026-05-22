@@ -230,6 +230,104 @@ void main() {
     expect(store.recent(count: 10).map((evidence) => evidence.actionName), contains(MobileCodeAction.writeFile));
   });
 
+  test('filters relay-backed web tools when no managed relay is configured', () async {
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.autoAgent,
+    );
+
+    expect(controller.allowedToolNames, isNot(contains('web_search')));
+    expect(controller.allowedToolNames, isNot(contains('fetch_url')));
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'research and build a page'},
+      ],
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_search',
+                name: 'web_search',
+                arguments: {'query': 'mobile reference', 'count': 1},
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: '',
+          toolCalls: [
+            ProviderToolCall(
+              id: 'call_report',
+              name: 'report_result',
+              arguments: {
+                'status': 'blocked',
+                'summary': 'Web tools were unavailable.',
+                'detail': 'Agent should continue with local tools or ask for relay configuration.',
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Web tools were unavailable'));
+    expect(store.failures().single.logs.join(' '), contains('not allowed'));
+  });
+
+  test('builder writes HTML when provider omits path but sends complete content', () async {
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.builder,
+    );
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'build a minimal page'},
+      ],
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_write',
+                name: 'write_file',
+                arguments: {
+                  'content': '<!doctype html><html><body>Default path</body></html>',
+                  'overwrite': true,
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: '',
+          toolCalls: [
+            ProviderToolCall(
+              id: 'call_report',
+              name: 'report_result',
+              arguments: {
+                'status': 'success',
+                'summary': 'Default path write completed.',
+                'detail': 'index.html was used.',
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Default path write completed'));
+    expect(await File('${workspace.path}/index.html').readAsString(), contains('Default path'));
+  });
+
   test('agent loop appends assistant tool-call message with reasoning before tool results', () async {
     final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
     final controller = AgentLoopController(

@@ -62,6 +62,14 @@ DeepSeek Provider
 - 不把模型自然语言输出伪装成真实执行。
 - 不读取、不打印、不提交任何本地密钥文件。
 
+## GitHub Pages 日志规则
+
+- 每天形成重要工程认知、协议边界、验收结论或失败复盘时，必须同步到 GitHub Pages `实验日志` 页面。
+- 内部计划文档记录任务状态、证据和风险；GitHub Pages 记录对外可读的公开复盘。
+- 公开日志不得包含密钥、私有路径、token、内部账号或未公开凭据。
+- 对外口径必须诚实：区分 Single-shot、provider-native Agent Loop、fallback、runtime-only 和 blocked 能力。
+- 当前日志入口：`app/src/pages/Experiments.tsx`。
+
 ## 快速执行顺序
 
 建议每轮只做一个任务编号，避免再次出现分支或 UI 回归问题。
@@ -72,6 +80,7 @@ DeepSeek Provider
 - [x] DS03 Thinking + Tool Calls 回传加固（本地实现完成，CI 待验收）
 - [x] DS04 Streaming tool_calls 完整测试（本地实现完成，CI 待验收）
 - [x] DS04.1 Mobile Unix Facade 命令语义层（本地实现完成，CI 待验收）
+- [x] DS04.2 AgentLoop 可用工具 gating 与缺省写入路径修复（本地实现完成，CI 待验收）
 - [ ] DS05 DeepSeek 错误码映射
 - [ ] DS06 Usage / Cache / Reasoning 观测
 - [ ] DS07 JSON Output 降级路径
@@ -453,6 +462,49 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 - `grep_files / find_files / edit_file / apply_patch / copy_file / mkdir / delete_file / snapshot` 仍未作为 provider-native tool 暴露。
 - `delete_file` 与批量替换需二次确认机制，不应直接进入默认 Auto Agent。
 - Runtime-only 命令仍依赖 Helper/Termux/CI，不能在当前 provider-native AgentLoop 中承诺可执行。
+
+## DS04.2 AgentLoop 可用工具 gating 与缺省写入路径修复
+
+状态：`ACCEPTED`（本地实现完成，CI 待验收）
+
+问题来源：
+
+- 真机验收 `v0.1.54-last` 时，模型第一轮选择 `web_search`，但当前 APK 没有可用 managed relay endpoint，导致 `webSearch requires the managed relay web tool endpoint`。
+- 后续 DeepSeek 多轮选择 `write_file`，但参数缺少必填 `path`，导致 `Missing required string param: path` 循环失败。
+
+根因判断：
+
+- 这不是 Android 文件权限问题。
+- 第一类失败是工具可用性 gating 问题：不可用的 relay-backed web tools 不应该出现在当前 provider request tools 中。
+- 第二类失败是 provider-native tool argument 稳定性问题：模型可能生成完整 HTML content，但漏填 path 或使用 `filename/file_path` 等别名。
+
+本轮实现：
+
+- `AgentLoopController.allowedToolNames` 根据当前 `ActionRunner.webToolInvoker` 自动过滤 `web_search / fetch_url`。
+- `OpenAiCompatibleToolCallAdapter.buildChatCompletionRequest()` 支持 `allowedToolNames`，只把当前真实可执行工具传给 provider。
+- System instruction 改为“当前请求暴露哪些工具就只能调用哪些工具”，避免模型看到不可用 web tools。
+- `write_file` 支持 `path / file_path / filepath / filename / fileName / name` 路径别名。
+- 当 provider 返回 malformed tool arguments 但其中包含完整 HTML 时，`ToolCallAdapter` 会尝试恢复 `content`，不是直接丢弃为 `{}`。
+- 当 `write_file` 缺少 path 但 content 是完整 HTML 时，安全缺省到 workspace 内 `index.html`。
+- 参数恢复/路径推断会写入 `ActionEvidence.logs` 与 `metadata.adapterRepair`，便于 Activity Logs 和后续 observation 复盘。
+- 新增单元测试覆盖工具过滤、缺省 HTML 写入路径、路径别名，以及无 relay 时 web tool 被阻止。
+
+验收口径：
+
+- 无 relay 配置时，DeepSeek Auto/Research 不应再收到 `web_search / fetch_url` tool definitions。
+- 完整 HTML 的 `write_file` 即使以 malformed arguments 或缺 path 形式返回，也应被 adapter 恢复为 `content + index.html` 并写入 evidence，而不是循环失败。
+- 仍然不允许写出 workspace，也不开放 shell/Git/publish/remote logs。
+
+验证：
+
+- [ ] `git diff --check`
+- [ ] GitHub Actions `Mobile Runtime CI`
+- [ ] 下一个 APK 真机验收
+
+剩余风险：
+
+- 如果模型返回的 `write_file` 参数连完整 HTML / `content` / `html` / `body` 都无法解析，仍会失败；这是正确的安全拒绝。
+- `web_search / fetch_url` 仍依赖 relay endpoint；无 relay 时只能使用本地文件/预览类工具。
 
 ## DS05 DeepSeek 错误码映射
 

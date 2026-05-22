@@ -170,6 +170,7 @@ class ActionRunner {
     final target = _resolveWorkspacePath(_requiredString(schema, 'path'));
     final content = _requiredString(schema, 'content');
     final overwrite = schema.params['overwrite'] as bool? ?? true;
+    final adapterRepair = _stringParam(schema, 'adapterRepair');
     final file = File(target);
     if (await file.exists() && !overwrite) {
       throw _ActionRunnerFailure(
@@ -189,10 +190,14 @@ class ActionRunner {
       endedAt: DateTime.now(),
       success: true,
       artifactPaths: [target],
-      logs: ['Wrote ${utf8.encode(content).length} bytes to ${_relative(target)}.'],
+      logs: [
+        'Wrote ${utf8.encode(content).length} bytes to ${_relative(target)}.',
+        if (adapterRepair.isNotEmpty) 'Adapter repaired tool arguments: $adapterRepair.',
+      ],
       metadata: {
         'relativePath': _relative(target),
         'byteLength': utf8.encode(content).length,
+        if (adapterRepair.isNotEmpty) 'adapterRepair': adapterRepair,
       },
     );
     evidenceStore.add(evidence);

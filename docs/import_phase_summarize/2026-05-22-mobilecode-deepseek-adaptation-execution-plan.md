@@ -35,7 +35,8 @@ DeepSeek Provider
 - `Auto Agent`：模型可在安全工具白名单内自主选择工具。
 - DeepSeek/OpenAI-compatible `tool_calls` 非流式解析。
 - DeepSeek/OpenAI-compatible streaming `delta.tool_calls` 拼接。
-- `write_file / read_file / preview_html / preview_snapshot / web_search / fetch_url / report_result` 安全工具集。
+- `list_files / web_search / fetch_url / write_file / read_file / move_file / preview_html / preview_snapshot / report_result` 安全工具集。
+- Tools 页新增 Android/Linux/macOS 命令兼容矩阵，明确哪些命令由 MobileCode typed tools 模拟，哪些是 blocked/runtime-only/planned。
 - `ActionRunner / ActionEvidence / Activity Logs` 记录执行事实。
 - DS01 DeepSeek v4 Provider Profile 已完成，Mobile Runtime CI 与 v0.1.51-last APK 构建已通过。
 - DS02 默认模型与 Base URL 迁移已完成，Mobile Runtime CI 与 v0.1.51-last APK 构建已通过。
@@ -70,6 +71,7 @@ DeepSeek Provider
 - [x] DS02 默认模型与 Base URL 迁移（本地实现完成，CI 待验收）
 - [x] DS03 Thinking + Tool Calls 回传加固（本地实现完成，CI 待验收）
 - [x] DS04 Streaming tool_calls 完整测试（本地实现完成，CI 待验收）
+- [x] DS04.1 Mobile Unix Facade 命令语义层（本地实现完成，CI 待验收）
 - [ ] DS05 DeepSeek 错误码映射
 - [ ] DS06 Usage / Cache / Reasoning 观测
 - [ ] DS07 JSON Output 降级路径
@@ -395,6 +397,59 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 - GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26278838865`
 - Release APK：`https://github.com/Harzva/mobilecode/releases/download/v0.1.52-last/mobilecode-v0.1.52-last.apk`
 - 手动验收版本改为 `v0.1.52-last`。
+
+## DS04.1 Mobile Unix Facade 命令语义层
+
+状态：`ACCEPTED`（本地实现完成，CI 待验收）
+
+目标：
+
+- 吸收 DeepSeek-TUI 的 typed tool surface 思路，不把 MobileCode 伪装成完整 Linux shell。
+- 给模型一个更熟悉的 Linux/macOS/Android 命令语义适配层，同时由 Android App 负责安全校验和 evidence。
+- 解决“模型只能一直尝试 write_file，看起来只有写工具”的产品误解。
+
+本轮实现：
+
+- 新增 provider-native `list_files`，作为 `ls / dir / find / fd` 的安全替代。
+- 新增 provider-native `move_file`，作为 `mv` 的安全替代。
+- `ActionRunner` 新增 `listFiles / moveFile` 执行与 ActionEvidence 记录，路径仍限制在 MobileCode workspace 内。
+- `ToolCallAdapter` tool definitions、ActionSchema 映射、systemInstruction 加入 `list_files / move_file`。
+- `AgentPreset.allowedToolNames` 更新：
+  - Auto / Research / Builder / Repair 可用 `list_files` 与 `move_file`。
+  - Reviewer 只允许 `list_files / read_file / preview_html / preview_snapshot / report_result`，保持只读边界。
+- Tools 页新增：
+  - `Provider-native tool list`
+  - `Android command map`
+  - `Agent preset access`
+- 命令兼容矩阵覆盖：
+  - `pwd / ls / dir / find / fd`
+  - `cat / head / tail / less / more`
+  - `grep / rg / ag / awk / sed`
+  - `stat / file / wc / sort / uniq / cut / tr`
+  - `mv / cp / mkdir / touch / rm`
+  - `curl / wget / ping / dig / nslookup`
+  - `pm / am / dumpsys / logcat`
+  - `git / npm / yarn / pnpm / pip / cargo / go / dart / flutter / gradle / make`
+
+验收口径：
+
+- MobileCode 不开放任意 shell。
+- `ls` 类需求应由模型调用 `list_files`。
+- `mv` 类需求应由模型调用 `move_file`。
+- 工具失败时返回结构化 failure evidence，而不是自然语言假装成功。
+- Tools 页能显示“安卓常见命令 / Linux 常见命令 / MobileCode 当前支持状态”。
+
+验证：
+
+- [x] `git diff --check`
+- [x] `node --check relay/mobilecode-token-relay-worker.js`
+- [ ] GitHub Actions `Mobile Runtime CI`
+
+剩余风险：
+
+- `grep_files / find_files / edit_file / apply_patch / copy_file / mkdir / delete_file / snapshot` 仍未作为 provider-native tool 暴露。
+- `delete_file` 与批量替换需二次确认机制，不应直接进入默认 Auto Agent。
+- Runtime-only 命令仍依赖 Helper/Termux/CI，不能在当前 provider-native AgentLoop 中承诺可执行。
 
 ## DS05 DeepSeek 错误码映射
 

@@ -589,6 +589,26 @@ class _LocalToolSpec {
   final String risk;
 }
 
+class _AndroidCommandSpec {
+  const _AndroidCommandSpec({
+    required this.category,
+    required this.commands,
+    required this.support,
+    required this.mobileCodePath,
+    required this.note,
+    required this.color,
+    required this.icon,
+  });
+
+  final String category;
+  final String commands;
+  final String support;
+  final String mobileCodePath;
+  final String note;
+  final Color color;
+  final IconData icon;
+}
+
 const _localToolSpecs = [
   _LocalToolSpec(
     name: 'list_files',
@@ -613,6 +633,14 @@ const _localToolSpecs = [
     icon: Icons.description_outlined,
     color: _blue,
     risk: 'read-only',
+  ),
+  _LocalToolSpec(
+    name: 'move_file',
+    description: 'Move or rename one file inside the app workspace.',
+    surface: 'Android app documents',
+    icon: Icons.drive_file_move_outline,
+    color: _amber,
+    risk: 'guarded',
   ),
   _LocalToolSpec(
     name: 'preview_webview',
@@ -666,6 +694,14 @@ const _localToolSpecs = [
 
 const _providerNativeToolSpecs = [
   _LocalToolSpec(
+    name: 'list_files',
+    description: 'List workspace files. This is the safe provider-native replacement for ls/find.',
+    surface: 'ActionRunner',
+    icon: Icons.folder_open_outlined,
+    color: _blue,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
     name: 'web_search',
     description: 'Let the model ask for compact public web references through the managed relay.',
     surface: 'Relay read',
@@ -698,6 +734,14 @@ const _providerNativeToolSpecs = [
     risk: 'read-only',
   ),
   _LocalToolSpec(
+    name: 'move_file',
+    description: 'Move or rename one workspace file. This is the safe replacement for mv.',
+    surface: 'ActionRunner',
+    icon: Icons.drive_file_move_outline,
+    color: _amber,
+    risk: 'guarded move',
+  ),
+  _LocalToolSpec(
     name: 'preview_html',
     description: 'Prepare an in-app WebView preview from a workspace HTML file or inline HTML.',
     surface: 'WebView',
@@ -720,6 +764,153 @@ const _providerNativeToolSpecs = [
     icon: Icons.fact_check_outlined,
     color: _mint,
     risk: 'no execution',
+  ),
+];
+
+const _androidCommandSpecs = [
+  _AndroidCommandSpec(
+    category: 'File inspect',
+    commands: 'pwd, ls, dir, find, fd',
+    support: 'Supported',
+    mobileCodePath: 'list_files',
+    note: 'Lists only the MobileCode workspace; no arbitrary filesystem traversal.',
+    color: _mint,
+    icon: Icons.folder_open_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'File read/write',
+    commands: 'cat, head, tail, less, more, echo >',
+    support: 'Supported',
+    mobileCodePath: 'read_file / write_file',
+    note: 'Reads bounded previews and writes complete files through ActionRunner evidence.',
+    color: _mint,
+    icon: Icons.description_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'Text search',
+    commands: 'grep, rg, ag, awk, sed',
+    support: 'Planned',
+    mobileCodePath: 'search_files later',
+    note: 'DeepSeek-TUI maps these to grep_files; MobileCode does not expose content search yet.',
+    color: _amber,
+    icon: Icons.manage_search_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'File metadata',
+    commands: 'stat, file, wc, sort, uniq, cut, tr',
+    support: 'Partial',
+    mobileCodePath: 'list_files metadata',
+    note: 'list_files returns path/type/size/modifiedAt; detailed text transforms are not exposed yet.',
+    color: _amber,
+    icon: Icons.info_outline,
+  ),
+  _AndroidCommandSpec(
+    category: 'Move / rename',
+    commands: 'mv',
+    support: 'Supported',
+    mobileCodePath: 'move_file',
+    note: 'File-only move inside workspace; destination must include the filename.',
+    color: _mint,
+    icon: Icons.drive_file_move_outline,
+  ),
+  _AndroidCommandSpec(
+    category: 'Copy / mkdir',
+    commands: 'cp, mkdir, touch',
+    support: 'Partial',
+    mobileCodePath: 'write_file creates parent folders',
+    note: 'No generic copy command yet; safe copy_file/mkdir can be added later.',
+    color: _amber,
+    icon: Icons.create_new_folder_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'Delete',
+    commands: 'rm, rmdir',
+    support: 'Blocked',
+    mobileCodePath: 'not exposed',
+    note: 'Deletion is intentionally not available to Agent Loop yet.',
+    color: _rose,
+    icon: Icons.delete_outline,
+  ),
+  _AndroidCommandSpec(
+    category: 'Network read',
+    commands: 'curl, wget, fetch',
+    support: 'Supported',
+    mobileCodePath: 'fetch_url / web_search',
+    note: 'Relay-backed public HTTPS only; local/private URLs are blocked.',
+    color: _mint,
+    icon: Icons.public_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'Network diagnostics',
+    commands: 'ping, traceroute, nslookup, dig, host, nc',
+    support: 'Blocked',
+    mobileCodePath: 'not exposed',
+    note: 'Useful in Termux, but not safe as provider-native tools in the APK.',
+    color: _rose,
+    icon: Icons.network_check_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'Preview evidence',
+    commands: 'browser open, screenshot-like check',
+    support: 'Supported',
+    mobileCodePath: 'preview_html / preview_snapshot',
+    note: 'Snapshot is metadata/DOM evidence, not a native bitmap screenshot.',
+    color: _mint,
+    icon: Icons.preview_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'Environment inspect',
+    commands: 'whoami, id, uname, env, printenv, date, uptime',
+    support: 'Runtime only',
+    mobileCodePath: 'Runtime providers',
+    note: 'Can be surfaced through diagnostics later; not model-callable today.',
+    color: _amber,
+    icon: Icons.badge_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'Storage inspect',
+    commands: 'df, du, free, vmstat',
+    support: 'Runtime only',
+    mobileCodePath: 'Runtime providers',
+    note: 'Possible through Termux/Helper diagnostics; not in provider-native AgentLoop.',
+    color: _amber,
+    icon: Icons.storage_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'Process / Android system',
+    commands: 'ps, top, kill, pm, am, dumpsys',
+    support: 'Blocked',
+    mobileCodePath: 'not exposed',
+    note: 'These require runtime permissions and are not provider-native Agent tools.',
+    color: _rose,
+    icon: Icons.memory_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'Android package / activity',
+    commands: 'pm, am, cmd, settings, dumpsys, logcat',
+    support: 'Blocked',
+    mobileCodePath: 'not exposed',
+    note: 'Android system APIs need explicit app/runtime permission design before model access.',
+    color: _rose,
+    icon: Icons.android_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'Git / release',
+    commands: 'git status/add/commit/push',
+    support: 'Not AgentLoop',
+    mobileCodePath: 'GitHub screens / CI only',
+    note: 'No provider-native Git push or publishing in this safety profile.',
+    color: _faint,
+    icon: Icons.hub_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'Build / package',
+    commands: 'npm, yarn, pnpm, pip, cargo, go, dart, flutter, gradle, make',
+    support: 'Runtime only',
+    mobileCodePath: 'Runtime providers',
+    note: 'Depends on Helper/Termux/CI; not exposed as free-form model tools.',
+    color: _amber,
+    icon: Icons.terminal_outlined,
   ),
 ];
 
@@ -1211,7 +1402,7 @@ String _agentLocalToolChainFor(String tool) {
         '4. preview_webview: expose the in-app WebView preview action';
   }
   if (tool == 'mobile_coding.research_web_preview') {
-    return 'Available safe tools: web_search, fetch_url, write_file, read_file, preview_html, preview_snapshot, report_result.\n'
+    return 'Available safe tools: list_files, web_search, fetch_url, write_file, read_file, move_file, preview_html, preview_snapshot, report_result.\n'
         'The model may choose the smallest useful next step; MobileCode validates, executes, records evidence, and returns observations.';
   }
   if (tool == 'mobile_coding.build_diary_demo') {
@@ -8069,6 +8260,8 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
             color: _violet,
           ),
           const SizedBox(height: 12),
+          const _AndroidCommandMapPanel(),
+          const SizedBox(height: 12),
           const _AgentPresetToolMatrix(),
           const SizedBox(height: 12),
           SizedBox(
@@ -11489,11 +11682,11 @@ class _ChatPanelState extends State<_ChatPanel> {
         skillContext,
       ],
       if (toolName.startsWith('mobile_coding.generate_') && _agentExecutionMode == AgentExecutionMode.agentLoop)
-        'For web/html Agent Loop requests, use write_file with one complete self-contained HTML document, then read_file or preview_html, then report_result. After a successful write_file observation, do not call write_file again unless the observation says the write failed. The HTML must be mobile-first, touch-friendly, accessible, visually intentional, GitHub Pages deployable, and not depend on network assets.',
+        'For web/html Agent Loop requests, use list_files if you need workspace context, write_file with one complete self-contained HTML document, then read_file or preview_html, then report_result. Use move_file for safe rename/move requests instead of shell mv. After a successful write_file observation, do not call write_file again unless the observation says the write failed. The HTML must be mobile-first, touch-friendly, accessible, visually intentional, GitHub Pages deployable, and not depend on network assets.',
       if (toolName.startsWith('mobile_coding.generate_') && _agentExecutionMode != AgentExecutionMode.agentLoop)
         'For web/html requests, return one complete self-contained HTML document inside a single ```html fenced block. It must be mobile-first, touch-friendly, accessible, visually intentional, GitHub Pages deployable, and not depend on network assets. Use relative links only; never reference app-private local paths inside the HTML.',
       if (toolName == 'mobile_coding.research_web_preview')
-        'For the researched WebView demo, choose the smallest safe provider-native tool calls yourself from the allowed list. You may search public references, fetch public HTTPS pages, write/read a self-contained HTML artifact, preview it, capture preview evidence, or report the result depending on observations. Do not depend on network assets. Include useful refIds and evidence IDs in the final report.',
+        'For the researched WebView demo, choose the smallest safe provider-native tool calls yourself from the allowed list. You may list workspace files, search public references, fetch public HTTPS pages, write/read/move a self-contained HTML artifact, preview it, capture preview evidence, or report the result depending on observations. Do not depend on network assets. Include useful refIds and evidence IDs in the final report.',
       if (toolName == 'mobile_coding.build_diary_demo')
         'For the diary app request, return the minimal implementable UI/data model plan and code snippets needed for a local APK diary experience.',
       if (toolName == 'mobile_tools.termux_probe')
@@ -13913,7 +14106,7 @@ class _ChatModeStrip extends StatelessWidget {
       _PromptShortcutData(
         label: '复杂验收',
         icon: Icons.travel_explore_outlined,
-        prompt: '复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 web_search、fetch_url、write_file、read_file、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。',
+        prompt: '复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 list_files、web_search、fetch_url、write_file、read_file、move_file、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。',
         color: _amber,
       ),
     ];
@@ -13988,7 +14181,7 @@ class _PromptLaunchPanel extends StatelessWidget {
                 icon: Icons.travel_explore_outlined,
                 label: '复杂 Harness 验收',
                 color: _violet,
-                onTap: () => onPrompt('复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 web_search、fetch_url、write_file、read_file、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。', runAgent: true),
+                onTap: () => onPrompt('复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 list_files、web_search、fetch_url、write_file、read_file、move_file、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。', runAgent: true),
               ),
             ],
           ),
@@ -15192,6 +15385,108 @@ class _LocalToolTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AndroidCommandMapPanel extends StatelessWidget {
+  const _AndroidCommandMapPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.phone_android_outlined, color: _amber, size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Android command map',
+                  style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15),
+                ),
+              ),
+              _Pill(label: 'safe mapping', icon: Icons.shield_outlined, color: _amber),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'MobileCode does not expose a raw shell to the model. Common Android/Termux commands are mapped to typed tools when safe, or shown as blocked/runtime-only when they need more authority.',
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+          ),
+          const SizedBox(height: 10),
+          for (final spec in _androidCommandSpecs) ...[
+            _AndroidCommandRow(spec: spec),
+            if (spec != _androidCommandSpecs.last) const Divider(height: 14, color: _line),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AndroidCommandRow extends StatelessWidget {
+  const _AndroidCommandRow({required this.spec});
+
+  final _AndroidCommandSpec spec;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: spec.color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: spec.color.withOpacity(0.35)),
+          ),
+          child: Icon(spec.icon, color: spec.color, size: 17),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      spec.category,
+                      style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 12),
+                    ),
+                  ),
+                  _MiniChip(label: spec.support, color: spec.color),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Text(
+                spec.commands,
+                style: const TextStyle(color: _muted, fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 5),
+              Wrap(
+                spacing: 5,
+                runSpacing: 5,
+                children: [
+                  _MiniChip(label: spec.mobileCodePath, color: spec.color),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Text(
+                spec.note,
+                style: const TextStyle(color: _muted, fontSize: 11, height: 1.3),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

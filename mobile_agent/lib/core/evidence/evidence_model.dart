@@ -198,8 +198,10 @@ String _randomHex(int length) {
 /// Covers the first-class tool actions that the harness can execute.
 /// This enum is the single source of truth for action identity.
 enum MobileCodeAction {
+  listFiles,
   writeFile,
   readFile,
+  moveFile,
   openFile,
   previewHtml,
   webSearch,

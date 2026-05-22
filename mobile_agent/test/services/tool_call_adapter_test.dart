@@ -81,10 +81,12 @@ void main() {
         .toList();
 
     expect(names, [
+      'list_files',
       'web_search',
       'fetch_url',
       'write_file',
       'read_file',
+      'move_file',
       'preview_html',
       'preview_snapshot',
       'report_result',
@@ -175,6 +177,39 @@ void main() {
     ))!;
     expect(snapshot.actionName, MobileCodeAction.previewSnapshot);
     expect(snapshot.params['viewportWidth'], 390);
+  });
+
+  test('maps list_files and move_file to safe ActionSchema actions', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-flash',
+      ),
+    );
+
+    final list = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_list',
+      name: 'list_files',
+      arguments: {'path': '.', 'recursive': false, 'max_entries': 20},
+    ))!;
+    expect(list.actionName, MobileCodeAction.listFiles);
+    expect(list.params['path'], '.');
+    expect(list.params['recursive'], false);
+    expect(list.params['maxEntries'], 20);
+
+    final move = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_move',
+      name: 'move_file',
+      arguments: {
+        'source_path': 'draft.html',
+        'destination_path': 'published/index.html',
+        'overwrite': true,
+      },
+    ))!;
+    expect(move.actionName, MobileCodeAction.moveFile);
+    expect(move.params['sourcePath'], 'draft.html');
+    expect(move.params['destinationPath'], 'published/index.html');
+    expect(move.params['overwrite'], true);
   });
 
   test('assistant tool-call message preserves reasoning_content and tool_calls JSON', () {

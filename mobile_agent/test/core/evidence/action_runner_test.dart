@@ -62,6 +62,50 @@ void main() {
     expect(store.getById('ev-read'), isNotNull);
   });
 
+  test('listFiles returns workspace-bounded entries and evidence', () async {
+    final file = File('${workspace.path}/demo/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<!doctype html>');
+
+    final result = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.listFiles,
+      params: const {
+        'path': '.',
+        'recursive': true,
+        'maxEntries': 20,
+      },
+      requestId: 'ev-list',
+    ));
+
+    expect(result.success, true);
+    expect(result.text, contains('demo${Platform.pathSeparator}index.html'));
+    expect(result.evidence.actionName, MobileCodeAction.listFiles);
+    expect(result.evidence.metadata['entries'], isNotEmpty);
+    expect(store.getById('ev-list'), isNotNull);
+  });
+
+  test('moveFile renames one file inside workspace', () async {
+    final file = File('${workspace.path}/draft.html');
+    await file.writeAsString('<!doctype html><title>Draft</title>');
+
+    final result = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.moveFile,
+      params: const {
+        'sourcePath': 'draft.html',
+        'destinationPath': 'published/index.html',
+        'overwrite': false,
+      },
+      requestId: 'ev-move',
+    ));
+
+    expect(result.success, true);
+    expect(await file.exists(), false);
+    expect(await File('${workspace.path}/published/index.html').readAsString(), contains('Draft'));
+    expect(result.evidence.actionName, MobileCodeAction.moveFile);
+    expect(result.evidence.metadata['sourcePath'], 'draft.html');
+    expect(store.getById('ev-move'), isNotNull);
+  });
+
   test('previewHtml from inline html writes preview file and returns file url', () async {
     final result = await runner.run(ActionSchema(
       actionName: MobileCodeAction.previewHtml,

@@ -270,11 +270,12 @@ class OpenAiCompatibleToolCallAdapter {
 
   String get systemInstruction => [
         'When a mobile coding request needs a file or preview, use the provided tools instead of only describing the result.',
-        'Allowed tools are web_search, fetch_url, write_file, read_file, preview_html, preview_snapshot, and report_result.',
+        'Allowed tools are list_files, web_search, fetch_url, write_file, read_file, move_file, preview_html, preview_snapshot, and report_result.',
         'Use web_search/fetch_url only for public reference gathering. Use preview_snapshot after preview_html when the user asks for a visible product check.',
+        'Use list_files instead of shell ls, and move_file instead of shell mv. Do not ask for raw Android or Termux commands.',
         'Never request shell, Git push, publishing, remote logging, or arbitrary commands.',
         'Use paths relative to the MobileCode workspace. Do not include secrets in arguments.',
-        'For complex web demos, choose the smallest safe next tool yourself. You may search, fetch, write, read, preview, snapshot, or report depending on the current observation.',
+        'For complex web demos, choose the smallest safe next tool yourself. You may list, search, fetch, write, read, move, preview, snapshot, or report depending on the current observation.',
         'After tool observations, call report_result or answer with a concise final summary.',
       ].join('\n');
 
@@ -366,6 +367,17 @@ class OpenAiCompatibleToolCallAdapter {
   ActionSchema? toActionSchema(ProviderToolCall call) {
     final args = call.arguments;
     switch (call.name) {
+      case 'list_files':
+        return ActionSchema(
+          actionName: MobileCodeAction.listFiles,
+          requestId: call.id,
+          paramsSummary: 'provider-native list_files',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'recursive': _boolArg(args, 'recursive', defaultValue: false),
+            'maxEntries': _intArg(args, 'max_entries', defaultValue: 80),
+          },
+        );
       case 'write_file':
         return ActionSchema(
           actionName: MobileCodeAction.writeFile,
@@ -385,6 +397,17 @@ class OpenAiCompatibleToolCallAdapter {
           params: {
             'path': _stringArg(args, 'path'),
             'maxBytes': _intArg(args, 'max_bytes', defaultValue: 200 * 1024),
+          },
+        );
+      case 'move_file':
+        return ActionSchema(
+          actionName: MobileCodeAction.moveFile,
+          requestId: call.id,
+          paramsSummary: 'provider-native move_file',
+          params: {
+            'sourcePath': _stringArg(args, 'source_path'),
+            'destinationPath': _stringArg(args, 'destination_path'),
+            'overwrite': _boolArg(args, 'overwrite', defaultValue: false),
           },
         );
       case 'preview_html':
@@ -493,6 +516,16 @@ class OpenAiCompatibleToolCallAdapter {
 
     return [
       functionTool(
+        name: 'list_files',
+        description: 'List files inside the MobileCode workspace. Safe replacement for ls; cannot read outside the workspace.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative workspace directory or file path. Use "." for workspace root.'},
+          'recursive': {'type': 'boolean', 'description': 'Whether to list nested files.'},
+          'max_entries': {'type': 'integer', 'description': 'Maximum entries to return, 1 to 200.'},
+        },
+        required: const ['path', 'recursive', 'max_entries'],
+      ),
+      functionTool(
         name: 'web_search',
         description: 'Search public web references through the MobileCode managed relay. Read-only; returns compact results with ref IDs.',
         properties: const {
@@ -528,6 +561,16 @@ class OpenAiCompatibleToolCallAdapter {
           'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to read.'},
         },
         required: const ['path', 'max_bytes'],
+      ),
+      functionTool(
+        name: 'move_file',
+        description: 'Move or rename one file inside the MobileCode workspace. Safe replacement for mv; directories and outside-workspace paths are blocked.',
+        properties: const {
+          'source_path': {'type': 'string', 'description': 'Existing relative file path inside the MobileCode workspace.'},
+          'destination_path': {'type': 'string', 'description': 'Target relative file path inside the MobileCode workspace, including filename.'},
+          'overwrite': {'type': 'boolean', 'description': 'Whether an existing destination file may be replaced.'},
+        },
+        required: const ['source_path', 'destination_path', 'overwrite'],
       ),
       functionTool(
         name: 'preview_html',

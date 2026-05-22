@@ -77,8 +77,10 @@ class ActionRunner {
       }
 
       return switch (schema.actionName) {
+        MobileCodeAction.listFiles => await _listFiles(schema, startedAt),
         MobileCodeAction.writeFile => await _writeFile(schema, startedAt),
         MobileCodeAction.readFile => await _readFile(schema, startedAt),
+        MobileCodeAction.moveFile => await _moveFile(schema, startedAt),
         MobileCodeAction.previewHtml => await _previewHtml(schema, startedAt),
         MobileCodeAction.webSearch => await _webSearch(schema, startedAt),
         MobileCodeAction.fetchUrl => await _fetchUrl(schema, startedAt),
@@ -102,6 +104,66 @@ class ActionRunner {
         recoveryActions: const ['Open action details and inspect the captured error.'],
       );
     }
+  }
+
+  Future<ActionRunnerResult> _listFiles(ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+    final target = _resolveWorkspacePath(rawPath);
+    final recursive = schema.params['recursive'] == true;
+    final maxEntries = _boundedIntParam(schema, 'maxEntries', defaultValue: 80, min: 1, max: 200);
+    final targetType = await FileSystemEntity.type(target, followLinks: false);
+    if (targetType == FileSystemEntityType.notFound) {
+      throw _ActionRunnerFailure(
+        'Path does not exist: ${_relative(target)}',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['List "." first or create the folder before listing it.'],
+      );
+    }
+
+    final entries = <Map<String, dynamic>>[];
+    if (targetType == FileSystemEntityType.file) {
+      final file = File(target);
+      final stat = await file.stat();
+      entries.add(_fileListEntry(target, stat, 'file'));
+    } else if (targetType == FileSystemEntityType.directory) {
+      await for (final entity in Directory(target).list(recursive: recursive, followLinks: false)) {
+        if (entries.length >= maxEntries) break;
+        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        final stat = await entity.stat();
+        entries.add(_fileListEntry(entity.path, stat, type == FileSystemEntityType.directory ? 'directory' : 'file'));
+      }
+    } else {
+      throw _ActionRunnerFailure(
+        'Unsupported file system entity: ${_relative(target)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+      );
+    }
+
+    entries.sort((a, b) => _stringValue(a['path']).compareTo(_stringValue(b['path'])));
+    final lines = entries.isEmpty
+        ? ['${_relative(target)} is empty.']
+        : entries.map((entry) => '${entry['type']}\t${entry['path']}\t${entry['sizeBytes']} bytes').toList();
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.listFiles,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'list ${_relative(target)}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [target],
+      logs: [
+        'Listed ${entries.length} item(s) under ${_relative(target)}${recursive ? ' recursively' : ''}.',
+      ],
+      metadata: {
+        'relativePath': _relative(target),
+        'recursive': recursive,
+        'maxEntries': maxEntries,
+        'entries': entries,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: lines.join('\n'), path: target);
   }
 
   Future<ActionRunnerResult> _writeFile(ActionSchema schema, DateTime startedAt) async {
@@ -174,6 +236,72 @@ class ActionRunner {
     );
     evidenceStore.add(evidence);
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
+  }
+
+  Future<ActionRunnerResult> _moveFile(ActionSchema schema, DateTime startedAt) async {
+    final source = _resolveWorkspacePath(_requiredString(schema, 'sourcePath'));
+    final destination = _resolveWorkspacePath(_requiredString(schema, 'destinationPath'));
+    final overwrite = schema.params['overwrite'] as bool? ?? false;
+    final sourceType = await FileSystemEntity.type(source, followLinks: false);
+    if (sourceType == FileSystemEntityType.notFound) {
+      throw _ActionRunnerFailure(
+        'Source file does not exist: ${_relative(source)}',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Call list_files or provide an existing source path before moving.'],
+      );
+    }
+    if (sourceType != FileSystemEntityType.file) {
+      throw _ActionRunnerFailure(
+        'move_file currently supports files only: ${_relative(source)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Move a regular file, not a directory.'],
+      );
+    }
+    if (p.equals(source, destination)) {
+      throw _ActionRunnerFailure(
+        'Source and destination are the same file: ${_relative(source)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose a different destination path.'],
+      );
+    }
+    final destinationType = await FileSystemEntity.type(destination, followLinks: false);
+    if (destinationType == FileSystemEntityType.directory) {
+      throw _ActionRunnerFailure(
+        'Destination is a directory; provide the full destination file path: ${_relative(destination)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Include the target filename in destination_path.'],
+      );
+    }
+    if (destinationType != FileSystemEntityType.notFound) {
+      if (!overwrite) {
+        throw _ActionRunnerFailure(
+          'Destination already exists and overwrite=false: ${_relative(destination)}',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: const ['Set overwrite=true or choose a different destination path.'],
+        );
+      }
+      await File(destination).delete();
+    }
+    await File(destination).parent.create(recursive: true);
+    await File(source).rename(destination);
+
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.moveFile,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'move ${_relative(source)} to ${_relative(destination)}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [destination],
+      logs: ['Moved ${_relative(source)} to ${_relative(destination)}.'],
+      metadata: {
+        'sourcePath': _relative(source),
+        'destinationPath': _relative(destination),
+        'overwrite': overwrite,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, path: destination);
   }
 
   Future<ActionRunnerResult> _previewHtml(ActionSchema schema, DateTime startedAt) async {
@@ -536,6 +664,20 @@ class ActionRunner {
   }
 
   String _stringValue(Object? value) => value is String ? value.trim() : value?.toString().trim() ?? '';
+
+  Map<String, dynamic> _fileListEntry(String absolutePath, FileStat stat, String type) {
+    return {
+      'path': _relative(absolutePath),
+      'type': type,
+      'sizeBytes': stat.size,
+      'modifiedAt': stat.modified.toIso8601String(),
+    };
+  }
+
+  String _stringParam(ActionSchema schema, String key) {
+    final value = schema.params[key];
+    return value is String ? value.trim() : '';
+  }
 
   String _requiredString(ActionSchema schema, String key) {
     final value = schema.params[key];

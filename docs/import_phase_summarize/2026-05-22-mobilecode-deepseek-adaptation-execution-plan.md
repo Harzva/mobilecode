@@ -43,6 +43,7 @@ DeepSeek Provider
 - DS02 默认模型与 Base URL 迁移已完成，Mobile Runtime CI 与 v0.1.51-last APK 构建已通过。
 - DS03 Thinking + Tool Calls 回传加固已完成，Mobile Runtime CI 与 v0.1.51-last APK 构建已通过。
 - DS04 Streaming tool_calls 边界测试已完成，Mobile Runtime CI 与 v0.1.51-last APK 构建已通过。
+- DS04.4 Sub-Agent Lite / mailbox-lite 已完成，Mobile Runtime CI 已通过，APK 构建待触发。
 
 未完成或需加固：
 
@@ -83,7 +84,7 @@ DeepSeek Provider
 - [x] DS04.1 Mobile Unix Facade 命令语义层（本地实现完成，CI 待验收）
 - [x] DS04.2 AgentLoop 可用工具 gating 与缺省写入路径修复（本地实现完成，CI 待验收）
 - [ ] DS04.3 Search/Patch + 角色编排（本地实现完成，静态检查通过，CI 待验收）
-- [ ] DS04.4 Sub-Agent Lite / mailbox-lite（本地实现完成，静态检查通过，CI 待验收）
+- [x] DS04.4 Sub-Agent Lite / mailbox-lite（本地实现完成，Mobile Runtime CI 通过，APK 待构建）
 - [ ] DS05 DeepSeek 错误码映射
 - [ ] DS06 Usage / Cache / Reasoning 观测
 - [ ] DS07 JSON Output 降级路径
@@ -584,7 +585,7 @@ Shell 边界：
 
 ## DS04.4 Sub-Agent Lite / mailbox-lite
 
-状态：`IN_PROGRESS`（本地实现完成，静态检查通过，CI 待验收）
+状态：`ACCEPTED`（本地实现完成，Mobile Runtime CI 通过，APK 待构建）
 
 目标：
 
@@ -619,7 +620,13 @@ Shell 边界：
 - [x] `git diff --check`
 - [x] `node --check relay/mobilecode-token-relay-worker.js`
 - [x] `cd app && npm run build`
-- [ ] GitHub Actions `Mobile Runtime CI`
+- [x] GitHub Actions `Mobile Runtime CI`
+
+本轮执行记录（2026-05-23）：
+
+- 实现提交：`274b9aa feat: add sub-agent lite mailbox`
+- `cxspark` 本地通道启动失败并已标记 review；没有采纳 Spark 输出，本轮由 Codex 手工实现并复核。
+- GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26299335635`
 
 剩余风险：
 

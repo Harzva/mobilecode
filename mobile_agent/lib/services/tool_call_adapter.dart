@@ -298,12 +298,12 @@ class OpenAiCompatibleToolCallAdapter {
 
   String get systemInstruction => [
         'When a mobile coding request needs a file or preview, use the provided tools instead of only describing the result.',
-        'MobileCode tools may include list_files, find_files, grep_files, agent_open, agent_eval, agent_close, web_search, fetch_url, write_file, read_file, move_file, apply_patch, preview_html, preview_snapshot, and report_result; only call tools exposed in the current request.',
+        'MobileCode tools may include list_files, find_files, grep_files, agent_open, agent_eval, agent_close, web_search, fetch_url, write_file, read_file, copy_file, mkdir, delete_file, move_file, save_snapshot, virtual_diff, apply_patch, preview_html, preview_snapshot, and report_result; only call tools exposed in the current request.',
         'Use web_search/fetch_url only for public reference gathering. Use preview_snapshot after preview_html when the user asks for a visible product check.',
-        'Use list_files/find_files instead of shell ls/find, grep_files instead of shell grep/rg, move_file instead of shell mv, and apply_patch instead of shell patch/git apply. Do not ask for raw Android or Termux commands.',
+        'Use list_files/find_files instead of shell ls/find, grep_files instead of shell grep/rg, copy_file instead of shell cp, mkdir instead of shell mkdir, move_file instead of shell mv, delete_file instead of shell rm, virtual_diff instead of shell diff, and apply_patch instead of shell patch/git apply. Do not ask for raw Android or Termux commands.',
         'Never request shell, Git push, publishing, remote logging, or arbitrary commands.',
         'Use paths relative to the MobileCode workspace. If writing one web artifact and no path is obvious, use index.html. Do not include secrets in arguments.',
-        'For complex work, choose the smallest safe next tool yourself. You may open read-only Sub-Agent Lite explorer/reviewer sessions for isolated inspection, then agent_eval/agent_close them. You may list, find, grep, search, fetch, write, read, move, patch, preview, snapshot, or report depending on the current observation.',
+        'For complex work, choose the smallest safe next tool yourself. You may open read-only Sub-Agent Lite explorer/reviewer sessions for isolated inspection, then agent_eval/agent_close them. You may list, find, grep, search, fetch, write, read, copy, mkdir, delete a confirmed workspace file, move, save snapshots, inspect virtual diffs, patch, preview, snapshot, or report depending on the current observation.',
         'After tool observations, call report_result or answer with a concise final summary.',
       ].join('\n');
 
@@ -466,6 +466,37 @@ class OpenAiCompatibleToolCallAdapter {
             'maxBytes': _intArg(args, 'max_bytes', defaultValue: 200 * 1024),
           },
         );
+      case 'copy_file':
+        return ActionSchema(
+          actionName: MobileCodeAction.copyFile,
+          requestId: call.id,
+          paramsSummary: 'provider-native copy_file',
+          params: {
+            'sourcePath': _stringArg(args, 'source_path'),
+            'destinationPath': _stringArg(args, 'destination_path'),
+            'overwrite': _boolArg(args, 'overwrite', defaultValue: false),
+          },
+        );
+      case 'mkdir':
+        return ActionSchema(
+          actionName: MobileCodeAction.makeDirectory,
+          requestId: call.id,
+          paramsSummary: 'provider-native mkdir',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'recursive': _boolArg(args, 'recursive', defaultValue: true),
+          },
+        );
+      case 'delete_file':
+        return ActionSchema(
+          actionName: MobileCodeAction.deleteFile,
+          requestId: call.id,
+          paramsSummary: 'provider-native delete_file',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'confirm': _boolArg(args, 'confirm', defaultValue: false),
+          },
+        );
       case 'move_file':
         return ActionSchema(
           actionName: MobileCodeAction.moveFile,
@@ -475,6 +506,30 @@ class OpenAiCompatibleToolCallAdapter {
             'sourcePath': _stringArg(args, 'source_path'),
             'destinationPath': _stringArg(args, 'destination_path'),
             'overwrite': _boolArg(args, 'overwrite', defaultValue: false),
+          },
+        );
+      case 'save_snapshot':
+        return ActionSchema(
+          actionName: MobileCodeAction.saveSnapshot,
+          requestId: call.id,
+          paramsSummary: 'provider-native save_snapshot',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'label': _stringArg(args, 'label'),
+            'maxFiles': _intArg(args, 'max_files', defaultValue: 80),
+            'maxBytes': _intArg(args, 'max_bytes', defaultValue: 1024 * 1024),
+          },
+        );
+      case 'virtual_diff':
+        return ActionSchema(
+          actionName: MobileCodeAction.virtualDiff,
+          requestId: call.id,
+          paramsSummary: 'provider-native virtual_diff',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'snapshotId': _stringArg(args, 'snapshot_id'),
+            'snapshotPath': _stringArg(args, 'snapshot_path'),
+            'maxBytes': _intArg(args, 'max_bytes', defaultValue: 256 * 1024),
           },
         );
       case 'apply_patch':
@@ -634,14 +689,16 @@ class OpenAiCompatibleToolCallAdapter {
       ),
       functionTool(
         name: 'agent_open',
-        description: 'Open a read-only Sub-Agent Lite session for isolated Explorer or Reviewer inspection. It is not a shell and cannot mutate files.',
+        description: 'Open a read-only background Sub-Agent Lite v2 worker for isolated Explorer or Reviewer inspection. It is not a shell and cannot mutate files.',
         properties: const {
           'role': {'type': 'string', 'description': 'Read-only role: explorer or reviewer.'},
           'task': {'type': 'string', 'description': 'Compact inspection task for the sub-agent.'},
           'path': {'type': 'string', 'description': 'Workspace-relative path to inspect. Use "." for workspace root.'},
           'focus': {'type': 'string', 'description': 'Optional search/focus phrase. Use an empty string when not needed.'},
+          'timeout_ms': {'type': 'integer', 'description': 'Worker timeout in milliseconds, 1000 to 30000.'},
+          'token_budget': {'type': 'integer', 'description': 'Approximate mailbox token budget, 200 to 4000.'},
         },
-        required: const ['role', 'task', 'path', 'focus'],
+        required: const ['role', 'task', 'path', 'focus', 'timeout_ms', 'token_budget'],
       ),
       functionTool(
         name: 'agent_eval',
@@ -698,6 +755,34 @@ class OpenAiCompatibleToolCallAdapter {
         required: const ['path', 'max_bytes'],
       ),
       functionTool(
+        name: 'copy_file',
+        description: 'Copy one regular file inside the MobileCode workspace. Safe replacement for cp; directories and outside-workspace paths are blocked.',
+        properties: const {
+          'source_path': {'type': 'string', 'description': 'Existing relative file path inside the MobileCode workspace.'},
+          'destination_path': {'type': 'string', 'description': 'Target relative file path inside the MobileCode workspace, including filename.'},
+          'overwrite': {'type': 'boolean', 'description': 'Whether an existing destination file may be replaced.'},
+        },
+        required: const ['source_path', 'destination_path', 'overwrite'],
+      ),
+      functionTool(
+        name: 'mkdir',
+        description: 'Create a directory inside the MobileCode workspace. Safe replacement for mkdir -p; outside-workspace paths are blocked.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative directory path inside the MobileCode workspace.'},
+          'recursive': {'type': 'boolean', 'description': 'Whether to create missing parent directories.'},
+        },
+        required: const ['path', 'recursive'],
+      ),
+      functionTool(
+        name: 'delete_file',
+        description: 'Delete one regular workspace file after explicit confirmation. Guarded replacement for rm; saves a pre-delete snapshot.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative regular file path inside the MobileCode workspace.'},
+          'confirm': {'type': 'boolean', 'description': 'Must be true when the user explicitly requested deletion.'},
+        },
+        required: const ['path', 'confirm'],
+      ),
+      functionTool(
         name: 'move_file',
         description: 'Move or rename one file inside the MobileCode workspace. Safe replacement for mv; directories and outside-workspace paths are blocked.',
         properties: const {
@@ -706,6 +791,28 @@ class OpenAiCompatibleToolCallAdapter {
           'overwrite': {'type': 'boolean', 'description': 'Whether an existing destination file may be replaced.'},
         },
         required: const ['source_path', 'destination_path', 'overwrite'],
+      ),
+      functionTool(
+        name: 'save_snapshot',
+        description: 'Save a bounded read-only snapshot of a workspace file or directory before risky changes. This does not run git or shell.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative workspace path to snapshot. Use "." for workspace root.'},
+          'label': {'type': 'string', 'description': 'Short user-facing snapshot label.'},
+          'max_files': {'type': 'integer', 'description': 'Maximum files to copy into the snapshot, 1 to 200.'},
+          'max_bytes': {'type': 'integer', 'description': 'Maximum total bytes to snapshot.'},
+        },
+        required: const ['path', 'label', 'max_files', 'max_bytes'],
+      ),
+      functionTool(
+        name: 'virtual_diff',
+        description: 'Compare current workspace files against a MobileCode snapshot. Safe replacement for diff/git diff; read-only.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative workspace path to compare. Use "." for workspace root.'},
+          'snapshot_id': {'type': 'string', 'description': 'Snapshot ID returned by save_snapshot, or empty when snapshot_path is used.'},
+          'snapshot_path': {'type': 'string', 'description': 'Workspace-relative snapshot directory path, or empty when snapshot_id is used.'},
+          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to inspect while producing the virtual diff.'},
+        },
+        required: const ['path', 'snapshot_id', 'snapshot_path', 'max_bytes'],
       ),
       functionTool(
         name: 'apply_patch',

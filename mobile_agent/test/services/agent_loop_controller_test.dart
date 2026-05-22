@@ -714,6 +714,8 @@ void main() {
                   'task': 'Inspect the local web artifact without writing.',
                   'path': '.',
                   'focus': 'MobileCode',
+                  'timeout_ms': 10000,
+                  'token_budget': 1200,
                 },
               ),
             ],
@@ -761,6 +763,86 @@ void main() {
     expect(store.recent(count: 20).map((evidence) => evidence.evidenceId), contains('call_agent_open'));
   });
 
+  test('Sub-Agent Lite v2 limits background workers to two concurrent sessions', () async {
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.autoAgent,
+      maxRounds: 2,
+    );
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'open several read-only workers'},
+      ],
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_agent_open_1',
+                name: 'agent_open',
+                arguments: {
+                  'role': 'explorer',
+                  'task': 'Inspect root one.',
+                  'path': '.',
+                  'focus': '',
+                  'timeout_ms': 10000,
+                  'token_budget': 1200,
+                },
+              ),
+              ProviderToolCall(
+                id: 'call_agent_open_2',
+                name: 'agent_open',
+                arguments: {
+                  'role': 'reviewer',
+                  'task': 'Inspect root two.',
+                  'path': '.',
+                  'focus': '',
+                  'timeout_ms': 10000,
+                  'token_budget': 1200,
+                },
+              ),
+              ProviderToolCall(
+                id: 'call_agent_open_3',
+                name: 'agent_open',
+                arguments: {
+                  'role': 'explorer',
+                  'task': 'This third worker should be blocked.',
+                  'path': '.',
+                  'focus': '',
+                  'timeout_ms': 10000,
+                  'token_budget': 1200,
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: '',
+          toolCalls: [
+            ProviderToolCall(
+              id: 'call_report',
+              name: 'report_result',
+              arguments: {
+                'status': 'partial',
+                'summary': 'Concurrent worker limit was enforced.',
+                'detail': 'Only two read-only background workers may run at once.',
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Concurrent worker limit was enforced'));
+    final failures = store.failures();
+    expect(failures, isNotEmpty);
+    expect(failures.map((evidence) => evidence.logs.join(' ')).join(' '), contains('at most 2 concurrent'));
+  });
+
   test('Sub-Agent Lite blocks non-read-only roles', () async {
     final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
     final controller = AgentLoopController(
@@ -789,6 +871,8 @@ void main() {
                   'task': 'write code in the background',
                   'path': '.',
                   'focus': '',
+                  'timeout_ms': 10000,
+                  'token_budget': 1200,
                 },
               ),
             ],
@@ -835,6 +919,8 @@ void main() {
                   'task': 'Inspect files',
                   'path': '.',
                   'focus': '',
+                  'timeout_ms': 10000,
+                  'token_budget': 1200,
                 },
               ),
             ],

@@ -82,7 +82,12 @@ class ActionRunner {
         MobileCodeAction.grepFiles => await _grepFiles(schema, startedAt),
         MobileCodeAction.writeFile => await _writeFile(schema, startedAt),
         MobileCodeAction.readFile => await _readFile(schema, startedAt),
+        MobileCodeAction.copyFile => await _copyFile(schema, startedAt),
+        MobileCodeAction.makeDirectory => await _makeDirectory(schema, startedAt),
+        MobileCodeAction.deleteFile => await _deleteFile(schema, startedAt),
         MobileCodeAction.moveFile => await _moveFile(schema, startedAt),
+        MobileCodeAction.saveSnapshot => await _saveSnapshot(schema, startedAt),
+        MobileCodeAction.virtualDiff => await _virtualDiff(schema, startedAt),
         MobileCodeAction.applyPatch => await _applyPatch(schema, startedAt),
         MobileCodeAction.previewHtml => await _previewHtml(schema, startedAt),
         MobileCodeAction.webSearch => await _webSearch(schema, startedAt),
@@ -405,6 +410,160 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
+  Future<ActionRunnerResult> _copyFile(ActionSchema schema, DateTime startedAt) async {
+    final source = _resolveWorkspacePath(_requiredString(schema, 'sourcePath'));
+    final destination = _resolveWorkspacePath(_requiredString(schema, 'destinationPath'));
+    final overwrite = schema.params['overwrite'] as bool? ?? false;
+    final sourceType = await FileSystemEntity.type(source, followLinks: false);
+    if (sourceType == FileSystemEntityType.notFound) {
+      throw _ActionRunnerFailure(
+        'Source file does not exist: ${_relative(source)}',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Call list_files or provide an existing source path before copying.'],
+      );
+    }
+    if (sourceType != FileSystemEntityType.file) {
+      throw _ActionRunnerFailure(
+        'copy_file currently supports files only: ${_relative(source)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Copy a regular file, not a directory.'],
+      );
+    }
+    final destinationType = await FileSystemEntity.type(destination, followLinks: false);
+    if (destinationType == FileSystemEntityType.directory) {
+      throw _ActionRunnerFailure(
+        'Destination is a directory; provide the full destination file path: ${_relative(destination)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Include the target filename in destination_path.'],
+      );
+    }
+    if (destinationType != FileSystemEntityType.notFound) {
+      if (!overwrite) {
+        throw _ActionRunnerFailure(
+          'Destination already exists and overwrite=false: ${_relative(destination)}',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: const ['Set overwrite=true or choose a different destination path.'],
+        );
+      }
+      await File(destination).delete();
+    }
+    await File(destination).parent.create(recursive: true);
+    await File(source).copy(destination);
+
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.copyFile,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'copy ${_relative(source)} to ${_relative(destination)}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [source, destination],
+      logs: ['Copied ${_relative(source)} to ${_relative(destination)}.'],
+      metadata: {
+        'sourcePath': _relative(source),
+        'destinationPath': _relative(destination),
+        'overwrite': overwrite,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, path: destination);
+  }
+
+  Future<ActionRunnerResult> _makeDirectory(ActionSchema schema, DateTime startedAt) async {
+    final target = _resolveWorkspacePath(_requiredString(schema, 'path'));
+    final recursive = schema.params['recursive'] as bool? ?? true;
+    final targetType = await FileSystemEntity.type(target, followLinks: false);
+    if (targetType == FileSystemEntityType.file) {
+      throw _ActionRunnerFailure(
+        'Cannot create directory over an existing file: ${_relative(target)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose a directory path that does not point at an existing file.'],
+      );
+    }
+    await Directory(target).create(recursive: recursive);
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.makeDirectory,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'mkdir ${_relative(target)}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [target],
+      logs: ['Created directory ${_relative(target)}${recursive ? ' recursively' : ''}.'],
+      metadata: {
+        'relativePath': _relative(target),
+        'recursive': recursive,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, path: target);
+  }
+
+  Future<ActionRunnerResult> _deleteFile(ActionSchema schema, DateTime startedAt) async {
+    final target = _resolveWorkspacePath(_requiredString(schema, 'path'));
+    final confirm = schema.params['confirm'] == true;
+    if (!confirm) {
+      throw const _ActionRunnerFailure(
+        'delete_file requires confirm=true because deletion is destructive.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: ['Set confirm=true only when the user explicitly asked to delete a workspace file.'],
+      );
+    }
+    final relativePath = _relative(target);
+    if (relativePath.startsWith('.mobilecode_')) {
+      throw _ActionRunnerFailure(
+        'delete_file cannot remove MobileCode metadata or recovery artifacts: $relativePath',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose a regular user workspace file.'],
+      );
+    }
+    final targetType = await FileSystemEntity.type(target, followLinks: false);
+    if (targetType == FileSystemEntityType.notFound) {
+      throw _ActionRunnerFailure(
+        'File does not exist: $relativePath',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Call list_files or find_files before deleting.'],
+      );
+    }
+    if (targetType != FileSystemEntityType.file) {
+      throw _ActionRunnerFailure(
+        'delete_file currently supports files only: $relativePath',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Delete a regular file, not a directory.'],
+      );
+    }
+
+    final snapshotRoot = _resolveWorkspacePath(
+      '.mobilecode_delete_snapshots/delete_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    final snapshotPath = p.join(snapshotRoot, relativePath);
+    final snapshotFile = File(snapshotPath);
+    await snapshotFile.parent.create(recursive: true);
+    await File(target).copy(snapshotPath);
+    await File(target).delete();
+
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.deleteFile,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'delete $relativePath' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [snapshotPath],
+      logs: [
+        'Deleted $relativePath.',
+        'Saved pre-delete snapshot at ${_relative(snapshotPath)}.',
+      ],
+      metadata: {
+        'deletedPath': relativePath,
+        'snapshotPath': _relative(snapshotPath),
+        'confirm': confirm,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, path: snapshotPath);
+  }
+
   Future<ActionRunnerResult> _moveFile(ActionSchema schema, DateTime startedAt) async {
     final source = _resolveWorkspacePath(_requiredString(schema, 'sourcePath'));
     final destination = _resolveWorkspacePath(_requiredString(schema, 'destinationPath'));
@@ -469,6 +628,208 @@ class ActionRunner {
     );
     evidenceStore.add(evidence);
     return ActionRunnerResult(evidence: evidence, path: destination);
+  }
+
+  Future<ActionRunnerResult> _saveSnapshot(ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+    final target = _resolveWorkspacePath(rawPath);
+    final label = _stringParam(schema, 'label');
+    final maxFiles = _boundedIntParam(schema, 'maxFiles', defaultValue: 80, min: 1, max: 200);
+    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 1024 * 1024, min: 1024, max: 5 * 1024 * 1024);
+    final targetType = await FileSystemEntity.type(target, followLinks: false);
+    if (targetType == FileSystemEntityType.notFound) {
+      throw _ActionRunnerFailure(
+        'Snapshot source does not exist: ${_relative(target)}',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Call list_files before saving a snapshot.'],
+      );
+    }
+    final snapshotId = 'snapshot_${DateTime.now().millisecondsSinceEpoch}';
+    final snapshotRoot = _resolveWorkspacePath('.mobilecode_snapshots/$snapshotId');
+    final copiedFiles = <Map<String, dynamic>>[];
+    var totalBytes = 0;
+
+    Future<void> copyFile(File file) async {
+      if (copiedFiles.length >= maxFiles) return;
+      final relativePath = _relative(file.path);
+      if (relativePath.startsWith('.mobilecode_snapshots${Platform.pathSeparator}') || relativePath == '.mobilecode_snapshots') {
+        return;
+      }
+      if (relativePath.startsWith('.mobilecode_')) return;
+      final stat = await file.stat();
+      if (totalBytes + stat.size > maxBytes) return;
+      final destination = p.join(snapshotRoot, relativePath);
+      await File(destination).parent.create(recursive: true);
+      await file.copy(destination);
+      totalBytes += stat.size;
+      copiedFiles.add({
+        'path': relativePath,
+        'sizeBytes': stat.size,
+      });
+    }
+
+    if (targetType == FileSystemEntityType.file) {
+      await copyFile(File(target));
+    } else if (targetType == FileSystemEntityType.directory) {
+      await for (final entity in Directory(target).list(recursive: true, followLinks: false)) {
+        if (copiedFiles.length >= maxFiles || totalBytes >= maxBytes) break;
+        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        if (type == FileSystemEntityType.file) await copyFile(File(entity.path));
+      }
+    } else {
+      throw _ActionRunnerFailure(
+        'Unsupported snapshot source: ${_relative(target)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+      );
+    }
+
+    final manifest = {
+      'snapshotId': snapshotId,
+      'label': label,
+      'sourcePath': _relative(target),
+      'createdAt': DateTime.now().toIso8601String(),
+      'fileCount': copiedFiles.length,
+      'totalBytes': totalBytes,
+      'files': copiedFiles,
+    };
+    final manifestPath = p.join(snapshotRoot, 'manifest.json');
+    final manifestFile = File(manifestPath);
+    await manifestFile.parent.create(recursive: true);
+    await manifestFile.writeAsString(const JsonEncoder.withIndent('  ').convert(manifest), flush: true);
+
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.saveSnapshot,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'save snapshot of ${_relative(target)}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [snapshotRoot, manifestPath],
+      logs: [
+        'Saved snapshot $snapshotId for ${_relative(target)} with ${copiedFiles.length} file(s), $totalBytes bytes.',
+      ],
+      metadata: manifest,
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: jsonEncode(manifest), path: snapshotRoot);
+  }
+
+  Future<ActionRunnerResult> _virtualDiff(ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+    final snapshotId = _stringParam(schema, 'snapshotId');
+    final snapshotPathParam = _stringParam(schema, 'snapshotPath');
+    if (snapshotId.isEmpty && snapshotPathParam.isEmpty) {
+      throw const _ActionRunnerFailure(
+        'virtual_diff requires snapshot_id or snapshot_path.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: ['Call save_snapshot first, then pass the returned snapshot_id to virtual_diff.'],
+      );
+    }
+    if (snapshotId.isNotEmpty && !RegExp(r'^snapshot_\d+$').hasMatch(snapshotId)) {
+      throw const _ActionRunnerFailure(
+        'Invalid snapshot_id format for virtual_diff.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: ['Use the snapshot_id returned by save_snapshot, for example snapshot_1234567890.'],
+      );
+    }
+    final target = _resolveWorkspacePath(rawPath);
+    final snapshotRoot = snapshotPathParam.isNotEmpty
+        ? _resolveWorkspacePath(snapshotPathParam)
+        : _resolveWorkspacePath('.mobilecode_snapshots/$snapshotId');
+    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
+    if (!await Directory(snapshotRoot).exists()) {
+      throw _ActionRunnerFailure(
+        'Snapshot root does not exist: ${_relative(snapshotRoot)}',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Call save_snapshot and use the returned snapshot_id.'],
+      );
+    }
+
+    final targetType = await FileSystemEntity.type(target, followLinks: false);
+    final diffLines = <String>[];
+    final changedFiles = <String>[];
+    var inspectedBytes = 0;
+
+    Future<void> diffFile(String currentPath) async {
+      if (inspectedBytes >= maxBytes) return;
+      final relativePath = _relative(currentPath);
+      final snapshotFile = File(p.join(snapshotRoot, relativePath));
+      final currentFile = File(currentPath);
+      final currentExists = await currentFile.exists();
+      final snapshotExists = await snapshotFile.exists();
+      if (!currentExists && !snapshotExists) return;
+      final currentBytes = currentExists ? await currentFile.readAsBytes() : <int>[];
+      final snapshotBytes = snapshotExists ? await snapshotFile.readAsBytes() : <int>[];
+      if (_looksBinary(currentBytes) || _looksBinary(snapshotBytes)) return;
+      inspectedBytes += currentBytes.length + snapshotBytes.length;
+      if (currentBytes.length + snapshotBytes.length > maxBytes) return;
+      final currentText = utf8.decode(currentBytes, allowMalformed: true);
+      final snapshotText = utf8.decode(snapshotBytes, allowMalformed: true);
+      if (currentText == snapshotText) return;
+      changedFiles.add(relativePath);
+      diffLines.addAll(_lineDiff(relativePath, snapshotText, currentText, maxLines: 120));
+    }
+
+    if (targetType == FileSystemEntityType.file || targetType == FileSystemEntityType.notFound) {
+      await diffFile(target);
+    } else if (targetType == FileSystemEntityType.directory) {
+      final paths = <String>{};
+      await for (final entity in Directory(target).list(recursive: true, followLinks: false)) {
+        if (paths.length >= 80) break;
+        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        if (type == FileSystemEntityType.file && !_relative(entity.path).startsWith('.mobilecode_')) {
+          paths.add(entity.path);
+        }
+      }
+      final snapshotTarget = Directory(p.join(snapshotRoot, _relative(target)));
+      if (await snapshotTarget.exists()) {
+        await for (final entity in snapshotTarget.list(recursive: true, followLinks: false)) {
+          if (paths.length >= 120) break;
+          final type = await FileSystemEntity.type(entity.path, followLinks: false);
+          if (type == FileSystemEntityType.file) {
+            final relativeToSnapshot = p.relative(entity.path, from: snapshotRoot);
+            if (relativeToSnapshot == 'manifest.json' || relativeToSnapshot.startsWith('.mobilecode_')) {
+              continue;
+            }
+            paths.add(_resolveWorkspacePath(relativeToSnapshot));
+          }
+        }
+      }
+      for (final path in paths.toList()..sort()) {
+        await diffFile(path);
+        if (diffLines.length > 300) break;
+      }
+    } else {
+      throw _ActionRunnerFailure(
+        'Unsupported diff target: ${_relative(target)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+      );
+    }
+
+    final text = diffLines.isEmpty
+        ? 'No virtual diff changes for ${_relative(target)}.'
+        : diffLines.join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.virtualDiff,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'virtual diff ${_relative(target)}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [snapshotRoot, target],
+      logs: ['Virtual diff found ${changedFiles.length} changed file(s) for ${_relative(target)}.'],
+      metadata: {
+        if (snapshotId.isNotEmpty) 'snapshotId': snapshotId,
+        'snapshotRoot': _relative(snapshotRoot),
+        'targetPath': _relative(target),
+        'changedFiles': changedFiles,
+        'inspectedBytes': inspectedBytes,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
   Future<ActionRunnerResult> _applyPatch(ActionSchema schema, DateTime startedAt) async {
@@ -1163,6 +1524,30 @@ class ActionRunner {
       lines.removeLast();
     }
     return lines;
+  }
+
+  List<String> _lineDiff(
+    String relativePath,
+    String before,
+    String after, {
+    required int maxLines,
+  }) {
+    final beforeLines = _splitPatchText(before);
+    final afterLines = _splitPatchText(after);
+    final output = <String>[
+      '--- snapshot/$relativePath',
+      '+++ workspace/$relativePath',
+    ];
+    final maxLength = math.max(beforeLines.length, afterLines.length);
+    for (var i = 0; i < maxLength && output.length < maxLines; i++) {
+      final beforeLine = i < beforeLines.length ? beforeLines[i] : null;
+      final afterLine = i < afterLines.length ? afterLines[i] : null;
+      if (beforeLine == afterLine) continue;
+      if (beforeLine != null) output.add('-$beforeLine');
+      if (afterLine != null) output.add('+$afterLine');
+    }
+    if (output.length >= maxLines) output.add('... diff truncated ...');
+    return output;
   }
 
   void _expectPatchLine(_UnifiedFilePatch filePatch, List<String> originalLines, int cursor, String expected) {

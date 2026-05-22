@@ -17,17 +17,18 @@ const implemented = [
   'DeepSeek now has a provider-native tool-calling Agent Loop path; Mimo and unsupported providers keep Single-shot fallback.',
   'ActionRunner executes safe typed tools and ActionEvidence records action name, success, duration, artifact paths, URLs, logs, and recovery hints.',
   'Agent Loop can now inspect and modify a mobile workspace with find_files, grep_files, and bounded apply_patch.',
-  'Sub-Agent Lite introduces read-only Explorer / Reviewer sessions with agent_open, agent_eval, agent_close, and mailbox-style observations.',
+  'Sub-Agent Lite v2 introduces background read-only Explorer / Reviewer workers with cancellation, timeout, token budget, and a two-worker concurrency cap.',
+  'The Virtual Command Layer now covers copy_file, mkdir, delete_file, save_snapshot, and virtual_diff without opening raw shell.',
   'Tools now exposes Activity / Logs, provider tool list, preset permissions, and Android/Linux/macOS command compatibility.',
   'The composer now separates Mode, Model, Task Dispatch, and Input so mobile users can see how a run will execute before sending.',
 ];
 
 const missing = [
   'The Agent Loop is still minimal and safety-bounded, not a full autonomous coding runtime.',
-  'Copy, mkdir, delete, virtual git diff, rollback, and project summary tools are not fully exposed yet.',
+  'Rollback restore, project summary, package/build execution, and full visual verification are not implemented yet.',
   'Native bitmap preview screenshots and rich visual verification are not implemented yet.',
-  'Sub-Agent Lite is read-only and one-run scoped; it is not a full parallel background agent system yet.',
-  'True background worker agents are deferred until cancellation, memory, token budget, and mobile resource limits are safer.',
+  'Sub-Agent Lite v2 is still read-only; background workers can inspect and review, but real writes must return to the main AgentLoop.',
+  'A Termux or Helper execution lane is still a future typed task route, not a raw shell exposed to the model.',
 ];
 
 const safeTools = [
@@ -41,7 +42,12 @@ const safeTools = [
   'fetch_url',
   'write_file',
   'read_file',
+  'copy_file',
+  'mkdir',
+  'delete_file',
   'move_file',
+  'save_snapshot',
+  'virtual_diff',
   'apply_patch',
   'preview_html',
   'preview_snapshot',
@@ -59,6 +65,18 @@ const loop = [
 ];
 
 const dailyLogs = [
+  {
+    date: '2026-05-23',
+    title: 'Sub-Agent Lite v2 and safer mobile commands',
+    points: [
+      'Sub-Agent Lite moved from one-run read-only sessions to background read-only workers with cancellation, timeout, token budget, and at most two concurrent lanes.',
+      'Explorer and Reviewer workers can inspect, search, collect evidence, and return mailbox observations, but they still cannot write files or run shell.',
+      'The main AgentLoop remains the only write lane: write_file, apply_patch, move_file, copy_file, mkdir, and delete_file still pass through ActionRunner, snapshots, evidence, and observation.',
+      'MobileCode expanded the Virtual Command Layer with copy_file, mkdir, guarded delete_file, save_snapshot, and virtual_diff so common Unix intentions map to Android-safe typed actions.',
+      'The product direction is not “turn Android into Linux.” It is a Mobile Unix Facade: familiar coding workflow for models, strict Android workspace safety underneath.',
+      'A future Termux/Helper route can run typed long tasks with taskId, stdout/stderr, evidence, and observation, but it should stay separate from provider-native raw shell.',
+    ],
+  },
   {
     date: '2026-05-22',
     title: 'DeepSeek Agent Loop and Mobile Unix Facade',
@@ -146,7 +164,7 @@ export default function Experiments() {
             <span>Truth line</span>
             <strong>v0.1.39 UI + DeepSeek Agent Loop</strong>
             <span>Next gate</span>
-            <strong>Rollback / project summary / safer mobile commands</strong>
+            <strong>Restore snapshot / project summary / typed Termux tasks</strong>
           </div>
         </div>
 

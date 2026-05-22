@@ -140,6 +140,74 @@ void main() {
     expect(miss.text, contains('No matches'));
   });
 
+  test('copyFile copies one workspace file and records evidence', () async {
+    final source = File('${workspace.path}/draft.html');
+    await source.writeAsString('<!doctype html><title>Draft</title>');
+
+    final result = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.copyFile,
+      params: const {
+        'sourcePath': 'draft.html',
+        'destinationPath': 'backup/draft.html',
+        'overwrite': false,
+      },
+      requestId: 'ev-copy',
+    ));
+
+    expect(result.success, true);
+    expect(await source.exists(), true);
+    expect(await File('${workspace.path}/backup/draft.html').readAsString(), contains('Draft'));
+    expect(result.evidence.actionName, MobileCodeAction.copyFile);
+    expect(result.evidence.metadata['sourcePath'], 'draft.html');
+    expect(store.getById('ev-copy'), isNotNull);
+  });
+
+  test('makeDirectory creates nested workspace directory', () async {
+    final result = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.makeDirectory,
+      params: const {
+        'path': 'generated/assets/icons',
+        'recursive': true,
+      },
+      requestId: 'ev-mkdir',
+    ));
+
+    expect(result.success, true);
+    expect(await Directory('${workspace.path}/generated/assets/icons').exists(), true);
+    expect(result.evidence.actionName, MobileCodeAction.makeDirectory);
+    expect(store.getById('ev-mkdir'), isNotNull);
+  });
+
+  test('deleteFile requires confirmation and saves pre-delete snapshot', () async {
+    final file = File('${workspace.path}/old.txt');
+    await file.writeAsString('remove me safely');
+
+    final blocked = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.deleteFile,
+      params: const {
+        'path': 'old.txt',
+        'confirm': false,
+      },
+      requestId: 'ev-delete-blocked',
+    ));
+    final deleted = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.deleteFile,
+      params: const {
+        'path': 'old.txt',
+        'confirm': true,
+      },
+      requestId: 'ev-delete',
+    ));
+
+    expect(blocked.success, false);
+    expect(blocked.evidence.failureKind, ActionFailureKind.commandBlocked);
+    expect(deleted.success, true);
+    expect(await file.exists(), false);
+    expect(await File(deleted.path!).readAsString(), 'remove me safely');
+    expect(deleted.path, contains('.mobilecode_delete_snapshots'));
+    expect(deleted.evidence.actionName, MobileCodeAction.deleteFile);
+  });
+
   test('moveFile renames one file inside workspace', () async {
     final file = File('${workspace.path}/draft.html');
     await file.writeAsString('<!doctype html><title>Draft</title>');
@@ -160,6 +228,42 @@ void main() {
     expect(result.evidence.actionName, MobileCodeAction.moveFile);
     expect(result.evidence.metadata['sourcePath'], 'draft.html');
     expect(store.getById('ev-move'), isNotNull);
+  });
+
+  test('saveSnapshot and virtualDiff compare workspace changes without shell', () async {
+    final file = File('${workspace.path}/demo/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<h1>Before</h1>\n<p>Keep</p>');
+
+    final snapshot = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.saveSnapshot,
+      params: const {
+        'path': 'demo',
+        'label': 'before heading change',
+        'maxFiles': 10,
+        'maxBytes': 4096,
+      },
+      requestId: 'ev-save-snapshot',
+    ));
+    final snapshotPayload = jsonDecode(snapshot.text!) as Map<String, dynamic>;
+    await file.writeAsString('<h1>After</h1>\n<p>Keep</p>');
+
+    final diff = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.virtualDiff,
+      params: {
+        'path': 'demo',
+        'snapshotId': snapshotPayload['snapshotId'],
+        'maxBytes': 4096,
+      },
+      requestId: 'ev-virtual-diff',
+    ));
+
+    expect(snapshot.success, true);
+    expect(snapshotPayload['fileCount'], 1);
+    expect(diff.success, true);
+    expect(diff.text, contains('-<h1>Before</h1>'));
+    expect(diff.text, contains('+<h1>After</h1>'));
+    expect(diff.evidence.actionName, MobileCodeAction.virtualDiff);
   });
 
   test('applyPatch modifies an existing file with snapshot evidence', () async {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import '../core/evidence/action_runner.dart';
@@ -106,7 +107,12 @@ extension AgentPresetConfig on AgentPreset {
             'fetch_url',
             'write_file',
             'read_file',
+            'copy_file',
+            'mkdir',
+            'delete_file',
             'move_file',
+            'save_snapshot',
+            'virtual_diff',
             'apply_patch',
             'preview_html',
             'preview_snapshot',
@@ -118,7 +124,12 @@ extension AgentPresetConfig on AgentPreset {
             'grep_files',
             'write_file',
             'read_file',
+            'copy_file',
+            'mkdir',
+            'delete_file',
             'move_file',
+            'save_snapshot',
+            'virtual_diff',
             'apply_patch',
             'preview_html',
             'report_result',
@@ -134,7 +145,11 @@ extension AgentPresetConfig on AgentPreset {
             'fetch_url',
             'write_file',
             'read_file',
+            'copy_file',
+            'mkdir',
             'move_file',
+            'save_snapshot',
+            'virtual_diff',
             'apply_patch',
             'preview_html',
             'preview_snapshot',
@@ -145,6 +160,13 @@ extension AgentPresetConfig on AgentPreset {
             'find_files',
             'grep_files',
             'read_file',
+            'write_file',
+            'copy_file',
+            'mkdir',
+            'delete_file',
+            'move_file',
+            'save_snapshot',
+            'virtual_diff',
             'apply_patch',
             'preview_html',
             'preview_snapshot',
@@ -158,6 +180,8 @@ extension AgentPresetConfig on AgentPreset {
             'agent_eval',
             'agent_close',
             'read_file',
+            'save_snapshot',
+            'virtual_diff',
             'preview_html',
             'preview_snapshot',
             'report_result',
@@ -168,16 +192,22 @@ extension AgentPresetConfig on AgentPreset {
         AgentPreset.autoAgent =>
           'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may open read-only Sub-Agent Lite explorer/reviewer sessions with agent_open/agent_eval/agent_close when a task needs isolated inspection. Do not follow a fixed sequence; call only the tools that are useful, and stop with report_result when the task is done or blocked.',
         AgentPreset.builder =>
-          'Agent preset Builder: inspect with find_files/grep_files/read_file when useful, create or update local artifacts with write_file/apply_patch, preview them, then report concise evidence.',
+          'Agent preset Builder: inspect with find_files/grep_files/read_file when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, preview them, then report concise evidence.',
         AgentPreset.researchBuilder =>
-          'Agent preset Research Builder: use public reference tools when they are useful, inspect local files, optionally open read-only explorer/reviewer Sub-Agent Lite sessions, build or patch one local artifact, preview it, capture preview evidence when needed, then report refIds and evidenceIds.',
+          'Agent preset Research Builder: use public reference tools when they are useful, inspect local files, optionally open read-only background explorer/reviewer Sub-Agent Lite sessions, build or patch one local artifact, preview it, capture preview evidence when needed, then report refIds and evidenceIds.',
         AgentPreset.repair =>
-          'Agent preset Repair: find, grep, and read the existing artifact or evidence, apply a focused patch to the relevant local file, preview again, then report what changed.',
+          'Agent preset Repair: find, grep, and read the existing artifact or evidence, save a snapshot when useful, apply a focused patch or complete write_file replacement for small artifacts, preview again, then report what changed.',
         AgentPreset.reviewer =>
-          'Agent preset Reviewer: inspect local files, preview evidence, and optionally open read-only explorer/reviewer Sub-Agent Lite sessions. Do not write files, publish, run shell, or mutate projects.',
+          'Agent preset Reviewer: inspect local files, save snapshots, inspect virtual diffs, preview evidence, and optionally open read-only background explorer/reviewer Sub-Agent Lite sessions. Do not write files, publish, run shell, or mutate projects.',
       };
 
-  bool get supportsWrite => allowedToolNames.contains('write_file') || allowedToolNames.contains('apply_patch');
+  bool get supportsWrite =>
+      allowedToolNames.contains('write_file') ||
+      allowedToolNames.contains('apply_patch') ||
+      allowedToolNames.contains('move_file') ||
+      allowedToolNames.contains('copy_file') ||
+      allowedToolNames.contains('mkdir') ||
+      allowedToolNames.contains('delete_file');
 }
 
 class AgentLoopController {
@@ -324,8 +354,11 @@ class AgentLoopController {
         } else if (call.name == 'read_file' ||
             call.name == 'grep_files' ||
             call.name == 'find_files' ||
+            call.name == 'list_files' ||
             call.name == 'preview_html' ||
-            call.name == 'preview_snapshot') {
+            call.name == 'preview_snapshot' ||
+            call.name == 'save_snapshot' ||
+            call.name == 'virtual_diff') {
           writeNeedsVerification = false;
         }
 
@@ -469,7 +502,12 @@ class AgentLoopController {
 }
 
 bool _isMutationTool(String toolName) {
-  return toolName == 'write_file' || toolName == 'apply_patch' || toolName == 'move_file';
+  return toolName == 'write_file' ||
+      toolName == 'apply_patch' ||
+      toolName == 'move_file' ||
+      toolName == 'copy_file' ||
+      toolName == 'mkdir' ||
+      toolName == 'delete_file';
 }
 
 bool _isSubAgentTool(String toolName) {
@@ -478,6 +516,8 @@ bool _isSubAgentTool(String toolName) {
 
 class _SubAgentLiteManager {
   _SubAgentLiteManager({required this.actionRunner});
+
+  static const _maxConcurrent = 2;
 
   final ActionRunner actionRunner;
   final Map<String, _SubAgentLiteSession> _sessions = {};
@@ -518,62 +558,145 @@ class _SubAgentLiteManager {
     if (task.isEmpty) {
       return _failed(call, 'agent_open requires a non-empty task.', const ['Provide a compact read-only task for the explorer or reviewer session.']);
     }
+    _reapExpiredSessions();
+    final runningCount = _sessions.values.where((session) => session.isRunning).length;
+    if (runningCount >= _maxConcurrent) {
+      return _failed(
+        call,
+        'Sub-Agent Lite v2 allows at most $_maxConcurrent concurrent read-only workers.',
+        const ['Call agent_eval/agent_close on an existing worker, or wait for one to complete before opening another.'],
+      );
+    }
     final path = _stringArg(call.arguments, 'path').trim().isEmpty ? '.' : _stringArg(call.arguments, 'path').trim();
     final focus = _stringArg(call.arguments, 'focus').trim();
+    final timeoutMs = _boundedIntArgAny(
+      call.arguments,
+      const ['timeout_ms', 'timeoutMs'],
+      defaultValue: 10000,
+      min: 1000,
+      max: 30000,
+    );
+    final tokenBudget = _boundedIntArgAny(
+      call.arguments,
+      const ['token_budget', 'tokenBudget'],
+      defaultValue: 1200,
+      min: 200,
+      max: 4000,
+    );
     final session = _SubAgentLiteSession(
       id: 'sub_${DateTime.now().millisecondsSinceEpoch}_${_nextId++}',
       role: role,
       task: task,
       path: path,
       focus: focus,
+      timeoutMs: timeoutMs,
+      tokenBudget: tokenBudget,
     );
     _sessions[session.id] = session;
-    session.add('Started', '$role opened for read-only task: ${_compact(task, 140)}');
+    session.add('Started', '$role background worker opened for read-only task: ${_compact(task, 140)}');
     _emit(onEvent, round, call.name, role, 'Mailbox Started: ${session.id} ${session.mailbox.last.message}');
-
-    final listResult = await actionRunner.run(ActionSchema(
-      actionName: MobileCodeAction.listFiles,
-      requestId: '${call.id}_list',
-      paramsSummary: 'sub-agent-lite $role list_files',
-      params: {
-        'path': path,
-        'recursive': false,
-        'maxEntries': 40,
-      },
+    unawaited(_runReadOnlyWorker(
+      session: session,
+      parentCall: call,
+      round: round,
+      onEvent: onEvent,
     ));
-    session.evidenceIds.add(listResult.evidence.evidenceId);
-    session.add(
-      listResult.success ? 'ToolCallCompleted' : 'ToolCallFailed',
-      'list_files on $path: ${listResult.success ? "ok" : "failed"} · evidence ${listResult.evidence.evidenceId}',
-    );
-    _emit(onEvent, round, call.name, role, 'Mailbox ${session.mailbox.last.type}: ${session.mailbox.last.message}');
-
-    if (focus.isNotEmpty) {
-      final grepResult = await actionRunner.run(ActionSchema(
-        actionName: MobileCodeAction.grepFiles,
-        requestId: '${call.id}_grep',
-        paramsSummary: 'sub-agent-lite $role grep_files',
-        params: {
-          'query': focus,
-          'path': path,
-          'includeGlob': '*',
-          'maxResults': 12,
-          'maxBytes': 96 * 1024,
-        },
-      ));
-      session.evidenceIds.add(grepResult.evidence.evidenceId);
-      session.add(
-        grepResult.success ? 'ToolCallCompleted' : 'ToolCallFailed',
-        'grep_files focus "$focus": ${grepResult.success ? "ok" : "failed"} · evidence ${grepResult.evidence.evidenceId}',
-      );
-      _emit(onEvent, round, call.name, role, 'Mailbox ${session.mailbox.last.type}: ${session.mailbox.last.message}');
-    }
-
-    session.status = 'completed';
-    session.add('Completed', '$role returned SUMMARY / CHANGES / EVIDENCE / RISKS / BLOCKERS.');
-    _emit(onEvent, round, call.name, role, 'Mailbox Completed: ${session.id} ready for agent_eval.');
 
     return _succeeded(call, 'agent_open ${session.id}', _sessionPayload(session));
+  }
+
+  Future<void> _runReadOnlyWorker({
+    required _SubAgentLiteSession session,
+    required ProviderToolCall parentCall,
+    required int round,
+    void Function(AgentLoopEvent event)? onEvent,
+  }) async {
+    await Future<void>.delayed(Duration.zero);
+    try {
+      if (_shouldStop(session, round: round, toolName: parentCall.name, onEvent: onEvent)) return;
+      await _runReadOnlyAction(
+        session,
+        parentCall,
+        round: round,
+        onEvent: onEvent,
+        actionName: MobileCodeAction.listFiles,
+        requestId: '${parentCall.id}_list',
+        toolName: 'list_files',
+        params: {
+          'path': session.path,
+          'recursive': false,
+          'maxEntries': 40,
+        },
+      );
+      if (_shouldStop(session, round: round, toolName: parentCall.name, onEvent: onEvent)) return;
+
+      if (session.focus.isNotEmpty) {
+        await _runReadOnlyAction(
+          session,
+          parentCall,
+          round: round,
+          onEvent: onEvent,
+          actionName: MobileCodeAction.grepFiles,
+          requestId: '${parentCall.id}_grep',
+          toolName: 'grep_files',
+          params: {
+            'query': session.focus,
+            'path': session.path,
+            'includeGlob': '*',
+            'maxResults': 12,
+            'maxBytes': 96 * 1024,
+          },
+        );
+        if (_shouldStop(session, round: round, toolName: parentCall.name, onEvent: onEvent)) return;
+      }
+
+      if (!session.isRunning) return;
+      session.status = 'completed';
+      session.finishedAt = DateTime.now();
+      session.add('Completed', '${session.role} returned SUMMARY / CHANGES / EVIDENCE / RISKS / BLOCKERS.');
+      _emit(onEvent, round, parentCall.name, session.role, 'Mailbox Completed: ${session.id} ready for agent_eval.');
+    } catch (error) {
+      if (!session.isRunning) return;
+      session.status = 'failed';
+      session.finishedAt = DateTime.now();
+      session.add('Failed', 'Sub-Agent Lite worker failed: ${_compact(error.toString(), 180)}');
+      _emit(onEvent, round, parentCall.name, session.role, 'Mailbox Failed: ${session.id} ${session.mailbox.last.message}', success: false);
+    }
+  }
+
+  Future<void> _runReadOnlyAction(
+    _SubAgentLiteSession session,
+    ProviderToolCall parentCall, {
+    required int round,
+    required void Function(AgentLoopEvent event)? onEvent,
+    required MobileCodeAction actionName,
+    required String requestId,
+    required String toolName,
+    required Map<String, dynamic> params,
+  }) async {
+    if (_shouldStop(session, round: round, toolName: parentCall.name, onEvent: onEvent)) return;
+    session.add('ToolCallStarted', '$toolName started inside ${session.id}.');
+    _emit(onEvent, round, parentCall.name, session.role, 'Mailbox ToolCallStarted: ${session.mailbox.last.message}');
+    final result = await actionRunner.run(ActionSchema(
+      actionName: actionName,
+      requestId: requestId,
+      paramsSummary: 'sub-agent-lite ${session.role} $toolName',
+      params: params,
+    ));
+    session.evidenceIds.add(result.evidence.evidenceId);
+    final preview = _compact(
+      [result.text, result.evidence.logs.join(' ')].whereType<String>().join(' '),
+      240,
+    );
+    session.add(
+      result.success ? 'ToolCallCompleted' : 'ToolCallFailed',
+      '$toolName on ${session.path}: ${result.success ? "ok" : "failed"} · evidence ${result.evidence.evidenceId}${preview.isEmpty ? "" : " · $preview"}',
+    );
+    _emit(onEvent, round, parentCall.name, session.role, 'Mailbox ${session.mailbox.last.type}: ${session.mailbox.last.message}', success: result.success);
+    if (!result.success && session.isRunning) {
+      session.status = 'failed';
+      session.finishedAt = DateTime.now();
+    }
   }
 
   ActionRunnerResult _eval(
@@ -581,11 +704,13 @@ class _SubAgentLiteManager {
     required int round,
     void Function(AgentLoopEvent event)? onEvent,
   }) {
+    _reapExpiredSessions();
     final agentId = _stringArgAny(call.arguments, const ['agent_id', 'agentId', 'id']).trim();
     final session = _sessions[agentId];
     if (session == null) {
       return _failed(call, 'Unknown Sub-Agent Lite session: ${agentId.isEmpty ? "(empty)" : agentId}.', const ['Call agent_open first, then pass the returned agent_id to agent_eval.']);
     }
+    _shouldStop(session, round: round, toolName: call.name, onEvent: onEvent);
     session.add('Progress', 'agent_eval read mailbox with ${session.mailbox.length} entries.');
     _emit(onEvent, round, call.name, session.role, 'Mailbox Eval: ${session.id} ${session.status}.');
     return _succeeded(call, 'agent_eval ${session.id}', _sessionPayload(session));
@@ -602,9 +727,17 @@ class _SubAgentLiteManager {
       return _failed(call, 'Unknown Sub-Agent Lite session: ${agentId.isEmpty ? "(empty)" : agentId}.', const ['Call agent_close only with a currently open Sub-Agent Lite session id.']);
     }
     final reason = _stringArg(call.arguments, 'reason').trim();
-    session.status = 'closed';
-    session.add('Closed', reason.isEmpty ? 'Closed by parent AgentLoop.' : reason);
-    _emit(onEvent, round, call.name, session.role, 'Mailbox Closed: ${session.id}.');
+    if (session.isRunning) {
+      session.cancelRequested = true;
+      session.status = 'cancelled';
+      session.finishedAt = DateTime.now();
+      session.add('Cancelled', reason.isEmpty ? 'Cancelled by parent AgentLoop.' : reason);
+      _emit(onEvent, round, call.name, session.role, 'Mailbox Cancelled: ${session.id}.');
+    } else {
+      session.status = 'closed';
+      session.add('Closed', reason.isEmpty ? 'Closed by parent AgentLoop.' : reason);
+      _emit(onEvent, round, call.name, session.role, 'Mailbox Closed: ${session.id}.');
+    }
     return _succeeded(call, 'agent_close ${session.id}', _sessionPayload(session));
   }
 
@@ -616,13 +749,22 @@ class _SubAgentLiteManager {
       'task': session.task,
       'path': session.path,
       if (session.focus.isNotEmpty) 'focus': session.focus,
+      'is_background': true,
+      'max_concurrent': _maxConcurrent,
+      'timeout_ms': session.timeoutMs,
+      'token_budget': session.tokenBudget,
+      'token_used': session.estimatedTokens,
+      'started_at': session.startedAt.toIso8601String(),
+      'deadline': session.deadline.toIso8601String(),
+      if (session.finishedAt != null) 'finished_at': session.finishedAt!.toIso8601String(),
+      'can_cancel': session.isRunning,
       'allowed_tools': session.allowedTools,
       'output_contract': const ['SUMMARY', 'CHANGES', 'EVIDENCE', 'RISKS', 'BLOCKERS'],
       'mailbox': session.mailbox.map((entry) => entry.toJson()).toList(),
       'evidence_ids': session.evidenceIds,
-      'summary': '${session.role} inspected ${session.path} with read-only MobileCode tools.',
+      'summary': '${session.role} ${session.status} while inspecting ${session.path} with read-only MobileCode tools.',
       'changes': const [],
-      'risks': const ['Sub-Agent Lite is read-only and not a parallel background worker yet.'],
+      'risks': const ['Sub-Agent Lite v2 is read-only; write proposals must return to the main AgentLoop before ActionRunner mutates files.'],
       'blockers': const [],
     };
   }
@@ -659,16 +801,65 @@ class _SubAgentLiteManager {
     int round,
     String toolName,
     String role,
-    String message,
+    String message, {
+    bool success = true,
   ) {
     onEvent?.call(AgentLoopEvent(
-      type: AgentLoopEventType.observation,
+      type: success ? AgentLoopEventType.observation : AgentLoopEventType.failed,
       message: message,
       round: round,
       toolName: toolName,
       roleName: '${_titleCase(role)} sub-agent',
-      success: true,
+      success: success,
     ));
+  }
+
+  bool _shouldStop(
+    _SubAgentLiteSession session, {
+    required int round,
+    required String toolName,
+    void Function(AgentLoopEvent event)? onEvent,
+  }) {
+    if (!session.isRunning) return true;
+    if (session.cancelRequested) {
+      _stopSession(session, 'cancelled', 'Cancelled', 'Cancelled by parent AgentLoop.', round, toolName, onEvent);
+      return true;
+    }
+    if (DateTime.now().isAfter(session.deadline)) {
+      _stopSession(session, 'timed_out', 'TimedOut', 'Worker timed out after ${session.timeoutMs}ms.', round, toolName, onEvent);
+      return true;
+    }
+    if (session.estimatedTokens >= session.tokenBudget) {
+      _stopSession(session, 'token_budget_exhausted', 'TokenBudgetExceeded', 'Worker stopped at token budget ${session.tokenBudget}.', round, toolName, onEvent);
+      return true;
+    }
+    return false;
+  }
+
+  void _stopSession(
+    _SubAgentLiteSession session,
+    String status,
+    String mailboxType,
+    String message,
+    int round,
+    String toolName,
+    void Function(AgentLoopEvent event)? onEvent,
+  ) {
+    if (!session.isRunning) return;
+    session.status = status;
+    session.finishedAt = DateTime.now();
+    session.add(mailboxType, message);
+    _emit(onEvent, round, toolName, session.role, 'Mailbox $mailboxType: ${session.id} $message', success: status == 'cancelled');
+  }
+
+  void _reapExpiredSessions() {
+    for (final session in _sessions.values) {
+      if (session.isRunning && DateTime.now().isAfter(session.deadline)) {
+        session.status = 'timed_out';
+        session.finishedAt = DateTime.now();
+        session.add('TimedOut', 'Worker timed out after ${session.timeoutMs}ms.');
+      }
+    }
   }
 }
 
@@ -679,16 +870,28 @@ class _SubAgentLiteSession {
     required this.task,
     required this.path,
     required this.focus,
-  });
+    required this.timeoutMs,
+    required this.tokenBudget,
+    DateTime? startedAt,
+  }) : startedAt = startedAt ?? DateTime.now();
 
   final String id;
   final String role;
   final String task;
   final String path;
   final String focus;
+  final int timeoutMs;
+  final int tokenBudget;
+  final DateTime startedAt;
   final List<_SubAgentLiteMailboxEntry> mailbox = [];
   final List<String> evidenceIds = [];
+  DateTime? finishedAt;
   String status = 'running';
+  var estimatedTokens = 0;
+  bool cancelRequested = false;
+
+  DateTime get deadline => startedAt.add(Duration(milliseconds: timeoutMs));
+  bool get isRunning => status == 'running';
 
   List<String> get allowedTools => role == 'explorer'
       ? const ['list_files', 'find_files', 'grep_files', 'read_file']
@@ -696,6 +899,10 @@ class _SubAgentLiteSession {
 
   void add(String type, String message) {
     mailbox.add(_SubAgentLiteMailboxEntry(type: type, message: message));
+    estimatedTokens += (message.length / 4).ceil().clamp(1, 400).toInt();
+    if (mailbox.length > 80) {
+      mailbox.removeRange(0, mailbox.length - 80);
+    }
   }
 }
 
@@ -739,10 +946,19 @@ String _roleForTool(String toolName) {
   if (toolName == 'find_files' || toolName == 'grep_files' || toolName == 'list_files' || toolName == 'read_file') {
     return 'Planner';
   }
-  if (toolName == 'write_file' || toolName == 'move_file' || toolName == 'apply_patch') {
+  if (toolName == 'write_file' ||
+      toolName == 'copy_file' ||
+      toolName == 'mkdir' ||
+      toolName == 'delete_file' ||
+      toolName == 'move_file' ||
+      toolName == 'apply_patch') {
     return 'Builder';
   }
-  if (toolName == 'preview_html' || toolName == 'preview_snapshot' || toolName == 'report_result') {
+  if (toolName == 'save_snapshot' ||
+      toolName == 'virtual_diff' ||
+      toolName == 'preview_html' ||
+      toolName == 'preview_snapshot' ||
+      toolName == 'report_result') {
     return 'Reviewer';
   }
   if (toolName == 'web_search' || toolName == 'fetch_url') {
@@ -752,10 +968,19 @@ String _roleForTool(String toolName) {
 }
 
 String _observationRoleForTool(String toolName) {
-  if (toolName == 'write_file' || toolName == 'move_file' || toolName == 'apply_patch') {
+  if (toolName == 'write_file' ||
+      toolName == 'copy_file' ||
+      toolName == 'mkdir' ||
+      toolName == 'delete_file' ||
+      toolName == 'move_file' ||
+      toolName == 'apply_patch') {
     return 'Reviewer';
   }
-  if (toolName == 'preview_html' || toolName == 'preview_snapshot' || toolName == 'report_result') {
+  if (toolName == 'save_snapshot' ||
+      toolName == 'virtual_diff' ||
+      toolName == 'preview_html' ||
+      toolName == 'preview_snapshot' ||
+      toolName == 'report_result') {
     return 'Reviewer';
   }
   if (toolName == 'web_search' || toolName == 'fetch_url') {
@@ -776,6 +1001,31 @@ String _stringArgAny(Map<String, dynamic> args, List<String> keys) {
     if (value.isNotEmpty) return value;
   }
   return '';
+}
+
+int _boundedIntArgAny(
+  Map<String, dynamic> args,
+  List<String> keys, {
+  required int defaultValue,
+  required int min,
+  required int max,
+}) {
+  Object? raw;
+  for (final key in keys) {
+    if (args.containsKey(key)) {
+      raw = args[key];
+      break;
+    }
+  }
+  final parsed = switch (raw) {
+    int value => value,
+    num value => value.toInt(),
+    String value => int.tryParse(value.trim()) ?? defaultValue,
+    _ => defaultValue,
+  };
+  if (parsed < min) return min;
+  if (parsed > max) return max;
+  return parsed;
 }
 
 String _titleCase(String value) {

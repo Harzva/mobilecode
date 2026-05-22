@@ -463,8 +463,8 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 
 剩余风险：
 
-- `grep_files / find_files / edit_file / apply_patch / copy_file / mkdir / delete_file / snapshot` 仍未作为 provider-native tool 暴露。
-- `delete_file` 与批量替换需二次确认机制，不应直接进入默认 Auto Agent。
+- `edit_file / read_many_files / restore_snapshot / project_summary` 尚未作为 provider-native tool 暴露。
+- `delete_file` 已进入 guard-railed typed tool 设计，但仍只能删除确认过的单个 workspace 文件，不支持目录删除或递归删除。
 - Runtime-only 命令仍依赖 Helper/Termux/CI，不能在当前 provider-native AgentLoop 中承诺可执行。
 
 ## DS04.2 AgentLoop 可用工具 gating 与缺省写入路径修复
@@ -580,7 +580,7 @@ Shell 边界：
 剩余风险：
 
 - 第一版 `apply_patch` 是移动端轻量 unified diff 执行器，不等同于完整 `git apply`。
-- 尚未实现 copy/mkdir/delete/snapshot restore/virtual git diff 的完整工具面。
+- `copy_file / mkdir / delete_file / save_snapshot / virtual_diff` 已在后续 DS04.5 扩展，但 `restore_snapshot / change_history / project_summary` 仍未完成。
 - 多角色仍是单 loop 内的职责切换；真实后台子 Agent 本阶段延后，先落地角色编排 + event/mailbox-lite 方向。
 
 ## DS04.4 Sub-Agent Lite / mailbox-lite
@@ -635,6 +635,86 @@ Shell 边界：
 
 - 第一版 Sub-Agent Lite 是同一 AgentLoop run 内的 read-only session，不是完整后台并发 worker。
 - 未来如果要做真实后台子 Agent，需要单独设计 session 持久化、取消传播、token 预算和并发上限。
+
+## DS04.5 Sub-Agent Lite v2 + Virtual Command Layer 扩展
+
+状态：`IN_PROGRESS`（本地实现完成，静态检查与 CI 待验收）
+
+目标：
+
+- 把 Sub-Agent Lite 从“同一 run 内的只读 session”推进到真正后台只读 worker。
+- 仍然只开放 `Explorer / Reviewer`，不开放 shell，不开放后台写入。
+- 扩展 MobileCode Virtual Command Layer，让模型能用更多 Linux/macOS 常见开发意图，但底层仍是 Android workspace typed tools。
+
+本轮实现：
+
+- `agent_open` 升级为后台只读 worker：
+  - 新增 `timeout_ms`。
+  - 新增 `token_budget`。
+  - 同时最多 2 个并发 worker。
+  - `agent_close` 可取消运行中的 worker。
+  - `agent_eval` 返回 mailbox、状态、evidenceIds、token_used、deadline、can_cancel。
+- 后台 worker 权限：
+  - `explorer`：`list_files / find_files / grep_files / read_file`。
+  - `reviewer`：`list_files / find_files / grep_files / read_file / preview_snapshot`。
+  - 仍不允许 `write_file / apply_patch / move_file / copy_file / mkdir / delete_file / shell`。
+- 主 AgentLoop 写入线保持串行：
+  - `write_file / apply_patch / move_file / copy_file / mkdir / delete_file` 必须回到主 AgentLoop。
+  - 每个真实写入仍经过 `ActionRunner` 路径校验、snapshot / recovery evidence、observation 回传。
+- 新增 provider-native typed tools：
+  - `copy_file(source_path, destination_path, overwrite)`
+  - `mkdir(path, recursive)`
+  - `delete_file(path, confirm)`
+  - `save_snapshot(path, label, max_files, max_bytes)`
+  - `virtual_diff(path, snapshot_id, snapshot_path, max_bytes)`
+- ActionRunner 新增：
+  - `copyFile`
+  - `makeDirectory`
+  - `deleteFile`
+  - `saveSnapshot`
+  - `virtualDiff`
+- Tools 页 `Tool List / Command Map` 同步显示：
+  - `cp -> copy_file`
+  - `mkdir -> mkdir`
+  - `rm -> delete_file`（确认 + pre-delete snapshot）
+  - `diff / git diff -> save_snapshot + virtual_diff`
+- `COMMANDS.md` 与 `COMMAND_COMPATIBILITY.md` 同步当前真实支持状态。
+- GitHub Pages `实验日志` 增加 2026-05-23 用户向日志：说明移动端做后台只读 worker、Virtual Command Layer 和 Termux typed task 未来方向。
+
+Termux 路线口径：
+
+- Termux / Helper 可以并行设计，但不混入本轮 provider-native VCL patch。
+- 推荐形态是 typed task route：
+  - `provider-native tool_call: termux_task_start`
+  - `RuntimeManager`
+  - `Termux daemon / MobileCode Helper`
+  - `stdout / stderr / taskId`
+  - `ActionEvidence`
+  - observation 回传模型
+- 不推荐直接开放 raw shell 给模型。
+
+验收口径：
+
+- 模型能打开最多两个后台只读 Explorer / Reviewer worker。
+- worker 可被 `agent_close` 取消，并可因 timeout / token budget 自动停止。
+- 后台 worker 只能读、搜、审查、汇总，不能写盘。
+- 模型可以通过 typed tools 执行 copy / mkdir / guarded delete / snapshot / virtual diff。
+- Tools 页与 GitHub Pages 公开日志不再把这些能力写成“未来计划”。
+
+验证：
+
+- [x] `git diff --check`
+- [x] `node --check relay/mobilecode-token-relay-worker.js`
+- [x] `cd app && npm run build`
+- [ ] GitHub Actions `Mobile Runtime CI`
+- [ ] GitHub Actions `Build Android APK`
+
+剩余风险：
+
+- 后台 worker 仍是 App 进程内的轻量 worker，不是完整多进程/多模型并发 Agent。
+- `virtual_diff` 是移动端 compact line diff，不是完整 Git diff engine。
+- `delete_file` 仍需真实产品验收，避免模型误把“移动/替换”理解成删除。
+- `restore_snapshot / change_history / project_summary` 仍未实现。
 
 ## DS05 DeepSeek 错误码映射
 

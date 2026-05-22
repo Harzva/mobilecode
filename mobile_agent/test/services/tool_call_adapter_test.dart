@@ -91,7 +91,12 @@ void main() {
       'fetch_url',
       'write_file',
       'read_file',
+      'copy_file',
+      'mkdir',
+      'delete_file',
       'move_file',
+      'save_snapshot',
+      'virtual_diff',
       'apply_patch',
       'preview_html',
       'preview_snapshot',
@@ -289,7 +294,7 @@ void main() {
     expect(snapshot.params['viewportWidth'], 390);
   });
 
-  test('maps list/find/grep/move/patch to safe ActionSchema actions', () {
+  test('maps list/find/grep/copy/mkdir/delete/move/snapshot/diff/patch to safe ActionSchema actions', () {
     final adapter = OpenAiCompatibleToolCallAdapter(
       profile: ToolCallProviderProfile.detect(
         'https://api.deepseek.com',
@@ -332,6 +337,38 @@ void main() {
     expect(grep.params['includeGlob'], '*.html');
     expect(grep.params['maxBytes'], 4096);
 
+    final copy = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_copy',
+      name: 'copy_file',
+      arguments: {
+        'source_path': 'draft.html',
+        'destination_path': 'backup/draft.html',
+        'overwrite': true,
+      },
+    ))!;
+    expect(copy.actionName, MobileCodeAction.copyFile);
+    expect(copy.params['sourcePath'], 'draft.html');
+    expect(copy.params['destinationPath'], 'backup/draft.html');
+    expect(copy.params['overwrite'], true);
+
+    final mkdir = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_mkdir',
+      name: 'mkdir',
+      arguments: {'path': 'generated/assets', 'recursive': true},
+    ))!;
+    expect(mkdir.actionName, MobileCodeAction.makeDirectory);
+    expect(mkdir.params['path'], 'generated/assets');
+    expect(mkdir.params['recursive'], true);
+
+    final delete = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_delete',
+      name: 'delete_file',
+      arguments: {'path': 'old.txt', 'confirm': true},
+    ))!;
+    expect(delete.actionName, MobileCodeAction.deleteFile);
+    expect(delete.params['path'], 'old.txt');
+    expect(delete.params['confirm'], true);
+
     final move = adapter.toActionSchema(const ProviderToolCall(
       id: 'call_move',
       name: 'move_file',
@@ -345,6 +382,30 @@ void main() {
     expect(move.params['sourcePath'], 'draft.html');
     expect(move.params['destinationPath'], 'published/index.html');
     expect(move.params['overwrite'], true);
+
+    final snapshot = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_snapshot',
+      name: 'save_snapshot',
+      arguments: {'path': '.', 'label': 'before repair', 'max_files': 40, 'max_bytes': 8192},
+    ))!;
+    expect(snapshot.actionName, MobileCodeAction.saveSnapshot);
+    expect(snapshot.params['path'], '.');
+    expect(snapshot.params['label'], 'before repair');
+    expect(snapshot.params['maxFiles'], 40);
+
+    final diff = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_diff',
+      name: 'virtual_diff',
+      arguments: {
+        'path': '.',
+        'snapshot_id': 'snapshot_123',
+        'snapshot_path': '',
+        'max_bytes': 4096,
+      },
+    ))!;
+    expect(diff.actionName, MobileCodeAction.virtualDiff);
+    expect(diff.params['snapshotId'], 'snapshot_123');
+    expect(diff.params['maxBytes'], 4096);
 
     final patch = adapter.toActionSchema(const ProviderToolCall(
       id: 'call_patch',

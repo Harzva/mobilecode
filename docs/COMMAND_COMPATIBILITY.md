@@ -2,6 +2,8 @@
 
 Date: 2026-05-22
 
+Last updated: 2026-05-23
+
 Branch baseline: `last-recover-from-v039`
 
 ## Summary
@@ -27,13 +29,14 @@ This lets models reuse Linux/macOS development habits while MobileCode keeps And
 | Read text | `cat`, `head`, `tail`, `less` | App can read workspace text | Supported | `read_file` |
 | Write text | `cat > file`, editor save | App can write workspace files | Supported | `write_file` |
 | Move / rename | `mv` | Safe inside workspace | Supported | `move_file` |
-| Copy | `cp` | Safe inside workspace | Planned | `copy_file` later |
-| Make directory | `mkdir -p` | Safe inside workspace | Partial | parent dirs via `write_file`; typed `mkdir` later |
-| Delete | `rm`, `rmdir` | Risky in agent loops | Blocked | Not exposed |
+| Copy | `cp` | Safe inside workspace | Supported | `copy_file` |
+| Make directory | `mkdir -p` | Safe inside workspace | Supported | `mkdir`; parent dirs also via `write_file` |
+| Delete | `rm`, `rmdir` | Risky in agent loops | Guarded | `delete_file` for confirmed single files only |
 | Text search | `grep`, `rg`, `ag` | Safe with result limits | Supported | `grep_files` |
 | Name search | `find -name`, glob | Safe with result limits | Supported | `find_files` |
 | Replace text | `sed -i`, editor replace | Risky without diff preview | Partial | `apply_patch` unified diff |
-| Diff | `diff`, `git diff` | Can be snapshot-based | Planned | `git_diff_virtual` later |
+| Snapshot | checkpoint before changes | App can copy bounded workspace files | Supported | `save_snapshot` |
+| Diff | `diff`, `git diff` | Can be snapshot-based | Supported | `virtual_diff` |
 | Patch | `patch`, `git apply` | Safe with workspace validation | Supported | `apply_patch` bounded auto-apply |
 | Web fetch | `curl`, `wget` | App should not fetch private/local targets | Supported when relay configured | `fetch_url` relay |
 | Web search | search CLI / browser | Requires managed relay | Supported when relay configured | `web_search` relay |
@@ -41,7 +44,7 @@ This lets models reuse Linux/macOS development habits while MobileCode keeps And
 | Preview evidence | screenshot | Native bitmap capture not implemented | Partial | `preview_snapshot` metadata |
 | Package managers | `npm`, `pip`, `brew`, `apt` | Not guaranteed on Android app sandbox | Runtime only | Helper/Termux/CI later |
 | Build tools | `flutter`, `dart`, `gradle`, `make` | Not guaranteed in APK | Runtime only | Helper/Termux/CI later |
-| Git local | `git status`, `git diff` | Git binary not guaranteed | Planned virtual | snapshots later |
+| Git local | `git status`, `git diff` | Git binary not guaranteed | Partial virtual | `save_snapshot` / `virtual_diff`; status/restore later |
 | Git remote | `git push`, release | High risk | Blocked | GitHub UI/CI only |
 | Android shell | `pm`, `am`, `dumpsys`, `logcat` | Requires privileges / debug mode | Blocked | Not provider-native |
 | Process control | `ps`, `top`, `kill` | Risky and limited | Blocked | Not exposed |
@@ -73,7 +76,12 @@ Supported today in provider-native Agent Loop:
 - `fetch_url` when managed relay is configured
 - `write_file`
 - `read_file`
+- `copy_file`
+- `mkdir`
+- `delete_file`
 - `move_file`
+- `save_snapshot`
+- `virtual_diff`
 - `apply_patch`
 - `preview_html`
 - `preview_snapshot`
@@ -82,7 +90,7 @@ Supported today in provider-native Agent Loop:
 Not supported today:
 
 - arbitrary `ls` / `mv` / `cat` shell strings;
-- `rm`, `cp`, `mkdir` as independent typed tools;
+- recursive delete, directory delete, or `rm -rf` semantics;
 - real package managers or shell builds;
 - Android system command execution.
 
@@ -117,19 +125,18 @@ Status: accepted.
 
 ### P1: Search and patch
 
-Status: in progress.
+Status: accepted.
 
 - `grep_files`
 - `find_files`
 - `apply_patch`
-- `edit_file`
-- bounded `read_many_files`
 
 ### P2: Snapshot safety
 
+Status: partial.
+
 - `save_snapshot`
-- `git_status_virtual`
-- `git_diff_virtual`
+- `virtual_diff`
 - `restore_snapshot`
 - change history
 

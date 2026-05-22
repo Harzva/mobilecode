@@ -390,6 +390,11 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 - Agent Loop trace 从单行状态覆盖改为追加可见事件：请求模型、工具选择、参数流入、工具执行、observation、完成摘要。
 - 写文件成功后，若模型继续重复调用 `write_file` 而未先 `read_file / preview_html / report_result`，MobileCode 会阻止重复写入并把 observation 回传模型。
 - 最终聊天结果追加“本轮执行总结”，不再只在顶部状态行变化。
+- 修复提交：`c71d00d fix: improve deepseek agent loop feedback`
+- GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26278750717`
+- GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26278838865`
+- Release APK：`https://github.com/Harzva/mobilecode/releases/download/v0.1.52-last/mobilecode-v0.1.52-last.apk`
+- 手动验收版本改为 `v0.1.52-last`。
 
 ## DS05 DeepSeek 错误码映射
 

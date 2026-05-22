@@ -520,7 +520,6 @@ void main() {
       maxRounds: 3,
     );
     final events = <AgentLoopEvent>[];
-    List<Map<String, dynamic>>? round3Messages;
 
     final result = await controller.run(
       initialMessages: const [
@@ -586,6 +585,7 @@ void main() {
       maxRounds: 3,
     );
     final events = <AgentLoopEvent>[];
+    List<Map<String, dynamic>>? round3Messages;
 
     final result = await controller.run(
       initialMessages: const [

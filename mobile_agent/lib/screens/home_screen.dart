@@ -9821,6 +9821,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   RoleProposal? _activeRunProposal;
   final List<_AgentTraceStep> _agentTrace = [];
   final Set<String> _agentTraceEventKeys = {};
+  final List<String> _agentProviderLiveProcess = [];
   final ActionEvidenceStore _agentEvidenceStore = ActionEvidenceStore.shared;
   final Map<String, GlobalKey> _turnKeys = {};
   Timer? _navPreviewTimer;
@@ -10802,6 +10803,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         ..clear()
         ..addAll(_agentRunTraceTemplate(prompt));
       _agentTraceEventKeys.clear();
+      _agentProviderLiveProcess.clear();
       _activeRunRoles = activeRoles;
       _activeRunProposal = proposedRole;
       _storeSession(pending);
@@ -11056,6 +11058,44 @@ class _ChatPanelState extends State<_ChatPanel> {
     _scrollConversationToEnd();
   }
 
+  void _syncProviderLiveProcessDetail() {
+    final providerIndex = _agentTrace.indexWhere((step) => step.traceAction == MobileCodeAction.traceCallProvider);
+    if (providerIndex == -1 || _agentProviderLiveProcess.isEmpty) return;
+    final providerStep = _agentTrace[providerIndex];
+    final details = Map<String, String>.from(providerStep.details);
+    details['Live process'] = _agentProviderLiveProcess.join('\n');
+    _agentTrace[providerIndex] = providerStep.copyWith(details: details);
+  }
+
+  void _appendProviderLiveProcessLine(String line) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) return;
+    final stamped = '${_clockLabel(DateTime.now())} · $trimmed';
+    if (_agentProviderLiveProcess.isNotEmpty && _agentProviderLiveProcess.last.endsWith(trimmed)) {
+      _agentProviderLiveProcess[_agentProviderLiveProcess.length - 1] = stamped;
+    } else {
+      _agentProviderLiveProcess.add(stamped);
+    }
+    if (_agentProviderLiveProcess.length > 18) {
+      _agentProviderLiveProcess.removeRange(0, _agentProviderLiveProcess.length - 18);
+    }
+    _syncProviderLiveProcessDetail();
+  }
+
+  String _agentLoopEventLiveLine(AgentLoopEvent event) {
+    final round = event.round == null ? '' : 'Round ${event.round}: ';
+    final tool = event.toolName == null ? '' : ' `${event.toolName}`';
+    return switch (event.type) {
+      AgentLoopEventType.started => 'Agent Loop started.',
+      AgentLoopEventType.modelRequest => '${round}asking model for the next tool call.',
+      AgentLoopEventType.toolCall => '${round}selected tool$tool.',
+      AgentLoopEventType.observation => '${round}received observation from$tool: ${event.success == false ? 'failed' : 'ok'}.',
+      AgentLoopEventType.blocked => '${round}blocked tool$tool.',
+      AgentLoopEventType.completed => '${round}completed: ${_compact(event.message, limit: 120)}',
+      AgentLoopEventType.failed => '${round}failed in$tool: ${_compact(event.message, limit: 120)}',
+    };
+  }
+
   void _appendAgentLoopTraceEvent(AgentLoopEvent event) {
     if (!mounted) return;
     final key = [
@@ -11109,6 +11149,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       finishedAt: DateTime.now(),
     );
     setState(() {
+      _appendProviderLiveProcessLine(_agentLoopEventLiveLine(event));
       _agentTrace.add(_withStepEvidence(step, state));
     });
     _scrollConversationToEnd();
@@ -11128,6 +11169,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       finishedAt: DateTime.now(),
     );
     setState(() {
+      _appendProviderLiveProcessLine('Round $round: $detail');
       _agentTrace.add(_withStepEvidence(step, _AgentStepState.done));
     });
     _scrollConversationToEnd();

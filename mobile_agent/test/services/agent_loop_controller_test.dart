@@ -461,6 +461,53 @@ void main() {
     expect(store.recent(count: 10).map((evidence) => evidence.actionName), contains(MobileCodeAction.applyPatch));
   });
 
+  test('invalid patch is reported as a safe block instead of a run failure event', () async {
+    final file = File('${workspace.path}/safe/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<h1>Existing</h1>');
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.repair,
+      maxRounds: 2,
+    );
+    final events = <AgentLoopEvent>[];
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'repair the page'},
+      ],
+      onEvent: events.add,
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_bad_patch',
+                name: 'apply_patch',
+                arguments: {
+                  'patch': '--- a/safe/index.html\n+++ b/safe/index.html\n@@ ... @@\n-<h1>Existing</h1>\n+<h1>Fixed</h1>',
+                  'reason': 'model emitted an invalid hunk placeholder',
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: 'Cannot apply the patch until the model sends real hunk coordinates.',
+          toolCalls: [],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Cannot apply'));
+    expect(events.map((event) => event.type), contains(AgentLoopEventType.blocked));
+    expect(events.map((event) => event.type), isNot(contains(AgentLoopEventType.failed)));
+    expect(store.failures().single.failureKind, ActionFailureKind.commandBlocked);
+  });
+
   test('agent loop appends assistant tool-call message with reasoning before tool results', () async {
     final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
     final controller = AgentLoopController(

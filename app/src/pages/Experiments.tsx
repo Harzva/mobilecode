@@ -62,6 +62,8 @@ const dailyLogs = [
       'The Mobile Unix Facade now covers list_files, find_files, grep_files, move_file, and bounded apply_patch while staying inside the app workspace.',
       'Agent Loop uses a visible role flow: Planner inspects, Builder changes, Reviewer verifies, and Repair responds to failed evidence.',
       'Streaming tool-call arguments are shown as one updating progress item with character deltas; actual file writes still happen only after the complete structured tool call is validated.',
+      'Invalid patch drafts are now treated as safe blocks rather than product-breaking run failures when an artifact has already been preserved.',
+      'The composer was simplified into two product concepts: Mode for execution behavior and Task Dispatch for one-tap validation prompts.',
       'The product direction is a mobile-safe command layer: familiar coding workflow for the model, Android-safe typed tools underneath.',
       'A phone build must also hide unavailable tools: if web relay is not configured, web_search and fetch_url are not offered to the model.',
       'When a model needs to repair existing code, apply_patch records a snapshot and evidence instead of exposing a raw shell command.',

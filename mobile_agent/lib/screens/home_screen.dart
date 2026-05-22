@@ -11431,9 +11431,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       event.message,
     ].join('|');
     if (!_agentTraceEventKeys.add(key)) return;
-    final state = event.type == AgentLoopEventType.failed || event.success == false
-        ? _AgentStepState.failed
-        : _AgentStepState.done;
+    final state = event.type == AgentLoopEventType.failed ? _AgentStepState.failed : _AgentStepState.done;
     final rolePrefix = event.roleName == null ? '' : '${event.roleName} · ';
     final title = switch (event.type) {
       AgentLoopEventType.started => '${rolePrefix}Agent loop started',
@@ -12506,6 +12504,39 @@ class _ChatPanelState extends State<_ChatPanel> {
     );
   }
 
+  void _openAgentModeSheet() {
+    if (_sending || _agentRunning) return;
+    var selectedMode = _agentExecutionMode;
+    var selectedPreset = _agentPreset;
+    var rrEnabled = _agentModeEnabled;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: _panel,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(14))),
+      builder: (context) => StatefulBuilder(
+        builder: (context, modalSetState) => _AgentModeSheet(
+          mode: selectedMode,
+          preset: selectedPreset,
+          rrEnabled: rrEnabled,
+          running: _agentRunning || _sending,
+          onModeChanged: (mode) {
+            setState(() => _agentExecutionMode = mode);
+            modalSetState(() => selectedMode = mode);
+          },
+          onPresetChanged: (preset) {
+            setState(() => _agentPreset = preset);
+            modalSetState(() => selectedPreset = preset);
+          },
+          onRrChanged: (value) {
+            setState(() => _agentModeEnabled = value);
+            modalSetState(() => rrEnabled = value);
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _buildConversationBody(_ChatSession? active) {
     final allTurns = active?.turns ?? const <_ChatTurn>[];
     final finalResultTurn = allTurns.isNotEmpty && allTurns.last.role == 'assistant' && _isFinalResultTurn(allTurns.last.content)
@@ -12632,31 +12663,21 @@ class _ChatPanelState extends State<_ChatPanel> {
           children: [
             Row(
               children: [
-                _AgentExecutionModeSegment(
+                _AgentModeSummaryButton(
                   mode: _agentExecutionMode,
+                  preset: _agentPreset,
+                  rrEnabled: _agentModeEnabled,
                   running: _agentRunning || _sending,
-                  onChanged: (mode) => setState(() => _agentExecutionMode = mode),
+                  onTap: _openAgentModeSheet,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _agentExecutionMode == AgentExecutionMode.agentLoop
-                      ? _AgentPresetStrip(
-                          selected: _agentPreset,
-                          running: _agentRunning || _sending,
-                          onChanged: (preset) => setState(() => _agentPreset = preset),
-                        )
-                      : const SizedBox.shrink(),
-                ),
-                const SizedBox(width: 8),
-                _CompactAgentModeToggle(
-                  enabled: _agentModeEnabled,
-                  running: _agentRunning,
-                  onChanged: (value) => setState(() => _agentModeEnabled = value),
+                  child: _TaskDispatchStrip(
+                    onPrompt: (prompt, {runAgent = false}) => unawaited(setPromptFromShell(prompt, runAgent: runAgent)),
+                  ),
                 ),
               ],
             ),
-            const SizedBox(height: 7),
-            _ChatModeStrip(onPrompt: (prompt, {runAgent = false}) => unawaited(setPromptFromShell(prompt, runAgent: runAgent))),
             const SizedBox(height: 7),
             Container(
               padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
@@ -13931,6 +13952,194 @@ class _AgentModeToggle extends StatelessWidget {
   }
 }
 
+class _AgentModeSummaryButton extends StatelessWidget {
+  const _AgentModeSummaryButton({
+    required this.mode,
+    required this.preset,
+    required this.rrEnabled,
+    required this.running,
+    required this.onTap,
+  });
+
+  final AgentExecutionMode mode;
+  final AgentPreset preset;
+  final bool rrEnabled;
+  final bool running;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = mode == AgentExecutionMode.agentLoop ? _violet : _mint;
+    final detail = mode == AgentExecutionMode.agentLoop ? '${preset.label} · 角色协作' : 'Single-shot';
+    return Tooltip(
+      message: '打开模式面板：选择执行模式、Agent preset 和 RR 角色增强。',
+      child: InkWell(
+        onTap: running ? null : onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          height: 38,
+          constraints: const BoxConstraints(maxWidth: 172),
+          padding: const EdgeInsets.symmetric(horizontal: 11),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: color.withOpacity(0.34)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                mode == AgentExecutionMode.agentLoop ? Icons.account_tree_outlined : Icons.bolt_outlined,
+                color: color,
+                size: 16,
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '模式',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: _faint, fontSize: 9.5, fontWeight: FontWeight.w800),
+                    ),
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: _text, fontSize: 11.5, fontWeight: FontWeight.w900),
+                    ),
+                  ],
+                ),
+              ),
+              if (rrEnabled) ...[
+                const SizedBox(width: 5),
+                const _TinyBadge(label: 'RR', color: _violet),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AgentModeSheet extends StatelessWidget {
+  const _AgentModeSheet({
+    required this.mode,
+    required this.preset,
+    required this.rrEnabled,
+    required this.running,
+    required this.onModeChanged,
+    required this.onPresetChanged,
+    required this.onRrChanged,
+  });
+
+  final AgentExecutionMode mode;
+  final AgentPreset preset;
+  final bool rrEnabled;
+  final bool running;
+  final ValueChanged<AgentExecutionMode> onModeChanged;
+  final ValueChanged<AgentPreset> onPresetChanged;
+  final ValueChanged<bool> onRrChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      icon: Icons.tune_outlined,
+      title: '模式与协作',
+      subtitle: '模式决定执行方式；任务派发只负责把预置请求送进当前模式。',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('执行模式', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 14)),
+                const SizedBox(height: 9),
+                _AgentExecutionModeSegment(
+                  mode: mode,
+                  running: running,
+                  onChanged: onModeChanged,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  mode == AgentExecutionMode.agentLoop
+                      ? 'Agent Loop 会让模型通过 provider-native tool call 自主选择工具，MobileCode 只负责校验、执行、记录 evidence、回传 observation。'
+                      : 'Single-shot 是稳定回退路径：模型一次性回答，MobileCode 可提取、保存并预览生成产物。',
+                  style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (mode == AgentExecutionMode.agentLoop) ...[
+            _Panel(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.account_tree_outlined, color: _violet, size: 18),
+                      SizedBox(width: 7),
+                      Expanded(
+                        child: Text('角色协作', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 14)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Planner -> Builder -> Reviewer -> Repair 在同一条手机执行链路内切换职责，不是并发后台 Agent。每个 preset 只是不同的工具权限和行为策略。',
+                    style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                  ),
+                  const SizedBox(height: 10),
+                  _AgentPresetStrip(
+                    selected: preset,
+                    running: running,
+                    onChanged: onPresetChanged,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('RR 角色增强', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 14)),
+                      SizedBox(height: 5),
+                      Text(
+                        '偏人格/职责上下文增强，不等同于真正多线程子 Agent。',
+                        style: TextStyle(color: _muted, fontSize: 12, height: 1.3),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                _CompactAgentModeToggle(
+                  enabled: rrEnabled,
+                  running: running,
+                  onChanged: onRrChanged,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _AgentExecutionModeSegment extends StatelessWidget {
   const _AgentExecutionModeSegment({
     required this.mode,
@@ -14032,6 +14241,8 @@ class _AgentPresetStrip extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
+          const _AgentRoleFlowBadge(),
+          const SizedBox(width: 6),
           for (final preset in AgentPreset.values) ...[
             _AgentPresetChip(
               preset: preset,
@@ -14042,6 +14253,37 @@ class _AgentPresetStrip extends StatelessWidget {
             const SizedBox(width: 6),
           ],
         ],
+      ),
+    );
+  }
+}
+
+class _AgentRoleFlowBadge extends StatelessWidget {
+  const _AgentRoleFlowBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '角色协作：Planner -> Builder -> Reviewer -> Repair，在同一 Agent Loop 内编排，不是并发后台线程。',
+      child: Container(
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: _violet.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: _violet.withOpacity(0.30)),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.account_tree_outlined, color: _violet, size: 15),
+            SizedBox(width: 5),
+            Text(
+              '角色协作',
+              style: TextStyle(color: _text, fontSize: 11.5, fontWeight: FontWeight.w900),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -14170,8 +14412,8 @@ class _CompactAgentModeToggle extends StatelessWidget {
   }
 }
 
-class _ChatModeStrip extends StatelessWidget {
-  const _ChatModeStrip({required this.onPrompt});
+class _TaskDispatchStrip extends StatelessWidget {
+  const _TaskDispatchStrip({required this.onPrompt});
 
   final void Function(String prompt, {bool runAgent}) onPrompt;
 
@@ -14208,10 +14450,40 @@ class _ChatModeStrip extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
+          const _TaskDispatchLabel(),
+          const SizedBox(width: 8),
           for (final item in prompts) ...[
             _PromptShortcutChip(item: item, onTap: () => onPrompt(item.prompt, runAgent: true)),
             const SizedBox(width: 8),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TaskDispatchLabel extends StatelessWidget {
+  const _TaskDispatchLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: _panelSoft,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _line),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.rocket_launch_outlined, color: _amber, size: 15),
+          SizedBox(width: 5),
+          Text(
+            '任务派发',
+            style: TextStyle(color: _text, fontSize: 11.5, fontWeight: FontWeight.w900),
+          ),
         ],
       ),
     );

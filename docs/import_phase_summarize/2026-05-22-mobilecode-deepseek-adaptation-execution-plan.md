@@ -545,6 +545,9 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
   - Reviewer：预览、快照、报告结果。
   - Repair：失败 observation 后的修复职责。
 - Streaming tool call 参数流入合并为同一条可更新事件，详情显示累计字符和增量字符；真正写入仍只在完整 tool call 到达并通过 ActionRunner 校验后发生。
+- 无效 `apply_patch` 草稿（例如 `@@ ... @@`）显示为安全阻断，不再把已经保存的 artifact 误染成整体失败；失败 evidence 仍保留用于复盘。
+- Composer 收纳为“模式”和“任务派发”两层：模式面板承载 Single-shot / Agent Loop / Agent preset / RR；任务派发只保留贪吃蛇、2048、GitHub、复杂验收等预置请求。
+- 模式面板中新增可见“角色协作”入口，说明 Planner / Builder / Reviewer / Repair 是同一 Agent Loop 内的角色编排，不是并发后台线程。
 - Tools 页同步显示 provider-native tool list、Android/Linux/macOS command map、preset access。
 - `COMMANDS.md` 与 `COMMAND_COMPATIBILITY.md` 同步 Search/Patch 支持状态。
 - GitHub Pages `实验日志` 增加 2026-05-22 面向用户的移动端 AgentLoop 复盘。

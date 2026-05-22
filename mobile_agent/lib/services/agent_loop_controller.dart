@@ -286,7 +286,7 @@ class AgentLoopController {
             : await _executeCall(call);
         messages.add(adapter.buildToolResultMessage(call, result));
         final evidence = result.evidence;
-        final status = result.success ? 'ok' : 'failed';
+        final status = _statusForResult(result);
         observations.add('${call.name}: $status · evidence ${evidence.evidenceId}');
         if (result.path != null && result.path!.trim().isNotEmpty && call.name != 'preview_snapshot') {
           generatedPath = result.path;
@@ -301,7 +301,7 @@ class AgentLoopController {
           writeNeedsVerification = false;
         }
         onEvent?.call(AgentLoopEvent(
-          type: result.success ? AgentLoopEventType.observation : AgentLoopEventType.failed,
+          type: _eventTypeForResult(result),
           message: '${call.name}: $status · ${_compact(evidence.logs.join(' '), 180)}',
           round: round,
           toolName: call.name,
@@ -377,6 +377,20 @@ class AgentLoopController {
 
 bool _isMutationTool(String toolName) {
   return toolName == 'write_file' || toolName == 'apply_patch' || toolName == 'move_file';
+}
+
+AgentLoopEventType _eventTypeForResult(ActionRunnerResult result) {
+  if (result.success) return AgentLoopEventType.observation;
+  if (result.evidence.failureKind == ActionFailureKind.commandBlocked) {
+    return AgentLoopEventType.blocked;
+  }
+  return AgentLoopEventType.failed;
+}
+
+String _statusForResult(ActionRunnerResult result) {
+  if (result.success) return 'ok';
+  if (result.evidence.failureKind == ActionFailureKind.commandBlocked) return 'blocked';
+  return 'failed';
 }
 
 String _roleForModelRequest(int round) {

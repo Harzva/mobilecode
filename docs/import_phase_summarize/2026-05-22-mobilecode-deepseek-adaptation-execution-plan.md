@@ -83,6 +83,7 @@ DeepSeek Provider
 - [x] DS04.1 Mobile Unix Facade 命令语义层（本地实现完成，CI 待验收）
 - [x] DS04.2 AgentLoop 可用工具 gating 与缺省写入路径修复（本地实现完成，CI 待验收）
 - [ ] DS04.3 Search/Patch + 角色编排（本地实现完成，静态检查通过，CI 待验收）
+- [ ] DS04.4 Sub-Agent Lite / mailbox-lite（本地实现完成，静态检查通过，CI 待验收）
 - [ ] DS05 DeepSeek 错误码映射
 - [ ] DS06 Usage / Cache / Reasoning 观测
 - [ ] DS07 JSON Output 降级路径
@@ -580,6 +581,50 @@ Shell 边界：
 - 第一版 `apply_patch` 是移动端轻量 unified diff 执行器，不等同于完整 `git apply`。
 - 尚未实现 copy/mkdir/delete/snapshot restore/virtual git diff 的完整工具面。
 - 多角色仍是单 loop 内的职责切换；真实后台子 Agent 本阶段延后，先落地角色编排 + event/mailbox-lite 方向。
+
+## DS04.4 Sub-Agent Lite / mailbox-lite
+
+状态：`IN_PROGRESS`（本地实现完成，静态检查通过，CI 待验收）
+
+目标：
+
+- 把“角色协作”从 UI/prompt 标签推进到 provider-native 可见的最小子任务工具。
+- 第一版只开放只读 `Explorer / Reviewer`，不开放 shell、不开放写入、不开放并发后台执行。
+- 用 mailbox-lite 记录子任务生命周期，让父 Agent 可以 `agent_open -> agent_eval -> agent_close` 回收结构化结果。
+
+本轮实现方向：
+
+- 新增 provider-native tools：
+  - `agent_open(role, task, path, focus)`
+  - `agent_eval(agent_id)`
+  - `agent_close(agent_id, reason)`
+- `AgentLoopController` 在同一 run 内维护 Sub-Agent Lite session：
+  - 只允许 `explorer` / `reviewer`。
+  - 自动写入 mailbox 事件：`Started / ToolCallCompleted / Completed / Progress / Closed`。
+  - 子任务只调用 MobileCode typed read-only tools，如 `list_files / grep_files`。
+  - observation 返回固定输出协议：`SUMMARY / CHANGES / EVIDENCE / RISKS / BLOCKERS`。
+- `AgentPreset` 工具权限：
+  - Auto / Research / Reviewer 可使用 `agent_open / agent_eval / agent_close`。
+  - Builder / Repair 暂不默认暴露子任务工具，避免写入阶段过度分叉。
+
+验收口径：
+
+- 模型能看到并调用 `agent_open / agent_eval / agent_close`。
+- 非只读角色如 `implementer` 会被 blocked，并返回可恢复 observation。
+- mailbox 事件能进入 trace，用户能看到 Explorer/Reviewer 子任务过程。
+- 子任务不会写文件、不会 patch、不会 shell、不会并发后台常驻。
+
+验证：
+
+- [x] `git diff --check`
+- [x] `node --check relay/mobilecode-token-relay-worker.js`
+- [x] `cd app && npm run build`
+- [ ] GitHub Actions `Mobile Runtime CI`
+
+剩余风险：
+
+- 第一版 Sub-Agent Lite 是同一 AgentLoop run 内的 read-only session，不是完整后台并发 worker。
+- 未来如果要做真实后台子 Agent，需要单独设计 session 持久化、取消传播、token 预算和并发上限。
 
 ## DS05 DeepSeek 错误码映射
 

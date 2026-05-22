@@ -84,6 +84,9 @@ void main() {
       'list_files',
       'find_files',
       'grep_files',
+      'agent_open',
+      'agent_eval',
+      'agent_close',
       'web_search',
       'fetch_url',
       'write_file',
@@ -115,6 +118,18 @@ void main() {
     expect(names, ['list_files', 'write_file', 'read_file', 'report_result']);
     expect(names, isNot(contains('web_search')));
     expect(names, isNot(contains('fetch_url')));
+    expect(names, isNot(contains('agent_open')));
+  });
+
+  test('filters Sub-Agent Lite tools when allowed by the preset', () {
+    final tools = OpenAiCompatibleToolCallAdapter.toolDefinitions(
+      allowedToolNames: const ['agent_open', 'agent_eval', 'agent_close'],
+    );
+    final names = tools
+        .map((tool) => ((tool['function'] as Map<String, dynamic>)['name'] as String))
+        .toList();
+
+    expect(names, ['agent_open', 'agent_eval', 'agent_close']);
   });
 
   test('parses non-streaming tool_calls and maps write_file to ActionSchema', () {

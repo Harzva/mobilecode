@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -571,6 +572,7 @@ void main() {
     expect(blockedMessage, contains('failureKind=commandBlocked'));
     expect(blockedMessage, contains('toolName=apply_patch'));
     expect(blockedMessage, contains('safeNextAction'));
+    expect(blockedMessage, contains('unified diff headers'));
   });
 
   test('repeated blocked apply_patch asks for a strategy switch', () async {
@@ -672,6 +674,183 @@ void main() {
     expect(blocked.first.message, contains('toolName=write_file'));
     expect(blocked.first.message, contains('safeNextAction'));
     expect(blocked.first.message, contains('path'));
+    expect(blocked.first.message, contains('path=index.html'));
+  });
+
+  test('Sub-Agent Lite open eval close returns read-only mailbox observations', () async {
+    await File('${workspace.path}/index.html').writeAsString('<h1>MobileCode</h1>');
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.reviewer,
+      maxRounds: 4,
+    );
+    final events = <AgentLoopEvent>[];
+    String? agentId;
+
+    String readAgentIdFromLastTool(List<Map<String, dynamic>> messages) {
+      final toolMessage = messages.lastWhere((message) => message['role'] == 'tool');
+      final resultPayload = jsonDecode(toolMessage['content'].toString()) as Map<String, dynamic>;
+      final sessionPayload = jsonDecode(resultPayload['text'].toString()) as Map<String, dynamic>;
+      return sessionPayload['agent_id'].toString();
+    }
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'open a read-only explorer and summarize files'},
+      ],
+      onEvent: events.add,
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_agent_open',
+                name: 'agent_open',
+                arguments: {
+                  'role': 'explorer',
+                  'task': 'Inspect the local web artifact without writing.',
+                  'path': '.',
+                  'focus': 'MobileCode',
+                },
+              ),
+            ],
+          );
+        }
+        if (round == 2) {
+          agentId = readAgentIdFromLastTool(messages);
+          return ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_agent_eval',
+                name: 'agent_eval',
+                arguments: {'agent_id': agentId},
+              ),
+            ],
+          );
+        }
+        if (round == 3) {
+          return ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_agent_close',
+                name: 'agent_close',
+                arguments: {
+                  'agent_id': agentId,
+                  'reason': 'Parent run collected the read-only mailbox.',
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: 'Sub-Agent Lite inspected safely.',
+          toolCalls: [],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Sub-Agent Lite inspected safely'));
+    expect(agentId, isNotNull);
+    expect(events.map((event) => event.message).join(' '), contains('Mailbox'));
+    expect(events.map((event) => event.roleName).whereType<String>().join(' '), contains('Explorer sub-agent'));
+    expect(store.recent(count: 20).map((evidence) => evidence.evidenceId), contains('call_agent_open'));
+  });
+
+  test('Sub-Agent Lite blocks non-read-only roles', () async {
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.autoAgent,
+      maxRounds: 2,
+    );
+    final events = <AgentLoopEvent>[];
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'try unsafe sub agent'},
+      ],
+      onEvent: events.add,
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_agent_unsafe',
+                name: 'agent_open',
+                arguments: {
+                  'role': 'implementer',
+                  'task': 'write code in the background',
+                  'path': '.',
+                  'focus': '',
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: 'Unsafe sub-agent was blocked.',
+          toolCalls: [],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Unsafe sub-agent was blocked'));
+    expect(events.map((event) => event.type), contains(AgentLoopEventType.blocked));
+    expect(store.failures().single.failureKind, ActionFailureKind.commandBlocked);
+    expect(store.failures().single.logs.join(' '), contains('read-only explorer or reviewer'));
+  });
+
+  test('Sub-Agent Lite tools still obey preset allow-list', () async {
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.builder,
+      maxRounds: 2,
+    );
+    final events = <AgentLoopEvent>[];
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'builder should not open sub agents'},
+      ],
+      onEvent: events.add,
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_agent_forbidden',
+                name: 'agent_open',
+                arguments: {
+                  'role': 'explorer',
+                  'task': 'Inspect files',
+                  'path': '.',
+                  'focus': '',
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: 'Forbidden sub-agent was blocked.',
+          toolCalls: [],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Forbidden sub-agent was blocked'));
+    expect(events.map((event) => event.type), contains(AgentLoopEventType.blocked));
+    expect(store.failures().single.failureKind, ActionFailureKind.commandBlocked);
+    expect(store.failures().single.logs.join(' '), contains('not allowed for Builder'));
   });
 
   test('agent loop appends assistant tool-call message with reasoning before tool results', () async {

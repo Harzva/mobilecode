@@ -122,6 +122,7 @@ class ProviderToolCall {
   final int? index;
 
   bool get isReportResult => name == 'report_result';
+  bool get isSubAgentLiteTool => name == 'agent_open' || name == 'agent_eval' || name == 'agent_close';
 
   Map<String, dynamic> toProviderJson() {
     return {
@@ -297,12 +298,12 @@ class OpenAiCompatibleToolCallAdapter {
 
   String get systemInstruction => [
         'When a mobile coding request needs a file or preview, use the provided tools instead of only describing the result.',
-        'MobileCode tools may include list_files, find_files, grep_files, web_search, fetch_url, write_file, read_file, move_file, apply_patch, preview_html, preview_snapshot, and report_result; only call tools exposed in the current request.',
+        'MobileCode tools may include list_files, find_files, grep_files, agent_open, agent_eval, agent_close, web_search, fetch_url, write_file, read_file, move_file, apply_patch, preview_html, preview_snapshot, and report_result; only call tools exposed in the current request.',
         'Use web_search/fetch_url only for public reference gathering. Use preview_snapshot after preview_html when the user asks for a visible product check.',
         'Use list_files/find_files instead of shell ls/find, grep_files instead of shell grep/rg, move_file instead of shell mv, and apply_patch instead of shell patch/git apply. Do not ask for raw Android or Termux commands.',
         'Never request shell, Git push, publishing, remote logging, or arbitrary commands.',
         'Use paths relative to the MobileCode workspace. If writing one web artifact and no path is obvious, use index.html. Do not include secrets in arguments.',
-        'For complex work, choose the smallest safe next tool yourself. You may list, find, grep, search, fetch, write, read, move, patch, preview, snapshot, or report depending on the current observation.',
+        'For complex work, choose the smallest safe next tool yourself. You may open read-only Sub-Agent Lite explorer/reviewer sessions for isolated inspection, then agent_eval/agent_close them. You may list, find, grep, search, fetch, write, read, move, patch, preview, snapshot, or report depending on the current observation.',
         'After tool observations, call report_result or answer with a concise final summary.',
       ].join('\n');
 
@@ -630,6 +631,34 @@ class OpenAiCompatibleToolCallAdapter {
           'max_bytes': {'type': 'integer', 'description': 'Maximum bytes per file to inspect.'},
         },
         required: const ['query', 'path', 'include_glob', 'max_results', 'max_bytes'],
+      ),
+      functionTool(
+        name: 'agent_open',
+        description: 'Open a read-only Sub-Agent Lite session for isolated Explorer or Reviewer inspection. It is not a shell and cannot mutate files.',
+        properties: const {
+          'role': {'type': 'string', 'description': 'Read-only role: explorer or reviewer.'},
+          'task': {'type': 'string', 'description': 'Compact inspection task for the sub-agent.'},
+          'path': {'type': 'string', 'description': 'Workspace-relative path to inspect. Use "." for workspace root.'},
+          'focus': {'type': 'string', 'description': 'Optional search/focus phrase. Use an empty string when not needed.'},
+        },
+        required: const ['role', 'task', 'path', 'focus'],
+      ),
+      functionTool(
+        name: 'agent_eval',
+        description: 'Read mailbox and result summary for an opened Sub-Agent Lite session.',
+        properties: const {
+          'agent_id': {'type': 'string', 'description': 'Sub-Agent Lite session id returned by agent_open.'},
+        },
+        required: const ['agent_id'],
+      ),
+      functionTool(
+        name: 'agent_close',
+        description: 'Close a Sub-Agent Lite session and keep its mailbox/evidence for the parent AgentLoop.',
+        properties: const {
+          'agent_id': {'type': 'string', 'description': 'Sub-Agent Lite session id returned by agent_open.'},
+          'reason': {'type': 'string', 'description': 'Short close/cancel reason.'},
+        },
+        required: const ['agent_id', 'reason'],
       ),
       functionTool(
         name: 'web_search',

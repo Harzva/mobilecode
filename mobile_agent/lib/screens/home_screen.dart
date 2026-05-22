@@ -14112,7 +14112,7 @@ class _AgentModeSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Planner -> Builder -> Reviewer -> Repair 在同一条手机执行链路内切换职责，不是并发后台 Agent。每个 preset 只是不同的工具权限和行为策略。',
+                    'Planner -> Builder -> Reviewer -> Repair 仍在同一条手机执行链路内切换职责；Sub-Agent Lite 现在只开放只读 Explorer / Reviewer mailbox，不开放 shell 或后台写入。',
                     style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
                   ),
                   const SizedBox(height: 10),

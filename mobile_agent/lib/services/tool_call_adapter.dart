@@ -156,9 +156,11 @@ class OpenAiCompatibleToolCallAdapter {
 
   String get systemInstruction => [
         'When a mobile coding request needs a file or preview, use the provided tools instead of only describing the result.',
-        'Allowed tools are write_file, read_file, preview_html, and report_result.',
+        'Allowed tools are web_search, fetch_url, write_file, read_file, preview_html, preview_snapshot, and report_result.',
+        'Use web_search/fetch_url only for public reference gathering. Use preview_snapshot after preview_html when the user asks for a visible product check.',
         'Never request shell, Git push, publishing, remote logging, or arbitrary commands.',
         'Use paths relative to the MobileCode workspace. Do not include secrets in arguments.',
+        'For complex web demos, prefer this sequence: web_search -> optional fetch_url -> write_file -> read_file -> preview_html -> preview_snapshot -> report_result.',
         'After tool observations, call report_result or answer with a concise final summary.',
       ].join('\n');
 
@@ -281,6 +283,39 @@ class OpenAiCompatibleToolCallAdapter {
             'html': _stringArg(args, 'html'),
           },
         );
+      case 'web_search':
+        return ActionSchema(
+          actionName: MobileCodeAction.webSearch,
+          requestId: call.id,
+          paramsSummary: 'provider-native web_search',
+          params: {
+            'query': _stringArg(args, 'query'),
+            'count': _intArg(args, 'count', defaultValue: 5),
+          },
+        );
+      case 'fetch_url':
+        return ActionSchema(
+          actionName: MobileCodeAction.fetchUrl,
+          requestId: call.id,
+          paramsSummary: 'provider-native fetch_url',
+          params: {
+            'url': _stringArg(args, 'url'),
+            'maxBytes': _intArg(args, 'max_bytes', defaultValue: 80 * 1024),
+          },
+        );
+      case 'preview_snapshot':
+        return ActionSchema(
+          actionName: MobileCodeAction.previewSnapshot,
+          requestId: call.id,
+          paramsSummary: 'provider-native preview_snapshot',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'url': _stringArg(args, 'url'),
+            'html': _stringArg(args, 'html'),
+            'viewportWidth': _intArg(args, 'viewport_width', defaultValue: 390),
+            'viewportHeight': _intArg(args, 'viewport_height', defaultValue: 844),
+          },
+        );
       default:
         return null;
     }
@@ -344,6 +379,24 @@ class OpenAiCompatibleToolCallAdapter {
 
     return [
       functionTool(
+        name: 'web_search',
+        description: 'Search public web references through the MobileCode managed relay. Read-only; returns compact results with ref IDs.',
+        properties: const {
+          'query': {'type': 'string', 'description': 'Search query for public reference material.'},
+          'count': {'type': 'integer', 'description': 'Maximum number of compact results to return, 1 to 5.'},
+        },
+        required: const ['query', 'count'],
+      ),
+      functionTool(
+        name: 'fetch_url',
+        description: 'Fetch and summarize a public https URL through the MobileCode managed relay. Blocks local/private URLs.',
+        properties: const {
+          'url': {'type': 'string', 'description': 'Public https URL to read.'},
+          'max_bytes': {'type': 'integer', 'description': 'Maximum response bytes to keep, capped by MobileCode.'},
+        },
+        required: const ['url', 'max_bytes'],
+      ),
+      functionTool(
         name: 'write_file',
         description: 'Write a file inside the MobileCode workspace. This cannot write outside the app workspace.',
         properties: const {
@@ -372,6 +425,18 @@ class OpenAiCompatibleToolCallAdapter {
         required: const ['path', 'html'],
       ),
       functionTool(
+        name: 'preview_snapshot',
+        description: 'Create a lightweight evidence snapshot for a prepared WebView preview. This is metadata/DOM evidence, not a native bitmap screenshot.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative HTML file path, or an empty string when url/html is provided.'},
+          'url': {'type': 'string', 'description': 'Preview URL, or an empty string when path/html is provided.'},
+          'html': {'type': 'string', 'description': 'Inline HTML to snapshot, or an empty string when path/url is provided.'},
+          'viewport_width': {'type': 'integer', 'description': 'Expected viewport width for the evidence snapshot.'},
+          'viewport_height': {'type': 'integer', 'description': 'Expected viewport height for the evidence snapshot.'},
+        },
+        required: const ['path', 'url', 'html', 'viewport_width', 'viewport_height'],
+      ),
+      functionTool(
         name: 'report_result',
         description: 'Report the final result after tool observations. This does not execute device, shell, Git, or network actions.',
         properties: const {
@@ -394,6 +459,7 @@ class OpenAiCompatibleToolCallAdapter {
       'artifactPaths': evidence.artifactPaths,
       'urls': evidence.urls,
       'logs': evidence.logs,
+      if (evidence.metadata.isNotEmpty) 'metadata': evidence.metadata,
       if (result.text != null) 'text': _compact(result.text!, 6000),
       if (result.path != null) 'path': result.path,
       if (result.url != null) 'url': result.url,

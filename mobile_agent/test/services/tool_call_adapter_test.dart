@@ -35,7 +35,15 @@ void main() {
         .map((tool) => ((tool['function'] as Map<String, dynamic>)['name'] as String))
         .toList();
 
-    expect(names, ['write_file', 'read_file', 'preview_html', 'report_result']);
+    expect(names, [
+      'web_search',
+      'fetch_url',
+      'write_file',
+      'read_file',
+      'preview_html',
+      'preview_snapshot',
+      'report_result',
+    ]);
     for (final tool in tools) {
       final function = tool['function'] as Map<String, dynamic>;
       final parameters = function['parameters'] as Map<String, dynamic>;
@@ -80,6 +88,42 @@ void main() {
     expect(schema.params['path'], 'game/index.html');
     expect(schema.params['content'], '<!doctype html>');
     expect(schema.params['overwrite'], true);
+  });
+
+  test('maps relay web tools and preview snapshot to ActionSchema', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect('https://api.deepseek.com/v1', 'deepseek-chat'),
+    );
+
+    final webSearch = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_search',
+      name: 'web_search',
+      arguments: {'query': 'mobile 3d landing', 'count': 4},
+    ))!;
+    expect(webSearch.actionName, MobileCodeAction.webSearch);
+    expect(webSearch.params['query'], 'mobile 3d landing');
+
+    final fetch = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_fetch',
+      name: 'fetch_url',
+      arguments: {'url': 'https://example.com', 'max_bytes': 2048},
+    ))!;
+    expect(fetch.actionName, MobileCodeAction.fetchUrl);
+    expect(fetch.params['maxBytes'], 2048);
+
+    final snapshot = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_snapshot',
+      name: 'preview_snapshot',
+      arguments: {
+        'path': 'demo/index.html',
+        'url': '',
+        'html': '',
+        'viewport_width': 390,
+        'viewport_height': 844,
+      },
+    ))!;
+    expect(snapshot.actionName, MobileCodeAction.previewSnapshot);
+    expect(snapshot.params['viewportWidth'], 390);
   });
 
   test('preserves DeepSeek reasoning_content when returning tool observations', () {

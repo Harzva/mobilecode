@@ -638,6 +638,30 @@ const _localToolSpecs = [
     risk: 'local',
   ),
   _LocalToolSpec(
+    name: 'web_search',
+    description: 'Read compact public web references through the managed relay.',
+    surface: 'Relay web tool',
+    icon: Icons.travel_explore_outlined,
+    color: _amber,
+    risk: 'read-only network',
+  ),
+  _LocalToolSpec(
+    name: 'fetch_url',
+    description: 'Fetch one public HTTPS page summary through the managed relay.',
+    surface: 'Relay web tool',
+    icon: Icons.link_outlined,
+    color: _cyan,
+    risk: 'read-only network',
+  ),
+  _LocalToolSpec(
+    name: 'preview_snapshot',
+    description: 'Save WebView preview metadata as ActionEvidence.',
+    surface: 'ActionEvidence',
+    icon: Icons.photo_camera_back_outlined,
+    color: _blue,
+    risk: 'local evidence',
+  ),
+  _LocalToolSpec(
     name: 'termux_probe',
     description: 'Check local runtime providers for shell-like mobile builds.',
     surface: 'Runtime provider bridge',
@@ -1015,8 +1039,22 @@ bool _promptTargetsDiary(String prompt) {
   return lower.contains('diary') || prompt.contains('日记');
 }
 
+bool _promptTargetsResearchPreview(String prompt) {
+  final lower = prompt.toLowerCase();
+  return lower.contains('research') ||
+      lower.contains('web search') ||
+      lower.contains('3d') ||
+      prompt.contains('复杂验收') ||
+      prompt.contains('网页搜索') ||
+      prompt.contains('搜索资料') ||
+      prompt.contains('网页截图') ||
+      prompt.contains('预览快照') ||
+      prompt.contains('动物森友会');
+}
+
 String _agentToolNameForPrompt(String prompt) {
   final lower = prompt.toLowerCase();
+  if (_promptTargetsResearchPreview(prompt)) return 'mobile_coding.research_web_preview';
   if (_promptTargetsSnake(prompt)) return 'mobile_coding.generate_snake_preview';
   if (_promptTargets2048(prompt)) return 'mobile_coding.generate_2048_preview';
   if (_promptTargetsDiary(prompt)) return 'mobile_coding.build_diary_demo';
@@ -1042,6 +1080,9 @@ String _agentToolSelectionReason(String tool, String prompt) {
   if (tool == 'mobile_coding.generate_web_preview') {
     return 'The prompt targets a web/html/preview workflow, so MobileCode selects the local WebView preview artifact path.';
   }
+  if (tool == 'mobile_coding.research_web_preview') {
+    return 'The prompt asks for a researched WebView demo, so MobileCode selects the provider-native web_search/fetch_url plus local preview evidence path.';
+  }
   if (tool == 'mobile_coding.build_diary_demo') {
     return 'The prompt asks for an app feature plan, so MobileCode keeps the result as a generated Markdown implementation note.';
   }
@@ -1057,6 +1098,9 @@ String _agentToolSelectionReason(String tool, String prompt) {
 String _agentToolExpectedOutput(String tool) {
   if (tool.startsWith('mobile_coding.generate_')) {
     return 'Provider response -> complete HTML code -> app writes index.html -> WebView preview and browser-open actions become available.';
+  }
+  if (tool == 'mobile_coding.research_web_preview') {
+    return 'Provider tool loop -> web_search/fetch_url observations -> write/read index.html -> WebView preview -> preview evidence snapshot -> final report.';
   }
   if (tool == 'mobile_coding.build_diary_demo') {
     return 'Provider response -> app writes agent_response.md so the user can inspect or copy the implementation plan.';
@@ -1079,6 +1123,13 @@ String _agentLocalToolChainFor(String tool) {
         '3. read_file: verify the saved artifact path/content\n'
         '4. preview_webview: expose the in-app WebView preview action';
   }
+  if (tool == 'mobile_coding.research_web_preview') {
+    return '1. web_search: collect compact public references through managed relay\n'
+        '2. fetch_url: read one or two public https references when useful\n'
+        '3. write_file/read_file: save and verify one self-contained index.html\n'
+        '4. preview_html: prepare the in-app WebView preview\n'
+        '5. preview_snapshot: save lightweight preview evidence metadata';
+  }
   if (tool == 'mobile_coding.build_diary_demo') {
     return '1. Validate provider output is not empty\n'
         '2. write_file: save agent_response.md inside app documents\n'
@@ -1097,7 +1148,8 @@ Map<String, String> _agentToolCallDetails(String tool, String prompt) {
   final writesFile = tool.startsWith('mobile_coding.');
   final isWeb = tool == 'mobile_coding.generate_snake_preview' ||
       tool == 'mobile_coding.generate_2048_preview' ||
-      tool == 'mobile_coding.generate_web_preview';
+      tool == 'mobile_coding.generate_web_preview' ||
+      tool == 'mobile_coding.research_web_preview';
   return {
     'Tool': tool,
     'Why selected': _agentToolSelectionReason(tool, prompt),
@@ -10178,12 +10230,56 @@ class _ChatPanelState extends State<_ChatPanel> {
     return Uri.parse('$normalized/v1/provider');
   }
 
+  Uri _managedRelayToolUri(String toolName) {
+    var normalized = _normalizedBaseUrl(widget.relayUrl.trim());
+    if (normalized.endsWith('/v1/provider')) {
+      normalized = normalized.substring(0, normalized.length - '/v1/provider'.length);
+    }
+    return Uri.parse('$normalized/v1/tools/$toolName');
+  }
+
   Map<String, dynamic> _relayEnvelope(_ApiFlavor flavor, Map<String, dynamic> body) {
     return {
       'provider': widget.providerPreset.name,
       'flavor': _usageProviderKind(flavor),
       'body': body,
     };
+  }
+
+  Future<Map<String, dynamic>> _callManagedRelayWebTool(
+    String toolName,
+    Map<String, dynamic> payload,
+  ) async {
+    if (!_usesManagedRelay) {
+      throw Exception('Relay web tool `$toolName` requires managed relay mode.');
+    }
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
+    try {
+      final request = await client.postUrl(_managedRelayToolUri(toolName)).timeout(const Duration(seconds: 12));
+      request.headers.contentType = ContentType.json;
+      if (widget.relayToken.trim().isNotEmpty) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${widget.relayToken.trim()}');
+      }
+      request.headers.set('x-mobilecode-provider', widget.providerPreset.name);
+      request.write(jsonEncode({
+        'provider': widget.providerPreset.name,
+        'input': payload,
+      }));
+      final response = await request.close().timeout(const Duration(seconds: 45));
+      final rawBody = await utf8.decodeStream(response);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception('Relay tool HTTP ${response.statusCode}: ${_compact(rawBody, limit: 240)}');
+      }
+      final decoded = jsonDecode(rawBody);
+      if (decoded is Map<String, dynamic>) return decoded;
+      throw Exception('Relay tool `$toolName` returned a non-object response.');
+    } on SocketException catch (error) {
+      throw Exception('Relay tool network error: ${_friendlySocketError(error)}');
+    } on TimeoutException {
+      throw Exception('Relay tool `$toolName` timed out.');
+    } finally {
+      client.close(force: true);
+    }
   }
 
   void _configureProviderRequestHeaders(HttpClientRequest request, _ApiFlavor flavor) {
@@ -10464,6 +10560,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     final actionRunner = ActionRunner(
       workspaceRootPath: rootDirectory.path,
       evidenceStore: _agentEvidenceStore,
+      webToolInvoker: _usesManagedRelay ? _callManagedRelayWebTool : null,
     );
     final messages = _providerMessages(history).map((message) => Map<String, dynamic>.from(message)).toList();
     final observations = <String>[];
@@ -10472,7 +10569,8 @@ class _ChatPanelState extends State<_ChatPanel> {
     var toolCallCount = 0;
     final model = widget.model.trim().isEmpty ? 'deepseek-chat' : widget.model.trim();
 
-    for (var round = 0; round < 4; round++) {
+    const maxNativeToolRounds = 6;
+    for (var round = 0; round < maxNativeToolRounds; round++) {
       if (isCancelled?.call() == true) {
         throw Exception('Agent run stopped by user.');
       }
@@ -10547,7 +10645,9 @@ class _ChatPanelState extends State<_ChatPanel> {
         final schema = adapter.toActionSchema(call);
         final result = schema == null ? _blockedProviderToolResult(call) : await actionRunner.run(schema);
         messages.add(adapter.buildToolResultMessage(call, result));
-        if (result.path != null && result.path!.trim().isNotEmpty) {
+        if (result.path != null &&
+            result.path!.trim().isNotEmpty &&
+            call.name != 'preview_snapshot') {
           generatedPath = result.path;
         }
         final evidence = result.evidence;
@@ -10560,9 +10660,9 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
 
     return _ProviderNativeToolLoopResult(
-      answer: 'Native tool loop stopped after the 4-round safety limit.\n\n${observations.join('\n')}',
+      answer: 'Native tool loop stopped after the $maxNativeToolRounds-round safety limit.\n\n${observations.join('\n')}',
       usedNativeToolCalls: usedNativeToolCalls,
-      rounds: 4,
+      rounds: maxNativeToolRounds,
       toolCallCount: toolCallCount,
       generatedPath: generatedPath,
     );
@@ -10576,7 +10676,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       startedAt: DateTime.now(),
       failureKind: ActionFailureKind.commandBlocked,
       recoveryActions: const [
-        'Use only write_file, read_file, preview_html, or report_result in the provider-native loop.',
+        'Use only web_search, fetch_url, write_file, read_file, preview_html, preview_snapshot, or report_result in the provider-native loop.',
       ],
       logs: ['Blocked unsupported provider-native tool: ${call.name}.'],
     );
@@ -11104,6 +11204,8 @@ class _ChatPanelState extends State<_ChatPanel> {
       ],
       if (toolName.startsWith('mobile_coding.generate_'))
         'For web/html requests, return one complete self-contained HTML document inside a single ```html fenced block. It must be mobile-first, touch-friendly, accessible, visually intentional, GitHub Pages deployable, and not depend on network assets. Use relative links only; never reference app-private local paths inside the HTML.',
+      if (toolName == 'mobile_coding.research_web_preview')
+        'For the researched WebView demo, use provider-native tools when available: web_search first, fetch_url only for public https references, then write_file, read_file, preview_html, preview_snapshot, and report_result. Build one self-contained HTML document; do not depend on network assets. Include the search refIds and evidence IDs in the final report.',
       if (toolName == 'mobile_coding.build_diary_demo')
         'For the diary app request, return the minimal implementable UI/data model plan and code snippets needed for a local APK diary experience.',
       if (toolName == 'mobile_tools.termux_probe')
@@ -11132,7 +11234,8 @@ class _ChatPanelState extends State<_ChatPanel> {
   bool _toolRequiresHtmlArtifact(String toolName) {
     return toolName == 'mobile_coding.generate_snake_preview' ||
         toolName == 'mobile_coding.generate_2048_preview' ||
-        toolName == 'mobile_coding.generate_web_preview';
+        toolName == 'mobile_coding.generate_web_preview' ||
+        toolName == 'mobile_coding.research_web_preview';
   }
 
   Future<String> _repairMissingHtmlArtifactResponse({
@@ -11185,6 +11288,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     final slug = switch (toolName) {
       'mobile_coding.generate_snake_preview' => 'agent_snake',
       'mobile_coding.generate_2048_preview' => 'local_tool_2048_from_model',
+      'mobile_coding.research_web_preview' => 'agent_research_web_preview',
       'mobile_coding.build_diary_demo' => 'agent_diary',
       _ => 'agent_run',
     };
@@ -13280,6 +13384,12 @@ class _ChatModeStrip extends StatelessWidget {
         prompt: '测试 GitHub token 与 Harzva/mobilecode 仓库是否联通，并说明失败原因。',
         color: _violet,
       ),
+      _PromptShortcutData(
+        label: '复杂验收',
+        icon: Icons.travel_explore_outlined,
+        prompt: '复杂验收：请先网页搜索 2026 年移动端 3D landing page 和动物森友会风格网页设计参考，读取 1-2 个公开 HTTPS 结果摘要，然后在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。必须使用 web_search、fetch_url、write_file、read_file、preview_html、preview_snapshot、report_result，最后报告搜索 refId、evidenceId、预览路径和快照结果。',
+        color: _amber,
+      ),
     ];
 
     return SingleChildScrollView(
@@ -13347,6 +13457,12 @@ class _PromptLaunchPanel extends StatelessWidget {
                 label: '日记 App',
                 color: _amber,
                 onTap: () => onPrompt('帮我做一个最小日记 App：本地保存、列表、编辑、删除和空状态都要能在 APK 里体验。'),
+              ),
+              _ActionChipButton(
+                icon: Icons.travel_explore_outlined,
+                label: '复杂 Harness 验收',
+                color: _violet,
+                onTap: () => onPrompt('复杂验收：请先网页搜索 2026 年移动端 3D landing page 和动物森友会风格网页设计参考，读取 1-2 个公开 HTTPS 结果摘要，然后在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。必须使用 web_search、fetch_url、write_file、read_file、preview_html、preview_snapshot、report_result，最后报告搜索 refId、evidenceId、预览路径和快照结果。', runAgent: true),
               ),
             ],
           ),

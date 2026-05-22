@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -74,6 +75,86 @@ void main() {
     expect(await File(result.path!).readAsString(), contains('<title>Hi</title>'));
     expect(result.evidence.urls.single, result.url);
     expect(store.getById('ev-preview'), isNotNull);
+  });
+
+  test('webSearch calls injected relay tool and records compact results', () async {
+    final webRunner = ActionRunner(
+      workspaceRootPath: workspace.path,
+      evidenceStore: store,
+      webToolInvoker: (toolName, payload) async {
+        expect(toolName, 'web_search');
+        expect(payload['query'], 'mobile 3d landing page');
+        return {
+          'source': 'fake',
+          'results': [
+            {
+              'refId': 'web_1',
+              'title': 'Mobile 3D reference',
+              'url': 'https://example.com/3d',
+              'snippet': 'Touch-friendly 3D landing page ideas.',
+            },
+          ],
+        };
+      },
+    );
+
+    final result = await webRunner.run(ActionSchema(
+      actionName: MobileCodeAction.webSearch,
+      params: const {'query': 'mobile 3d landing page', 'count': 3},
+      requestId: 'ev-search',
+    ));
+
+    expect(result.success, true);
+    expect(result.text, contains('web_1'));
+    expect(result.evidence.urls.single, 'https://example.com/3d');
+    expect(result.evidence.metadata['source'], 'fake');
+    expect(store.getById('ev-search'), isNotNull);
+  });
+
+  test('fetchUrl rejects non-public or non-https URLs before relay call', () async {
+    var called = false;
+    final webRunner = ActionRunner(
+      workspaceRootPath: workspace.path,
+      evidenceStore: store,
+      webToolInvoker: (toolName, payload) async {
+        called = true;
+        return const <String, dynamic>{};
+      },
+    );
+
+    final result = await webRunner.run(ActionSchema(
+      actionName: MobileCodeAction.fetchUrl,
+      params: const {'url': 'http://localhost:8080', 'maxBytes': 4096},
+      requestId: 'ev-fetch-blocked',
+    ));
+
+    expect(called, false);
+    expect(result.success, false);
+    expect(result.evidence.failureKind, ActionFailureKind.commandBlocked);
+  });
+
+  test('previewSnapshot saves metadata artifact for local html', () async {
+    final file = File('${workspace.path}/demo/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<!doctype html><html><head><title>Island</title></head><body><h1>3D Island</h1></body></html>');
+
+    final result = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.previewSnapshot,
+      params: const {
+        'path': 'demo/index.html',
+        'viewportWidth': 390,
+        'viewportHeight': 844,
+      },
+      requestId: 'ev-snapshot',
+    ));
+
+    expect(result.success, true);
+    expect(result.path, endsWith('.json'));
+    final snapshot = jsonDecode(await File(result.path!).readAsString()) as Map<String, dynamic>;
+    expect(snapshot['title'], 'Island');
+    expect(snapshot['bodyTextPreview'], contains('3D Island'));
+    expect(result.evidence.artifactPaths.length, 2);
+    expect(store.getById('ev-snapshot'), isNotNull);
   });
 
   test('rejects paths outside workspace', () async {

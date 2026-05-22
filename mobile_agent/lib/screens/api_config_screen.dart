@@ -51,9 +51,9 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
     ),
     _ProviderDefinition(
       preset: _ProviderPreset.deepSeek,
-      label: 'DeepSeek',
-      baseUrl: 'https://api.deepseek.com/v1',
-      model: 'deepseek-chat',
+      label: 'DeepSeek v4 Pro',
+      baseUrl: 'https://api.deepseek.com',
+      model: 'deepseek-v4-pro',
       icon: Icons.psychology_alt_outlined,
     ),
     _ProviderDefinition(
@@ -240,7 +240,7 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
                             labelText: 'Model',
-                            hintText: 'mimo-v2.5-pro / gpt-4o-mini / claude-3-5-sonnet-latest',
+                            hintText: 'mimo-v2.5-pro / deepseek-v4-pro / gpt-4o-mini',
                             prefixIcon: Icon(Icons.memory_outlined),
                           ),
                           onChanged: (_) => setState(() {
@@ -260,7 +260,7 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
                         ),
                         const SizedBox(height: 10),
                         const Text(
-                          'DeepSeek 使用 OpenAI-compatible 调用路径；/beta Base URL 可用于后续 strict tool calling 验证。保存后 Home/Chat 会立即读取同一份配置。',
+                          'DeepSeek v4 Pro 是 Agent Loop 推荐配置；deepseek-chat / deepseek-reasoner 仅作为 legacy alias 兼容。/beta Base URL 可用于 strict tool calling 验证。',
                           style: TextStyle(color: AppTheme.auroraTextMuted, fontSize: 12, height: 1.35),
                         ),
                       ],

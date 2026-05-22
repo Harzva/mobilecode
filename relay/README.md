@@ -32,7 +32,7 @@ Request envelope:
 ## Worker Variables
 
 - `MIMO_BASE_URL`, default `https://token-plan-cn.xiaomimimo.com/anthropic`
-- `DEEPSEEK_BASE_URL`, default `https://api.deepseek.com/v1`
+- `DEEPSEEK_BASE_URL`, default `https://api.deepseek.com`
 - `BING_SEARCH_ENDPOINT`, default `https://api.bing.microsoft.com/v7.0/search`
 
 If no Tavily or Bing key is configured, `web_search` falls back to DuckDuckGo's public instant-answer API. That fallback is useful for smoke tests but may return fewer normal web results.

@@ -9,9 +9,21 @@ enum ToolChoiceMode {
   none,
 }
 
+enum DeepSeekProviderProfileKind {
+  none,
+  v4Flash,
+  v4Pro,
+  strictBeta,
+  legacyChat,
+  legacyReasoner,
+  experimentalUnsupported,
+  unknown,
+}
+
 class ToolCallProviderProfile {
   const ToolCallProviderProfile({
     required this.label,
+    required this.deepSeekProfile,
     required this.isDeepSeek,
     required this.isOpenAiCompatible,
     required this.strictTools,
@@ -19,28 +31,80 @@ class ToolCallProviderProfile {
   });
 
   final String label;
+  final DeepSeekProviderProfileKind deepSeekProfile;
   final bool isDeepSeek;
   final bool isOpenAiCompatible;
   final bool strictTools;
   final bool supportsNativeToolCalls;
+
+  bool get isDeepSeekV4 =>
+      deepSeekProfile == DeepSeekProviderProfileKind.v4Flash ||
+      deepSeekProfile == DeepSeekProviderProfileKind.v4Pro;
+
+  bool get isDeepSeekLegacy =>
+      deepSeekProfile == DeepSeekProviderProfileKind.legacyChat ||
+      deepSeekProfile == DeepSeekProviderProfileKind.legacyReasoner;
+
+  bool get isDeepSeekStrictBeta =>
+      deepSeekProfile == DeepSeekProviderProfileKind.strictBeta;
 
   static ToolCallProviderProfile detect(String baseUrl, String model) {
     final probe = '$baseUrl $model'.toLowerCase();
     final isDeepSeek = probe.contains('deepseek');
     final isOpenAi = probe.contains('openai') || probe.contains('gpt-');
     final betaStrict = isDeepSeek && baseUrl.toLowerCase().contains('/beta');
-    final unsupportedDeepSeekExperiment = probe.contains('v3.2-exp') || probe.contains('v3-2-exp');
+    final deepSeekProfile = _detectDeepSeekProfile(
+      baseUrl: baseUrl,
+      model: model,
+      isDeepSeek: isDeepSeek,
+      betaStrict: betaStrict,
+    );
+    final unsupportedDeepSeekExperiment =
+        deepSeekProfile == DeepSeekProviderProfileKind.experimentalUnsupported;
     return ToolCallProviderProfile(
       label: isDeepSeek
-          ? 'DeepSeek'
+          ? _deepSeekProfileLabel(deepSeekProfile)
           : isOpenAi
               ? 'OpenAI-compatible'
               : 'Generated-only',
+      deepSeekProfile: deepSeekProfile,
       isDeepSeek: isDeepSeek,
       isOpenAiCompatible: isDeepSeek || isOpenAi,
       strictTools: betaStrict,
       supportsNativeToolCalls: (isDeepSeek || isOpenAi) && !unsupportedDeepSeekExperiment,
     );
+  }
+
+  static DeepSeekProviderProfileKind _detectDeepSeekProfile({
+    required String baseUrl,
+    required String model,
+    required bool isDeepSeek,
+    required bool betaStrict,
+  }) {
+    if (!isDeepSeek) return DeepSeekProviderProfileKind.none;
+    final probe = '$baseUrl $model'.toLowerCase();
+    if (probe.contains('v3.2-exp') || probe.contains('v3-2-exp')) {
+      return DeepSeekProviderProfileKind.experimentalUnsupported;
+    }
+    if (betaStrict) return DeepSeekProviderProfileKind.strictBeta;
+    if (probe.contains('deepseek-v4-flash')) return DeepSeekProviderProfileKind.v4Flash;
+    if (probe.contains('deepseek-v4-pro')) return DeepSeekProviderProfileKind.v4Pro;
+    if (probe.contains('deepseek-chat')) return DeepSeekProviderProfileKind.legacyChat;
+    if (probe.contains('deepseek-reasoner')) return DeepSeekProviderProfileKind.legacyReasoner;
+    return DeepSeekProviderProfileKind.unknown;
+  }
+
+  static String _deepSeekProfileLabel(DeepSeekProviderProfileKind profile) {
+    return switch (profile) {
+      DeepSeekProviderProfileKind.v4Flash => 'DeepSeek v4 Flash',
+      DeepSeekProviderProfileKind.v4Pro => 'DeepSeek v4 Pro',
+      DeepSeekProviderProfileKind.strictBeta => 'DeepSeek Strict Beta',
+      DeepSeekProviderProfileKind.legacyChat => 'DeepSeek Legacy Chat',
+      DeepSeekProviderProfileKind.legacyReasoner => 'DeepSeek Legacy Reasoner',
+      DeepSeekProviderProfileKind.experimentalUnsupported => 'DeepSeek Unsupported Experiment',
+      DeepSeekProviderProfileKind.unknown => 'DeepSeek OpenAI-compatible',
+      DeepSeekProviderProfileKind.none => 'Generated-only',
+    };
   }
 }
 
@@ -89,6 +153,21 @@ class ProviderToolCallResponse {
 
 class OpenAiToolCallStreamAssembler {
   final Map<int, _StreamingToolCallBuilder> _builders = {};
+  final StringBuffer _contentBuffer = StringBuffer();
+  final StringBuffer _reasoningBuffer = StringBuffer();
+
+  String get content => _contentBuffer.toString();
+
+  String get reasoningContent => _reasoningBuffer.toString();
+
+  void _appendChunkText(
+    StringBuffer buffer,
+    dynamic value,
+  ) {
+    if (value is String && value.isNotEmpty) {
+      buffer.write(value);
+    }
+  }
 
   void addChunk(Map<String, dynamic> decoded) {
     final choices = decoded['choices'];
@@ -96,6 +175,15 @@ class OpenAiToolCallStreamAssembler {
     for (final choice in choices) {
       if (choice is! Map<String, dynamic>) continue;
       final delta = choice['delta'];
+      if (delta is Map<String, dynamic>) {
+        _appendChunkText(_contentBuffer, delta['content']);
+        _appendChunkText(_reasoningBuffer, delta['reasoning_content']);
+      }
+      final message = choice['message'];
+      if (message is Map<String, dynamic>) {
+        _appendChunkText(_contentBuffer, message['content']);
+        _appendChunkText(_reasoningBuffer, message['reasoning_content']);
+      }
       if (delta is! Map<String, dynamic>) continue;
       final toolCalls = delta['tool_calls'];
       if (toolCalls is! List) continue;
@@ -467,6 +555,44 @@ class OpenAiCompatibleToolCallAdapter {
       if (evidence.recoveryActions.isNotEmpty) 'recoveryActions': evidence.recoveryActions,
     };
   }
+}
+
+enum OpenAiStreamEventKind { ignore, done, payload }
+
+class OpenAiStreamEvent {
+  const OpenAiStreamEvent._({
+    required this.kind,
+    this.payload = '',
+  });
+
+  final OpenAiStreamEventKind kind;
+  final String payload;
+
+  bool get isIgnore => kind == OpenAiStreamEventKind.ignore;
+  bool get isDone => kind == OpenAiStreamEventKind.done;
+  bool get hasPayload => kind == OpenAiStreamEventKind.payload;
+}
+
+OpenAiStreamEvent parseOpenAiStreamEvent(String line) {
+  final trimmed = line.trim();
+  if (trimmed.isEmpty || trimmed.startsWith('event:') || trimmed.startsWith(':')) {
+    return const OpenAiStreamEvent._(kind: OpenAiStreamEventKind.ignore);
+  }
+  if (trimmed == 'data: [DONE]') {
+    return const OpenAiStreamEvent._(kind: OpenAiStreamEventKind.done);
+  }
+
+  final payload = trimmed.startsWith('data:') ? trimmed.substring(5).trim() : trimmed;
+  if (payload.isEmpty) {
+    return const OpenAiStreamEvent._(kind: OpenAiStreamEventKind.ignore);
+  }
+  if (payload == '[DONE]') {
+    return const OpenAiStreamEvent._(kind: OpenAiStreamEventKind.done);
+  }
+  if (payload.startsWith(':')) {
+    return const OpenAiStreamEvent._(kind: OpenAiStreamEventKind.ignore);
+  }
+  return OpenAiStreamEvent._(kind: OpenAiStreamEventKind.payload, payload: payload);
 }
 
 String _messageContent(Object? content) {

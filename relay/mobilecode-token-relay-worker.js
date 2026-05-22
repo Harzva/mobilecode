@@ -53,7 +53,7 @@ function providerConfig(provider, env) {
   if (normalizedProvider === 'deepseek' || normalizedProvider === 'deep_seek') {
     return {
       apiKey: env.DEEPSEEK_API_KEY,
-      url: openAiChatUrl(env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1'),
+      url: openAiChatUrl(env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com'),
       flavor: 'openai',
     };
   }

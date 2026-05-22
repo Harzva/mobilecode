@@ -121,11 +121,11 @@ const _managedApiKey = String.fromEnvironment('MOBILECODE_MANAGED_API_KEY');
 const _managedDeepSeekProviderEnabled = bool.fromEnvironment('MOBILECODE_MANAGED_DEEPSEEK_PROVIDER');
 const _managedDeepSeekBaseUrl = String.fromEnvironment(
   'MOBILECODE_MANAGED_DEEPSEEK_BASE_URL',
-  defaultValue: 'https://api.deepseek.com/v1',
+  defaultValue: 'https://api.deepseek.com',
 );
 const _managedDeepSeekModel = String.fromEnvironment(
   'MOBILECODE_MANAGED_DEEPSEEK_MODEL',
-  defaultValue: 'deepseek-chat',
+  defaultValue: 'deepseek-v4-pro',
 );
 const _managedDeepSeekApiKey = String.fromEnvironment('MOBILECODE_MANAGED_DEEPSEEK_API_KEY');
 const _managedRelayUrl = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_URL');
@@ -703,7 +703,7 @@ _ProviderPreset _detectProviderPreset(String baseUrl, String model) {
 String _providerPresetLabel(_ProviderPreset preset) {
   return switch (preset) {
     _ProviderPreset.mimo => 'Mimo',
-    _ProviderPreset.deepSeek => 'DeepSeek',
+    _ProviderPreset.deepSeek => 'DeepSeek v4',
     _ProviderPreset.anthropic => 'Anthropic',
     _ProviderPreset.openAi => 'OpenAI',
     _ProviderPreset.custom => 'Custom',
@@ -713,7 +713,7 @@ String _providerPresetLabel(_ProviderPreset preset) {
 String _providerPresetBaseUrl(_ProviderPreset preset) {
   return switch (preset) {
     _ProviderPreset.mimo => _defaultBaseUrl,
-    _ProviderPreset.deepSeek => 'https://api.deepseek.com/v1',
+    _ProviderPreset.deepSeek => 'https://api.deepseek.com',
     _ProviderPreset.anthropic => 'https://api.anthropic.com',
     _ProviderPreset.openAi => 'https://api.openai.com/v1',
     _ProviderPreset.custom => '',
@@ -723,7 +723,7 @@ String _providerPresetBaseUrl(_ProviderPreset preset) {
 String _providerPresetModel(_ProviderPreset preset) {
   return switch (preset) {
     _ProviderPreset.mimo => _defaultModel,
-    _ProviderPreset.deepSeek => 'deepseek-chat',
+    _ProviderPreset.deepSeek => 'deepseek-v4-pro',
     _ProviderPreset.anthropic => 'claude-3-5-sonnet-latest',
     _ProviderPreset.openAi => 'gpt-4o-mini',
     _ProviderPreset.custom => '',
@@ -792,6 +792,8 @@ Uri _openAiChatUri(String baseUrl) {
   final normalized = _normalizedBaseUrl(baseUrl);
   final uri = _parseBaseUrl(normalized);
   if (normalized.endsWith('/chat/completions')) return uri;
+  if (normalized.endsWith('/v1')) return Uri.parse('$normalized/chat/completions');
+  if (normalized.endsWith('/beta')) return Uri.parse('$normalized/chat/completions');
   return Uri.parse('$normalized/chat/completions');
 }
 
@@ -10454,19 +10456,17 @@ class _ChatPanelState extends State<_ChatPanel> {
         throw Exception('Provider HTTP ${response.statusCode}: ${_compact(body)}');
       }
 
-      await for (final line in response
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .timeout(responseTimeout)) {
-        if (isCancelled?.call() == true) {
-          throw Exception('Agent run stopped by user.');
-        }
-        final trimmed = line.trim();
-        if (trimmed.isEmpty || trimmed.startsWith('event:')) continue;
-        if (trimmed == 'data: [DONE]') break;
-
-        final payload = trimmed.startsWith('data: ') ? trimmed.substring(6).trim() : trimmed;
-        if (payload.isEmpty || payload == '[DONE]') break;
+        await for (final line in response
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .timeout(responseTimeout)) {
+          if (isCancelled?.call() == true) {
+            throw Exception('Agent run stopped by user.');
+          }
+          final event = parseOpenAiStreamEvent(line);
+          if (event.isIgnore) continue;
+          if (event.isDone) break;
+          final payload = event.payload;
 
         try {
           final decoded = jsonDecode(payload);
@@ -10536,8 +10536,6 @@ class _ChatPanelState extends State<_ChatPanel> {
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
     _agentProviderClient = client;
     final toolAssembler = OpenAiToolCallStreamAssembler();
-    final contentBuffer = StringBuffer();
-    final reasoningBuffer = StringBuffer();
     final announcedTools = <String>{};
     String? finishReason;
 
@@ -10566,12 +10564,10 @@ class _ChatPanelState extends State<_ChatPanel> {
         if (isCancelled?.call() == true) {
           throw Exception('Agent run stopped by user.');
         }
-        final trimmed = line.trim();
-        if (trimmed.isEmpty || trimmed.startsWith('event:')) continue;
-        if (trimmed == 'data: [DONE]') break;
-
-        final payload = trimmed.startsWith('data: ') ? trimmed.substring(6).trim() : trimmed;
-        if (payload.isEmpty || payload == '[DONE]') break;
+        final event = parseOpenAiStreamEvent(line);
+        if (event.isIgnore) continue;
+        if (event.isDone) break;
+        final payload = event.payload;
 
         try {
           final decoded = jsonDecode(payload);
@@ -10582,7 +10578,6 @@ class _ChatPanelState extends State<_ChatPanel> {
           if (nonStreamingFallback != null) return nonStreamingFallback;
 
           toolAssembler.addChunk(decoded);
-          _appendOpenAiStreamingText(decoded, contentBuffer, reasoningBuffer);
           finishReason ??= _extractOpenAiFinishReason(decoded);
 
           for (final toolName in _extractOpenAiStreamingToolNames(decoded)) {
@@ -10618,9 +10613,9 @@ class _ChatPanelState extends State<_ChatPanel> {
       client.close(force: true);
     }
 
-    final reasoning = reasoningBuffer.toString().trim();
+    final reasoning = toolAssembler.reasoningContent.trim();
     return ProviderToolCallResponse(
-      content: contentBuffer.toString().trim(),
+      content: toolAssembler.content.trim(),
       toolCalls: toolAssembler.finish(),
       finishReason: finishReason,
       reasoningContent: reasoning.isEmpty ? null : reasoning,
@@ -10639,32 +10634,6 @@ class _ChatPanelState extends State<_ChatPanel> {
       return adapter.parseChatCompletion(decoded);
     }
     return null;
-  }
-
-  void _appendOpenAiStreamingText(
-    Map<String, dynamic> decoded,
-    StringBuffer contentBuffer,
-    StringBuffer reasoningBuffer,
-  ) {
-    final choices = decoded['choices'];
-    if (choices is! List) return;
-    for (final choice in choices) {
-      if (choice is! Map<String, dynamic>) continue;
-      final delta = choice['delta'];
-      if (delta is Map<String, dynamic>) {
-        final content = delta['content'];
-        if (content is String && content.isNotEmpty) contentBuffer.write(content);
-        final reasoning = delta['reasoning_content'];
-        if (reasoning is String && reasoning.isNotEmpty) reasoningBuffer.write(reasoning);
-      }
-      final message = choice['message'];
-      if (message is Map<String, dynamic>) {
-        final content = message['content'];
-        if (content is String && content.isNotEmpty) contentBuffer.write(content);
-        final reasoning = message['reasoning_content'];
-        if (reasoning is String && reasoning.isNotEmpty) reasoningBuffer.write(reasoning);
-      }
-    }
   }
 
   List<String> _extractOpenAiStreamingToolNames(Map<String, dynamic> decoded) {
@@ -10717,7 +10686,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       webToolInvoker: _usesManagedRelay ? _callManagedRelayWebTool : null,
     );
     final messages = _providerMessages(history).map((message) => Map<String, dynamic>.from(message)).toList();
-    final model = widget.model.trim().isEmpty ? 'deepseek-chat' : widget.model.trim();
+    final model = widget.model.trim().isEmpty ? 'deepseek-v4-pro' : widget.model.trim();
     final controller = AgentLoopController(
       adapter: adapter,
       actionRunner: actionRunner,
@@ -14037,7 +14006,7 @@ class _ModelSelectionRow extends StatelessWidget {
             : _blue;
     final subtitle = switch (preset) {
       _ProviderPreset.mimo => managed ? '内置体验模型，稳定聊天与中文移动开发任务' : '需要构建时配置 Mimo managed key',
-      _ProviderPreset.deepSeek => managed ? '内置 DeepSeek，推荐用于 tool call / 编码任务' : '推荐接入 DeepSeek key 后用于编码任务',
+      _ProviderPreset.deepSeek => managed ? '内置 DeepSeek v4 Pro，推荐 Agent Loop / 编码任务' : '推荐接入 DeepSeek v4 key 后用于编码任务',
       _ProviderPreset.openAi => 'OpenAI-compatible，自带 key 时使用',
       _ProviderPreset.anthropic => 'Anthropic-compatible，自带 key 时使用',
       _ProviderPreset.custom => '保留当前自定义 Base URL / Model / API Key',

@@ -16,7 +16,10 @@ void main() {
     workspace = await Directory.systemTemp.createTemp('mobilecode_agent_loop_');
     store = ActionEvidenceStore();
     adapter = OpenAiCompatibleToolCallAdapter(
-      profile: ToolCallProviderProfile.detect('https://api.deepseek.com/v1', 'deepseek-chat'),
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-pro',
+      ),
     );
   });
 
@@ -225,5 +228,71 @@ void main() {
     expect(await File('${workspace.path}/auto/index.html').exists(), true);
     expect(store.recent(count: 10).map((evidence) => evidence.actionName), contains(MobileCodeAction.webSearch));
     expect(store.recent(count: 10).map((evidence) => evidence.actionName), contains(MobileCodeAction.writeFile));
+  });
+
+  test('agent loop appends assistant tool-call message with reasoning before tool results', () async {
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.builder,
+    );
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'build a minimal file'},
+      ],
+      requestModel: (loopMessages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            finishReason: 'tool_calls',
+            reasoningContent: 'Create index file first.',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_write',
+                name: 'write_file',
+                arguments: {
+                  'path': 'round2/index.html',
+                  'content': '<!doctype html><title>Round2</title>',
+                  'overwrite': true,
+                },
+              ),
+            ],
+          );
+        }
+
+        if (round == 2 && loopMessages.length < 3) {
+          fail('Expected second round to include assistant tool-call and tool result history.');
+        }
+
+        final assistantMessages = loopMessages
+            .where((message) => message['role'] == 'assistant' && message['tool_calls'] != null)
+            .toList();
+        expect(assistantMessages, isNotEmpty);
+        expect(assistantMessages.first.containsKey('finish_reason'), false);
+        expect(assistantMessages.first['reasoning_content'], 'Create index file first.');
+        final assistantIndex = loopMessages.indexOf(assistantMessages.first);
+        expect(loopMessages[assistantIndex + 1]['role'], 'tool');
+        expect(loopMessages[assistantIndex + 1]['tool_call_id'], 'call_write');
+
+        return const ProviderToolCallResponse(
+          content: 'Done',
+          toolCalls: [
+            ProviderToolCall(
+              id: 'call_report',
+              name: 'report_result',
+              arguments: {
+                'status': 'success',
+                'summary': 'Loop message order verified.',
+                'detail': 'Assistant message was before tool result.',
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    expect(result.usedNativeToolCalls, true);
+    expect(result.answer, contains('Loop message order verified.'));
   });
 }

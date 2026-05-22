@@ -139,4 +139,91 @@ void main() {
     expect(await File('${workspace.path}/blocked/index.html').exists(), false);
     expect(store.failures().single.failureKind, ActionFailureKind.commandBlocked);
   });
+
+  test('Auto preset lets the model choose web and file tools without a fixed sequence', () async {
+    final runner = ActionRunner(
+      workspaceRootPath: workspace.path,
+      evidenceStore: store,
+      webToolInvoker: (toolName, payload) async {
+        expect(toolName, 'web_search');
+        return {
+          'source': 'test-relay',
+          'results': [
+            {
+              'refId': 'ref_1',
+              'title': 'Mobile 3D inspiration',
+              'url': 'https://example.com/mobile-3d',
+              'snippet': 'Compact mobile-first 3D landing reference.',
+            },
+          ],
+        };
+      },
+    );
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.autoAgent,
+    );
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'research and build a page'},
+      ],
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_search',
+                name: 'web_search',
+                arguments: {'query': 'mobile 3D landing reference', 'count': 1},
+              ),
+            ],
+          );
+        }
+        if (round == 2) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_write',
+                name: 'write_file',
+                arguments: {
+                  'path': 'auto/index.html',
+                  'content': '<!doctype html><html><body>Auto</body></html>',
+                  'overwrite': true,
+                },
+              ),
+              ProviderToolCall(
+                id: 'call_preview',
+                name: 'preview_html',
+                arguments: {'path': 'auto/index.html', 'html': ''},
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: '',
+          toolCalls: [
+            ProviderToolCall(
+              id: 'call_report',
+              name: 'report_result',
+              arguments: {
+                'status': 'success',
+                'summary': 'Auto Agent chose search, write, and preview.',
+                'detail': 'No fixed A to B to C sequence was required.',
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    expect(result.usedNativeToolCalls, true);
+    expect(result.answer, contains('Auto Agent chose'));
+    expect(await File('${workspace.path}/auto/index.html').exists(), true);
+    expect(store.recent(count: 10).map((evidence) => evidence.actionName), contains(MobileCodeAction.webSearch));
+    expect(store.recent(count: 10).map((evidence) => evidence.actionName), contains(MobileCodeAction.writeFile));
+  });
 }

@@ -8,6 +8,7 @@ enum AgentExecutionMode {
 }
 
 enum AgentPreset {
+  autoAgent,
   builder,
   researchBuilder,
   repair,
@@ -74,6 +75,7 @@ extension AgentExecutionModeCopy on AgentExecutionMode {
 
 extension AgentPresetConfig on AgentPreset {
   String get label => switch (this) {
+        AgentPreset.autoAgent => 'Auto',
         AgentPreset.builder => 'Builder',
         AgentPreset.researchBuilder => 'Research',
         AgentPreset.repair => 'Repair',
@@ -81,6 +83,7 @@ extension AgentPresetConfig on AgentPreset {
       };
 
   String get shortDescription => switch (this) {
+        AgentPreset.autoAgent => 'model chooses tools',
         AgentPreset.builder => 'write, verify, preview',
         AgentPreset.researchBuilder => 'search, build, snapshot',
         AgentPreset.repair => 'read, fix, preview',
@@ -88,6 +91,15 @@ extension AgentPresetConfig on AgentPreset {
       };
 
   List<String> get allowedToolNames => switch (this) {
+        AgentPreset.autoAgent => const [
+            'web_search',
+            'fetch_url',
+            'write_file',
+            'read_file',
+            'preview_html',
+            'preview_snapshot',
+            'report_result',
+          ],
         AgentPreset.builder => const [
             'write_file',
             'read_file',
@@ -119,10 +131,12 @@ extension AgentPresetConfig on AgentPreset {
       };
 
   String get systemInstruction => switch (this) {
+        AgentPreset.autoAgent =>
+          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Do not follow a fixed sequence; call only the tools that are useful, and stop with report_result when the task is done or blocked.',
         AgentPreset.builder =>
           'Agent preset Builder: create or update a local artifact, read it back, preview it, then report concise evidence.',
         AgentPreset.researchBuilder =>
-          'Agent preset Research Builder: search public references first, optionally fetch public HTTPS pages, build one local artifact, preview it, capture preview evidence, then report refIds and evidenceIds.',
+          'Agent preset Research Builder: use public reference tools when they are useful, build one local artifact, preview it, capture preview evidence when needed, then report refIds and evidenceIds.',
         AgentPreset.repair =>
           'Agent preset Repair: read the existing artifact or evidence, modify only the relevant local file, preview again, then report what changed.',
         AgentPreset.reviewer =>

@@ -1107,7 +1107,7 @@ String _agentToolSelectionReason(String tool, String prompt) {
     return 'The prompt targets a web/html/preview workflow, so MobileCode selects the local WebView preview artifact path.';
   }
   if (tool == 'mobile_coding.research_web_preview') {
-    return 'The prompt asks for a researched WebView demo, so MobileCode selects the provider-native web_search/fetch_url plus local preview evidence path.';
+    return 'The prompt asks for a researched WebView demo, so MobileCode exposes safe provider-native web/file/preview tools and lets the model choose the smallest useful steps.';
   }
   if (tool == 'mobile_coding.build_diary_demo') {
     return 'The prompt asks for an app feature plan, so MobileCode keeps the result as a generated Markdown implementation note.';
@@ -1126,7 +1126,7 @@ String _agentToolExpectedOutput(String tool) {
     return 'Provider response -> complete HTML code -> app writes index.html -> WebView preview and browser-open actions become available.';
   }
   if (tool == 'mobile_coding.research_web_preview') {
-    return 'Provider tool loop -> web_search/fetch_url observations -> write/read index.html -> WebView preview -> preview evidence snapshot -> final report.';
+    return 'Provider-native Agent Loop -> model chooses safe web/file/preview tools -> ActionRunner executes -> evidence observations return to the model -> final report.';
   }
   if (tool == 'mobile_coding.build_diary_demo') {
     return 'Provider response -> app writes agent_response.md so the user can inspect or copy the implementation plan.';
@@ -1150,11 +1150,8 @@ String _agentLocalToolChainFor(String tool) {
         '4. preview_webview: expose the in-app WebView preview action';
   }
   if (tool == 'mobile_coding.research_web_preview') {
-    return '1. web_search: collect compact public references through managed relay\n'
-        '2. fetch_url: read one or two public https references when useful\n'
-        '3. write_file/read_file: save and verify one self-contained index.html\n'
-        '4. preview_html: prepare the in-app WebView preview\n'
-        '5. preview_snapshot: save lightweight preview evidence metadata';
+    return 'Available safe tools: web_search, fetch_url, write_file, read_file, preview_html, preview_snapshot, report_result.\n'
+        'The model may choose the smallest useful next step; MobileCode validates, executes, records evidence, and returns observations.';
   }
   if (tool == 'mobile_coding.build_diary_demo') {
     return '1. Validate provider output is not empty\n'
@@ -9806,7 +9803,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   bool _agentCancelRequested = false;
   bool _agentModeEnabled = false;
   AgentExecutionMode _agentExecutionMode = AgentExecutionMode.singleShot;
-  AgentPreset _agentPreset = AgentPreset.builder;
+  AgentPreset _agentPreset = AgentPreset.autoAgent;
   bool _followChatBottom = true;
   bool _showJumpToBottom = false;
   bool _autoScrollScheduled = false;
@@ -10518,10 +10515,13 @@ class _ChatPanelState extends State<_ChatPanel> {
     return OpenAiCompatibleToolCallAdapter(profile: profile);
   }
 
-  Future<Map<String, dynamic>> _postOpenAiCompatibleToolCallRequest(
+  Future<ProviderToolCallResponse> _streamOpenAiCompatibleToolCallRequest(
+    OpenAiCompatibleToolCallAdapter adapter,
     Map<String, dynamic> body, {
     required Duration responseTimeout,
     bool Function()? isCancelled,
+    void Function(Map<String, dynamic> chunk)? onUsageChunk,
+    void Function(String detail)? onToolDelta,
   }) async {
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
@@ -10535,25 +10535,70 @@ class _ChatPanelState extends State<_ChatPanel> {
 
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 12);
     _agentProviderClient = client;
+    final toolAssembler = OpenAiToolCallStreamAssembler();
+    final contentBuffer = StringBuffer();
+    final reasoningBuffer = StringBuffer();
+    final announcedTools = <String>{};
+    String? finishReason;
+
     try {
       final request = await client.postUrl(_usesManagedRelay ? _managedRelayUri() : _openAiChatUri(widget.baseUrl)).timeout(const Duration(seconds: 12));
       if (isCancelled?.call() == true) {
         throw Exception('Agent run stopped by user.');
       }
       _configureProviderRequestHeaders(request, _ApiFlavor.openAi);
+      request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
       request.write(jsonEncode(_usesManagedRelay ? _relayEnvelope(_ApiFlavor.openAi, body) : body));
 
       final response = await request.close().timeout(responseTimeout);
       if (isCancelled?.call() == true) {
         throw Exception('Agent run stopped by user.');
       }
-      final rawBody = await utf8.decodeStream(response);
       if (response.statusCode < 200 || response.statusCode >= 300) {
+        final rawBody = await utf8.decodeStream(response);
         throw Exception('Provider HTTP ${response.statusCode}: ${_compact(rawBody)}');
       }
-      final decoded = jsonDecode(rawBody);
-      if (decoded is Map<String, dynamic>) return decoded;
-      throw Exception('Provider returned a non-object tool-call response.');
+
+      await for (final line in response
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .timeout(responseTimeout)) {
+        if (isCancelled?.call() == true) {
+          throw Exception('Agent run stopped by user.');
+        }
+        final trimmed = line.trim();
+        if (trimmed.isEmpty || trimmed.startsWith('event:')) continue;
+        if (trimmed == 'data: [DONE]') break;
+
+        final payload = trimmed.startsWith('data: ') ? trimmed.substring(6).trim() : trimmed;
+        if (payload.isEmpty || payload == '[DONE]') break;
+
+        try {
+          final decoded = jsonDecode(payload);
+          if (decoded is! Map<String, dynamic>) continue;
+          onUsageChunk?.call(decoded);
+
+          final nonStreamingFallback = _maybeParseNonStreamingToolCall(adapter, decoded);
+          if (nonStreamingFallback != null) return nonStreamingFallback;
+
+          toolAssembler.addChunk(decoded);
+          _appendOpenAiStreamingText(decoded, contentBuffer, reasoningBuffer);
+          finishReason ??= _extractOpenAiFinishReason(decoded);
+
+          for (final toolName in _extractOpenAiStreamingToolNames(decoded)) {
+            if (announcedTools.add(toolName)) {
+              onToolDelta?.call('model is selecting provider-native tool `$toolName`.');
+            }
+          }
+        } catch (_) {
+          if (payload.startsWith('{')) {
+            final fallback = _extractAssistantText(payload);
+            if (fallback.trim().isNotEmpty) {
+              return ProviderToolCallResponse(content: fallback.trim(), toolCalls: const []);
+            }
+          }
+        }
+      }
     } on SocketException catch (error) {
       if (isCancelled?.call() == true) {
         throw Exception('Agent run stopped by user.');
@@ -10565,13 +10610,93 @@ class _ChatPanelState extends State<_ChatPanel> {
       }
       throw Exception('Provider HTTP error: ${error.message}');
     } on TimeoutException {
-      throw Exception('Provider timed out after ${responseTimeout.inSeconds}s while waiting for a tool-call response.');
+      throw Exception('Provider stream timed out after ${responseTimeout.inSeconds}s while waiting for tool-call deltas.');
     } finally {
       if (identical(_agentProviderClient, client)) {
         _agentProviderClient = null;
       }
       client.close(force: true);
     }
+
+    final reasoning = reasoningBuffer.toString().trim();
+    return ProviderToolCallResponse(
+      content: contentBuffer.toString().trim(),
+      toolCalls: toolAssembler.finish(),
+      finishReason: finishReason,
+      reasoningContent: reasoning.isEmpty ? null : reasoning,
+    );
+  }
+
+  ProviderToolCallResponse? _maybeParseNonStreamingToolCall(
+    OpenAiCompatibleToolCallAdapter adapter,
+    Map<String, dynamic> decoded,
+  ) {
+    final choices = decoded['choices'];
+    if (choices is! List || choices.isEmpty) return null;
+    final first = choices.first;
+    if (first is! Map<String, dynamic>) return null;
+    if (first['message'] is Map<String, dynamic>) {
+      return adapter.parseChatCompletion(decoded);
+    }
+    return null;
+  }
+
+  void _appendOpenAiStreamingText(
+    Map<String, dynamic> decoded,
+    StringBuffer contentBuffer,
+    StringBuffer reasoningBuffer,
+  ) {
+    final choices = decoded['choices'];
+    if (choices is! List) return;
+    for (final choice in choices) {
+      if (choice is! Map<String, dynamic>) continue;
+      final delta = choice['delta'];
+      if (delta is Map<String, dynamic>) {
+        final content = delta['content'];
+        if (content is String && content.isNotEmpty) contentBuffer.write(content);
+        final reasoning = delta['reasoning_content'];
+        if (reasoning is String && reasoning.isNotEmpty) reasoningBuffer.write(reasoning);
+      }
+      final message = choice['message'];
+      if (message is Map<String, dynamic>) {
+        final content = message['content'];
+        if (content is String && content.isNotEmpty) contentBuffer.write(content);
+        final reasoning = message['reasoning_content'];
+        if (reasoning is String && reasoning.isNotEmpty) reasoningBuffer.write(reasoning);
+      }
+    }
+  }
+
+  List<String> _extractOpenAiStreamingToolNames(Map<String, dynamic> decoded) {
+    final names = <String>[];
+    final choices = decoded['choices'];
+    if (choices is! List) return names;
+    for (final choice in choices) {
+      if (choice is! Map<String, dynamic>) continue;
+      final delta = choice['delta'];
+      if (delta is! Map<String, dynamic>) continue;
+      final toolCalls = delta['tool_calls'];
+      if (toolCalls is! List) continue;
+      for (final raw in toolCalls) {
+        if (raw is! Map<String, dynamic>) continue;
+        final function = raw['function'];
+        if (function is! Map<String, dynamic>) continue;
+        final name = function['name'];
+        if (name is String && name.trim().isNotEmpty) names.add(name.trim());
+      }
+    }
+    return names;
+  }
+
+  String? _extractOpenAiFinishReason(Map<String, dynamic> decoded) {
+    final choices = decoded['choices'];
+    if (choices is! List) return null;
+    for (final choice in choices) {
+      if (choice is! Map<String, dynamic>) continue;
+      final reason = choice['finish_reason'];
+      if (reason is String && reason.isNotEmpty) return reason;
+    }
+    return null;
   }
 
   Future<AgentLoopResult?> _runProviderNativeToolLoop(
@@ -10609,20 +10734,21 @@ class _ChatPanelState extends State<_ChatPanel> {
         onStatus('${adapter.profile.label} ${preset.label}$round$tool: ${event.message}');
       },
       requestModel: (loopMessages, {required round}) async {
-        final decoded = await _postOpenAiCompatibleToolCallRequest(
+        return _streamOpenAiCompatibleToolCallRequest(
+          adapter,
           adapter.buildChatCompletionRequest(
             model: model,
             systemPrompt: systemPrompt,
             messages: loopMessages,
             maxTokens: 4096,
-            stream: false,
+            stream: true,
             toolChoice: ToolChoiceMode.auto,
           ),
           responseTimeout: const Duration(minutes: 3),
           isCancelled: isCancelled,
+          onUsageChunk: usageAccumulator.addChunk,
+          onToolDelta: (detail) => onStatus('${adapter.profile.label} ${preset.label} round $round: $detail'),
         );
-        usageAccumulator.addChunk(decoded);
-        return adapter.parseChatCompletion(decoded);
       },
     );
   }
@@ -11168,7 +11294,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       if (toolName.startsWith('mobile_coding.generate_'))
         'For web/html requests, return one complete self-contained HTML document inside a single ```html fenced block. It must be mobile-first, touch-friendly, accessible, visually intentional, GitHub Pages deployable, and not depend on network assets. Use relative links only; never reference app-private local paths inside the HTML.',
       if (toolName == 'mobile_coding.research_web_preview')
-        'For the researched WebView demo, use provider-native tools when available: web_search first, fetch_url only for public https references, then write_file, read_file, preview_html, preview_snapshot, and report_result. Build one self-contained HTML document; do not depend on network assets. Include the search refIds and evidence IDs in the final report.',
+        'For the researched WebView demo, choose the smallest safe provider-native tool calls yourself from the allowed list. You may search public references, fetch public HTTPS pages, write/read a self-contained HTML artifact, preview it, capture preview evidence, or report the result depending on observations. Do not depend on network assets. Include useful refIds and evidence IDs in the final report.',
       if (toolName == 'mobile_coding.build_diary_demo')
         'For the diary app request, return the minimal implementable UI/data model plan and code snippets needed for a local APK diary experience.',
       if (toolName == 'mobile_tools.termux_probe')
@@ -13423,6 +13549,7 @@ class _AgentPresetChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = switch (preset) {
+      AgentPreset.autoAgent => _violet,
       AgentPreset.builder => _mint,
       AgentPreset.researchBuilder => _amber,
       AgentPreset.repair => _cyan,
@@ -13447,6 +13574,7 @@ class _AgentPresetChip extends StatelessWidget {
             children: [
               Icon(
                 switch (preset) {
+                  AgentPreset.autoAgent => Icons.auto_awesome_outlined,
                   AgentPreset.builder => Icons.construction_outlined,
                   AgentPreset.researchBuilder => Icons.travel_explore_outlined,
                   AgentPreset.repair => Icons.healing_outlined,
@@ -13557,7 +13685,7 @@ class _ChatModeStrip extends StatelessWidget {
       _PromptShortcutData(
         label: '复杂验收',
         icon: Icons.travel_explore_outlined,
-        prompt: '复杂验收：请先网页搜索 2026 年移动端 3D landing page 和动物森友会风格网页设计参考，读取 1-2 个公开 HTTPS 结果摘要，然后在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。必须使用 web_search、fetch_url、write_file、read_file、preview_html、preview_snapshot、report_result，最后报告搜索 refId、evidenceId、预览路径和快照结果。',
+        prompt: '复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 web_search、fetch_url、write_file、read_file、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。',
         color: _amber,
       ),
     ];
@@ -13632,7 +13760,7 @@ class _PromptLaunchPanel extends StatelessWidget {
                 icon: Icons.travel_explore_outlined,
                 label: '复杂 Harness 验收',
                 color: _violet,
-                onTap: () => onPrompt('复杂验收：请先网页搜索 2026 年移动端 3D landing page 和动物森友会风格网页设计参考，读取 1-2 个公开 HTTPS 结果摘要，然后在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。必须使用 web_search、fetch_url、write_file、read_file、preview_html、preview_snapshot、report_result，最后报告搜索 refId、evidenceId、预览路径和快照结果。', runAgent: true),
+                onTap: () => onPrompt('复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 web_search、fetch_url、write_file、read_file、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。', runAgent: true),
               ),
             ],
           ),

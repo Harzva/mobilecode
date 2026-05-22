@@ -160,7 +160,7 @@ class OpenAiCompatibleToolCallAdapter {
         'Use web_search/fetch_url only for public reference gathering. Use preview_snapshot after preview_html when the user asks for a visible product check.',
         'Never request shell, Git push, publishing, remote logging, or arbitrary commands.',
         'Use paths relative to the MobileCode workspace. Do not include secrets in arguments.',
-        'For complex web demos, prefer this sequence: web_search -> optional fetch_url -> write_file -> read_file -> preview_html -> preview_snapshot -> report_result.',
+        'For complex web demos, choose the smallest safe next tool yourself. You may search, fetch, write, read, preview, snapshot, or report depending on the current observation.',
         'After tool observations, call report_result or answer with a concise final summary.',
       ].join('\n');
 

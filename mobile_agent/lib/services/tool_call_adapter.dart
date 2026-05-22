@@ -537,11 +537,16 @@ class OpenAiCompatibleToolCallAdapter {
   Map<String, dynamic> buildToolResultMessage(
     ProviderToolCall call,
     ActionRunnerResult result,
+    {String? observationHint}
   ) {
+    final payload = _actionResultPayload(result);
+    if (observationHint != null && observationHint.trim().isNotEmpty) {
+      payload['observationHint'] = observationHint.trim();
+    }
     return {
       'role': 'tool',
       'tool_call_id': call.id,
-      'content': jsonEncode(_actionResultPayload(result)),
+      'content': jsonEncode(payload),
     };
   }
 

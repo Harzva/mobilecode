@@ -204,6 +204,7 @@ class AgentLoopController {
     var usedNativeToolCalls = false;
     var toolCallCount = 0;
     var writeNeedsVerification = false;
+    String? lastBlockedSignature;
 
     onEvent?.call(AgentLoopEvent(
       type: AgentLoopEventType.started,
@@ -284,8 +285,23 @@ class AgentLoopController {
                 const ['Read, grep, or preview the changed artifact before another mutating tool call.'],
               )
             : await _executeCall(call);
-        messages.add(adapter.buildToolResultMessage(call, result));
         final evidence = result.evidence;
+        final isBlocked = evidence.failureKind == ActionFailureKind.commandBlocked;
+        final blockedSignature = '${call.name}|${evidence.failureKind}';
+        final repeatedFailure = isBlocked && blockedSignature == lastBlockedSignature;
+        lastBlockedSignature = isBlocked ? blockedSignature : null;
+        final blockedObservation = isBlocked
+            ? _blockedActionMessage(
+                call: call,
+                evidence: evidence,
+                repeatedFailure: repeatedFailure,
+              )
+            : null;
+        messages.add(adapter.buildToolResultMessage(
+          call,
+          result,
+          observationHint: blockedObservation,
+        ));
         final status = _statusForResult(result);
         observations.add('${call.name}: $status · evidence ${evidence.evidenceId}');
         if (result.path != null && result.path!.trim().isNotEmpty && call.name != 'preview_snapshot') {
@@ -300,9 +316,10 @@ class AgentLoopController {
             call.name == 'preview_snapshot') {
           writeNeedsVerification = false;
         }
+
         onEvent?.call(AgentLoopEvent(
           type: _eventTypeForResult(result),
-          message: '${call.name}: $status · ${_compact(evidence.logs.join(' '), 180)}',
+          message: blockedObservation ?? '${call.name}: $status · ${_compact(evidence.logs.join(' '), 180)}',
           round: round,
           toolName: call.name,
           roleName: result.success ? _observationRoleForTool(call.name) : 'Repair',
@@ -366,6 +383,32 @@ class AgentLoopController {
     );
     actionRunner.evidenceStore.add(evidence);
     return ActionRunnerResult(evidence: evidence);
+  }
+
+  String _blockedActionMessage({
+    required ProviderToolCall call,
+    required ActionEvidence evidence,
+    required bool repeatedFailure,
+  }) {
+    final whatFailed = evidence.logs.isNotEmpty ? evidence.logs.join(' ') : 'tool call blocked';
+    final baseRecovery = evidence.recoveryActions.isNotEmpty
+        ? evidence.recoveryActions.join(' ')
+        : 'Pick a different safe recovery action and retry.';
+    final safeNextAction = repeatedFailure
+        ? _escalateRecovery(call.name, baseRecovery)
+        : baseRecovery;
+    return 'failureKind=${evidence.failureKind}; toolName=${call.name}; what failed: ${_compact(whatFailed, 200)}; safeNextAction: $safeNextAction';
+  }
+
+  String _escalateRecovery(String toolName, String fallback) {
+    final previousRecovery = fallback.trim().isEmpty ? '' : ' Previous recovery: ${_compact(fallback, 160)}';
+    if (toolName == 'apply_patch') {
+      return 'Switch strategy: read_file target first, then send a valid @@-based unified diff, or use complete write_file for a small HTML artifact.$previousRecovery';
+    }
+    if (toolName == 'write_file') {
+      return 'Switch strategy: do not resend write with the same blocked arguments; provide a confirmed safe path or use read/preview flow.$previousRecovery';
+    }
+    return 'Switch strategy: avoid repeating the same blocked call and choose a different safe tool flow.$previousRecovery';
   }
 
   void _throwIfCancelled(bool Function()? isCancelled) {

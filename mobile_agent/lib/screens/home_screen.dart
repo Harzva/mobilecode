@@ -12537,6 +12537,23 @@ class _ChatPanelState extends State<_ChatPanel> {
     );
   }
 
+  void _openTaskDispatchSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
+      ),
+      builder: (sheetContext) => _PromptLaunchPanel(
+        onPrompt: (prompt, {runAgent = false}) async {
+          Navigator.of(sheetContext).pop();
+          await setPromptFromShell(prompt, runAgent: runAgent);
+        },
+      ),
+    );
+  }
+
   Widget _buildConversationBody(_ChatSession? active) {
     final allTurns = active?.turns ?? const <_ChatTurn>[];
     final finalResultTurn = allTurns.isNotEmpty && allTurns.last.role == 'assistant' && _isFinalResultTurn(allTurns.last.content)
@@ -12674,6 +12691,7 @@ class _ChatPanelState extends State<_ChatPanel> {
                 Expanded(
                   child: _TaskDispatchStrip(
                     onPrompt: (prompt, {runAgent = false}) => unawaited(setPromptFromShell(prompt, runAgent: runAgent)),
+                    onMore: () => _openTaskDispatchSheet(),
                   ),
                 ),
               ],
@@ -13970,9 +13988,9 @@ class _AgentModeSummaryButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = mode == AgentExecutionMode.agentLoop ? _violet : _mint;
-    final detail = mode == AgentExecutionMode.agentLoop ? '${preset.label} · 角色协作' : 'Single-shot';
+    final detail = mode == AgentExecutionMode.agentLoop ? 'Agent Loop' : 'Single-shot';
     return Tooltip(
-      message: '打开模式面板：选择执行模式、Agent preset 和 RR 角色增强。',
+      message: '打开模式面板：选择执行模式、Agent preset 与 RR 角色增强。',
       child: InkWell(
         onTap: running ? null : onTap,
         borderRadius: BorderRadius.circular(18),
@@ -14413,9 +14431,13 @@ class _CompactAgentModeToggle extends StatelessWidget {
 }
 
 class _TaskDispatchStrip extends StatelessWidget {
-  const _TaskDispatchStrip({required this.onPrompt});
+  const _TaskDispatchStrip({
+    required this.onPrompt,
+    required this.onMore,
+  });
 
   final void Function(String prompt, {bool runAgent}) onPrompt;
+  final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
@@ -14445,6 +14467,7 @@ class _TaskDispatchStrip extends StatelessWidget {
         color: _amber,
       ),
     ];
+    final quickPrompts = prompts.take(3).toList();
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -14452,10 +14475,16 @@ class _TaskDispatchStrip extends StatelessWidget {
         children: [
           const _TaskDispatchLabel(),
           const SizedBox(width: 8),
-          for (final item in prompts) ...[
+          for (final item in quickPrompts) ...[
             _PromptShortcutChip(item: item, onTap: () => onPrompt(item.prompt, runAgent: true)),
             const SizedBox(width: 8),
           ],
+          _ActionChipButton(
+            icon: Icons.more_horiz_outlined,
+            label: '更多',
+            color: _muted,
+            onTap: onMore,
+          ),
         ],
       ),
     );

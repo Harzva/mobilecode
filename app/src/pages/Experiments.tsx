@@ -18,6 +18,7 @@ const implemented = [
   'ActionRunner executes safe typed tools and ActionEvidence records action name, success, duration, artifact paths, URLs, logs, and recovery hints.',
   'Agent Loop can now inspect and modify a mobile workspace with find_files, grep_files, and bounded apply_patch.',
   'Tools now exposes Activity / Logs, provider tool list, preset permissions, and Android/Linux/macOS command compatibility.',
+  'The composer now separates Mode, Model, Task Dispatch, and Input so mobile users can see how a run will execute before sending.',
 ];
 
 const missing = [
@@ -25,6 +26,7 @@ const missing = [
   'Copy, mkdir, delete, virtual git diff, rollback, and project summary tools are not fully exposed yet.',
   'Native bitmap preview screenshots and rich visual verification are not implemented yet.',
   'Multi-agent collaboration is currently role orchestration inside one loop, not parallel background agents.',
+  'True background sub-agents are deferred; current direction is role orchestration + mailbox-lite coordination on one execution lane.',
 ];
 
 const safeTools = [
@@ -63,7 +65,9 @@ const dailyLogs = [
       'Agent Loop uses a visible role flow: Planner inspects, Builder changes, Reviewer verifies, and Repair responds to failed evidence.',
       'Streaming tool-call arguments are shown as one updating progress item with character deltas; actual file writes still happen only after the complete structured tool call is validated.',
       'Invalid patch drafts are now treated as safe blocks rather than product-breaking run failures when an artifact has already been preserved.',
-      'The composer was simplified into two product concepts: Mode for execution behavior and Task Dispatch for one-tap validation prompts.',
+      'Blocked recovery hints now tell the model what failed and which safe next action to try, instead of silently repeating the same malformed patch or missing file path.',
+      'Event/mailbox-lite traces are retained for recovery, while true background sub-agents remain deferred in this phase.',
+      'The composer is being shaped into four mobile product layers: Mode, Model, Task Dispatch, and Input.',
       'The product direction is a mobile-safe command layer: familiar coding workflow for the model, Android-safe typed tools underneath.',
       'A phone build must also hide unavailable tools: if web relay is not configured, web_search and fetch_url are not offered to the model.',
       'When a model needs to repair existing code, apply_patch records a snapshot and evidence instead of exposing a raw shell command.',

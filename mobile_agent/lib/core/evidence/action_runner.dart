@@ -319,6 +319,16 @@ class ActionRunner {
   }
 
   Future<ActionRunnerResult> _writeFile(ActionSchema schema, DateTime startedAt) async {
+    if (_stringParam(schema, 'path').isEmpty) {
+      throw _ActionRunnerFailure(
+        'Missing required string param: path for write_file.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const [
+          'Provide a workspace-safe path (path/pathname/file_path/filename/name/fileName).',
+          'If this is a small HTML artifact and context is unclear, use write_file with a complete HTML payload.',
+        ],
+      );
+    }
     final target = _resolveWorkspacePath(_requiredString(schema, 'path'));
     final content = _requiredString(schema, 'content');
     final overwrite = schema.params['overwrite'] as bool? ?? true;
@@ -1020,7 +1030,10 @@ class ActionRunner {
         throw const _ActionRunnerFailure(
           'Invalid unified diff: expected +++ file header after ---.',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: ['Ask the model to return a standard unified diff.'],
+          recoveryActions: [
+            'Read_file first when context is missing, then send a valid unified diff with @@ line numbers.',
+            'For small HTML artifacts, use write_file with complete HTML to overwrite the target.',
+          ],
         );
       }
       final newPath = _normalizePatchPath(lines[i].substring(4));
@@ -1093,7 +1106,10 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'Invalid unified diff hunk header: $header',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Use @@ -oldStart,oldCount +newStart,newCount @@ hunk headers.'],
+        recoveryActions: const [
+          'Read_file first to confirm current context, then emit a valid @@ -oldStart,oldCount +newStart,newCount @@ header.',
+          'For complete HTML artifacts, prefer write_file when practical.',
+        ],
       );
     }
     return _UnifiedHunk(

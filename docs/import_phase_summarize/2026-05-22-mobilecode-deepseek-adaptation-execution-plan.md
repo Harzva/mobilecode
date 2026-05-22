@@ -4,7 +4,7 @@
 
 执行基线：`last-recover-from-v039`
 
-当前产品基线：`v0.1.54-last`（本轮修复基于 `last-recover-from-v039`，下一版建议 `v0.1.56-last`）
+当前产品基线：`v0.1.57-last`（本轮修复基于 `last-recover-from-v039`，下一版建议 `v0.1.58-last`）
 
 参考文档：
 
@@ -516,7 +516,7 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 
 - 把 Agent Loop 从“主要写单文件”推进到“读项目 -> 搜项目 -> 补丁化修改 -> evidence observation -> 继续下一步”。
 - 让模型看到熟悉的 Unix-like 能力，但底层仍是 MobileCode typed tools，不开放 raw shell。
-- 多智能体第一版采用同一 loop 内的角色编排，不做并发子 Agent，不制造无法验证的后台执行感。
+- 多智能体第一版采用同一 loop 内的角色编排，不做并发子 Agent，不制造无法验证的后台执行感。当前版本不推真实后台子 Agent。
 
 本轮实现：
 
@@ -546,7 +546,8 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
   - Repair：失败 observation 后的修复职责。
 - Streaming tool call 参数流入合并为同一条可更新事件，详情显示累计字符和增量字符；真正写入仍只在完整 tool call 到达并通过 ActionRunner 校验后发生。
 - 无效 `apply_patch` 草稿（例如 `@@ ... @@`）显示为安全阻断，不再把已经保存的 artifact 误染成整体失败；失败 evidence 仍保留用于复盘。
-- Composer 收纳为“模式”和“任务派发”两层：模式面板承载 Single-shot / Agent Loop / Agent preset / RR；任务派发只保留贪吃蛇、2048、GitHub、复杂验收等预置请求。
+- Blocked recovery observation 进一步加固：重复 `apply_patch` hunk header 错误或 `write_file` 缺少 `path` 时，下一轮 observation 明确给出 `failureKind / toolName / what failed / safeNextAction`，要求模型先 `read_file` 获取上下文、改用合法 unified diff，或在小型 HTML artifact 场景下完整 `write_file`。
+- Composer 收纳为四层：`模式` 显示 Single-shot / Agent Loop，模式面板承载 Agent preset / RR；`模型` 靠近语音按钮；`任务派发` 默认只展示贪吃蛇、2048、GitHub，更多任务进 sheet；`输入` 保持最高优先级。后续子代理路线为“Sub-Agent Lite”（event/mailbox-lite）而非并发执行层。
 - 模式面板中新增可见“角色协作”入口，说明 Planner / Builder / Reviewer / Repair 是同一 Agent Loop 内的角色编排，不是并发后台线程。
 - Tools 页同步显示 provider-native tool list、Android/Linux/macOS command map、preset access。
 - `COMMANDS.md` 与 `COMMAND_COMPATIBILITY.md` 同步 Search/Patch 支持状态。
@@ -578,7 +579,7 @@ Shell 边界：
 
 - 第一版 `apply_patch` 是移动端轻量 unified diff 执行器，不等同于完整 `git apply`。
 - 尚未实现 copy/mkdir/delete/snapshot restore/virtual git diff 的完整工具面。
-- 多角色仍是单 loop 内的职责切换，不是并发多智能体。
+- 多角色仍是单 loop 内的职责切换；真实后台子 Agent 本阶段延后，先落地角色编排 + event/mailbox-lite 方向。
 
 ## DS05 DeepSeek 错误码映射
 

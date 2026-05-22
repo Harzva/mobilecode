@@ -508,6 +508,172 @@ void main() {
     expect(store.failures().single.failureKind, ActionFailureKind.commandBlocked);
   });
 
+  test('invalid apply_patch is actionable and a later valid patch can proceed', () async {
+    final file = File('${workspace.path}/safe_recover/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<h1>Existing</h1>');
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.repair,
+      maxRounds: 3,
+    );
+    final events = <AgentLoopEvent>[];
+    List<Map<String, dynamic>>? round3Messages;
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'repair the page'},
+      ],
+      onEvent: events.add,
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_bad_patch',
+                name: 'apply_patch',
+                arguments: {
+                  'patch': '--- a/safe_recover/index.html\n+++ b/safe_recover/index.html\n@@ ... @@\n-<h1>Existing</h1>\n+<h1>Recovered</h1>',
+                  'reason': 'test invalid then fix',
+                },
+              ),
+            ],
+          );
+        }
+        if (round == 2) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_valid_patch',
+                name: 'apply_patch',
+                arguments: {
+                  'patch': '--- a/safe_recover/index.html\n+++ b/safe_recover/index.html\n@@ -1,1 +1,1 @@\n-<h1>Existing</h1>\n+<h1>Recovered</h1>',
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: 'Valid patch fixed the artifact after one recovery hint.',
+          toolCalls: [],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Valid patch fixed the artifact'));
+    expect(await file.readAsString(), contains('Recovered'));
+    final blockedEvents = events.where((event) => event.type == AgentLoopEventType.blocked).toList();
+    expect(blockedEvents.length, 1);
+    final blockedMessage = blockedEvents.first.message;
+    expect(blockedMessage, contains('failureKind=commandBlocked'));
+    expect(blockedMessage, contains('toolName=apply_patch'));
+    expect(blockedMessage, contains('safeNextAction'));
+  });
+
+  test('repeated blocked apply_patch asks for a strategy switch', () async {
+    final file = File('${workspace.path}/safe_repeat/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<h1>Existing</h1>');
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.repair,
+      maxRounds: 3,
+    );
+    final events = <AgentLoopEvent>[];
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'repair the page'},
+      ],
+      onEvent: events.add,
+      requestModel: (messages, {required round}) async {
+        if (round <= 2) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_repeat_patch',
+                name: 'apply_patch',
+                arguments: {
+                  'patch': '--- a/safe_repeat/index.html\n+++ b/safe_repeat/index.html\n@@ ... @@\n-<h1>Existing</h1>\n+<h1>Recovered</h1>',
+                },
+              ),
+            ],
+          );
+        }
+        round3Messages = messages;
+        return const ProviderToolCallResponse(
+          content: 'Still blocked to avoid repeating the same invalid patch.',
+          toolCalls: [],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Still blocked'));
+    final blocked = events.where((event) => event.type == AgentLoopEventType.blocked).toList();
+    expect(blocked.length, 2);
+    expect(blocked[1].message, contains('Switch strategy'));
+    final toolObservations = round3Messages!
+        .where((message) => message['role'] == 'tool')
+        .map((message) => message['content'].toString())
+        .join(' ');
+    expect(toolObservations, contains('Switch strategy'));
+    expect(store.failures(), isNotEmpty);
+  });
+
+  test('missing write_file path is reported with clear blocked observation', () async {
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.builder,
+      maxRounds: 2,
+    );
+    final events = <AgentLoopEvent>[];
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'missing path case'},
+      ],
+      onEvent: events.add,
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_missing_path',
+                name: 'write_file',
+                arguments: {
+                  'content': 'not full html',
+                  'overwrite': true,
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: 'Missing path should be actionable.',
+          toolCalls: [],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Missing path should be actionable'));
+    final blocked = events.where((event) => event.type == AgentLoopEventType.blocked).toList();
+    expect(blocked, isNotEmpty);
+    expect(blocked.first.message, contains('failureKind=commandBlocked'));
+    expect(blocked.first.message, contains('toolName=write_file'));
+    expect(blocked.first.message, contains('safeNextAction'));
+    expect(blocked.first.message, contains('path'));
+  });
+
   test('agent loop appends assistant tool-call message with reasoning before tool results', () async {
     final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
     final controller = AgentLoopController(

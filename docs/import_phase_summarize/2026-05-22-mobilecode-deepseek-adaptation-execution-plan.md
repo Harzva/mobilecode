@@ -421,6 +421,9 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
   - `Provider-native tool list`
   - `Android command map`
   - `Agent preset access`
+- 新增长期命令口径文档：
+  - `docs/COMMANDS.md`：列出当前 provider-native typed tools、参数、风险等级和明确禁用项。
+  - `docs/COMMAND_COMPATIBILITY.md`：对比 Android / Linux / macOS 常见命令在 MobileCode 中的支持状态与扩展路线。
 - 命令兼容矩阵覆盖：
   - `pwd / ls / dir / find / fd`
   - `cat / head / tail / less / more`

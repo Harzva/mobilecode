@@ -1,0 +1,199 @@
+# MobileCode Commands
+
+Date: 2026-05-22
+
+Branch baseline: `last-recover-from-v039`
+
+## Positioning
+
+MobileCode does not expose a raw Linux shell to the model. It exposes a small, typed, Android-safe command layer:
+
+```text
+model tool call
+-> ToolCallAdapter
+-> ActionRunner
+-> ActionEvidence
+-> observation back to model
+```
+
+This is intentionally closer to DeepSeek-TUI's typed tool registry than to `exec_shell`. The model can use familiar Unix ideas like list, read, move, search, preview, and report, but every action is validated against the MobileCode workspace and recorded as evidence.
+
+## Current Provider-Native Tools
+
+| Tool | Unix idea | Risk | Scope | Status |
+|---|---|---:|---|---|
+| `list_files` | `ls`, `dir`, limited `find` | Read | Workspace only | Supported |
+| `web_search` | web search, not shell | Network read | Relay-backed public web | Supported |
+| `fetch_url` | safe `curl` / `wget` | Network read | Public HTTPS via relay | Supported |
+| `write_file` | `cat > file` | Write | Workspace only | Supported |
+| `read_file` | `cat`, `head`, `tail` | Read | Workspace only | Supported |
+| `move_file` | `mv` | Guarded write | File-only, workspace only | Supported |
+| `preview_html` | browser preview | Local preview | Workspace HTML / inline HTML | Supported |
+| `preview_snapshot` | screenshot-like evidence | Local evidence | Metadata / DOM summary, not bitmap | Supported |
+| `report_result` | final status | No execution | Conversation summary | Supported |
+
+## Tool Contracts
+
+### `list_files`
+
+Purpose: inspect workspace files without arbitrary filesystem traversal.
+
+Parameters:
+
+- `path`: relative workspace path, use `.` for root.
+- `recursive`: whether to include nested files.
+- `max_entries`: bounded result count.
+
+Notes:
+
+- Safe replacement for `ls`.
+- Returns path, type, size, and modified time.
+- Does not read file contents.
+
+### `read_file`
+
+Purpose: read bounded text from a workspace file.
+
+Parameters:
+
+- `path`: relative workspace file path.
+- `max_bytes`: maximum bytes to read.
+
+Notes:
+
+- Safe replacement for `cat/head/tail`.
+- Binary files are not a target use case.
+- Long content is compacted for model observation.
+
+### `write_file`
+
+Purpose: write one complete file into the workspace.
+
+Parameters:
+
+- `path`: relative workspace file path.
+- `content`: complete content.
+- `overwrite`: whether to replace an existing file.
+
+Notes:
+
+- Cannot write outside the app workspace.
+- Writes are evidence-backed.
+- The model must provide `path`; missing `path` is a schema/argument failure, not an Android permission failure.
+
+### `move_file`
+
+Purpose: rename or move one file in the workspace.
+
+Parameters:
+
+- `source_path`: existing relative file path.
+- `destination_path`: target relative file path including filename.
+- `overwrite`: whether to replace an existing destination.
+
+Notes:
+
+- Safe replacement for `mv`.
+- Directories are blocked in the first version.
+- Destination must not be just a directory.
+
+### `web_search`
+
+Purpose: obtain compact public references through managed relay.
+
+Parameters:
+
+- `query`: public web query.
+- `count`: bounded result count.
+
+Notes:
+
+- Does not expose search provider secrets in the APK.
+- Produces compact references for the model.
+
+### `fetch_url`
+
+Purpose: fetch and compact a public HTTPS page.
+
+Parameters:
+
+- `url`: public HTTPS URL.
+- `max_bytes`: bounded response size.
+
+Notes:
+
+- Local/private URLs are blocked.
+- This is the safe equivalent of a constrained `curl`.
+
+### `preview_html`
+
+Purpose: prepare in-app WebView preview from workspace HTML or inline HTML.
+
+Parameters:
+
+- `path`: relative HTML path, or empty string when using inline HTML.
+- `html`: inline HTML, or empty string when using path.
+
+### `preview_snapshot`
+
+Purpose: record preview evidence.
+
+Parameters:
+
+- `path`: relative HTML path, or empty string.
+- `url`: preview URL, or empty string.
+- `html`: inline HTML, or empty string.
+- `viewport_width`: expected viewport width.
+- `viewport_height`: expected viewport height.
+
+Notes:
+
+- This is metadata/DOM evidence, not native bitmap screenshot yet.
+
+### `report_result`
+
+Purpose: finish the loop with concise status and evidence references.
+
+Parameters:
+
+- `status`: `success`, `blocked`, `failed`, or `partial`.
+- `summary`: concise user-facing summary.
+- `evidence_ids`: relevant evidence IDs.
+- `recovery_actions`: next safe actions when blocked or failed.
+
+## Explicitly Not Exposed
+
+These are intentionally blocked in provider-native Agent Loop:
+
+- raw `shell`, `bash`, `sh`, `cmd`;
+- `sudo`, `chmod`, `chown`, system path writes;
+- package installs such as `npm install`, `pip install`, `apt`, `brew`;
+- Android system commands such as `pm`, `am`, `settings`, `dumpsys`, `logcat`;
+- Git push, release publishing, remote log upload;
+- arbitrary command strings such as `ls -la && rm -rf`.
+
+## Near-Term Expansion
+
+The next safe commands should be typed tools, not raw shell:
+
+- `grep_files`: safe replacement for `grep -R` / `rg`;
+- `find_files`: name/glob search;
+- `copy_file`: safe replacement for `cp`;
+- `mkdir`: safe replacement for `mkdir -p`;
+- `delete_file`: guarded replacement for `rm`, approval required;
+- `apply_patch`: unified diff inside workspace, approval required;
+- `git_status_virtual` / `git_diff_virtual`: snapshot-based, not real Git push;
+- `export_zip`: user-approved project export.
+
+## Model Prompt Rule
+
+The provider system prompt should say:
+
+```text
+You are running inside MobileCode, an Android app workspace.
+This is not a full Linux environment.
+Use provider-native typed tools instead of raw shell commands.
+Translate ls/cat/mv/curl-style requests into list_files/read_file/move_file/fetch_url when possible.
+Never attempt sudo, package installation, system Android commands, or writes outside the workspace.
+```
+

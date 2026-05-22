@@ -803,7 +803,7 @@ class _SubAgentLiteManager {
     String role,
     String message, {
     bool success = true,
-  ) {
+  }) {
     onEvent?.call(AgentLoopEvent(
       type: success ? AgentLoopEventType.observation : AgentLoopEventType.failed,
       message: message,

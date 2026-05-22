@@ -2,15 +2,15 @@ import { CheckCircle2, CircleDot, PackageCheck } from 'lucide-react';
 
 const entries = [
   {
-    version: 'v0.1.0',
-    title: 'Preview release',
-    text: '整理产品定位、修复宣传站乱码、输出 Web 构建产物，准备 GitHub Release。',
+    version: 'v0.1.46-last',
+    title: 'Last release APK',
+    text: '发布 last 分支 Android APK，并补充 relay/provider 修复后的可验证发布证据。',
     done: true,
   },
   {
     version: 'Next',
-    title: 'Android build recovery',
-    text: '安装 Flutter SDK，补齐 Android Gradle 工程、assets 和签名配置，生成 APK/AAB。',
+    title: 'README and Pages showcase',
+    text: '把新增 PNG/MP4 视觉证明接入 README 和 GitHub Pages，保持公开展示素材一致。',
     done: false,
   },
   {
@@ -43,7 +43,7 @@ export default function Changelog() {
           ))}
         </div>
         <div className="release-note">
-          <PackageCheck size={16} /> Release 会包含 Web 产物和源码包，移动安装包后续追加。
+          <PackageCheck size={16} /> Release 页面已经提供可下载 APK，Pages 展示最新视觉证据。
         </div>
       </div>
     </section>

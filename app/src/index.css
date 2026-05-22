@@ -528,6 +528,99 @@ select {
   grid-template-columns: repeat(4, 1fr);
 }
 
+.showcase-section {
+  overflow: hidden;
+}
+
+.last-proof-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 36px;
+}
+
+.last-proof-card,
+.last-video-panel {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.24);
+}
+
+.last-proof-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: contain;
+  background: #f7fbff;
+}
+
+.last-proof-card div {
+  padding: 22px;
+}
+
+.last-proof-card h3 {
+  margin: 0;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.last-proof-card p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.last-video-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(260px, 0.55fr);
+  gap: 28px;
+  align-items: center;
+  margin-top: 16px;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(39, 215, 230, 0.14), rgba(143, 92, 255, 0.08)),
+    var(--surface);
+}
+
+.last-video-panel h3 {
+  max-width: 660px;
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.6rem, 3vw, 2.35rem);
+  line-height: 1.14;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.last-video-panel p {
+  max-width: 620px;
+  margin: 16px 0 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.last-video-panel a {
+  display: inline-flex;
+  margin-top: 22px;
+  color: var(--mint);
+  font-weight: 900;
+}
+
+.last-video-panel video {
+  display: block;
+  justify-self: center;
+  width: min(320px, 100%);
+  max-height: 600px;
+  aspect-ratio: 9 / 16;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: #03050b;
+  object-fit: cover;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.36);
+}
+
 .layer-strip {
   display: flex;
   flex-wrap: wrap;
@@ -1029,6 +1122,8 @@ select {
   .demo-grid,
   .capability-grid,
   .feature-grid,
+  .last-proof-grid,
+  .last-video-panel,
   .pricing-grid,
   .metric-grid,
   .split,
@@ -1103,5 +1198,13 @@ select {
 
   .experiment-callout {
     align-items: flex-start;
+  }
+
+  .last-video-panel {
+    padding: 18px;
+  }
+
+  .last-video-panel video {
+    width: min(280px, 100%);
   }
 }

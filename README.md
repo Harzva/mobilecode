@@ -11,10 +11,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml"><img alt="Mobile Runtime CI" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml/badge.svg?branch=v011-streaming-fix"></a>
-  <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=v011-streaming-fix"></a>
-  <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=v011-streaming-fix"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-0.1.30%2B49-2555FF">
+  <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml"><img alt="Mobile Runtime CI" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml/badge.svg?branch=last"></a>
+  <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=last"></a>
+  <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=last"></a>
+  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.46--last-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20Flutter-0B9B7E">
 </p>
 
@@ -27,7 +27,7 @@
   ·
   <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">HTML Principle Video</a>
   ·
-  <a href="https://github.com/Harzva/mobilecode/releases/download/v0.1.30/mobilecode-v0.1.30.apk">Download v0.1.30 APK</a>
+  <a href="https://github.com/Harzva/mobilecode/releases/download/v0.1.46-last/mobilecode-v0.1.46-last.apk">Download v0.1.46-last APK</a>
   ·
   <a href="https://harzva.github.io/mobilecode/">GitHub Pages Demo</a>
 </p>
@@ -56,6 +56,22 @@
   </a>
   <br>
   <sub>15-second Remotion teaser with voiceover. Full explainer covers demand, pain, RuntimeProvider, and GitHub-first shipping.</sub>
+</p>
+
+## Last Branch Visual Proof
+
+The latest `last` branch showcase assets are stored in `app/public/showcase/`, so README and GitHub Pages reference the same repo-owned PNG and MP4 instead of private local paths.
+
+<p align="center">
+  <img src="app/public/showcase/mobilecode-last-mobile-preview.png" alt="MobileCode Mcode Loong visual identity board" width="960">
+</p>
+
+<p align="center">
+  <video src="app/public/showcase/mobilecode-last-walkthrough.mp4" width="360" controls muted playsinline>
+    <a href="app/public/showcase/mobilecode-last-walkthrough.mp4">Watch MobileCode last branch walkthrough MP4</a>
+  </video>
+  <br>
+  <sub>If your Markdown viewer does not embed video, open <a href="app/public/showcase/mobilecode-last-walkthrough.mp4">mobilecode-last-walkthrough.mp4</a>.</sub>
 </p>
 
 | Runs on the phone | Remote by choice | GitHub-first shipping |
@@ -233,13 +249,14 @@ That keeps the phone lightweight while still letting users produce shareable web
 
 ## Release Line
 
-Current candidate: `0.1.30+49`.
+Current candidate: `v0.1.46-last`.
 
 See:
 
 - [Version Policy](docs/mobilecode-version-policy.md)
 - [Release QA Checklist](docs/mobilecode-release-qa.md)
 - [Helper Runtime Protocol](docs/mobilecode-helper-runtime-protocol.md)
+- [UI Showcase Assets](docs/mobilecode-ui-showcase-assets.md)
 - [Production Hardening Notes](docs/mobilecode-production-hardening.md)
 
 ## Roadmap

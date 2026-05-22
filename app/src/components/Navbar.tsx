@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Code2, Menu, X } from 'lucide-react';
 
-const apkUrl = 'https://github.com/Harzva/mobilecode/releases/download/v0.1.0/mobilecode-v0.1.0.apk';
+const apkUrl = 'https://github.com/Harzva/mobilecode/releases/download/v0.1.46-last/mobilecode-v0.1.46-last.apk';
 
 const navLinks = [
   { label: '产品特性', path: '/features' },

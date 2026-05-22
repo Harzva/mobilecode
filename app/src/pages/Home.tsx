@@ -16,14 +16,15 @@ import {
 import type { LucideIcon } from 'lucide-react';
 
 const pageBase = import.meta.env.BASE_URL;
-const apkUrl = 'https://github.com/Harzva/mobilecode/releases/download/v0.1.0/mobilecode-v0.1.0.apk';
-const releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.0';
+const apkUrl = 'https://github.com/Harzva/mobilecode/releases/download/v0.1.46-last/mobilecode-v0.1.46-last.apk';
+const releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.46-last';
 const repoUrl = 'https://github.com/Harzva/mobilecode';
 const demo2048Url = `${pageBase}demo/2048/`;
 const githubTestUrl = `${pageBase}github-test/`;
+const showcaseAsset = (file: string) => `${pageBase}showcase/${file}`;
 
 const heroStats = [
-  { value: 'v0.1.0+5', label: 'Android APK' },
+  { value: 'v0.1.46-last', label: 'Android APK' },
   { value: '62+', label: '后端服务能力' },
   { value: 'GitHub', label: 'Pages + Release' },
 ];
@@ -92,6 +93,21 @@ const layers = [
   'Analytics',
   'Tools',
   'Performance',
+];
+
+const lastProofCards = [
+  {
+    title: 'Last 分支视觉总览',
+    text: '定位、标语、使用场景、色彩和 Logo 规范集中呈现，让 README 和 Pages 都能引用同一张产品证据图。',
+    image: 'mobilecode-last-mobile-preview.png',
+    alt: 'MobileCode Mcode Loong visual identity board',
+  },
+  {
+    title: '9:16 Walkthrough',
+    text: '竖屏 MP4 收录移动端编码节奏：从拿起手机、组织任务、运行 Agent 到预览发布。',
+    image: 'mobilecode-last-mobile-preview.png',
+    alt: 'MobileCode walkthrough poster',
+  },
 ];
 
 function HeroProof() {
@@ -189,6 +205,47 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="section-band showcase-section" id="last-proof">
+        <div className="section-container">
+          <div className="section-heading">
+            <p className="eyebrow">Last Branch Proof</p>
+            <h2>新增 PNG 和 MP4，README 与 GitHub Pages 共用同一份公开素材</h2>
+            <p>
+              这组素材已经从本地参考图迁移为仓库公开资产，让项目首页、README 和 Pages 都能直接展示 MobileCode 的品牌板与竖屏 walkthrough。
+            </p>
+          </div>
+          <div className="last-proof-grid">
+            {lastProofCards.map((item) => (
+              <article className="last-proof-card" key={item.title}>
+                <img src={showcaseAsset(item.image)} alt={item.alt} loading="lazy" />
+                <div>
+                  <h3>{item.title}</h3>
+                  <p>{item.text}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="last-video-panel">
+            <div>
+              <p className="eyebrow">Walkthrough</p>
+              <h3>一段 9:16 视频，把移动端编码的节奏放进 Pages</h3>
+              <p>
+                视频作为公开资产随站点一起发布，用户可以直接播放，也可以打开原始 MP4 文件检查移动端演示效果。
+              </p>
+              <a href={showcaseAsset('mobilecode-last-walkthrough.mp4')}>打开视频文件</a>
+            </div>
+            <video
+              src={showcaseAsset('mobilecode-last-walkthrough.mp4')}
+              poster={showcaseAsset('mobilecode-last-mobile-preview.png')}
+              controls
+              muted
+              playsInline
+              preload="metadata"
+            />
+          </div>
+        </div>
+      </section>
+
       <section className="section-band alt">
         <div className="section-container split product-split">
           <div>
@@ -250,7 +307,7 @@ export default function Home() {
             <code>provider.health: healthy</code>
             <code>chat.memory: persisted</code>
             <code>github.pages: deployed</code>
-            <code>apk.release: v0.1.0+5</code>
+            <code>apk.release: v0.1.46-last</code>
           </div>
         </div>
       </section>

@@ -164,11 +164,16 @@ class OpenAiToolCallStreamAssembler {
     final builders = _builders.values.toList()
       ..sort((a, b) => a.index.compareTo(b.index));
     return builders
-        .map((builder) => OpenAiStreamingToolCallProgress(
+        .map((builder) {
+          final arguments = builder.arguments.toString();
+          return OpenAiStreamingToolCallProgress(
               index: builder.index,
               name: builder.name,
-              argumentChars: builder.arguments.length,
-            ))
+              argumentChars: arguments.length,
+              argumentLines: _estimateDraftLineCount(arguments),
+              targetPath: _extractDraftTargetPath(arguments),
+            );
+        })
         .toList();
   }
 
@@ -219,12 +224,16 @@ class OpenAiStreamingToolCallProgress {
   const OpenAiStreamingToolCallProgress({
     required this.index,
     required this.argumentChars,
+    required this.argumentLines,
     this.name,
+    this.targetPath,
   });
 
   final int index;
   final String? name;
   final int argumentChars;
+  final int argumentLines;
+  final String? targetPath;
 
   String get key => '$index:${name ?? ''}';
 }
@@ -263,6 +272,24 @@ class _StreamingToolCallBuilder {
   }
 }
 
+int _estimateDraftLineCount(String arguments) {
+  if (arguments.isEmpty) return 0;
+  final escapedNewlines = RegExp(r'\\n').allMatches(arguments).length;
+  final rawNewlines = arguments.split('\n').length - 1;
+  return escapedNewlines + rawNewlines + 1;
+}
+
+String? _extractDraftTargetPath(String arguments) {
+  if (arguments.isEmpty) return null;
+  final directPath = RegExp(r'"(?:path|file_path|filepath|filename|fileName|name)"\s*:\s*"([^"\\]+)"').firstMatch(arguments)?.group(1);
+  if (directPath != null && directPath.trim().isNotEmpty) return directPath.trim();
+  final patchPath = RegExp(r'\+\+\+\s+(?:b/)?([^\\n"\r]+)').firstMatch(arguments)?.group(1);
+  if (patchPath != null && patchPath.trim().isNotEmpty && patchPath.trim() != '/dev/null') {
+    return patchPath.trim();
+  }
+  return null;
+}
+
 class OpenAiCompatibleToolCallAdapter {
   OpenAiCompatibleToolCallAdapter({required this.profile});
 
@@ -270,12 +297,12 @@ class OpenAiCompatibleToolCallAdapter {
 
   String get systemInstruction => [
         'When a mobile coding request needs a file or preview, use the provided tools instead of only describing the result.',
-        'MobileCode tools may include list_files, web_search, fetch_url, write_file, read_file, move_file, preview_html, preview_snapshot, and report_result; only call tools exposed in the current request.',
+        'MobileCode tools may include list_files, find_files, grep_files, web_search, fetch_url, write_file, read_file, move_file, apply_patch, preview_html, preview_snapshot, and report_result; only call tools exposed in the current request.',
         'Use web_search/fetch_url only for public reference gathering. Use preview_snapshot after preview_html when the user asks for a visible product check.',
-        'Use list_files instead of shell ls, and move_file instead of shell mv. Do not ask for raw Android or Termux commands.',
+        'Use list_files/find_files instead of shell ls/find, grep_files instead of shell grep/rg, move_file instead of shell mv, and apply_patch instead of shell patch/git apply. Do not ask for raw Android or Termux commands.',
         'Never request shell, Git push, publishing, remote logging, or arbitrary commands.',
         'Use paths relative to the MobileCode workspace. If writing one web artifact and no path is obvious, use index.html. Do not include secrets in arguments.',
-        'For complex web demos, choose the smallest safe next tool yourself. You may list, search, fetch, write, read, move, preview, snapshot, or report depending on the current observation.',
+        'For complex work, choose the smallest safe next tool yourself. You may list, find, grep, search, fetch, write, read, move, patch, preview, snapshot, or report depending on the current observation.',
         'After tool observations, call report_result or answer with a concise final summary.',
       ].join('\n');
 
@@ -384,6 +411,30 @@ class OpenAiCompatibleToolCallAdapter {
             'maxEntries': _intArg(args, 'max_entries', defaultValue: 80),
           },
         );
+      case 'find_files':
+        return ActionSchema(
+          actionName: MobileCodeAction.findFiles,
+          requestId: call.id,
+          paramsSummary: 'provider-native find_files',
+          params: {
+            'pattern': _stringArg(args, 'pattern'),
+            'path': _stringArg(args, 'path'),
+            'maxResults': _intArg(args, 'max_results', defaultValue: 80),
+          },
+        );
+      case 'grep_files':
+        return ActionSchema(
+          actionName: MobileCodeAction.grepFiles,
+          requestId: call.id,
+          paramsSummary: 'provider-native grep_files',
+          params: {
+            'query': _stringArg(args, 'query'),
+            'path': _stringArg(args, 'path'),
+            'includeGlob': _stringArg(args, 'include_glob'),
+            'maxResults': _intArg(args, 'max_results', defaultValue: 40),
+            'maxBytes': _intArg(args, 'max_bytes', defaultValue: 256 * 1024),
+          },
+        );
       case 'write_file':
         final content = _stringArgAny(args, const ['content', 'html', 'body']);
         final path = _safeWritePath(args, content);
@@ -423,6 +474,16 @@ class OpenAiCompatibleToolCallAdapter {
             'sourcePath': _stringArg(args, 'source_path'),
             'destinationPath': _stringArg(args, 'destination_path'),
             'overwrite': _boolArg(args, 'overwrite', defaultValue: false),
+          },
+        );
+      case 'apply_patch':
+        return ActionSchema(
+          actionName: MobileCodeAction.applyPatch,
+          requestId: call.id,
+          paramsSummary: 'provider-native apply_patch',
+          params: {
+            'patch': _stringArg(args, 'patch'),
+            'reason': _stringArg(args, 'reason'),
           },
         );
       case 'preview_html':
@@ -544,6 +605,28 @@ class OpenAiCompatibleToolCallAdapter {
         required: const ['path', 'recursive', 'max_entries'],
       ),
       functionTool(
+        name: 'find_files',
+        description: 'Find workspace files by name or glob. Safe replacement for find/fd; bounded to the MobileCode workspace.',
+        properties: const {
+          'pattern': {'type': 'string', 'description': 'Filename, glob, or path fragment such as "*.html" or "index".'},
+          'path': {'type': 'string', 'description': 'Relative workspace directory or file path. Use "." for workspace root.'},
+          'max_results': {'type': 'integer', 'description': 'Maximum matching entries to return, 1 to 200.'},
+        },
+        required: const ['pattern', 'path', 'max_results'],
+      ),
+      functionTool(
+        name: 'grep_files',
+        description: 'Search text inside workspace files. Safe replacement for grep/rg; bounded results and file sizes.',
+        properties: const {
+          'query': {'type': 'string', 'description': 'Plain text query to search for.'},
+          'path': {'type': 'string', 'description': 'Relative workspace directory or file path. Use "." for workspace root.'},
+          'include_glob': {'type': 'string', 'description': 'Optional filename glob such as "*.html"; use "*" for all text files.'},
+          'max_results': {'type': 'integer', 'description': 'Maximum match rows to return, 1 to 120.'},
+          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes per file to inspect.'},
+        },
+        required: const ['query', 'path', 'include_glob', 'max_results', 'max_bytes'],
+      ),
+      functionTool(
         name: 'web_search',
         description: 'Search public web references through the MobileCode managed relay. Read-only; returns compact results with ref IDs.',
         properties: const {
@@ -589,6 +672,15 @@ class OpenAiCompatibleToolCallAdapter {
           'overwrite': {'type': 'boolean', 'description': 'Whether an existing destination file may be replaced.'},
         },
         required: const ['source_path', 'destination_path', 'overwrite'],
+      ),
+      functionTool(
+        name: 'apply_patch',
+        description: 'Apply a small unified diff patch inside the MobileCode workspace. Safe replacement for patch/git apply; deletion, binary patches, and outside paths are blocked.',
+        properties: const {
+          'patch': {'type': 'string', 'description': 'Unified diff patch with ---/+++ headers and @@ hunks.'},
+          'reason': {'type': 'string', 'description': 'Short reason for applying this patch.'},
+        },
+        required: const ['patch', 'reason'],
       ),
       functionTool(
         name: 'preview_html',

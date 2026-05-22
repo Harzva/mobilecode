@@ -16,18 +16,25 @@ model tool call
 -> observation back to model
 ```
 
-This is intentionally closer to DeepSeek-TUI's typed tool registry than to `exec_shell`. The model can use familiar Unix ideas like list, read, move, search, preview, and report, but every action is validated against the MobileCode workspace and recorded as evidence.
+The model can use familiar Unix ideas like list, find, grep, read, patch, move, preview, and report, but every action is validated against the MobileCode workspace and recorded as evidence.
+
+This is the current MobileCode Virtual Command Layer: it is not a full shell, but a provider-native typed tool facade that lets models translate common Linux/macOS development habits into Android-safe actions.
+
+Streaming note: provider SSE deltas are buffered as in-memory tool-call drafts first. MobileCode does not write partial arguments to disk. A real workspace write happens only after the complete tool call is parsed, validated, permission-checked, executed by `ActionRunner`, and recorded as `ActionEvidence`.
 
 ## Current Provider-Native Tools
 
 | Tool | Unix idea | Risk | Scope | Status |
 |---|---|---:|---|---|
 | `list_files` | `ls`, `dir`, limited `find` | Read | Workspace only | Supported |
+| `find_files` | `find`, `fd` | Read | Workspace only | Supported |
+| `grep_files` | `grep`, `rg`, `ag` | Read | Bounded text files | Supported |
 | `web_search` | web search, not shell | Network read | Relay-backed public web | Supported when relay configured |
 | `fetch_url` | safe `curl` / `wget` | Network read | Public HTTPS via relay | Supported when relay configured |
 | `write_file` | `cat > file` | Write | Workspace only | Supported |
 | `read_file` | `cat`, `head`, `tail` | Read | Workspace only | Supported |
 | `move_file` | `mv` | Guarded write | File-only, workspace only | Supported |
+| `apply_patch` | `patch`, `git apply` | Bounded write | Unified diff, workspace only | Supported |
 | `preview_html` | browser preview | Local preview | Workspace HTML / inline HTML | Supported |
 | `preview_snapshot` | screenshot-like evidence | Local evidence | Metadata / DOM summary, not bitmap | Supported |
 | `report_result` | final status | No execution | Conversation summary | Supported |
@@ -49,6 +56,40 @@ Notes:
 - Safe replacement for `ls`.
 - Returns path, type, size, and modified time.
 - Does not read file contents.
+
+### `find_files`
+
+Purpose: find workspace files by name, glob, or path fragment.
+
+Parameters:
+
+- `pattern`: filename/glob/path fragment, for example `*.html` or `index`.
+- `path`: relative workspace path, use `.` for root.
+- `max_results`: bounded result count.
+
+Notes:
+
+- Safe replacement for `find` / `fd`.
+- Searches only inside the active MobileCode workspace.
+- Returns compact file metadata, not file content.
+
+### `grep_files`
+
+Purpose: search text inside bounded workspace files.
+
+Parameters:
+
+- `query`: plain text query.
+- `path`: relative workspace path, use `.` for root.
+- `include_glob`: optional filename glob such as `*.html`, or `*`.
+- `max_results`: bounded match count.
+- `max_bytes`: maximum bytes inspected per file.
+
+Notes:
+
+- Safe replacement for `grep` / `rg`.
+- Skips binary-looking files and overly large files.
+- Returns path, line number, and compact preview for each match.
 
 ### `read_file`
 
@@ -98,6 +139,22 @@ Notes:
 - Safe replacement for `mv`.
 - Directories are blocked in the first version.
 - Destination must not be just a directory.
+
+### `apply_patch`
+
+Purpose: apply a small unified diff inside the workspace.
+
+Parameters:
+
+- `patch`: unified diff with `---` / `+++` headers and `@@` hunks.
+- `reason`: short reason for the patch.
+
+Notes:
+
+- Safe replacement for `patch` / `git apply`.
+- Saves pre-patch snapshots and an `applied.patch` record.
+- Rejects outside-workspace paths, deletion, binary patches, oversized patches, and context mismatches.
+- This is bounded auto-apply, not raw shell execution.
 
 ### `web_search`
 
@@ -178,14 +235,11 @@ These are intentionally blocked in provider-native Agent Loop:
 
 ## Near-Term Expansion
 
-The next safe commands should be typed tools, not raw shell:
+The next safe commands should remain typed tools, not raw shell:
 
-- `grep_files`: safe replacement for `grep -R` / `rg`;
-- `find_files`: name/glob search;
 - `copy_file`: safe replacement for `cp`;
 - `mkdir`: safe replacement for `mkdir -p`;
 - `delete_file`: guarded replacement for `rm`, approval required;
-- `apply_patch`: unified diff inside workspace, approval required;
 - `git_status_virtual` / `git_diff_virtual`: snapshot-based, not real Git push;
 - `export_zip`: user-approved project export.
 
@@ -197,6 +251,6 @@ The provider system prompt should say:
 You are running inside MobileCode, an Android app workspace.
 This is not a full Linux environment.
 Use provider-native typed tools instead of raw shell commands.
-Translate ls/cat/mv/curl-style requests into list_files/read_file/move_file/fetch_url when possible.
+Translate ls/find/grep/cat/mv/patch/curl-style requests into list_files/find_files/grep_files/read_file/move_file/apply_patch/fetch_url when possible.
 Never attempt sudo, package installation, system Android commands, or writes outside the workspace.
 ```

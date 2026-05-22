@@ -82,11 +82,14 @@ void main() {
 
     expect(names, [
       'list_files',
+      'find_files',
+      'grep_files',
       'web_search',
       'fetch_url',
       'write_file',
       'read_file',
       'move_file',
+      'apply_patch',
       'preview_html',
       'preview_snapshot',
       'report_result',
@@ -271,7 +274,7 @@ void main() {
     expect(snapshot.params['viewportWidth'], 390);
   });
 
-  test('maps list_files and move_file to safe ActionSchema actions', () {
+  test('maps list/find/grep/move/patch to safe ActionSchema actions', () {
     final adapter = OpenAiCompatibleToolCallAdapter(
       profile: ToolCallProviderProfile.detect(
         'https://api.deepseek.com',
@@ -289,6 +292,31 @@ void main() {
     expect(list.params['recursive'], false);
     expect(list.params['maxEntries'], 20);
 
+    final find = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_find',
+      name: 'find_files',
+      arguments: {'pattern': '*.html', 'path': '.', 'max_results': 12},
+    ))!;
+    expect(find.actionName, MobileCodeAction.findFiles);
+    expect(find.params['pattern'], '*.html');
+    expect(find.params['maxResults'], 12);
+
+    final grep = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_grep',
+      name: 'grep_files',
+      arguments: {
+        'query': 'score',
+        'path': '.',
+        'include_glob': '*.html',
+        'max_results': 7,
+        'max_bytes': 4096,
+      },
+    ))!;
+    expect(grep.actionName, MobileCodeAction.grepFiles);
+    expect(grep.params['query'], 'score');
+    expect(grep.params['includeGlob'], '*.html');
+    expect(grep.params['maxBytes'], 4096);
+
     final move = adapter.toActionSchema(const ProviderToolCall(
       id: 'call_move',
       name: 'move_file',
@@ -302,6 +330,18 @@ void main() {
     expect(move.params['sourcePath'], 'draft.html');
     expect(move.params['destinationPath'], 'published/index.html');
     expect(move.params['overwrite'], true);
+
+    final patch = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_patch',
+      name: 'apply_patch',
+      arguments: {
+        'patch': '--- a/a.txt\n+++ b/a.txt\n@@ -1,1 +1,1 @@\n-old\n+new',
+        'reason': 'replace text',
+      },
+    ))!;
+    expect(patch.actionName, MobileCodeAction.applyPatch);
+    expect(patch.params['patch'], contains('+new'));
+    expect(patch.params['reason'], 'replace text');
   });
 
   test('assistant tool-call message preserves reasoning_content and tool_calls JSON', () {

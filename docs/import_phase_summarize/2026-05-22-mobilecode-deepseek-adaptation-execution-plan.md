@@ -4,7 +4,7 @@
 
 执行基线：`last-recover-from-v039`
 
-当前产品基线：`v0.1.50-last`
+当前产品基线：`v0.1.54-last`（本轮修复基于 `last-recover-from-v039`，下一版建议 `v0.1.56-last`）
 
 参考文档：
 
@@ -35,7 +35,8 @@ DeepSeek Provider
 - `Auto Agent`：模型可在安全工具白名单内自主选择工具。
 - DeepSeek/OpenAI-compatible `tool_calls` 非流式解析。
 - DeepSeek/OpenAI-compatible streaming `delta.tool_calls` 拼接。
-- `list_files / web_search / fetch_url / write_file / read_file / move_file / preview_html / preview_snapshot / report_result` 安全工具集。
+- `list_files / find_files / grep_files / web_search / fetch_url / write_file / read_file / move_file / apply_patch / preview_html / preview_snapshot / report_result` 安全工具集。
+- Agent Loop 角色流第一版：`Planner -> Builder -> Reviewer -> Repair`，以同一执行 lane 内的 policy / prompt / tool allow-list 呈现，不伪装成并发子 Agent。
 - Tools 页新增 Android/Linux/macOS 命令兼容矩阵，明确哪些命令由 MobileCode typed tools 模拟，哪些是 blocked/runtime-only/planned。
 - `ActionRunner / ActionEvidence / Activity Logs` 记录执行事实。
 - DS01 DeepSeek v4 Provider Profile 已完成，Mobile Runtime CI 与 v0.1.51-last APK 构建已通过。
@@ -81,6 +82,7 @@ DeepSeek Provider
 - [x] DS04 Streaming tool_calls 完整测试（本地实现完成，CI 待验收）
 - [x] DS04.1 Mobile Unix Facade 命令语义层（本地实现完成，CI 待验收）
 - [x] DS04.2 AgentLoop 可用工具 gating 与缺省写入路径修复（本地实现完成，CI 待验收）
+- [ ] DS04.3 Search/Patch + 角色编排（本地实现完成，静态检查通过，CI 待验收）
 - [ ] DS05 DeepSeek 错误码映射
 - [ ] DS06 Usage / Cache / Reasoning 观测
 - [ ] DS07 JSON Output 降级路径
@@ -163,7 +165,7 @@ DeepSeek Provider
 - `ToolCallProviderProfile.detect()` 新增 DeepSeek profile kind，区分 `v4Flash / v4Pro / strictBeta / legacyChat / legacyReasoner / experimentalUnsupported / unknown`。
 - `DeepSeek v4 Flash` 作为 UI/API 配置默认模型；`deepseek-chat` 与 `deepseek-reasoner` 保留为 legacy alias，不再作为新默认。
 - Agent Loop 空模型 fallback、managed DeepSeek 默认模型、APK workflow 的 DeepSeek dart-define 默认模型统一到 `deepseek-v4-flash`。
-- 补充 provider profile 单元测试：v4 flash/pro、strict beta、legacy alias、unsupported experimental model。
+<<- 补充 provider profile 单元测试：v4 flash/pro、strict beta、legacy alias、unsupported experimental model。
 - `cxspark` 已按要求调用，但本次被 Windows sandbox `CreateProcessAsUserW failed: 5` 阻塞，没有产出可接受代码；最终由当前 Codex 审核并直接实现。
 
 关键文件：
@@ -178,7 +180,7 @@ DeepSeek Provider
 验证结果：
 
 - `git diff --check` 通过。
-- 本地 `flutter` / `dart` 不在 PATH，未运行 Flutter analyze/test。
+- Flutter/Dart 验证统一走 GitHub Actions；本轮不再重复本地环境探测。
 
 CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 APK 链接：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-last/mobilecode-v0.1.51-last.apk`
@@ -238,7 +240,7 @@ APK 链接：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-las
 
 - `git diff --check` 通过（无 whitespace/patch 格式问题）。
 - `node --check relay/mobilecode-token-relay-worker.js` 通过。
-- 本地 `flutter` / `dart` 不在 PATH，未运行 Flutter analyze/test。
+- Flutter/Dart 验证统一走 GitHub Actions；本轮不再重复本地环境探测。
 - `cxspark` 执行完成并进入 Codex review：`20260522-145722-6d23434577ac-36792-1ba4394c`。
 - GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 - GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275362394`
@@ -254,7 +256,7 @@ APK 链接：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-las
 ## DS03 Thinking + Tool Calls 回传加固
 
 状态：`ACCEPTED`（本地实现完成，Mobile Runtime CI 通过，APK 已构建）
-
+<<
 目标：
 
 - 确保 Thinking + Tool Calls 场景完整回传 assistant message。
@@ -285,7 +287,7 @@ APK 链接：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-las
 验证：
 
 - [x] `git diff --check`
-- [x] 本地 `flutter`/`dart` 命令可用性确认（本地环境未检测到 `flutter`/`dart`）
+- [x] Flutter/Dart 验证统一走 GitHub Actions；不再把本地环境探测作为本轮噪音。
 - [x] GitHub Actions `Mobile Runtime CI`
 
 本轮执行记录（2026-05-22）：
@@ -309,7 +311,7 @@ APK 链接：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-las
 验证结果：
 
 - `git diff --check` 通过。
-- 本地 `flutter` / `dart` 不在 PATH，未运行 Flutter analyze/test。
+- Flutter/Dart 验证统一走 GitHub Actions；本轮不再重复本地环境探测。
 - `cxspark` 执行完成并进入 Codex review：`20260522-151017-6d23434577ac-19588-99a101d4`。
 - GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 - GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275362394`
@@ -354,7 +356,7 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 验证：
 
 - [x] `git diff --check`
-- [x] 本地 `flutter` / `dart` 可用性确认（未检测到 `flutter` / `dart`）
+- [x] Flutter/Dart 验证统一走 GitHub Actions；不再把本地环境探测作为本轮噪音。
 - [x] GitHub Actions `Mobile Runtime CI`
 - [x] GitHub Actions `Build Android APK`
 
@@ -379,7 +381,7 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 
 - `git diff --check` 通过。
 - `node --check relay/mobilecode-token-relay-worker.js` 通过。
-- 本地 `flutter` / `dart` 不在 PATH，未运行 Flutter analyze/test。
+- Flutter/Dart 验证统一走 GitHub Actions；本轮不再重复本地环境探测。
 - `cxspark` 执行完成并进入 Codex review：`20260522-152229-6d23434577ac-22928-264b9d68`。
 - GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 - GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275362394`
@@ -505,6 +507,75 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 
 - 如果模型返回的 `write_file` 参数连完整 HTML / `content` / `html` / `body` 都无法解析，仍会失败；这是正确的安全拒绝。
 - `web_search / fetch_url` 仍依赖 relay endpoint；无 relay 时只能使用本地文件/预览类工具。
+
+## DS04.3 Search/Patch + 角色编排
+
+状态：`IN_PROGRESS`（本地实现完成，静态检查与 CI 待验收）
+
+目标：
+
+- 把 Agent Loop 从“主要写单文件”推进到“读项目 -> 搜项目 -> 补丁化修改 -> evidence observation -> 继续下一步”。
+- 让模型看到熟悉的 Unix-like 能力，但底层仍是 MobileCode typed tools，不开放 raw shell。
+- 多智能体第一版采用同一 loop 内的角色编排，不做并发子 Agent，不制造无法验证的后台执行感。
+
+本轮实现：
+
+- 新增 provider-native tools：
+  - `find_files(pattern, path, max_results)`
+  - `grep_files(query, path, include_glob, max_results, max_bytes)`
+  - `apply_patch(patch, reason)`
+- `ActionRunner` 新增：
+  - `findFiles`：按文件名 / glob / 相对路径片段搜索 workspace，限制结果数量。
+  - `grepFiles`：只读搜索 workspace 文本，跳过二进制与过大文件，返回紧凑行预览。
+  - `applyPatch`：只接受 unified diff，限制 patch 大小、文件数、修改行数，拒绝越界路径、二进制 patch 和自动删除。
+- `applyPatch` 自动保存 workspace 内快照：
+  - 快照目录：`.mobilecode_patch_snapshots/patch_<timestamp>/`
+  - 记录 `applied.patch`
+  - Evidence 记录 changedFiles、snapshotRoot、patchBytes、changedLineCount、reason。
+- `ToolCallAdapter` tool schema 和 ActionSchema 映射加入 `find_files / grep_files / apply_patch`。
+- `AgentPreset.allowedToolNames` 更新：
+  - Auto：search/read/write/patch/preview/report。
+  - Builder：find/grep/read/write/apply_patch/preview/report。
+  - Research：web/search/fetch/find/grep/write/patch/preview/snapshot/report。
+  - Repair：find/grep/read/apply_patch/preview/report。
+  - Reviewer：find/grep/read/preview/snapshot/report，不允许 write/apply_patch。
+- Agent Loop trace 事件加入角色信息：
+  - Planner：列目录、查找、搜索、读取。
+  - Builder：写文件、移动文件、应用补丁。
+  - Reviewer：预览、快照、报告结果。
+  - Repair：失败 observation 后的修复职责。
+- Streaming tool call 参数流入合并为同一条可更新事件，详情显示累计字符和增量字符；真正写入仍只在完整 tool call 到达并通过 ActionRunner 校验后发生。
+- Tools 页同步显示 provider-native tool list、Android/Linux/macOS command map、preset access。
+- `COMMANDS.md` 与 `COMMAND_COMPATIBILITY.md` 同步 Search/Patch 支持状态。
+- GitHub Pages `实验日志` 增加 2026-05-22 面向用户的移动端 AgentLoop 复盘。
+
+Shell 边界：
+
+- 不实现 `exec_shell(command)`。
+- `ls / find / grep / cat / mv / patch / curl` 这类常见命令转译为 typed tools。
+- 原因不是“shell 本身坏”，而是 raw shell 字符串会把管道、重定向、通配符、环境变量、网络和删除副作用混在一起，手机 App 很难可靠审计、限制和回滚。
+
+验收口径：
+
+- DeepSeek Agent Loop 可自主选择 `find_files / grep_files / read_file / apply_patch`。
+- Reviewer preset 无法执行 `write_file / apply_patch`。
+- Repair preset 可按 `find -> read -> apply_patch -> preview -> report_result` 路径修复。
+- `apply_patch` 不越界、不删除、不处理二进制、不写过大 patch，并且每次都有 evidence 与快照。
+- Chat trace 不再只顶部变化，而是逐条记录角色、工具、observation 和执行总结。
+
+验证：
+
+- [x] `git diff --check`
+- [x] `node --check relay/mobilecode-token-relay-worker.js`
+- [x] `cd app && npm run build`
+- [ ] GitHub Actions `Mobile Runtime CI`
+- [ ] GitHub Actions `Build Android APK`
+
+剩余风险：
+
+- 第一版 `apply_patch` 是移动端轻量 unified diff 执行器，不等同于完整 `git apply`。
+- 尚未实现 copy/mkdir/delete/snapshot restore/virtual git diff 的完整工具面。
+- 多角色仍是单 loop 内的职责切换，不是并发多智能体。
 
 ## DS05 DeepSeek 错误码映射
 

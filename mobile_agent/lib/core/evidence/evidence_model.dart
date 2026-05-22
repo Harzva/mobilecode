@@ -199,9 +199,12 @@ String _randomHex(int length) {
 /// This enum is the single source of truth for action identity.
 enum MobileCodeAction {
   listFiles,
+  findFiles,
+  grepFiles,
   writeFile,
   readFile,
   moveFile,
+  applyPatch,
   openFile,
   previewHtml,
   webSearch,

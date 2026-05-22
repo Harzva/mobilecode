@@ -143,6 +143,56 @@ void main() {
     expect(store.failures().single.failureKind, ActionFailureKind.commandBlocked);
   });
 
+  test('Reviewer preset blocks apply_patch mutations', () async {
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.reviewer,
+    );
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'review only'},
+      ],
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_blocked_patch',
+                name: 'apply_patch',
+                arguments: {
+                  'patch': '--- a/a.txt\n+++ b/a.txt\n@@ -0,0 +1,1 @@\n+blocked',
+                  'reason': 'should be blocked',
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: '',
+          toolCalls: [
+            ProviderToolCall(
+              id: 'call_report',
+              name: 'report_result',
+              arguments: {
+                'status': 'blocked',
+                'summary': 'Patch was blocked for reviewer.',
+                'detail': 'Reviewer is read-only.',
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Patch was blocked'));
+    expect(await File('${workspace.path}/a.txt').exists(), false);
+    expect(store.failures().single.failureKind, ActionFailureKind.commandBlocked);
+  });
+
   test('Auto preset lets the model choose web and file tools without a fixed sequence', () async {
     final runner = ActionRunner(
       workspaceRootPath: workspace.path,
@@ -328,6 +378,89 @@ void main() {
     expect(await File('${workspace.path}/index.html').readAsString(), contains('Default path'));
   });
 
+  test('Repair preset can find, read, patch, preview, and report', () async {
+    final file = File('${workspace.path}/repair/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<h1>Broken</h1>\n<p>Keep</p>');
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.repair,
+      maxRounds: 4,
+    );
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'repair the page'},
+      ],
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_find',
+                name: 'find_files',
+                arguments: {'pattern': '*.html', 'path': '.', 'max_results': 10},
+              ),
+              ProviderToolCall(
+                id: 'call_read',
+                name: 'read_file',
+                arguments: {'path': 'repair/index.html', 'max_bytes': 4096},
+              ),
+            ],
+          );
+        }
+        if (round == 2) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_patch',
+                name: 'apply_patch',
+                arguments: {
+                  'patch': '--- a/repair/index.html\n+++ b/repair/index.html\n@@ -1,2 +1,2 @@\n-<h1>Broken</h1>\n+<h1>Fixed</h1>\n <p>Keep</p>',
+                  'reason': 'fix heading',
+                },
+              ),
+            ],
+          );
+        }
+        if (round == 3) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_preview',
+                name: 'preview_html',
+                arguments: {'path': 'repair/index.html', 'html': ''},
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: '',
+          toolCalls: [
+            ProviderToolCall(
+              id: 'call_report',
+              name: 'report_result',
+              arguments: {
+                'status': 'success',
+                'summary': 'Repair completed.',
+                'detail': 'find/read/patch/preview/report path verified.',
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Repair completed'));
+    expect(await file.readAsString(), contains('Fixed'));
+    expect(store.recent(count: 10).map((evidence) => evidence.actionName), contains(MobileCodeAction.applyPatch));
+  });
+
   test('agent loop appends assistant tool-call message with reasoning before tool results', () async {
     final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
     final controller = AgentLoopController(
@@ -459,6 +592,6 @@ void main() {
 
     expect(result.answer, contains('Repeat write was blocked'));
     expect(await File('${workspace.path}/repeat/index.html').readAsString(), contains('First'));
-    expect(store.failures().single.logs.join(' '), contains('already written successfully'));
+    expect(store.failures().single.logs.join(' '), contains('already changed successfully'));
   });
 }

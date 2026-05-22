@@ -23,18 +23,18 @@ This lets models reuse Linux/macOS development habits while MobileCode keeps And
 |---|---|---|---|---|
 | Current directory | `pwd` | App has private workspace roots | Partial | Runtime/workspace display |
 | List files | `ls`, `dir` | App can list app-owned files | Supported | `list_files` |
-| Recursive find | `find`, `fd` | Safe only inside workspace | Partial | `list_files(recursive: true)` |
+| Recursive find | `find`, `fd` | Safe only inside workspace | Supported | `find_files` |
 | Read text | `cat`, `head`, `tail`, `less` | App can read workspace text | Supported | `read_file` |
 | Write text | `cat > file`, editor save | App can write workspace files | Supported | `write_file` |
 | Move / rename | `mv` | Safe inside workspace | Supported | `move_file` |
 | Copy | `cp` | Safe inside workspace | Planned | `copy_file` later |
 | Make directory | `mkdir -p` | Safe inside workspace | Partial | parent dirs via `write_file`; typed `mkdir` later |
 | Delete | `rm`, `rmdir` | Risky in agent loops | Blocked | Not exposed |
-| Text search | `grep`, `rg`, `ag` | Safe with result limits | Planned | `grep_files` later |
-| Name search | `find -name`, glob | Safe with result limits | Planned | `find_files` later |
-| Replace text | `sed -i`, editor replace | Risky without diff preview | Planned | `edit_file` / `apply_patch` later |
+| Text search | `grep`, `rg`, `ag` | Safe with result limits | Supported | `grep_files` |
+| Name search | `find -name`, glob | Safe with result limits | Supported | `find_files` |
+| Replace text | `sed -i`, editor replace | Risky without diff preview | Partial | `apply_patch` unified diff |
 | Diff | `diff`, `git diff` | Can be snapshot-based | Planned | `git_diff_virtual` later |
-| Patch | `patch`, `git apply` | Safe with workspace validation | Planned | `apply_patch` later |
+| Patch | `patch`, `git apply` | Safe with workspace validation | Supported | `apply_patch` bounded auto-apply |
 | Web fetch | `curl`, `wget` | App should not fetch private/local targets | Supported when relay configured | `fetch_url` relay |
 | Web search | search CLI / browser | Requires managed relay | Supported when relay configured | `web_search` relay |
 | Preview | browser open | App has WebView | Supported | `preview_html` |
@@ -67,11 +67,14 @@ macOS is not Linux, but it still offers a broad Unix command surface. Android ap
 Supported today in provider-native Agent Loop:
 
 - `list_files`
+- `find_files`
+- `grep_files`
 - `web_search` when managed relay is configured
 - `fetch_url` when managed relay is configured
 - `write_file`
 - `read_file`
 - `move_file`
+- `apply_patch`
 - `preview_html`
 - `preview_snapshot`
 - `report_result`
@@ -80,7 +83,6 @@ Not supported today:
 
 - arbitrary `ls` / `mv` / `cat` shell strings;
 - `rm`, `cp`, `mkdir` as independent typed tools;
-- `grep_files`, `find_files`, `apply_patch`;
 - real package managers or shell builds;
 - Android system command execution.
 
@@ -104,7 +106,7 @@ This is not an Android storage permission issue. It is a provider/tool schema ad
 
 ### P0: Read / inspect / move foundation
 
-Status: in progress.
+Status: accepted.
 
 - `list_files`
 - `read_file`
@@ -115,10 +117,12 @@ Status: in progress.
 
 ### P1: Search and patch
 
+Status: in progress.
+
 - `grep_files`
 - `find_files`
-- `edit_file`
 - `apply_patch`
+- `edit_file`
 - bounded `read_many_files`
 
 ### P2: Snapshot safety

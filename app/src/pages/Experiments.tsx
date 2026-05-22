@@ -16,23 +16,27 @@ const implemented = [
   'v0.1.43-last restored the v0.1.39 product UI baseline and kept it as the recovery line.',
   'DeepSeek now has a provider-native tool-calling Agent Loop path; Mimo and unsupported providers keep Single-shot fallback.',
   'ActionRunner executes safe typed tools and ActionEvidence records action name, success, duration, artifact paths, URLs, logs, and recovery hints.',
+  'Agent Loop can now inspect and modify a mobile workspace with find_files, grep_files, and bounded apply_patch.',
   'Tools now exposes Activity / Logs, provider tool list, preset permissions, and Android/Linux/macOS command compatibility.',
 ];
 
 const missing = [
   'The Agent Loop is still minimal and safety-bounded, not a full autonomous coding runtime.',
-  'Search, patch, copy, mkdir, delete, virtual git diff, rollback, and project summary tools are not all exposed yet.',
+  'Copy, mkdir, delete, virtual git diff, rollback, and project summary tools are not fully exposed yet.',
   'Native bitmap preview screenshots and rich visual verification are not implemented yet.',
-  'Multi-agent collaboration is still a product design target, not a default execution mode.',
+  'Multi-agent collaboration is currently role orchestration inside one loop, not parallel background agents.',
 ];
 
 const safeTools = [
   'list_files',
+  'find_files',
+  'grep_files',
   'web_search',
   'fetch_url',
   'write_file',
   'read_file',
   'move_file',
+  'apply_patch',
   'preview_html',
   'preview_snapshot',
   'report_result',
@@ -55,10 +59,12 @@ const dailyLogs = [
     points: [
       'DeepSeek is the first provider-native Agent Loop validation line; unsupported providers do not pretend to be Agent Loop.',
       'MobileCode added a visible tool list and command compatibility map so users can see exactly which mobile-safe coding actions are supported.',
-      'The first facade tools are list_files and move_file, mapped from ls/find and mv while staying inside the app workspace.',
+      'The Mobile Unix Facade now covers list_files, find_files, grep_files, move_file, and bounded apply_patch while staying inside the app workspace.',
+      'Agent Loop uses a visible role flow: Planner inspects, Builder changes, Reviewer verifies, and Repair responds to failed evidence.',
+      'Streaming tool-call arguments are shown as one updating progress item with character deltas; actual file writes still happen only after the complete structured tool call is validated.',
       'The product direction is a mobile-safe command layer: familiar coding workflow for the model, Android-safe typed tools underneath.',
       'A phone build must also hide unavailable tools: if web relay is not configured, web_search and fetch_url are not offered to the model.',
-      'When a model returns a malformed write_file call that still contains a complete HTML artifact, MobileCode can recover the content, save it as index.html inside the workspace, and record that repair as evidence.',
+      'When a model needs to repair existing code, apply_patch records a snapshot and evidence instead of exposing a raw shell command.',
     ],
   },
   {
@@ -69,6 +75,25 @@ const dailyLogs = [
       'The honest baseline was single-shot generation with executable evidence.',
       'The next target became model intent -> tool call -> ActionRunner -> evidence -> observation -> next action.',
     ],
+  },
+];
+
+const providerNativeNotes = [
+  {
+    title: 'Provider-native means structured action, not text theater',
+    text: 'The model provider returns an official tool_call object with a tool name and arguments. MobileCode does not guess intent from a sentence like “I wrote the file.”',
+  },
+  {
+    title: 'MobileCode still decides what is allowed',
+    text: 'The App checks path boundaries, preset permissions, sandbox rules, size limits, and runtime availability before ActionRunner executes anything.',
+  },
+  {
+    title: 'Virtual Command Layer is the mobile-safe facade',
+    text: 'Unix-like requests such as find, grep, cat, mv, patch, and preview are mapped to typed tools such as find_files, grep_files, read_file, move_file, apply_patch, and preview_html.',
+  },
+  {
+    title: 'Evidence is the truth source',
+    text: 'After execution, MobileCode records the real result: success or failure, evidenceId, changed paths, snapshot metadata, logs, and recovery hints.',
   },
 ];
 
@@ -110,7 +135,7 @@ export default function Experiments() {
             <span>Truth line</span>
             <strong>v0.1.39 UI + DeepSeek Agent Loop</strong>
             <span>Next gate</span>
-            <strong>Search / patch / rollback tools</strong>
+            <strong>Rollback / project summary / safer mobile commands</strong>
           </div>
         </div>
 
@@ -122,6 +147,25 @@ export default function Experiments() {
             is a richer typed tool surface without opening raw shell.
           </p>
         </div>
+
+        <article className="experiment-panel">
+          <div className="experiment-panel-title">
+            <Braces size={24} />
+            <div>
+              <span>Provider-native tools</span>
+              <h2>From “the model said it” to “the app executed it”</h2>
+            </div>
+          </div>
+          <div className="experiment-flow">
+            {providerNativeNotes.map((note, index) => (
+              <div className="experiment-step" key={note.title}>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                <h3>{note.title}</h3>
+                <p>{note.text}</p>
+              </div>
+            ))}
+          </div>
+        </article>
 
         <article className="experiment-panel">
           <div className="experiment-panel-title">

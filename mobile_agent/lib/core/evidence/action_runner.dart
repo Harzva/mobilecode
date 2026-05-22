@@ -78,9 +78,12 @@ class ActionRunner {
 
       return switch (schema.actionName) {
         MobileCodeAction.listFiles => await _listFiles(schema, startedAt),
+        MobileCodeAction.findFiles => await _findFiles(schema, startedAt),
+        MobileCodeAction.grepFiles => await _grepFiles(schema, startedAt),
         MobileCodeAction.writeFile => await _writeFile(schema, startedAt),
         MobileCodeAction.readFile => await _readFile(schema, startedAt),
         MobileCodeAction.moveFile => await _moveFile(schema, startedAt),
+        MobileCodeAction.applyPatch => await _applyPatch(schema, startedAt),
         MobileCodeAction.previewHtml => await _previewHtml(schema, startedAt),
         MobileCodeAction.webSearch => await _webSearch(schema, startedAt),
         MobileCodeAction.fetchUrl => await _fetchUrl(schema, startedAt),
@@ -164,6 +167,155 @@ class ActionRunner {
     );
     evidenceStore.add(evidence);
     return ActionRunnerResult(evidence: evidence, text: lines.join('\n'), path: target);
+  }
+
+  Future<ActionRunnerResult> _findFiles(ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+    final pattern = _requiredString(schema, 'pattern');
+    final target = _resolveWorkspacePath(rawPath);
+    final maxResults = _boundedIntParam(schema, 'maxResults', defaultValue: 80, min: 1, max: 200);
+    final targetType = await FileSystemEntity.type(target, followLinks: false);
+    if (targetType == FileSystemEntityType.notFound) {
+      throw _ActionRunnerFailure(
+        'Path does not exist: ${_relative(target)}',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['List "." first or choose an existing workspace folder.'],
+      );
+    }
+
+    final matcher = _globToRegExp(pattern);
+    final results = <Map<String, dynamic>>[];
+    Future<void> addEntity(FileSystemEntity entity) async {
+      if (results.length >= maxResults) return;
+      final type = await FileSystemEntity.type(entity.path, followLinks: false);
+      if (type == FileSystemEntityType.notFound) return;
+      final relativePath = _relative(entity.path);
+      final name = p.basename(entity.path);
+      if (!matcher.hasMatch(name) && !matcher.hasMatch(relativePath.replaceAll('\\', '/'))) return;
+      final stat = await entity.stat();
+      results.add(_fileListEntry(entity.path, stat, type == FileSystemEntityType.directory ? 'directory' : 'file'));
+    }
+
+    if (targetType == FileSystemEntityType.file) {
+      await addEntity(File(target));
+    } else if (targetType == FileSystemEntityType.directory) {
+      await for (final entity in Directory(target).list(recursive: true, followLinks: false)) {
+        await addEntity(entity);
+        if (results.length >= maxResults) break;
+      }
+    } else {
+      throw _ActionRunnerFailure(
+        'Unsupported file system entity: ${_relative(target)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+      );
+    }
+
+    results.sort((a, b) => _stringValue(a['path']).compareTo(_stringValue(b['path'])));
+    final text = results.isEmpty
+        ? 'No files matched "$pattern" under ${_relative(target)}.'
+        : results.map((entry) => '${entry['type']}\t${entry['path']}\t${entry['sizeBytes']} bytes').join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.findFiles,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'find "$pattern" under ${_relative(target)}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [target],
+      logs: ['Found ${results.length} item(s) matching "$pattern" under ${_relative(target)}.'],
+      metadata: {
+        'pattern': pattern,
+        'relativePath': _relative(target),
+        'maxResults': maxResults,
+        'results': results,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text, path: target);
+  }
+
+  Future<ActionRunnerResult> _grepFiles(ActionSchema schema, DateTime startedAt) async {
+    final query = _requiredString(schema, 'query');
+    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+    final includeGlob = _stringParam(schema, 'includeGlob').isEmpty ? '*' : _stringParam(schema, 'includeGlob');
+    final target = _resolveWorkspacePath(rawPath);
+    final maxResults = _boundedIntParam(schema, 'maxResults', defaultValue: 40, min: 1, max: 120);
+    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 256 * 1024, min: 1024, max: 512 * 1024);
+    final targetType = await FileSystemEntity.type(target, followLinks: false);
+    if (targetType == FileSystemEntityType.notFound) {
+      throw _ActionRunnerFailure(
+        'Path does not exist: ${_relative(target)}',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['List "." first or choose an existing workspace folder.'],
+      );
+    }
+
+    final includeMatcher = _globToRegExp(includeGlob);
+    final results = <Map<String, dynamic>>[];
+    Future<void> searchFile(File file) async {
+      if (results.length >= maxResults) return;
+      final relativePath = _relative(file.path);
+      if (!includeMatcher.hasMatch(p.basename(file.path)) && !includeMatcher.hasMatch(relativePath.replaceAll('\\', '/'))) {
+        return;
+      }
+      final stat = await file.stat();
+      if (stat.size > maxBytes) return;
+      final bytes = await file.readAsBytes();
+      if (_looksBinary(bytes)) return;
+      final text = utf8.decode(bytes, allowMalformed: true);
+      final queryLower = query.toLowerCase();
+      final lines = const LineSplitter().convert(text);
+      for (var i = 0; i < lines.length && results.length < maxResults; i++) {
+        final line = lines[i];
+        if (!line.toLowerCase().contains(queryLower)) continue;
+        results.add({
+          'path': relativePath,
+          'lineNumber': i + 1,
+          'preview': _compact(line, 240),
+        });
+      }
+    }
+
+    if (targetType == FileSystemEntityType.file) {
+      await searchFile(File(target));
+    } else if (targetType == FileSystemEntityType.directory) {
+      await for (final entity in Directory(target).list(recursive: true, followLinks: false)) {
+        if (results.length >= maxResults) break;
+        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        if (type == FileSystemEntityType.file) await searchFile(File(entity.path));
+      }
+    } else {
+      throw _ActionRunnerFailure(
+        'Unsupported file system entity: ${_relative(target)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose a text file or directory inside the workspace.'],
+      );
+    }
+
+    final text = results.isEmpty
+        ? 'No matches for "$query" under ${_relative(target)}.'
+        : results.map((item) => '${item['path']}:${item['lineNumber']}: ${item['preview']}').join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.grepFiles,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'grep "$query" under ${_relative(target)}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [target],
+      logs: ['Found ${results.length} text match(es) for "$query" under ${_relative(target)}.'],
+      metadata: {
+        'query': query,
+        'relativePath': _relative(target),
+        'includeGlob': includeGlob,
+        'maxResults': maxResults,
+        'maxBytes': maxBytes,
+        'results': results,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
   Future<ActionRunnerResult> _writeFile(ActionSchema schema, DateTime startedAt) async {
@@ -307,6 +459,120 @@ class ActionRunner {
     );
     evidenceStore.add(evidence);
     return ActionRunnerResult(evidence: evidence, path: destination);
+  }
+
+  Future<ActionRunnerResult> _applyPatch(ActionSchema schema, DateTime startedAt) async {
+    final patch = _requiredString(schema, 'patch');
+    final reason = _stringParam(schema, 'reason');
+    final patchBytes = utf8.encode(patch).length;
+    if (patchBytes > 80 * 1024) {
+      throw _ActionRunnerFailure(
+        'Patch is too large for mobile auto-apply (${patchBytes} bytes).',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Split the patch into smaller file-scoped patches.'],
+      );
+    }
+    if (patch.contains('\u0000') || patch.contains('GIT binary patch')) {
+      throw const _ActionRunnerFailure(
+        'Binary patches are not supported by MobileCode apply_patch.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: ['Use text files only.'],
+      );
+    }
+
+    final files = _parseUnifiedPatch(patch);
+    if (files.isEmpty) {
+      throw const _ActionRunnerFailure(
+        'apply_patch requires a unified diff with ---/+++ file headers and @@ hunks.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: ['Ask the model to return a valid unified diff patch.'],
+      );
+    }
+    if (files.length > 5) {
+      throw _ActionRunnerFailure(
+        'Patch touches too many files (${files.length}); mobile auto-apply is limited to 5 files.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Split the change into smaller patches.'],
+      );
+    }
+    final changedLineCount = files.fold<int>(
+      0,
+      (sum, file) => sum + file.hunks.fold<int>(0, (hunkSum, hunk) => hunkSum + hunk.lines.where((line) => line.startsWith('+') || line.startsWith('-')).length),
+    );
+    if (changedLineCount > 800) {
+      throw _ActionRunnerFailure(
+        'Patch changes too many lines ($changedLineCount); mobile auto-apply is limited to 800 changed lines.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Split the patch or ask for a smaller targeted change.'],
+      );
+    }
+
+    final snapshotRoot = _resolveWorkspacePath(
+      '.mobilecode_patch_snapshots/patch_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    final changedPaths = <String>[];
+    final snapshots = <String>[];
+    for (final filePatch in files) {
+      if (filePatch.isDelete) {
+        throw _ActionRunnerFailure(
+          'Patch deletes ${filePatch.displayPath}; deletion is blocked in Agent Loop auto-apply.',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: const ['Use a non-deleting patch or ask the user for explicit deletion approval.'],
+        );
+      }
+      final target = _resolveWorkspacePath(filePatch.targetPath);
+      final existing = File(target);
+      if (await existing.exists()) {
+        final snapshotPath = p.join(snapshotRoot, filePatch.targetPath);
+        final snapshotFile = File(snapshotPath);
+        await snapshotFile.parent.create(recursive: true);
+        await existing.copy(snapshotPath);
+        snapshots.add(snapshotPath);
+      }
+      final originalText = await existing.exists() ? await existing.readAsString() : '';
+      final nextText = _applyFilePatch(filePatch, originalText);
+      await existing.parent.create(recursive: true);
+      await existing.writeAsString(nextText, flush: true);
+      changedPaths.add(target);
+    }
+
+    final patchRecordPath = p.join(snapshotRoot, 'applied.patch');
+    final patchRecord = File(patchRecordPath);
+    await patchRecord.parent.create(recursive: true);
+    await patchRecord.writeAsString(patch, flush: true);
+
+    final relativeChanged = changedPaths.map(_relative).toList();
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.applyPatch,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'apply patch${reason.isEmpty ? '' : ': $reason'}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [
+        ...changedPaths,
+        patchRecordPath,
+        ...snapshots,
+      ],
+      logs: [
+        'Applied patch to ${relativeChanged.length} file(s): ${relativeChanged.join(', ')}.',
+        if (snapshots.isNotEmpty) 'Saved ${snapshots.length} pre-patch snapshot(s) under ${_relative(snapshotRoot)}.',
+        'Patch record: ${_relative(patchRecordPath)}.',
+      ],
+      metadata: {
+        'reason': reason,
+        'changedFiles': relativeChanged,
+        'snapshotRoot': _relative(snapshotRoot),
+        'patchBytes': patchBytes,
+        'changedLineCount': changedLineCount,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(
+      evidence: evidence,
+      text: 'Applied patch to ${relativeChanged.join(', ')}.',
+      path: changedPaths.isEmpty ? null : changedPaths.first,
+    );
   }
 
   Future<ActionRunnerResult> _previewHtml(ActionSchema schema, DateTime startedAt) async {
@@ -712,6 +978,187 @@ class ActionRunner {
     return math.min(math.max(raw, min), max).toInt();
   }
 
+  RegExp _globToRegExp(String glob) {
+    final raw = glob.trim().isEmpty ? '*' : glob.trim().replaceAll('\\', '/');
+    final normalized = raw.contains('*') || raw.contains('?') ? raw : '*$raw*';
+    final buffer = StringBuffer('^');
+    for (var i = 0; i < normalized.length; i++) {
+      final char = normalized[i];
+      if (char == '*') {
+        buffer.write('.*');
+      } else if (char == '?') {
+        buffer.write('.');
+      } else {
+        buffer.write(RegExp.escape(char));
+      }
+    }
+    buffer.write(r'$');
+    return RegExp(buffer.toString(), caseSensitive: false);
+  }
+
+  bool _looksBinary(List<int> bytes) {
+    final scanLength = math.min(bytes.length, 4096);
+    for (var i = 0; i < scanLength; i++) {
+      if (bytes[i] == 0) return true;
+    }
+    return false;
+  }
+
+  List<_UnifiedFilePatch> _parseUnifiedPatch(String patch) {
+    final lines = patch.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+    final files = <_UnifiedFilePatch>[];
+    var i = 0;
+    while (i < lines.length) {
+      final line = lines[i];
+      if (!line.startsWith('--- ')) {
+        i++;
+        continue;
+      }
+      final oldPath = _normalizePatchPath(line.substring(4));
+      i++;
+      if (i >= lines.length || !lines[i].startsWith('+++ ')) {
+        throw const _ActionRunnerFailure(
+          'Invalid unified diff: expected +++ file header after ---.',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: ['Ask the model to return a standard unified diff.'],
+        );
+      }
+      final newPath = _normalizePatchPath(lines[i].substring(4));
+      i++;
+      final hunks = <_UnifiedHunk>[];
+      while (i < lines.length && !lines[i].startsWith('--- ')) {
+        if (!lines[i].startsWith('@@ ')) {
+          i++;
+          continue;
+        }
+        final hunk = _parseHunkHeader(lines[i]);
+        i++;
+        final hunkLines = <String>[];
+        while (i < lines.length && !lines[i].startsWith('@@ ') && !lines[i].startsWith('--- ')) {
+          final hunkLine = lines[i];
+          if (hunkLine == r'\ No newline at end of file') {
+            i++;
+            continue;
+          }
+          if (hunkLine.isEmpty && i == lines.length - 1) {
+            i++;
+            continue;
+          }
+          if (hunkLine.startsWith(' ') || hunkLine.startsWith('+') || hunkLine.startsWith('-')) {
+            hunkLines.add(hunkLine);
+            i++;
+            continue;
+          }
+          if (hunkLine.startsWith('diff --git ')) break;
+          throw _ActionRunnerFailure(
+            'Invalid unified diff hunk line: ${_compact(hunkLine, 80)}',
+            failureKind: ActionFailureKind.commandBlocked,
+            recoveryActions: const ['Use only context, addition, and removal lines inside hunks.'],
+          );
+        }
+        hunks.add(hunk.copyWith(lines: hunkLines));
+      }
+      final targetPath = newPath.isNotEmpty ? newPath : oldPath;
+      if (targetPath.isEmpty) {
+        throw const _ActionRunnerFailure(
+          'Patch file path is empty.',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: ['Use a workspace-relative file path in the patch headers.'],
+        );
+      }
+      files.add(_UnifiedFilePatch(
+        oldPath: oldPath,
+        newPath: newPath,
+        hunks: hunks,
+      ));
+    }
+    return files;
+  }
+
+  String _normalizePatchPath(String raw) {
+    final withoutTimestamp = raw.trim().split(RegExp(r'\s+')).first;
+    if (withoutTimestamp == '/dev/null') return '';
+    var path = withoutTimestamp.replaceAll('\\', '/');
+    if ((path.startsWith('"') && path.endsWith('"')) || (path.startsWith("'") && path.endsWith("'"))) {
+      path = path.substring(1, path.length - 1);
+    }
+    if (path.startsWith('a/')) path = path.substring(2);
+    if (path.startsWith('b/')) path = path.substring(2);
+    return path;
+  }
+
+  _UnifiedHunk _parseHunkHeader(String header) {
+    final match = RegExp(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@').firstMatch(header);
+    if (match == null) {
+      throw _ActionRunnerFailure(
+        'Invalid unified diff hunk header: $header',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Use @@ -oldStart,oldCount +newStart,newCount @@ hunk headers.'],
+      );
+    }
+    return _UnifiedHunk(
+      oldStart: int.parse(match.group(1)!),
+      oldCount: int.tryParse(match.group(2) ?? '1') ?? 1,
+      newStart: int.parse(match.group(3)!),
+      newCount: int.tryParse(match.group(4) ?? '1') ?? 1,
+      lines: const [],
+    );
+  }
+
+  String _applyFilePatch(_UnifiedFilePatch filePatch, String originalText) {
+    final originalLines = _splitPatchText(originalText);
+    final output = <String>[];
+    var cursor = 0;
+    for (final hunk in filePatch.hunks) {
+      final start = math.max(hunk.oldStart - 1, 0).toInt();
+      if (start < cursor || start > originalLines.length) {
+        throw _ActionRunnerFailure(
+          'Patch hunk for ${filePatch.displayPath} does not match current file position.',
+          failureKind: ActionFailureKind.processFailed,
+          recoveryActions: const ['Read the current file and regenerate a smaller patch.'],
+        );
+      }
+      output.addAll(originalLines.sublist(cursor, start));
+      cursor = start;
+      for (final line in hunk.lines) {
+        final op = line[0];
+        final text = line.substring(1);
+        if (op == ' ') {
+          _expectPatchLine(filePatch, originalLines, cursor, text);
+          output.add(text);
+          cursor++;
+        } else if (op == '-') {
+          _expectPatchLine(filePatch, originalLines, cursor, text);
+          cursor++;
+        } else if (op == '+') {
+          output.add(text);
+        }
+      }
+    }
+    output.addAll(originalLines.sublist(cursor));
+    return output.join('\n');
+  }
+
+  List<String> _splitPatchText(String text) {
+    if (text.isEmpty) return const [];
+    final normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final lines = normalized.split('\n');
+    if (lines.isNotEmpty && lines.last.isEmpty) {
+      lines.removeLast();
+    }
+    return lines;
+  }
+
+  void _expectPatchLine(_UnifiedFilePatch filePatch, List<String> originalLines, int cursor, String expected) {
+    if (cursor >= originalLines.length || originalLines[cursor] != expected) {
+      throw _ActionRunnerFailure(
+        'Patch context mismatch in ${filePatch.displayPath}.',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Read the current file and regenerate the patch from the latest content.'],
+      );
+    }
+  }
+
   String _resolveWorkspacePath(String rawPath) {
     final trimmed = rawPath.trim();
     if (trimmed.isEmpty) {
@@ -746,5 +1193,47 @@ class ActionRunner {
     final singleLine = value.replaceAll(RegExp(r'\s+'), ' ').trim();
     if (singleLine.length <= limit) return singleLine;
     return '${singleLine.substring(0, limit - 1)}...';
+  }
+}
+
+class _UnifiedFilePatch {
+  const _UnifiedFilePatch({
+    required this.oldPath,
+    required this.newPath,
+    required this.hunks,
+  });
+
+  final String oldPath;
+  final String newPath;
+  final List<_UnifiedHunk> hunks;
+
+  String get targetPath => newPath.isNotEmpty ? newPath : oldPath;
+  String get displayPath => targetPath.isEmpty ? oldPath : targetPath;
+  bool get isDelete => newPath.isEmpty && oldPath.isNotEmpty;
+}
+
+class _UnifiedHunk {
+  const _UnifiedHunk({
+    required this.oldStart,
+    required this.oldCount,
+    required this.newStart,
+    required this.newCount,
+    required this.lines,
+  });
+
+  final int oldStart;
+  final int oldCount;
+  final int newStart;
+  final int newCount;
+  final List<String> lines;
+
+  _UnifiedHunk copyWith({List<String>? lines}) {
+    return _UnifiedHunk(
+      oldStart: oldStart,
+      oldCount: oldCount,
+      newStart: newStart,
+      newCount: newCount,
+      lines: lines ?? this.lines,
+    );
   }
 }

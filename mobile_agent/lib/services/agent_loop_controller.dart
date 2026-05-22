@@ -32,6 +32,7 @@ class AgentLoopEvent {
     DateTime? createdAt,
     this.round,
     this.toolName,
+    this.roleName,
     this.evidenceId,
     this.success,
   }) : createdAt = createdAt ?? DateTime.now();
@@ -41,6 +42,7 @@ class AgentLoopEvent {
   final DateTime createdAt;
   final int? round;
   final String? toolName;
+  final String? roleName;
   final String? evidenceId;
   final bool? success;
 }
@@ -93,45 +95,57 @@ extension AgentPresetConfig on AgentPreset {
   List<String> get allowedToolNames => switch (this) {
         AgentPreset.autoAgent => const [
             'list_files',
+            'find_files',
+            'grep_files',
             'web_search',
             'fetch_url',
             'write_file',
             'read_file',
             'move_file',
+            'apply_patch',
             'preview_html',
             'preview_snapshot',
             'report_result',
           ],
         AgentPreset.builder => const [
             'list_files',
+            'find_files',
+            'grep_files',
             'write_file',
             'read_file',
             'move_file',
+            'apply_patch',
             'preview_html',
             'report_result',
           ],
         AgentPreset.researchBuilder => const [
             'list_files',
+            'find_files',
+            'grep_files',
             'web_search',
             'fetch_url',
             'write_file',
             'read_file',
             'move_file',
+            'apply_patch',
             'preview_html',
             'preview_snapshot',
             'report_result',
           ],
         AgentPreset.repair => const [
             'list_files',
+            'find_files',
+            'grep_files',
             'read_file',
-            'write_file',
-            'move_file',
+            'apply_patch',
             'preview_html',
             'preview_snapshot',
             'report_result',
           ],
         AgentPreset.reviewer => const [
             'list_files',
+            'find_files',
+            'grep_files',
             'read_file',
             'preview_html',
             'preview_snapshot',
@@ -141,18 +155,18 @@ extension AgentPresetConfig on AgentPreset {
 
   String get systemInstruction => switch (this) {
         AgentPreset.autoAgent =>
-          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Do not follow a fixed sequence; call only the tools that are useful, and stop with report_result when the task is done or blocked.',
+          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane, not parallel sub-agents. Do not follow a fixed sequence; call only the tools that are useful, and stop with report_result when the task is done or blocked.',
         AgentPreset.builder =>
-          'Agent preset Builder: create or update a local artifact, read it back, preview it, then report concise evidence.',
+          'Agent preset Builder: inspect with find_files/grep_files/read_file when useful, create or update local artifacts with write_file/apply_patch, preview them, then report concise evidence.',
         AgentPreset.researchBuilder =>
-          'Agent preset Research Builder: use public reference tools when they are useful, build one local artifact, preview it, capture preview evidence when needed, then report refIds and evidenceIds.',
+          'Agent preset Research Builder: use public reference tools when they are useful, inspect local files, build or patch one local artifact, preview it, capture preview evidence when needed, then report refIds and evidenceIds.',
         AgentPreset.repair =>
-          'Agent preset Repair: read the existing artifact or evidence, modify only the relevant local file, preview again, then report what changed.',
+          'Agent preset Repair: find, grep, and read the existing artifact or evidence, apply a focused patch to the relevant local file, preview again, then report what changed.',
         AgentPreset.reviewer =>
           'Agent preset Reviewer: inspect local files and preview evidence only. Do not write files, publish, run shell, or mutate projects.',
       };
 
-  bool get supportsWrite => allowedToolNames.contains('write_file');
+  bool get supportsWrite => allowedToolNames.contains('write_file') || allowedToolNames.contains('apply_patch');
 }
 
 class AgentLoopController {
@@ -193,7 +207,8 @@ class AgentLoopController {
 
     onEvent?.call(AgentLoopEvent(
       type: AgentLoopEventType.started,
-      message: '${preset.label} started with ${allowedToolNames.join(', ')}.',
+      message: '${preset.label} started with role flow Planner -> Builder -> Reviewer -> Repair and tools ${allowedToolNames.join(', ')}.',
+      roleName: 'Planner',
     ));
 
     for (var round = 1; round <= maxRounds; round++) {
@@ -202,6 +217,7 @@ class AgentLoopController {
         type: AgentLoopEventType.modelRequest,
         message: 'Round $round: asking provider for structured tool calls.',
         round: round,
+        roleName: _roleForModelRequest(round),
       ));
 
       final parsed = await requestModel(List<Map<String, dynamic>>.unmodifiable(messages), round: round);
@@ -213,6 +229,7 @@ class AgentLoopController {
           type: AgentLoopEventType.completed,
           message: answer.isEmpty ? 'Agent loop completed from observations.' : 'Provider returned final answer.',
           round: round,
+          roleName: 'Reviewer',
           success: true,
         ));
         return AgentLoopResult(
@@ -230,11 +247,13 @@ class AgentLoopController {
 
       for (final call in parsed.toolCalls) {
         _throwIfCancelled(isCancelled);
+        final roleName = _roleForTool(call.name);
         onEvent?.call(AgentLoopEvent(
           type: AgentLoopEventType.toolCall,
           message: 'Running ${call.name}.',
           round: round,
           toolName: call.name,
+          roleName: roleName,
         ));
 
         if (call.isReportResult) {
@@ -246,6 +265,7 @@ class AgentLoopController {
             message: report.isEmpty ? 'Final report accepted.' : report,
             round: round,
             toolName: call.name,
+            roleName: 'Reviewer',
             success: true,
           ));
           return AgentLoopResult(
@@ -257,11 +277,11 @@ class AgentLoopController {
           );
         }
 
-        final result = call.name == 'write_file' && writeNeedsVerification
+        final result = _isMutationTool(call.name) && writeNeedsVerification
             ? _blockedProviderToolResult(
                 call,
-                'A file was already written successfully. Use read_file, preview_html, preview_snapshot, or report_result before rewriting it.',
-                const ['Read or preview the written artifact before another write_file call.'],
+                'A workspace file was already changed successfully. Use read_file, grep_files, preview_html, preview_snapshot, or report_result before another mutation.',
+                const ['Read, grep, or preview the changed artifact before another mutating tool call.'],
               )
             : await _executeCall(call);
         messages.add(adapter.buildToolResultMessage(call, result));
@@ -271,9 +291,13 @@ class AgentLoopController {
         if (result.path != null && result.path!.trim().isNotEmpty && call.name != 'preview_snapshot') {
           generatedPath = result.path;
         }
-        if (call.name == 'write_file' && result.success) {
+        if (_isMutationTool(call.name) && result.success) {
           writeNeedsVerification = true;
-        } else if (call.name == 'read_file' || call.name == 'preview_html' || call.name == 'preview_snapshot') {
+        } else if (call.name == 'read_file' ||
+            call.name == 'grep_files' ||
+            call.name == 'find_files' ||
+            call.name == 'preview_html' ||
+            call.name == 'preview_snapshot') {
           writeNeedsVerification = false;
         }
         onEvent?.call(AgentLoopEvent(
@@ -281,6 +305,7 @@ class AgentLoopController {
           message: '${call.name}: $status · ${_compact(evidence.logs.join(' '), 180)}',
           round: round,
           toolName: call.name,
+          roleName: result.success ? _observationRoleForTool(call.name) : 'Repair',
           evidenceId: evidence.evidenceId,
           success: result.success,
         ));
@@ -290,6 +315,7 @@ class AgentLoopController {
     onEvent?.call(AgentLoopEvent(
       type: AgentLoopEventType.completed,
       message: 'Stopped at the $maxRounds-round safety limit.',
+      roleName: 'Reviewer',
       success: true,
     ));
     return AgentLoopResult(
@@ -347,6 +373,43 @@ class AgentLoopController {
       throw Exception('Agent run stopped by user.');
     }
   }
+}
+
+bool _isMutationTool(String toolName) {
+  return toolName == 'write_file' || toolName == 'apply_patch' || toolName == 'move_file';
+}
+
+String _roleForModelRequest(int round) {
+  return round == 1 ? 'Planner' : 'Planner';
+}
+
+String _roleForTool(String toolName) {
+  if (toolName == 'find_files' || toolName == 'grep_files' || toolName == 'list_files' || toolName == 'read_file') {
+    return 'Planner';
+  }
+  if (toolName == 'write_file' || toolName == 'move_file' || toolName == 'apply_patch') {
+    return 'Builder';
+  }
+  if (toolName == 'preview_html' || toolName == 'preview_snapshot' || toolName == 'report_result') {
+    return 'Reviewer';
+  }
+  if (toolName == 'web_search' || toolName == 'fetch_url') {
+    return 'Research';
+  }
+  return 'Repair';
+}
+
+String _observationRoleForTool(String toolName) {
+  if (toolName == 'write_file' || toolName == 'move_file' || toolName == 'apply_patch') {
+    return 'Reviewer';
+  }
+  if (toolName == 'preview_html' || toolName == 'preview_snapshot' || toolName == 'report_result') {
+    return 'Reviewer';
+  }
+  if (toolName == 'web_search' || toolName == 'fetch_url') {
+    return 'Research';
+  }
+  return 'Planner';
 }
 
 String _compact(String value, int limit) {

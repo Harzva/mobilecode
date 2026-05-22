@@ -702,6 +702,22 @@ const _providerNativeToolSpecs = [
     risk: 'read-only',
   ),
   _LocalToolSpec(
+    name: 'find_files',
+    description: 'Find workspace files by name or glob. This is the safe replacement for find/fd.',
+    surface: 'ActionRunner',
+    icon: Icons.manage_search_outlined,
+    color: _blue,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
+    name: 'grep_files',
+    description: 'Search text inside bounded workspace files. This is the safe replacement for grep/rg.',
+    surface: 'ActionRunner',
+    icon: Icons.search_outlined,
+    color: _cyan,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
     name: 'web_search',
     description: 'Let the model ask for compact public web references through the managed relay.',
     surface: 'Relay read',
@@ -742,6 +758,14 @@ const _providerNativeToolSpecs = [
     risk: 'guarded move',
   ),
   _LocalToolSpec(
+    name: 'apply_patch',
+    description: 'Apply a small unified diff inside the workspace with snapshot evidence.',
+    surface: 'ActionRunner',
+    icon: Icons.difference_outlined,
+    color: _amber,
+    risk: 'bounded write',
+  ),
+  _LocalToolSpec(
     name: 'preview_html',
     description: 'Prepare an in-app WebView preview from a workspace HTML file or inline HTML.',
     surface: 'WebView',
@@ -772,8 +796,8 @@ const _androidCommandSpecs = [
     category: 'File inspect',
     commands: 'pwd, ls, dir, find, fd',
     support: 'Supported',
-    mobileCodePath: 'list_files',
-    note: 'Lists only the MobileCode workspace; no arbitrary filesystem traversal.',
+    mobileCodePath: 'list_files / find_files',
+    note: 'Lists and finds only inside the MobileCode workspace; no arbitrary filesystem traversal.',
     color: _mint,
     icon: Icons.folder_open_outlined,
   ),
@@ -789,10 +813,10 @@ const _androidCommandSpecs = [
   _AndroidCommandSpec(
     category: 'Text search',
     commands: 'grep, rg, ag, awk, sed',
-    support: 'Planned',
-    mobileCodePath: 'search_files later',
-    note: 'DeepSeek-TUI maps these to grep_files; MobileCode does not expose content search yet.',
-    color: _amber,
+    support: 'Supported',
+    mobileCodePath: 'grep_files',
+    note: 'Plain text grep-style search with result and file-size bounds; no raw shell.',
+    color: _mint,
     icon: Icons.manage_search_outlined,
   ),
   _AndroidCommandSpec(
@@ -812,6 +836,15 @@ const _androidCommandSpecs = [
     note: 'File-only move inside workspace; destination must include the filename.',
     color: _mint,
     icon: Icons.drive_file_move_outline,
+  ),
+  _AndroidCommandSpec(
+    category: 'Patch / diff apply',
+    commands: 'patch, git apply',
+    support: 'Supported',
+    mobileCodePath: 'apply_patch',
+    note: 'Unified diff only, workspace-limited, deletion/binary/outside paths blocked, snapshots recorded.',
+    color: _mint,
+    icon: Icons.difference_outlined,
   ),
   _AndroidCommandSpec(
     category: 'Copy / mkdir',
@@ -1402,7 +1435,7 @@ String _agentLocalToolChainFor(String tool) {
         '4. preview_webview: expose the in-app WebView preview action';
   }
   if (tool == 'mobile_coding.research_web_preview') {
-    return 'Available safe tools: list_files, web_search, fetch_url, write_file, read_file, move_file, preview_html, preview_snapshot, report_result.\n'
+    return 'Available safe tools: list_files, find_files, grep_files, web_search, fetch_url, write_file, read_file, move_file, apply_patch, preview_html, preview_snapshot, report_result.\n'
         'The model may choose the smallest useful next step; MobileCode validates, executes, records evidence, and returns observations.';
   }
   if (tool == 'mobile_coding.build_diary_demo') {
@@ -10095,6 +10128,8 @@ class _ChatPanelState extends State<_ChatPanel> {
   final List<_AgentTraceStep> _agentTrace = [];
   final Set<String> _agentTraceEventKeys = {};
   final List<String> _agentProviderLiveProcess = [];
+  final Map<String, int> _agentProviderLiveProcessKeys = {};
+  final Map<String, int> _agentStreamTraceIndexes = {};
   final ActionEvidenceStore _agentEvidenceStore = ActionEvidenceStore.shared;
   final Map<String, GlobalKey> _turnKeys = {};
   Timer? _navPreviewTimer;
@@ -10870,7 +10905,8 @@ class _ChatPanelState extends State<_ChatPanel> {
             final key = progress.key;
             if (announcedArgumentBuckets[key] != bucket) {
               announcedArgumentBuckets[key] = bucket;
-              onToolDelta?.call('receiving `$toolName` arguments (${progress.argumentChars} chars streamed).');
+              final pathLabel = progress.targetPath == null ? '' : ', target `${progress.targetPath}`';
+              onToolDelta?.call('receiving `$toolName` arguments (${progress.argumentChars} chars streamed, ${progress.argumentLines} lines$pathLabel).');
             }
           }
         } catch (_) {
@@ -11078,6 +11114,8 @@ class _ChatPanelState extends State<_ChatPanel> {
         ..addAll(_agentRunTraceTemplate(prompt));
       _agentTraceEventKeys.clear();
       _agentProviderLiveProcess.clear();
+      _agentProviderLiveProcessKeys.clear();
+      _agentStreamTraceIndexes.clear();
       _activeRunRoles = activeRoles;
       _activeRunProposal = proposedRole;
       _storeSession(pending);
@@ -11341,17 +11379,28 @@ class _ChatPanelState extends State<_ChatPanel> {
     _agentTrace[providerIndex] = providerStep.copyWith(details: details);
   }
 
-  void _appendProviderLiveProcessLine(String line) {
+  void _appendProviderLiveProcessLine(String line, {String? collapseKey}) {
     final trimmed = line.trim();
     if (trimmed.isEmpty) return;
     final stamped = '${_clockLabel(DateTime.now())} · $trimmed';
-    if (_agentProviderLiveProcess.isNotEmpty && _agentProviderLiveProcess.last.endsWith(trimmed)) {
+    final existingIndex = collapseKey == null ? null : _agentProviderLiveProcessKeys[collapseKey];
+    if (existingIndex != null && existingIndex >= 0 && existingIndex < _agentProviderLiveProcess.length) {
+      _agentProviderLiveProcess[existingIndex] = stamped;
+    } else if (_agentProviderLiveProcess.isNotEmpty && _agentProviderLiveProcess.last.endsWith(trimmed)) {
       _agentProviderLiveProcess[_agentProviderLiveProcess.length - 1] = stamped;
     } else {
       _agentProviderLiveProcess.add(stamped);
+      if (collapseKey != null) {
+        _agentProviderLiveProcessKeys[collapseKey] = _agentProviderLiveProcess.length - 1;
+      }
     }
     if (_agentProviderLiveProcess.length > 18) {
-      _agentProviderLiveProcess.removeRange(0, _agentProviderLiveProcess.length - 18);
+      final removeCount = _agentProviderLiveProcess.length - 18;
+      _agentProviderLiveProcess.removeRange(0, removeCount);
+      _agentProviderLiveProcessKeys.removeWhere((_, index) => index < removeCount);
+      for (final entry in _agentProviderLiveProcessKeys.entries.toList()) {
+        _agentProviderLiveProcessKeys[entry.key] = entry.value - removeCount;
+      }
     }
     _syncProviderLiveProcessDetail();
   }
@@ -11359,14 +11408,15 @@ class _ChatPanelState extends State<_ChatPanel> {
   String _agentLoopEventLiveLine(AgentLoopEvent event) {
     final round = event.round == null ? '' : 'Round ${event.round}: ';
     final tool = event.toolName == null ? '' : ' `${event.toolName}`';
+    final role = event.roleName == null ? '' : '${event.roleName}: ';
     return switch (event.type) {
-      AgentLoopEventType.started => 'Agent Loop started.',
-      AgentLoopEventType.modelRequest => '${round}asking model for the next tool call.',
-      AgentLoopEventType.toolCall => '${round}selected tool$tool.',
-      AgentLoopEventType.observation => '${round}received observation from$tool: ${event.success == false ? 'failed' : 'ok'}.',
-      AgentLoopEventType.blocked => '${round}blocked tool$tool.',
-      AgentLoopEventType.completed => '${round}completed: ${_compact(event.message, limit: 120)}',
-      AgentLoopEventType.failed => '${round}failed in$tool: ${_compact(event.message, limit: 120)}',
+      AgentLoopEventType.started => '${role}Agent Loop started.',
+      AgentLoopEventType.modelRequest => '$round${role}asking model for the next tool call.',
+      AgentLoopEventType.toolCall => '$round${role}selected tool$tool.',
+      AgentLoopEventType.observation => '$round${role}received observation from$tool: ${event.success == false ? 'failed' : 'ok'}.',
+      AgentLoopEventType.blocked => '$round${role}blocked tool$tool.',
+      AgentLoopEventType.completed => '$round${role}completed: ${_compact(event.message, limit: 120)}',
+      AgentLoopEventType.failed => '$round${role}failed in$tool: ${_compact(event.message, limit: 120)}',
     };
   }
 
@@ -11376,6 +11426,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       event.type.name,
       event.round ?? '',
       event.toolName ?? '',
+      event.roleName ?? '',
       event.evidenceId ?? '',
       event.message,
     ].join('|');
@@ -11383,14 +11434,15 @@ class _ChatPanelState extends State<_ChatPanel> {
     final state = event.type == AgentLoopEventType.failed || event.success == false
         ? _AgentStepState.failed
         : _AgentStepState.done;
+    final rolePrefix = event.roleName == null ? '' : '${event.roleName} · ';
     final title = switch (event.type) {
-      AgentLoopEventType.started => 'Agent loop started',
-      AgentLoopEventType.modelRequest => 'Ask model for next action',
-      AgentLoopEventType.toolCall => 'Tool call: ${event.toolName ?? 'unknown'}',
-      AgentLoopEventType.observation => 'Observation: ${event.toolName ?? 'tool'}',
-      AgentLoopEventType.blocked => 'Blocked: ${event.toolName ?? 'tool'}',
-      AgentLoopEventType.completed => 'Agent loop summary',
-      AgentLoopEventType.failed => 'Failed: ${event.toolName ?? 'tool'}',
+      AgentLoopEventType.started => '${rolePrefix}Agent loop started',
+      AgentLoopEventType.modelRequest => '${rolePrefix}Ask model for next action',
+      AgentLoopEventType.toolCall => '${rolePrefix}Tool call: ${event.toolName ?? 'unknown'}',
+      AgentLoopEventType.observation => '${rolePrefix}Observation: ${event.toolName ?? 'tool'}',
+      AgentLoopEventType.blocked => '${rolePrefix}Blocked: ${event.toolName ?? 'tool'}',
+      AgentLoopEventType.completed => '${rolePrefix}Agent loop summary',
+      AgentLoopEventType.failed => '${rolePrefix}Failed: ${event.toolName ?? 'tool'}',
     };
     final action = switch (event.type) {
       AgentLoopEventType.toolCall => MobileCodeAction.traceSelectTool,
@@ -11415,6 +11467,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       icon: icon,
       toolName: event.toolName,
       details: {
+        if (event.roleName != null) 'Role': event.roleName!,
         if (event.evidenceId != null) 'Evidence ID': event.evidenceId!,
       },
       traceAction: action,
@@ -11431,20 +11484,58 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   void _appendAgentLoopStreamTraceEvent(int round, String detail) {
     if (!mounted) return;
-    final key = 'stream|$round|$detail';
-    if (!_agentTraceEventKeys.add(key)) return;
+    final toolMatch = RegExp(r'`([^`]+)`').firstMatch(detail);
+    final toolName = toolMatch?.group(1) ?? 'tool';
+    final charsMatch = RegExp(r'\((\d+) chars streamed').firstMatch(detail);
+    final linesMatch = RegExp(r',\s*(\d+) lines').firstMatch(detail);
+    final pathMatch = RegExp(r'target `([^`]+)`').firstMatch(detail);
+    final currentChars = charsMatch == null ? null : int.tryParse(charsMatch.group(1)!);
+    final currentLines = linesMatch == null ? null : int.tryParse(linesMatch.group(1)!);
+    final targetPath = pathMatch?.group(1);
+    final streamKey = 'stream|$round|$toolName';
+    final existingIndex = _agentStreamTraceIndexes[streamKey] ?? -1;
+    final previousChars = existingIndex == -1 ? null : int.tryParse(_agentTrace[existingIndex].details['Streamed chars'] ?? '');
+    final deltaChars = currentChars == null || previousChars == null ? currentChars : currentChars - previousChars;
+    final deltaLabel = deltaChars == null || deltaChars <= 0 ? '' : ' (+$deltaChars)';
+    final mergedDetail = currentChars == null
+        ? 'Round $round: model selected `$toolName`; waiting for structured arguments.'
+        : 'Round $round: receiving `$toolName` arguments: $currentChars chars$deltaLabel${currentLines == null ? '' : ', $currentLines lines'}${targetPath == null ? '' : ', target $targetPath'}.';
+    final details = {
+      'Tool': toolName,
+      'Stage': currentChars == null ? 'Tool selected' : 'Receiving tool arguments',
+      if (currentChars != null) 'Streamed chars': '$currentChars',
+      if (currentLines != null) 'Draft lines': '$currentLines',
+      if (targetPath != null) 'Target path': targetPath,
+      if (deltaChars != null && deltaChars > 0) 'Delta chars': '+$deltaChars',
+      'Draft status': currentChars == null ? 'Tool selected' : 'Receiving; not executable yet',
+      'Execution boundary': 'MobileCode buffers streamed arguments first; ActionRunner writes only after the complete tool call is received, parsed, validated, and allowed.',
+    };
     final step = _AgentTraceStep(
-      title: 'Streaming tool call',
-      detail: 'Round $round: $detail',
+      title: 'Streaming tool call: $toolName',
+      detail: mergedDetail,
       icon: Icons.more_horiz_outlined,
+      toolName: toolName,
+      details: details,
       traceAction: MobileCodeAction.traceCallProvider,
       state: _AgentStepState.done,
       startedAt: DateTime.now(),
       finishedAt: DateTime.now(),
     );
     setState(() {
-      _appendProviderLiveProcessLine('Round $round: $detail');
-      _agentTrace.add(_withStepEvidence(step, _AgentStepState.done));
+      _appendProviderLiveProcessLine(mergedDetail, collapseKey: streamKey);
+      if (existingIndex == -1) {
+        _agentTrace.add(_withStepEvidence(step, _AgentStepState.done));
+        _agentStreamTraceIndexes[streamKey] = _agentTrace.length - 1;
+      } else {
+        final existing = _agentTrace[existingIndex];
+        _agentTrace[existingIndex] = existing.copyWith(
+          title: step.title,
+          detail: step.detail,
+          details: details,
+          toolName: toolName,
+          finishedAt: DateTime.now(),
+        );
+      }
     });
     _scrollConversationToEnd();
   }
@@ -11662,6 +11753,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         'Agent preset: ${_agentPreset.label}.',
         _agentPreset.systemInstruction,
         'Allowed provider-native tools for this preset: ${_agentPreset.allowedToolNames.join(', ')}.',
+        'Role flow is Planner -> Builder -> Reviewer -> Repair inside one mobile execution lane; it is not parallel sub-agent execution.',
         'Use provider-native tool calls for actions; do not claim files, previews, searches, or snapshots happened until MobileCode returns tool observations.',
       ] else ...[
         'Single-shot mode: answer once. MobileCode may save and preview generated artifacts after your response, but you must not claim provider-native tool execution happened.',
@@ -11683,7 +11775,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         skillContext,
       ],
       if (toolName.startsWith('mobile_coding.generate_') && _agentExecutionMode == AgentExecutionMode.agentLoop)
-        'For web/html Agent Loop requests, use list_files if you need workspace context, write_file with one complete self-contained HTML document, then read_file or preview_html, then report_result. Use move_file for safe rename/move requests instead of shell mv. After a successful write_file observation, do not call write_file again unless the observation says the write failed. The HTML must be mobile-first, touch-friendly, accessible, visually intentional, GitHub Pages deployable, and not depend on network assets.',
+        'For web/html Agent Loop requests, use list_files/find_files/grep_files if you need workspace context, write_file or apply_patch for a complete self-contained HTML document, then read_file/grep_files or preview_html, then report_result. Use move_file for safe rename/move requests instead of shell mv. After a successful mutation observation, inspect before mutating again. The HTML must be mobile-first, touch-friendly, accessible, visually intentional, GitHub Pages deployable, and not depend on network assets.',
       if (toolName.startsWith('mobile_coding.generate_') && _agentExecutionMode != AgentExecutionMode.agentLoop)
         'For web/html requests, return one complete self-contained HTML document inside a single ```html fenced block. It must be mobile-first, touch-friendly, accessible, visually intentional, GitHub Pages deployable, and not depend on network assets. Use relative links only; never reference app-private local paths inside the HTML.',
       if (toolName == 'mobile_coding.research_web_preview')
@@ -14107,7 +14199,7 @@ class _ChatModeStrip extends StatelessWidget {
       _PromptShortcutData(
         label: '复杂验收',
         icon: Icons.travel_explore_outlined,
-        prompt: '复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 list_files、web_search、fetch_url、write_file、read_file、move_file、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。',
+        prompt: '复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 list_files、find_files、grep_files、web_search、fetch_url、write_file、read_file、move_file、apply_patch、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。',
         color: _amber,
       ),
     ];
@@ -14182,7 +14274,7 @@ class _PromptLaunchPanel extends StatelessWidget {
                 icon: Icons.travel_explore_outlined,
                 label: '复杂 Harness 验收',
                 color: _violet,
-                onTap: () => onPrompt('复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 list_files、web_search、fetch_url、write_file、read_file、move_file、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。', runAgent: true),
+                onTap: () => onPrompt('复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 list_files、find_files、grep_files、web_search、fetch_url、write_file、read_file、move_file、apply_patch、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。', runAgent: true),
               ),
             ],
           ),

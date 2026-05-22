@@ -125,7 +125,7 @@ const _managedDeepSeekBaseUrl = String.fromEnvironment(
 );
 const _managedDeepSeekModel = String.fromEnvironment(
   'MOBILECODE_MANAGED_DEEPSEEK_MODEL',
-  defaultValue: 'deepseek-v4-pro',
+  defaultValue: 'deepseek-v4-flash',
 );
 const _managedDeepSeekApiKey = String.fromEnvironment('MOBILECODE_MANAGED_DEEPSEEK_API_KEY');
 const _managedRelayUrl = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_URL');
@@ -723,7 +723,7 @@ String _providerPresetBaseUrl(_ProviderPreset preset) {
 String _providerPresetModel(_ProviderPreset preset) {
   return switch (preset) {
     _ProviderPreset.mimo => _defaultModel,
-    _ProviderPreset.deepSeek => 'deepseek-v4-pro',
+    _ProviderPreset.deepSeek => 'deepseek-v4-flash',
     _ProviderPreset.anthropic => 'claude-3-5-sonnet-latest',
     _ProviderPreset.openAi => 'gpt-4o-mini',
     _ProviderPreset.custom => '',
@@ -9820,6 +9820,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   List<MobileCodeRole>? _activeRunRoles;
   RoleProposal? _activeRunProposal;
   final List<_AgentTraceStep> _agentTrace = [];
+  final Set<String> _agentTraceEventKeys = {};
   final ActionEvidenceStore _agentEvidenceStore = ActionEvidenceStore.shared;
   final Map<String, GlobalKey> _turnKeys = {};
   Timer? _navPreviewTimer;
@@ -10537,6 +10538,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     _agentProviderClient = client;
     final toolAssembler = OpenAiToolCallStreamAssembler();
     final announcedTools = <String>{};
+    final announcedArgumentBuckets = <String, int>{};
     String? finishReason;
 
     try {
@@ -10583,6 +10585,18 @@ class _ChatPanelState extends State<_ChatPanel> {
           for (final toolName in _extractOpenAiStreamingToolNames(decoded)) {
             if (announcedTools.add(toolName)) {
               onToolDelta?.call('model is selecting provider-native tool `$toolName`.');
+            }
+          }
+          for (final progress in toolAssembler.progress) {
+            final toolName = progress.name;
+            if (toolName == null || toolName.trim().isEmpty || progress.argumentChars < 800) {
+              continue;
+            }
+            final bucket = progress.argumentChars ~/ 1600;
+            final key = progress.key;
+            if (announcedArgumentBuckets[key] != bucket) {
+              announcedArgumentBuckets[key] = bucket;
+              onToolDelta?.call('receiving `$toolName` arguments (${progress.argumentChars} chars streamed).');
             }
           }
         } catch (_) {
@@ -10674,6 +10688,8 @@ class _ChatPanelState extends State<_ChatPanel> {
     required TokenUsageAccumulator usageAccumulator,
     required AgentPreset preset,
     required void Function(String detail) onStatus,
+    void Function(AgentLoopEvent event)? onLoopEvent,
+    void Function(int round, String detail)? onStreamStatus,
     bool Function()? isCancelled,
   }) async {
     final adapter = _providerNativeToolCallAdapter();
@@ -10686,7 +10702,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       webToolInvoker: _usesManagedRelay ? _callManagedRelayWebTool : null,
     );
     final messages = _providerMessages(history).map((message) => Map<String, dynamic>.from(message)).toList();
-    final model = widget.model.trim().isEmpty ? 'deepseek-v4-pro' : widget.model.trim();
+    final model = widget.model.trim().isEmpty ? 'deepseek-v4-flash' : widget.model.trim();
     final controller = AgentLoopController(
       adapter: adapter,
       actionRunner: actionRunner,
@@ -10701,6 +10717,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         final round = event.round == null ? '' : ' round ${event.round}';
         final tool = event.toolName == null ? '' : ' · ${event.toolName}';
         onStatus('${adapter.profile.label} ${preset.label}$round$tool: ${event.message}');
+        onLoopEvent?.call(event);
       },
       requestModel: (loopMessages, {required round}) async {
         return _streamOpenAiCompatibleToolCallRequest(
@@ -10716,7 +10733,10 @@ class _ChatPanelState extends State<_ChatPanel> {
           responseTimeout: const Duration(minutes: 3),
           isCancelled: isCancelled,
           onUsageChunk: usageAccumulator.addChunk,
-          onToolDelta: (detail) => onStatus('${adapter.profile.label} ${preset.label} round $round: $detail'),
+          onToolDelta: (detail) {
+            onStatus('${adapter.profile.label} ${preset.label} round $round: $detail');
+            onStreamStatus?.call(round, detail);
+          },
         );
       },
     );
@@ -10781,6 +10801,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       _agentTrace
         ..clear()
         ..addAll(_agentRunTraceTemplate(prompt));
+      _agentTraceEventKeys.clear();
       _activeRunRoles = activeRoles;
       _activeRunProposal = proposedRole;
       _storeSession(pending);
@@ -10834,6 +10855,8 @@ class _ChatPanelState extends State<_ChatPanel> {
               preset: _agentPreset,
               isCancelled: () => _agentCancelRequested,
               onStatus: (detail) => _setAgentRunStep(2, _AgentStepState.running, detail: detail),
+              onLoopEvent: _appendAgentLoopTraceEvent,
+              onStreamStatus: _appendAgentLoopStreamTraceEvent,
             )
           : null;
 
@@ -10938,11 +10961,17 @@ class _ChatPanelState extends State<_ChatPanel> {
     if (!mounted) return;
     final current = _sessions.firstWhere((session) => session.id == pending.id, orElse: () => pending);
     final stopped = failure != null && failure!.toLowerCase().contains('stopped by user');
+    final executionSummary = _agentTraceSummaryText();
     final assistantText = failure == null
-        ? _agentProviderCompletionMessage(toolName, modelAnswer ?? '', generatedPath)
+        ? _agentProviderCompletionMessage(
+            toolName,
+            modelAnswer ?? '',
+            generatedPath,
+            executionSummary: executionSummary,
+          )
         : stopped
-            ? 'Agent run stopped before writing more output for `$toolName`.'
-            : 'Agent run failed while using `$toolName`.\n\n${_compact(failure!, limit: 300)}';
+            ? 'Agent run stopped before writing more output for `$toolName`.$executionSummary'
+            : 'Agent run failed while using `$toolName`.\n\n${_compact(failure!, limit: 300)}$executionSummary';
     final next = current.copyWith(
       updatedAt: DateTime.now(),
       turns: [
@@ -11023,6 +11052,83 @@ class _ChatPanelState extends State<_ChatPanel> {
         finishedAt: state == _AgentStepState.done || state == _AgentStepState.failed ? DateTime.now() : null,
       );
       _agentTrace[index] = _withStepEvidence(next, state);
+    });
+    _scrollConversationToEnd();
+  }
+
+  void _appendAgentLoopTraceEvent(AgentLoopEvent event) {
+    if (!mounted) return;
+    final key = [
+      event.type.name,
+      event.round ?? '',
+      event.toolName ?? '',
+      event.evidenceId ?? '',
+      event.message,
+    ].join('|');
+    if (!_agentTraceEventKeys.add(key)) return;
+    final state = event.type == AgentLoopEventType.failed || event.success == false
+        ? _AgentStepState.failed
+        : _AgentStepState.done;
+    final title = switch (event.type) {
+      AgentLoopEventType.started => 'Agent loop started',
+      AgentLoopEventType.modelRequest => 'Ask model for next action',
+      AgentLoopEventType.toolCall => 'Tool call: ${event.toolName ?? 'unknown'}',
+      AgentLoopEventType.observation => 'Observation: ${event.toolName ?? 'tool'}',
+      AgentLoopEventType.blocked => 'Blocked: ${event.toolName ?? 'tool'}',
+      AgentLoopEventType.completed => 'Agent loop summary',
+      AgentLoopEventType.failed => 'Failed: ${event.toolName ?? 'tool'}',
+    };
+    final action = switch (event.type) {
+      AgentLoopEventType.toolCall => MobileCodeAction.traceSelectTool,
+      AgentLoopEventType.observation => MobileCodeAction.traceReportChat,
+      AgentLoopEventType.completed => MobileCodeAction.traceReportChat,
+      AgentLoopEventType.failed => MobileCodeAction.traceReportChat,
+      _ => MobileCodeAction.traceCallProvider,
+    };
+    final icon = switch (event.type) {
+      AgentLoopEventType.started => Icons.play_circle_outline,
+      AgentLoopEventType.modelRequest => Icons.psychology_alt_outlined,
+      AgentLoopEventType.toolCall => Icons.account_tree_outlined,
+      AgentLoopEventType.observation => Icons.fact_check_outlined,
+      AgentLoopEventType.blocked => Icons.block_outlined,
+      AgentLoopEventType.completed => Icons.summarize_outlined,
+      AgentLoopEventType.failed => Icons.error_outline,
+    };
+    final round = event.round == null ? '' : 'Round ${event.round}: ';
+    final step = _AgentTraceStep(
+      title: title,
+      detail: '$round${event.message}',
+      icon: icon,
+      toolName: event.toolName,
+      details: {
+        if (event.evidenceId != null) 'Evidence ID': event.evidenceId!,
+      },
+      traceAction: action,
+      state: state,
+      startedAt: event.createdAt,
+      finishedAt: DateTime.now(),
+    );
+    setState(() {
+      _agentTrace.add(_withStepEvidence(step, state));
+    });
+    _scrollConversationToEnd();
+  }
+
+  void _appendAgentLoopStreamTraceEvent(int round, String detail) {
+    if (!mounted) return;
+    final key = 'stream|$round|$detail';
+    if (!_agentTraceEventKeys.add(key)) return;
+    final step = _AgentTraceStep(
+      title: 'Streaming tool call',
+      detail: 'Round $round: $detail',
+      icon: Icons.more_horiz_outlined,
+      traceAction: MobileCodeAction.traceCallProvider,
+      state: _AgentStepState.done,
+      startedAt: DateTime.now(),
+      finishedAt: DateTime.now(),
+    );
+    setState(() {
+      _agentTrace.add(_withStepEvidence(step, _AgentStepState.done));
     });
     _scrollConversationToEnd();
   }
@@ -11260,7 +11366,9 @@ class _ChatPanelState extends State<_ChatPanel> {
         'Enabled HTML/UI skill context:',
         skillContext,
       ],
-      if (toolName.startsWith('mobile_coding.generate_'))
+      if (toolName.startsWith('mobile_coding.generate_') && _agentExecutionMode == AgentExecutionMode.agentLoop)
+        'For web/html Agent Loop requests, use write_file with one complete self-contained HTML document, then read_file or preview_html, then report_result. After a successful write_file observation, do not call write_file again unless the observation says the write failed. The HTML must be mobile-first, touch-friendly, accessible, visually intentional, GitHub Pages deployable, and not depend on network assets.',
+      if (toolName.startsWith('mobile_coding.generate_') && _agentExecutionMode != AgentExecutionMode.agentLoop)
         'For web/html requests, return one complete self-contained HTML document inside a single ```html fenced block. It must be mobile-first, touch-friendly, accessible, visually intentional, GitHub Pages deployable, and not depend on network assets. Use relative links only; never reference app-private local paths inside the HTML.',
       if (toolName == 'mobile_coding.research_web_preview')
         'For the researched WebView demo, choose the smallest safe provider-native tool calls yourself from the allowed list. You may search public references, fetch public HTTPS pages, write/read a self-contained HTML artifact, preview it, capture preview evidence, or report the result depending on observations. Do not depend on network assets. Include useful refIds and evidence IDs in the final report.',
@@ -11274,10 +11382,19 @@ class _ChatPanelState extends State<_ChatPanel> {
     ].join('\n');
   }
 
-  String _agentProviderCompletionMessage(String toolName, String modelAnswer, String? generatedPath) {
+  String _agentProviderCompletionMessage(
+    String toolName,
+    String modelAnswer,
+    String? generatedPath, {
+    String executionSummary = '',
+  }) {
     final isWebArtifact = generatedPath != null && _isWebArtifactPath(generatedPath);
     final answer = modelAnswer.trim();
-    final summary = _assistantNonCodeSummary(answer);
+    final loopStoppedAtSafetyLimit =
+        answer.startsWith('Agent loop stopped after') || answer.startsWith('Agent loop reached the');
+    final summary = loopStoppedAtSafetyLimit && generatedPath != null
+        ? 'Agent Loop reached the safety limit after saving an artifact. MobileCode preserved the generated file and preview actions; repeated tool calls were stopped for safety.'
+        : _assistantNonCodeSummary(answer);
     final shouldHideRawPayload = isWebArtifact || _looksLikeGeneratedArtifactPayload(answer);
     final lines = [
       'Agent run completed via provider: `$toolName`',
@@ -11302,7 +11419,27 @@ class _ChatPanelState extends State<_ChatPanel> {
         ..add('')
         ..add(answer);
     }
+    if (executionSummary.trim().isNotEmpty) {
+      lines
+        ..add('')
+        ..add(executionSummary.trim());
+    }
     return lines.join('\n');
+  }
+
+  String _agentTraceSummaryText() {
+    final visible = _agentTrace.where((step) => step.state != _AgentStepState.queued).toList();
+    if (visible.isEmpty) return '';
+    final capped = visible.length > 14 ? visible.sublist(visible.length - 14) : visible;
+    final lines = <String>[
+      '本轮执行总结',
+      for (final step in capped)
+        '- ${_agentStepLabel(step.state)} · ${step.title}: ${_compact(step.detail, limit: 140)}',
+    ];
+    if (visible.length > capped.length) {
+      lines.insert(1, '- 已省略前 ${visible.length - capped.length} 条早期事件，可在上方过程面板查看。');
+    }
+    return '\n\n${lines.join('\n')}';
   }
 
   bool _toolRequiresHtmlArtifact(String toolName) {
@@ -14006,7 +14143,7 @@ class _ModelSelectionRow extends StatelessWidget {
             : _blue;
     final subtitle = switch (preset) {
       _ProviderPreset.mimo => managed ? '内置体验模型，稳定聊天与中文移动开发任务' : '需要构建时配置 Mimo managed key',
-      _ProviderPreset.deepSeek => managed ? '内置 DeepSeek v4 Pro，推荐 Agent Loop / 编码任务' : '推荐接入 DeepSeek v4 key 后用于编码任务',
+      _ProviderPreset.deepSeek => managed ? '内置 DeepSeek v4 Flash，默认更快；Pro 可手动切换' : '推荐接入 DeepSeek v4 key 后用于编码任务',
       _ProviderPreset.openAi => 'OpenAI-compatible，自带 key 时使用',
       _ProviderPreset.anthropic => 'Anthropic-compatible，自带 key 时使用',
       _ProviderPreset.custom => '保留当前自定义 Base URL / Model / API Key',

@@ -118,8 +118,8 @@ DeepSeek Provider
 
 建议 UI 文案：
 
-- `deepseek-v4-flash`：快速聊天 / 轻量生成。
-- `deepseek-v4-pro`：复杂编码 / AgentLoop 推荐。
+- `deepseek-v4-flash`：默认体验 / 快速聊天 / 常规 Agent Loop。
+- `deepseek-v4-pro`：可手动切换，用于更重的编码任务。
 - `deepseek-chat`：legacy alias，不作为新默认。
 - `deepseek-reasoner`：legacy alias，不作为新默认。
 
@@ -150,8 +150,8 @@ DeepSeek Provider
 实际改动：
 
 - `ToolCallProviderProfile.detect()` 新增 DeepSeek profile kind，区分 `v4Flash / v4Pro / strictBeta / legacyChat / legacyReasoner / experimentalUnsupported / unknown`。
-- `DeepSeek v4 Pro` 作为 UI/API 配置推荐模型；`deepseek-chat` 与 `deepseek-reasoner` 保留为 legacy alias，不再作为新默认。
-- Agent Loop 空模型 fallback、managed DeepSeek 默认模型、APK workflow 的 DeepSeek dart-define 默认模型统一到 `deepseek-v4-pro`。
+- `DeepSeek v4 Flash` 作为 UI/API 配置默认模型；`deepseek-chat` 与 `deepseek-reasoner` 保留为 legacy alias，不再作为新默认。
+- Agent Loop 空模型 fallback、managed DeepSeek 默认模型、APK workflow 的 DeepSeek dart-define 默认模型统一到 `deepseek-v4-flash`。
 - 补充 provider profile 单元测试：v4 flash/pro、strict beta、legacy alias、unsupported experimental model。
 - `cxspark` 已按要求调用，但本次被 Windows sandbox `CreateProcessAsUserW failed: 5` 阻塞，没有产出可接受代码；最终由当前 Codex 审核并直接实现。
 
@@ -189,7 +189,8 @@ APK 链接：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-las
 建议默认：
 
 - 普通聊天：`deepseek-v4-flash`
-- AgentLoop / Auto Agent：`deepseek-v4-pro`
+- AgentLoop / Auto Agent 默认：`deepseek-v4-flash`
+- 重型编码任务可手动切换：`deepseek-v4-pro`
 - strict tool call：`https://api.deepseek.com/beta`
 - 普通 OpenAI-compatible：`https://api.deepseek.com`
 
@@ -210,7 +211,7 @@ APK 链接：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-las
 
 进展清单：
 
-- [x] DeepSeek v4 Pro 作为默认管理/UI 深度模型路径（`deepseek-v4-pro`）；
+- [x] DeepSeek v4 Flash 作为默认管理/UI 模型路径（`deepseek-v4-flash`）；
 - [x] `api_config_screen` 与 `home_screen` 的 DeepSeek 默认 base 改为 `https://api.deepseek.com`；
 - [x] OpenAI 兼容 URI 组装器保持兼容 `/`, `/v1`, `/beta`, `/chat/completions` 入口；
 - [x] Relay 默认 base 与 README 口径统一到 `https://api.deepseek.com`，并保留 `/v1` 兼容性。
@@ -234,7 +235,7 @@ APK 链接：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-las
 
 剩余风险：
 
-- `deepseek-v4-flash` 仍只作为 profile/test 覆盖与后续普通聊天候选项，当前单一 DeepSeek UI preset 继续推荐编码优先的 `deepseek-v4-pro`。
+- `deepseek-v4-pro` 保留为手动切换的重型编码模型；当前单一 DeepSeek UI preset 默认使用更轻的 `deepseek-v4-flash`。
 - 需要人工安装 APK 验证移动端 provider 请求路径与 DeepSeek Agent Loop 真实体验。
 
 下一步：DS03 Thinking + Tool Calls 回传加固。
@@ -381,6 +382,14 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 - DS05 错误码映射尚未开始。
 
 下一步：手动验收 `v0.1.51-last`；通过后继续 DS05 DeepSeek 错误码映射。
+
+补充修复记录（2026-05-22）：
+
+- DeepSeek 默认体验模型从 `deepseek-v4-pro` 调整为 `deepseek-v4-flash`；`v4-pro` 保留为手动切换的重型编码模型。
+- Agent Loop 的 streaming `tool_calls` 增加参数流入进度提示，避免长 `write_file.content` 生成时 UI 看起来停在“选工具”。
+- Agent Loop trace 从单行状态覆盖改为追加可见事件：请求模型、工具选择、参数流入、工具执行、observation、完成摘要。
+- 写文件成功后，若模型继续重复调用 `write_file` 而未先 `read_file / preview_html / report_result`，MobileCode 会阻止重复写入并把 observation 回传模型。
+- 最终聊天结果追加“本轮执行总结”，不再只在顶部状态行变化。
 
 ## DS05 DeepSeek 错误码映射
 

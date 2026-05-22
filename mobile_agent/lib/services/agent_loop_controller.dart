@@ -170,6 +170,7 @@ class AgentLoopController {
     String? generatedPath;
     var usedNativeToolCalls = false;
     var toolCallCount = 0;
+    var writeNeedsVerification = false;
 
     onEvent?.call(AgentLoopEvent(
       type: AgentLoopEventType.started,
@@ -237,13 +238,24 @@ class AgentLoopController {
           );
         }
 
-        final result = await _executeCall(call);
+        final result = call.name == 'write_file' && writeNeedsVerification
+            ? _blockedProviderToolResult(
+                call,
+                'A file was already written successfully. Use read_file, preview_html, preview_snapshot, or report_result before rewriting it.',
+                const ['Read or preview the written artifact before another write_file call.'],
+              )
+            : await _executeCall(call);
         messages.add(adapter.buildToolResultMessage(call, result));
         final evidence = result.evidence;
         final status = result.success ? 'ok' : 'failed';
         observations.add('${call.name}: $status · evidence ${evidence.evidenceId}');
         if (result.path != null && result.path!.trim().isNotEmpty && call.name != 'preview_snapshot') {
           generatedPath = result.path;
+        }
+        if (call.name == 'write_file' && result.success) {
+          writeNeedsVerification = true;
+        } else if (call.name == 'read_file' || call.name == 'preview_html' || call.name == 'preview_snapshot') {
+          writeNeedsVerification = false;
         }
         onEvent?.call(AgentLoopEvent(
           type: result.success ? AgentLoopEventType.observation : AgentLoopEventType.failed,
@@ -262,7 +274,9 @@ class AgentLoopController {
       success: true,
     ));
     return AgentLoopResult(
-      answer: 'Agent loop stopped after the $maxRounds-round safety limit.\n\n${observations.join('\n')}',
+      answer: generatedPath == null
+          ? 'Agent loop stopped after the $maxRounds-round safety limit.\n\n${observations.join('\n')}'
+          : 'Agent loop reached the $maxRounds-round safety limit after saving an artifact.\n\nArtifact: $generatedPath\n\n${observations.join('\n')}',
       usedNativeToolCalls: usedNativeToolCalls,
       rounds: maxRounds,
       toolCallCount: toolCallCount,

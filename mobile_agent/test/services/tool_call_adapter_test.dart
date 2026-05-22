@@ -510,6 +510,48 @@ void main() {
     expect(calls.single.arguments['max_bytes'], 20);
   });
 
+  test('exposes streaming tool argument progress for long write_file calls', () {
+    final assembler = OpenAiToolCallStreamAssembler()
+      ..addChunk({
+        'choices': [
+          {
+            'delta': {
+              'tool_calls': [
+                {
+                  'index': 0,
+                  'id': 'call_write',
+                  'function': {
+                    'name': 'write_file',
+                    'arguments': '{"path":"index.html","content":"',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      })
+      ..addChunk({
+        'choices': [
+          {
+            'delta': {
+              'tool_calls': [
+                {
+                  'index': 0,
+                  'function': {'arguments': 'x'.padRight(2400, 'x')},
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+    final progress = assembler.progress.single;
+    expect(progress.index, 0);
+    expect(progress.name, 'write_file');
+    expect(progress.argumentChars, greaterThan(2400));
+    expect(progress.key, '0:write_file');
+  });
+
   test('builds tool result message from ActionRunner evidence', () async {
     final workspace = await Directory.systemTemp.createTemp('mobilecode_tool_adapter_');
     final store = ActionEvidenceStore();

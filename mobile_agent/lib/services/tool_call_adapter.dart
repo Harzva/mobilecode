@@ -160,6 +160,18 @@ class OpenAiToolCallStreamAssembler {
 
   String get reasoningContent => _reasoningBuffer.toString();
 
+  List<OpenAiStreamingToolCallProgress> get progress {
+    final builders = _builders.values.toList()
+      ..sort((a, b) => a.index.compareTo(b.index));
+    return builders
+        .map((builder) => OpenAiStreamingToolCallProgress(
+              index: builder.index,
+              name: builder.name,
+              argumentChars: builder.arguments.length,
+            ))
+        .toList();
+  }
+
   void _appendChunkText(
     StringBuffer buffer,
     dynamic value,
@@ -201,6 +213,20 @@ class OpenAiToolCallStreamAssembler {
       ..sort((a, b) => a.index.compareTo(b.index));
     return calls.map((builder) => builder.finish()).whereType<ProviderToolCall>().toList();
   }
+}
+
+class OpenAiStreamingToolCallProgress {
+  const OpenAiStreamingToolCallProgress({
+    required this.index,
+    required this.argumentChars,
+    this.name,
+  });
+
+  final int index;
+  final String? name;
+  final int argumentChars;
+
+  String get key => '$index:${name ?? ''}';
 }
 
 class _StreamingToolCallBuilder {

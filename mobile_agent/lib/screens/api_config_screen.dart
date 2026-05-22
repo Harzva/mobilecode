@@ -51,9 +51,9 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
     ),
     _ProviderDefinition(
       preset: _ProviderPreset.deepSeek,
-      label: 'DeepSeek v4 Pro',
+      label: 'DeepSeek v4 Flash',
       baseUrl: 'https://api.deepseek.com',
-      model: 'deepseek-v4-pro',
+      model: 'deepseek-v4-flash',
       icon: Icons.psychology_alt_outlined,
     ),
     _ProviderDefinition(
@@ -240,7 +240,7 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
                             labelText: 'Model',
-                            hintText: 'mimo-v2.5-pro / deepseek-v4-pro / gpt-4o-mini',
+                            hintText: 'mimo-v2.5-pro / deepseek-v4-flash / gpt-4o-mini',
                             prefixIcon: Icon(Icons.memory_outlined),
                           ),
                           onChanged: (_) => setState(() {
@@ -260,7 +260,7 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
                         ),
                         const SizedBox(height: 10),
                         const Text(
-                          'DeepSeek v4 Pro 是 Agent Loop 推荐配置；deepseek-chat / deepseek-reasoner 仅作为 legacy alias 兼容。/beta Base URL 可用于 strict tool calling 验证。',
+                          'DeepSeek v4 Flash 是默认体验配置；v4 Pro 可手动切换用于更重的编码任务。deepseek-chat / deepseek-reasoner 仅作为 legacy alias 兼容。',
                           style: TextStyle(color: AppTheme.auroraTextMuted, fontSize: 12, height: 1.35),
                         ),
                       ],

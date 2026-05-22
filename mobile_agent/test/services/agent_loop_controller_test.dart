@@ -295,4 +295,72 @@ void main() {
     expect(result.usedNativeToolCalls, true);
     expect(result.answer, contains('Loop message order verified.'));
   });
+
+  test('blocks repeated write_file after a successful write until verification', () async {
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.builder,
+      maxRounds: 3,
+    );
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'build a minimal file'},
+      ],
+      requestModel: (loopMessages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_write_1',
+                name: 'write_file',
+                arguments: {
+                  'path': 'repeat/index.html',
+                  'content': '<!doctype html><title>First</title>',
+                  'overwrite': true,
+                },
+              ),
+            ],
+          );
+        }
+        if (round == 2) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_write_2',
+                name: 'write_file',
+                arguments: {
+                  'path': 'repeat/index.html',
+                  'content': '<!doctype html><title>Second</title>',
+                  'overwrite': true,
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: '',
+          toolCalls: [
+            ProviderToolCall(
+              id: 'call_report',
+              name: 'report_result',
+              arguments: {
+                'status': 'partial',
+                'summary': 'Repeat write was blocked.',
+                'detail': 'The agent must read or preview before rewriting.',
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Repeat write was blocked'));
+    expect(await File('${workspace.path}/repeat/index.html').readAsString(), contains('First'));
+    expect(store.failures().single.logs.join(' '), contains('already written successfully'));
+  });
 }

@@ -47,7 +47,7 @@ jobs:
 
       - name: Analyze Flutter sources
         working-directory: mobile_agent
-        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/github_screen.dart lib/screens/github_repo_hub_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/github_deep_service.dart lib/services/github_oauth_flow.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/github_screen.dart lib/screens/github_repo_hub_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/github_deep_service.dart lib/services/github_oauth_flow.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart lib/services/agent_loop_controller.dart --no-fatal-infos --no-fatal-warnings
 
       - name: Configure stable Android release signing
         working-directory: mobile_agent

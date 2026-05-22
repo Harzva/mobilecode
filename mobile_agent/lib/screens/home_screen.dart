@@ -36,6 +36,7 @@ import '../services/role_library_service.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
+import '../services/agent_loop_controller.dart';
 import '../services/device_telemetry_service.dart';
 import '../services/skill_manager_service.dart';
 import '../services/termux_service.dart';
@@ -568,22 +569,6 @@ class _LocalToolEvent {
       'time': time.toIso8601String(),
     };
   }
-}
-
-class _ProviderNativeToolLoopResult {
-  const _ProviderNativeToolLoopResult({
-    required this.answer,
-    required this.usedNativeToolCalls,
-    required this.rounds,
-    required this.toolCallCount,
-    this.generatedPath,
-  });
-
-  final String answer;
-  final bool usedNativeToolCalls;
-  final int rounds;
-  final int toolCallCount;
-  final String? generatedPath;
 }
 
 class _LocalToolSpec {
@@ -9820,6 +9805,8 @@ class _ChatPanelState extends State<_ChatPanel> {
   bool _agentStopping = false;
   bool _agentCancelRequested = false;
   bool _agentModeEnabled = false;
+  AgentExecutionMode _agentExecutionMode = AgentExecutionMode.singleShot;
+  AgentPreset _agentPreset = AgentPreset.builder;
   bool _followChatBottom = true;
   bool _showJumpToBottom = false;
   bool _autoScrollScheduled = false;
@@ -10587,10 +10574,11 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
   }
 
-  Future<_ProviderNativeToolLoopResult?> _runProviderNativeToolLoop(
+  Future<AgentLoopResult?> _runProviderNativeToolLoop(
     List<_ChatTurn> history, {
     required String systemPrompt,
     required TokenUsageAccumulator usageAccumulator,
+    required AgentPreset preset,
     required void Function(String detail) onStatus,
     bool Function()? isCancelled,
   }) async {
@@ -10604,125 +10592,39 @@ class _ChatPanelState extends State<_ChatPanel> {
       webToolInvoker: _usesManagedRelay ? _callManagedRelayWebTool : null,
     );
     final messages = _providerMessages(history).map((message) => Map<String, dynamic>.from(message)).toList();
-    final observations = <String>[];
-    String? generatedPath;
-    var usedNativeToolCalls = false;
-    var toolCallCount = 0;
     final model = widget.model.trim().isEmpty ? 'deepseek-chat' : widget.model.trim();
-
-    const maxNativeToolRounds = 6;
-    for (var round = 0; round < maxNativeToolRounds; round++) {
-      if (isCancelled?.call() == true) {
-        throw Exception('Agent run stopped by user.');
-      }
-      onStatus('${adapter.profile.label} native tool loop round ${round + 1}: asking model for structured tool calls.');
-      final decoded = await _postOpenAiCompatibleToolCallRequest(
-        adapter.buildChatCompletionRequest(
-          model: model,
-          systemPrompt: systemPrompt,
-          messages: messages,
-          maxTokens: 4096,
-          stream: false,
-          toolChoice: ToolChoiceMode.auto,
-        ),
-        responseTimeout: const Duration(minutes: 3),
-        isCancelled: isCancelled,
-      );
-      usageAccumulator.addChunk(decoded);
-      final parsed = adapter.parseChatCompletion(decoded);
-
-      if (!parsed.hasToolCalls) {
-        final answer = parsed.content.trim();
-        if (answer.isNotEmpty) {
-          return _ProviderNativeToolLoopResult(
-            answer: answer,
-            usedNativeToolCalls: usedNativeToolCalls,
-            rounds: round + 1,
-            toolCallCount: toolCallCount,
-            generatedPath: generatedPath,
-          );
-        }
-        if (observations.isNotEmpty) {
-          return _ProviderNativeToolLoopResult(
-            answer: 'Native tool loop completed.\n\n${observations.join('\n')}',
-            usedNativeToolCalls: usedNativeToolCalls,
-            rounds: round + 1,
-            toolCallCount: toolCallCount,
-            generatedPath: generatedPath,
-          );
-        }
-        return const _ProviderNativeToolLoopResult(
-          answer: '',
-          usedNativeToolCalls: false,
-          rounds: 1,
-          toolCallCount: 0,
-        );
-      }
-
-      usedNativeToolCalls = true;
-      toolCallCount += parsed.toolCalls.length;
-      messages.add(adapter.assistantToolCallMessage(parsed));
-
-      for (final call in parsed.toolCalls) {
-        if (isCancelled?.call() == true) {
-          throw Exception('Agent run stopped by user.');
-        }
-        if (call.isReportResult) {
-          messages.add(adapter.buildReportResultToolMessage(call));
-          final report = adapter.reportResultText(call);
-          if (report.trim().isNotEmpty) {
-            return _ProviderNativeToolLoopResult(
-              answer: report,
-              usedNativeToolCalls: true,
-              rounds: round + 1,
-              toolCallCount: toolCallCount,
-              generatedPath: generatedPath,
-            );
-          }
-          observations.add('report_result accepted by MobileCode.');
-          continue;
-        }
-
-        final schema = adapter.toActionSchema(call);
-        final result = schema == null ? _blockedProviderToolResult(call) : await actionRunner.run(schema);
-        messages.add(adapter.buildToolResultMessage(call, result));
-        if (result.path != null &&
-            result.path!.trim().isNotEmpty &&
-            call.name != 'preview_snapshot') {
-          generatedPath = result.path;
-        }
-        final evidence = result.evidence;
-        final status = result.success ? 'ok' : 'failed';
-        observations.add('${call.name}: $status · evidence ${evidence.evidenceId}');
-        onStatus(
-          '${adapter.profile.label} tool ${call.name}: $status · ${_compact(evidence.logs.join(' '), limit: 180)}',
-        );
-      }
-    }
-
-    return _ProviderNativeToolLoopResult(
-      answer: 'Native tool loop stopped after the $maxNativeToolRounds-round safety limit.\n\n${observations.join('\n')}',
-      usedNativeToolCalls: usedNativeToolCalls,
-      rounds: maxNativeToolRounds,
-      toolCallCount: toolCallCount,
-      generatedPath: generatedPath,
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: actionRunner,
+      preset: preset,
+      maxRounds: 6,
     );
-  }
 
-  ActionRunnerResult _blockedProviderToolResult(ProviderToolCall call) {
-    final evidence = ActionEvidence.failed(
-      evidenceId: call.id,
-      actionName: MobileCodeAction.traceCallProvider,
-      paramsSummary: 'blocked provider tool ${call.name}',
-      startedAt: DateTime.now(),
-      failureKind: ActionFailureKind.commandBlocked,
-      recoveryActions: const [
-        'Use only web_search, fetch_url, write_file, read_file, preview_html, preview_snapshot, or report_result in the provider-native loop.',
-      ],
-      logs: ['Blocked unsupported provider-native tool: ${call.name}.'],
+    return controller.run(
+      initialMessages: messages,
+      isCancelled: isCancelled,
+      onEvent: (event) {
+        final round = event.round == null ? '' : ' round ${event.round}';
+        final tool = event.toolName == null ? '' : ' · ${event.toolName}';
+        onStatus('${adapter.profile.label} ${preset.label}$round$tool: ${event.message}');
+      },
+      requestModel: (loopMessages, {required round}) async {
+        final decoded = await _postOpenAiCompatibleToolCallRequest(
+          adapter.buildChatCompletionRequest(
+            model: model,
+            systemPrompt: systemPrompt,
+            messages: loopMessages,
+            maxTokens: 4096,
+            stream: false,
+            toolChoice: ToolChoiceMode.auto,
+          ),
+          responseTimeout: const Duration(minutes: 3),
+          isCancelled: isCancelled,
+        );
+        usageAccumulator.addChunk(decoded);
+        return adapter.parseChatCompletion(decoded);
+      },
     );
-    _agentEvidenceStore.add(evidence);
-    return ActionRunnerResult(evidence: evidence);
   }
 
   Future<void> _runAgentWithTrace() async {
@@ -10744,6 +10646,10 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
 
     final toolName = _agentToolNameForPrompt(prompt);
+    if (_agentExecutionMode == AgentExecutionMode.agentLoop && _providerNativeToolCallAdapter() == null) {
+      _showMessage('当前模型不支持 Agent Loop：请切换 DeepSeek/OpenAI-compatible，或改用 Single-shot。');
+      return;
+    }
     final runId = 'agent_${DateTime.now().microsecondsSinceEpoch}';
     RoleProposal? proposedRole;
     List<MobileCodeRole>? activeRoles;
@@ -10815,7 +10721,9 @@ class _ChatPanelState extends State<_ChatPanel> {
       _setAgentRunStep(
         2,
         _AgentStepState.running,
-        detail: 'Calling ${_flavorLabel(flavor)} provider. DeepSeek/OpenAI-compatible providers may return native tool calls.',
+        detail: _agentExecutionMode == AgentExecutionMode.agentLoop
+            ? 'Calling ${_flavorLabel(flavor)} provider in Agent Loop mode as ${_agentPreset.label}.'
+            : 'Calling ${_flavorLabel(flavor)} provider in Single-shot mode. Native tool calls are skipped for stable fallback.',
       );
 
       final agentSystemPrompt = _agentSystemPrompt(
@@ -10823,17 +10731,23 @@ class _ChatPanelState extends State<_ChatPanel> {
         skillContext: skillContext,
         roleContext: _agentModeEnabled ? _roleRecruitmentContext() : '',
       );
-      final nativeLoop = await _runProviderNativeToolLoop(
-        pending.turns,
-        systemPrompt: agentSystemPrompt,
-        usageAccumulator: usageAccumulator,
-        isCancelled: () => _agentCancelRequested,
-        onStatus: (detail) => _setAgentRunStep(2, _AgentStepState.running, detail: detail),
-      );
+      final nativeLoop = _agentExecutionMode == AgentExecutionMode.agentLoop
+          ? await _runProviderNativeToolLoop(
+              pending.turns,
+              systemPrompt: agentSystemPrompt,
+              usageAccumulator: usageAccumulator,
+              preset: _agentPreset,
+              isCancelled: () => _agentCancelRequested,
+              onStatus: (detail) => _setAgentRunStep(2, _AgentStepState.running, detail: detail),
+            )
+          : null;
 
       if (nativeLoop != null) {
         if (nativeLoop.answer.trim().isEmpty) {
           throw Exception('Provider native tool-call request completed without text or tool observations.');
+        }
+        if (_agentExecutionMode == AgentExecutionMode.agentLoop && !nativeLoop.usedNativeToolCalls) {
+          throw Exception('Agent Loop requires provider-native tool_calls, but the provider returned only text. Switch to Single-shot for text-only generation.');
         }
         modelAnswer = nativeLoop.answer;
         generatedPath = nativeLoop.generatedPath;
@@ -11226,6 +11140,15 @@ class _ChatPanelState extends State<_ChatPanel> {
       'You are MobileCode Android tool-aware coding assistant.',
       'You are running inside a mobile app, so be honest about what has actually happened.',
       'The selected tool is `$toolName`.',
+      'Execution mode: ${_agentExecutionMode.label}.',
+      if (_agentExecutionMode == AgentExecutionMode.agentLoop) ...[
+        'Agent preset: ${_agentPreset.label}.',
+        _agentPreset.systemInstruction,
+        'Allowed provider-native tools for this preset: ${_agentPreset.allowedToolNames.join(', ')}.',
+        'Use provider-native tool calls for actions; do not claim files, previews, searches, or snapshots happened until MobileCode returns tool observations.',
+      ] else ...[
+        'Single-shot mode: answer once. MobileCode may save and preview generated artifacts after your response, but you must not claim provider-native tool execution happened.',
+      ],
       if (repoContext.isNotEmpty) ...[
         '',
         repoContext,
@@ -12069,8 +11992,20 @@ class _ChatPanelState extends State<_ChatPanel> {
           children: [
             Row(
               children: [
+                _AgentExecutionModeSegment(
+                  mode: _agentExecutionMode,
+                  running: _agentRunning || _sending,
+                  onChanged: (mode) => setState(() => _agentExecutionMode = mode),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: _ChatModeStrip(onPrompt: (prompt, {runAgent = false}) => unawaited(setPromptFromShell(prompt, runAgent: runAgent))),
+                  child: _agentExecutionMode == AgentExecutionMode.agentLoop
+                      ? _AgentPresetStrip(
+                          selected: _agentPreset,
+                          running: _agentRunning || _sending,
+                          onChanged: (preset) => setState(() => _agentPreset = preset),
+                        )
+                      : const SizedBox.shrink(),
                 ),
                 const SizedBox(width: 8),
                 _CompactAgentModeToggle(
@@ -12080,6 +12015,8 @@ class _ChatPanelState extends State<_ChatPanel> {
                 ),
               ],
             ),
+            const SizedBox(height: 7),
+            _ChatModeStrip(onPrompt: (prompt, {runAgent = false}) => unawaited(setPromptFromShell(prompt, runAgent: runAgent))),
             const SizedBox(height: 7),
             Container(
               padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
@@ -13349,6 +13286,183 @@ class _AgentModeToggle extends StatelessWidget {
             activeColor: _violet,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AgentExecutionModeSegment extends StatelessWidget {
+  const _AgentExecutionModeSegment({
+    required this.mode,
+    required this.running,
+    required this.onChanged,
+  });
+
+  final AgentExecutionMode mode;
+  final bool running;
+  final ValueChanged<AgentExecutionMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 34,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: _panelSoft,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _AgentExecutionModeChip(
+            label: 'Single-shot',
+            selected: mode == AgentExecutionMode.singleShot,
+            enabled: !running,
+            color: _mint,
+            onTap: () => onChanged(AgentExecutionMode.singleShot),
+          ),
+          _AgentExecutionModeChip(
+            label: 'Agent Loop',
+            selected: mode == AgentExecutionMode.agentLoop,
+            enabled: !running,
+            color: _violet,
+            onTap: () => onChanged(AgentExecutionMode.agentLoop),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AgentExecutionModeChip extends StatelessWidget {
+  const _AgentExecutionModeChip({
+    required this.label,
+    required this.selected,
+    required this.enabled,
+    required this.color,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final bool enabled;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: enabled && !selected ? onTap : null,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? color.withOpacity(0.16) : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? _text : _muted,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AgentPresetStrip extends StatelessWidget {
+  const _AgentPresetStrip({
+    required this.selected,
+    required this.running,
+    required this.onChanged,
+  });
+
+  final AgentPreset selected;
+  final bool running;
+  final ValueChanged<AgentPreset> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final preset in AgentPreset.values) ...[
+            _AgentPresetChip(
+              preset: preset,
+              selected: preset == selected,
+              enabled: !running,
+              onTap: () => onChanged(preset),
+            ),
+            const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AgentPresetChip extends StatelessWidget {
+  const _AgentPresetChip({
+    required this.preset,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final AgentPreset preset;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (preset) {
+      AgentPreset.builder => _mint,
+      AgentPreset.researchBuilder => _amber,
+      AgentPreset.repair => _cyan,
+      AgentPreset.reviewer => _blue,
+    };
+    return Tooltip(
+      message: preset.shortDescription,
+      child: InkWell(
+        onTap: enabled && !selected ? onTap : null,
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          height: 34,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            color: selected ? color.withOpacity(0.14) : _panelSoft,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: color.withOpacity(selected ? 0.48 : 0.20)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                switch (preset) {
+                  AgentPreset.builder => Icons.construction_outlined,
+                  AgentPreset.researchBuilder => Icons.travel_explore_outlined,
+                  AgentPreset.repair => Icons.healing_outlined,
+                  AgentPreset.reviewer => Icons.fact_check_outlined,
+                },
+                color: color,
+                size: 15,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                preset.label,
+                style: TextStyle(color: selected ? _text : _muted, fontSize: 11.5, fontWeight: FontWeight.w900),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

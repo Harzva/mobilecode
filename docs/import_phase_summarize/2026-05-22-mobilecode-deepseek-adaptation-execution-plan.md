@@ -512,7 +512,7 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 
 ## DS04.3 Search/Patch + 角色编排
 
-状态：`IN_PROGRESS`（本地实现完成，静态检查与 CI 待验收）
+状态：`ACCEPTED`（本地实现完成，Mobile Runtime CI 通过，APK 已构建）
 
 目标：
 
@@ -574,8 +574,18 @@ Shell 边界：
 - [x] `git diff --check`
 - [x] `node --check relay/mobilecode-token-relay-worker.js`
 - [x] `cd app && npm run build`
-- [ ] GitHub Actions `Mobile Runtime CI`
-- [ ] GitHub Actions `Build Android APK`
+- [x] GitHub Actions `Mobile Runtime CI`
+- [x] GitHub Actions `Build Android APK`
+
+本轮执行记录（2026-05-23）：
+
+- 实现提交：`c501acf feat: add sub-agent lite v2 commands`
+- 修复提交：`cccc8e6 fix: close sub-agent event emitter signature`
+- `cxspark` 只读审查通道已调用，但其环境无法读取仓库并未产出可采纳结果；没有采纳 Spark 输出，本轮由 Codex 手工实现并复核。
+- 首次 CI `26304214610` 失败原因：`agent_loop_controller.dart` 的 `_emit` named parameter 结束括号缺失。
+- 修复后 GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26304413085`
+- GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26304486306`
+- Release APK：`https://github.com/Harzva/mobilecode/releases/download/v0.1.60-last/mobilecode-v0.1.60-last.apk`
 
 剩余风险：
 

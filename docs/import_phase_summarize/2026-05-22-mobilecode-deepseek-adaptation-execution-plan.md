@@ -37,10 +37,10 @@ DeepSeek Provider
 - DeepSeek/OpenAI-compatible streaming `delta.tool_calls` 拼接。
 - `write_file / read_file / preview_html / preview_snapshot / web_search / fetch_url / report_result` 安全工具集。
 - `ActionRunner / ActionEvidence / Activity Logs` 记录执行事实。
-- DS01 DeepSeek v4 Provider Profile 本地实现完成，等待 CI。
-- DS02 默认模型与 Base URL 本地迁移完成，等待 CI。
-- DS03 Thinking + Tool Calls 回传本地加固完成，等待 CI。
-- DS04 Streaming tool_calls 边界测试本地完成，等待 CI。
+- DS01 DeepSeek v4 Provider Profile 已完成，Mobile Runtime CI 与 v0.1.51-last APK 构建已通过。
+- DS02 默认模型与 Base URL 迁移已完成，Mobile Runtime CI 与 v0.1.51-last APK 构建已通过。
+- DS03 Thinking + Tool Calls 回传加固已完成，Mobile Runtime CI 与 v0.1.51-last APK 构建已通过。
+- DS04 Streaming tool_calls 边界测试已完成，Mobile Runtime CI 与 v0.1.51-last APK 构建已通过。
 
 未完成或需加固：
 
@@ -102,7 +102,7 @@ DeepSeek Provider
 
 ## DS01 DeepSeek v4 Provider Profile
 
-状态：`IN_PROGRESS`（本地实现完成，等待 CI）
+状态：`ACCEPTED`（本地实现完成，Mobile Runtime CI 通过，APK 已构建）
 
 目标：
 
@@ -146,7 +146,7 @@ DeepSeek Provider
 本轮执行记录（2026-05-22）：
 
 任务编号：DS01
-状态：IN_PROGRESS（本地实现完成，等待 CI）
+状态：ACCEPTED（本地实现完成，CI 与 APK 构建通过）
 实际改动：
 
 - `ToolCallProviderProfile.detect()` 新增 DeepSeek profile kind，区分 `v4Flash / v4Pro / strictBeta / legacyChat / legacyReasoner / experimentalUnsupported / unknown`。
@@ -169,17 +169,17 @@ DeepSeek Provider
 - `git diff --check` 通过。
 - 本地 `flutter` / `dart` 不在 PATH，未运行 Flutter analyze/test。
 
-CI 链接：PENDING
-APK 链接：PENDING
+CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
+APK 链接：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-last/mobilecode-v0.1.51-last.apk`
 剩余风险：
 
-- DS02 已本地统一 DeepSeek 默认 Base URL 与 relay 口径，仍需 GitHub Actions 验证。
-- 需要 GitHub Actions `Mobile Runtime CI` 验证 Dart 编译与测试。
-下一步：提交 DS01-DS04 并触发 GitHub Actions `Mobile Runtime CI`。
+- DS05 错误码映射尚未开始。
+- 仍需人工安装 `v0.1.51-last` APK，回归 DeepSeek Agent Loop 与 Single-shot fallback 体验。
+下一步：人工验收 `v0.1.51-last` APK；通过后继续 DS05 DeepSeek 错误码映射。
 
 ## DS02 默认模型与 Base URL 迁移
 
-状态：`IN_PROGRESS`（本地实现完成，等待 CI）
+状态：`ACCEPTED`（本地实现完成，Mobile Runtime CI 通过，APK 已构建）
 
 目标：
 
@@ -219,8 +219,8 @@ APK 链接：PENDING
 
 - [x] `git diff --check`
 - [x] `node --check relay/mobilecode-token-relay-worker.js`
-- [ ] GitHub Actions `Mobile Runtime CI`
-- [ ] GitHub Actions `Build Android APK`
+- [x] GitHub Actions `Mobile Runtime CI`
+- [x] GitHub Actions `Build Android APK`
 
 验证证据：
 
@@ -228,17 +228,20 @@ APK 链接：PENDING
 - `node --check relay/mobilecode-token-relay-worker.js` 通过。
 - 本地 `flutter` / `dart` 不在 PATH，未运行 Flutter analyze/test。
 - `cxspark` 执行完成并进入 Codex review：`20260522-145722-6d23434577ac-36792-1ba4394c`。
+- GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
+- GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275362394`
+- Release APK：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-last/mobilecode-v0.1.51-last.apk`
 
 剩余风险：
 
 - `deepseek-v4-flash` 仍只作为 profile/test 覆盖与后续普通聊天候选项，当前单一 DeepSeek UI preset 继续推荐编码优先的 `deepseek-v4-pro`。
-- 需要 GitHub Actions 验证 Flutter 编译、移动端 provider 请求路径与 APK 构建。
+- 需要人工安装 APK 验证移动端 provider 请求路径与 DeepSeek Agent Loop 真实体验。
 
 下一步：DS03 Thinking + Tool Calls 回传加固。
 
 ## DS03 Thinking + Tool Calls 回传加固
 
-状态：`IN_PROGRESS`（本地实现完成，等待 CI）
+状态：`ACCEPTED`（本地实现完成，Mobile Runtime CI 通过，APK 已构建）
 
 目标：
 
@@ -271,12 +274,12 @@ APK 链接：PENDING
 
 - [x] `git diff --check`
 - [x] 本地 `flutter`/`dart` 命令可用性确认（本地环境未检测到 `flutter`/`dart`）
-- [ ] GitHub Actions `Mobile Runtime CI`
+- [x] GitHub Actions `Mobile Runtime CI`
 
 本轮执行记录（2026-05-22）：
 
 任务编号：DS03
-状态：`IN_PROGRESS`（本地加固完成，等待 CI）
+状态：`ACCEPTED`（本地加固完成，CI 与 APK 构建通过）
 实际改动：
 
 - `OpenAiToolCallStreamAssembler` 现在会组装 streaming `delta.content` 与 `delta.reasoning_content`，并继续拼接 `delta.tool_calls`。
@@ -296,19 +299,22 @@ APK 链接：PENDING
 - `git diff --check` 通过。
 - 本地 `flutter` / `dart` 不在 PATH，未运行 Flutter analyze/test。
 - `cxspark` 执行完成并进入 Codex review：`20260522-151017-6d23434577ac-19588-99a101d4`。
+- GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
+- GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275362394`
+- Release APK：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-last/mobilecode-v0.1.51-last.apk`
 
-CI 链接：PENDING
+CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 
 剩余风险：
 
-- 需要 GitHub Actions `Mobile Runtime CI` 验证 Dart 编译和聚焦测试。
-- DS04 本地已补 SSE 边界测试，例如 `[DONE]`、keep-alive、usage-only chunk、多 tool 并行分片。
+- DS05 错误码映射尚未开始。
+- 仍需人工安装 `v0.1.51-last` APK，回归 DeepSeek Agent Loop 与 Single-shot fallback 体验。
 
-下一步：提交 DS01-DS04 并触发 GitHub Actions `Mobile Runtime CI`。
+下一步：人工验收 `v0.1.51-last` APK；通过后继续 DS05 DeepSeek 错误码映射。
 
 ## DS04 Streaming tool_calls 完整测试
 
-状态：`IN_PROGRESS`（本地实现完成，等待 CI）
+状态：`ACCEPTED`（本地实现完成，Mobile Runtime CI 通过，APK 已构建）
 
 目标：
 
@@ -337,12 +343,13 @@ CI 链接：PENDING
 
 - [x] `git diff --check`
 - [x] 本地 `flutter` / `dart` 可用性确认（未检测到 `flutter` / `dart`）
-- [ ] GitHub Actions `Mobile Runtime CI`
+- [x] GitHub Actions `Mobile Runtime CI`
+- [x] GitHub Actions `Build Android APK`
 
 本轮执行记录（2026-05-22）：
 
 任务编号：DS04
-状态：`IN_PROGRESS`（本地 streaming 边界测试完成，等待 CI）
+状态：`ACCEPTED`（streaming 边界测试完成，CI 与 APK 构建通过）
 实际改动：
 
 - 新增 `parseOpenAiStreamEvent`，统一处理 `data:` payload、`data: [DONE]`、空行、`event:` 和 `: keep-alive`。
@@ -359,17 +366,21 @@ CI 链接：PENDING
 验证结果：
 
 - `git diff --check` 通过。
+- `node --check relay/mobilecode-token-relay-worker.js` 通过。
 - 本地 `flutter` / `dart` 不在 PATH，未运行 Flutter analyze/test。
 - `cxspark` 执行完成并进入 Codex review：`20260522-152229-6d23434577ac-22928-264b9d68`。
+- GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
+- GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26275362394`
+- Release APK：`https://github.com/Harzva/mobilecode/releases/download/v0.1.51-last/mobilecode-v0.1.51-last.apk`
 
-CI 链接：PENDING
+CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 
 剩余风险：
 
-- 需要 GitHub Actions `Mobile Runtime CI` 验证 Dart 编译和新增测试。
+- 需要用户手动安装 `mobilecode-v0.1.51-last.apk` 验收 UI 与 DeepSeek Agent Loop 行为。
 - DS05 错误码映射尚未开始。
 
-下一步：提交 DS01-DS04 并触发 GitHub Actions `Mobile Runtime CI`。
+下一步：手动验收 `v0.1.51-last`；通过后继续 DS05 DeepSeek 错误码映射。
 
 ## DS05 DeepSeek 错误码映射
 

@@ -986,6 +986,47 @@ _PublishedArtifactInfo? _pagesDeploymentFromContent(String content, DateTime fal
 
 bool _isWebArtifactPath(String path) => path.toLowerCase().endsWith('.html') || path.toLowerCase().endsWith('.htm');
 
+bool _looksLikeGeneratedArtifactPayload(String value) {
+  final lower = value.toLowerCase();
+  return lower.contains('```html') ||
+      lower.contains('<!doctype html') ||
+      lower.contains('<html') ||
+      (value.length > 1800 && (lower.contains('<script') || lower.contains('<style') || lower.contains('function ')));
+}
+
+String _assistantNonCodeSummary(String value, {int limit = 420}) {
+  var text = value.trim();
+  if (text.isEmpty) return '';
+  text = text
+      .replaceAll(RegExp(r'```(?:html|HTML)\s*[\s\S]*?```'), ' ')
+      .replaceAll(RegExp(r'```[\s\S]*?```'), ' ')
+      .replaceAll(RegExp(r'<!doctype html[\s\S]*?</html>', caseSensitive: false), ' ')
+      .replaceAll(RegExp(r'<html[\s\S]*?</html>', caseSensitive: false), ' ');
+  final lower = text.toLowerCase();
+  var htmlStart = -1;
+  for (final index in [lower.indexOf('<!doctype html'), lower.indexOf('<html')]) {
+    if (index >= 0 && (htmlStart == -1 || index < htmlStart)) {
+      htmlStart = index;
+    }
+  }
+  if (htmlStart >= 0) {
+    text = text.substring(0, htmlStart);
+  }
+  final lines = text
+      .split('\n')
+      .map((line) => line.trim())
+      .where((line) {
+        if (line.isEmpty) return false;
+        return !line.startsWith('Agent run completed via provider:') &&
+            !line.startsWith('Saved generated artifact:') &&
+            !line.startsWith('Phone file path:') &&
+            !line.startsWith('Code file:') &&
+            !line.startsWith('Web preview:');
+      })
+      .join(' ');
+  return _compact(lines, limit: limit);
+}
+
 bool _isAgentResultTurn(String content) {
   final trimmed = content.trimLeft();
   return trimmed.startsWith('Agent run completed via provider:') ||
@@ -10826,13 +10867,12 @@ class _ChatPanelState extends State<_ChatPanel> {
               currentText.length - lastPreviewLength >= 240) {
             lastPreviewAt = now;
             lastPreviewLength = currentText.length;
-            final tailStart = currentText.length > 240 ? currentText.length - 240 : 0;
-            final previewTail = currentText.substring(tailStart);
             final elapsed = now.difference(providerStarted).inSeconds;
             _setAgentRunStep(
               2,
               _AgentStepState.running,
-              detail: 'Streaming ${currentText.length} chars in ${elapsed}s...\n${_compact(previewTail, limit: 240)}',
+              detail:
+                  'Streaming provider output: ${currentText.length} chars in ${elapsed}s. Buffering content for validation instead of showing raw code in chat.',
             );
           }
         }
@@ -11218,7 +11258,10 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   String _agentProviderCompletionMessage(String toolName, String modelAnswer, String? generatedPath) {
     final isWebArtifact = generatedPath != null && _isWebArtifactPath(generatedPath);
-    return [
+    final answer = modelAnswer.trim();
+    final summary = _assistantNonCodeSummary(answer);
+    final shouldHideRawPayload = isWebArtifact || _looksLikeGeneratedArtifactPayload(answer);
+    final lines = [
       'Agent run completed via provider: `$toolName`',
       if (generatedPath != null) ...[
         'Saved generated artifact: `$generatedPath`',
@@ -11226,9 +11269,22 @@ class _ChatPanelState extends State<_ChatPanel> {
         'Code file: `$generatedPath`',
         if (isWebArtifact) 'Web preview: tap “网页预览” for in-app WebView or “浏览器打开” for the external browser.',
       ],
-      '',
-      modelAnswer.trim(),
-    ].join('\n');
+    ];
+    if (summary.isNotEmpty) {
+      lines
+        ..add('')
+        ..add(summary);
+    }
+    if (shouldHideRawPayload) {
+      lines
+        ..add('')
+        ..add('生成代码已保存到上方文件，不再内联到聊天区；请点“代码文件”或“网页预览”查看。');
+    } else if (answer.isNotEmpty && summary.isEmpty) {
+      lines
+        ..add('')
+        ..add(answer);
+    }
+    return lines.join('\n');
   }
 
   bool _toolRequiresHtmlArtifact(String toolName) {
@@ -15399,6 +15455,7 @@ class _AgentTracePanel extends StatelessWidget {
     final failed = steps.where((step) => step.state == _AgentStepState.failed).length;
     final running = steps.where((step) => step.state == _AgentStepState.running).length;
     final progress = steps.isEmpty ? 0.0 : (completed + failed) / steps.length;
+    final liveStep = _latestAgentTraceStatusStep(steps);
     return _Panel(
       padding: const EdgeInsets.all(12),
       child: Column(
@@ -15421,6 +15478,10 @@ class _AgentTracePanel extends StatelessWidget {
               ),
             ],
           ),
+          if (liveStep != null) ...[
+            const SizedBox(height: 10),
+            _AgentTraceLiveStatus(step: liveStep),
+          ],
           const SizedBox(height: 12),
           for (var index = 0; index < steps.length; index++) ...[
             _AgentTraceRow(
@@ -15436,6 +15497,64 @@ class _AgentTracePanel extends StatelessWidget {
             running: running,
             failed: failed,
             total: steps.length,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+_AgentTraceStep? _latestAgentTraceStatusStep(List<_AgentTraceStep> steps) {
+  for (final step in steps.reversed) {
+    if (step.state == _AgentStepState.running) return step;
+  }
+  for (final step in steps.reversed) {
+    if (step.state != _AgentStepState.queued) return step;
+  }
+  return steps.isEmpty ? null : steps.first;
+}
+
+class _AgentTraceLiveStatus extends StatelessWidget {
+  const _AgentTraceLiveStatus({required this.step});
+
+  final _AgentTraceStep step;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _agentStepColor(step.state);
+    final label = step.state == _AgentStepState.running ? '当前状态' : '最新状态';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.28)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(step.state == _AgentStepState.running ? Icons.sync_outlined : _agentStepStatusIcon(step.state), color: color, size: 17),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$label · ${step.title}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  step.detail,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _muted, fontSize: 12, height: 1.34),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -15606,7 +15725,7 @@ class _AgentTraceRow extends StatelessWidget {
                       _AgentTraceInlineDetails(
                         details: step.details,
                         color: color,
-                        initiallyExpanded: step.title == 'Call model provider',
+                        initiallyExpanded: false,
                       ),
                     ],
                   ],

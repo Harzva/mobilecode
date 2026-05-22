@@ -664,6 +664,65 @@ const _localToolSpecs = [
   ),
 ];
 
+const _providerNativeToolSpecs = [
+  _LocalToolSpec(
+    name: 'web_search',
+    description: 'Let the model ask for compact public web references through the managed relay.',
+    surface: 'Relay read',
+    icon: Icons.travel_explore_outlined,
+    color: _amber,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
+    name: 'fetch_url',
+    description: 'Fetch and summarize one public HTTPS URL; local/private URLs are blocked.',
+    surface: 'Relay read',
+    icon: Icons.link_outlined,
+    color: _cyan,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
+    name: 'write_file',
+    description: 'Write complete file content inside the MobileCode workspace via ActionRunner.',
+    surface: 'ActionRunner',
+    icon: Icons.edit_note_outlined,
+    color: _mint,
+    risk: 'guarded write',
+  ),
+  _LocalToolSpec(
+    name: 'read_file',
+    description: 'Read a bounded preview of a workspace file and return it as model observation.',
+    surface: 'ActionRunner',
+    icon: Icons.description_outlined,
+    color: _blue,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
+    name: 'preview_html',
+    description: 'Prepare an in-app WebView preview from a workspace HTML file or inline HTML.',
+    surface: 'WebView',
+    icon: Icons.preview_outlined,
+    color: _violet,
+    risk: 'local preview',
+  ),
+  _LocalToolSpec(
+    name: 'preview_snapshot',
+    description: 'Record preview metadata/DOM evidence; this is not a native bitmap screenshot.',
+    surface: 'ActionEvidence',
+    icon: Icons.photo_camera_back_outlined,
+    color: _cyan,
+    risk: 'local evidence',
+  ),
+  _LocalToolSpec(
+    name: 'report_result',
+    description: 'Finish the loop with a concise status, summary, evidence IDs, and recovery notes.',
+    surface: 'Agent Loop',
+    icon: Icons.fact_check_outlined,
+    color: _mint,
+    risk: 'no execution',
+  ),
+];
+
 String _normalizedBaseUrl(String baseUrl) {
   return baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
 }
@@ -2819,7 +2878,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _CommandShortcut(
         icon: Icons.handyman_outlined,
         title: 'Tool tests',
-        subtitle: '测试 provider、GitHub、WebView、storage、runtime、root。',
+        subtitle: '查看 tool list，并测试 provider、GitHub、WebView、storage、runtime、root。',
         color: _cyan,
         action: _ModuleAction.toolLab,
       ),
@@ -7810,6 +7869,7 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
   bool _running = false;
 
   static const _tools = [
+    _ToolProbe(name: 'Provider tool list', detail: 'Shows Agent Loop function tools and preset permissions.', icon: Icons.schema_outlined, action: 'tool_list'),
     _ToolProbe(name: 'AI provider health', detail: 'Uses configured Base URL and model.', icon: Icons.monitor_heart_outlined, action: 'health'),
     _ToolProbe(name: 'GitHub web tester', detail: 'Opens a Pages test page for token and repo checks.', icon: Icons.hub_outlined, action: 'github_web'),
     _ToolProbe(name: 'Code 2048 project', detail: 'Runs the local coding lab and WebView preview flow.', icon: Icons.grid_4x4_outlined, action: 'demo_2048'),
@@ -7831,6 +7891,16 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
   }
 
   Future<void> _run(String action) async {
+    if (action == 'tool_list') {
+      final toolNames = _providerNativeToolSpecs.map((tool) => tool.name).join(', ');
+      final presets = AgentPreset.values.map((preset) => '${preset.label}: ${preset.allowedToolNames.length}').join(' / ');
+      _addResult(
+        'Provider tool list',
+        true,
+        'Agent Loop exposes $toolNames. Presets: $presets. Blocked by design: shell, Git push, publishing, remote logs, arbitrary commands.',
+      );
+      return;
+    }
     if (action == 'github_web') {
       widget.onOpenGitHubWeb();
       _addResult('GitHub web tester', true, 'Opened external browser page.');
@@ -7990,6 +8060,16 @@ class _ToolLabSheetState extends State<_ToolLabSheet> {
               ],
             ),
           ),
+          const SizedBox(height: 12),
+          const _LocalToolRegistry(
+            tools: _providerNativeToolSpecs,
+            title: 'Provider-native tool list',
+            subtitle: 'These are the only tools a provider-native Agent Loop may ask MobileCode to execute. The app still validates schema, paths, URLs, and evidence before every action.',
+            icon: Icons.schema_outlined,
+            color: _violet,
+          ),
+          const SizedBox(height: 12),
+          const _AgentPresetToolMatrix(),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -14996,9 +15076,19 @@ class _InlineStatus extends StatelessWidget {
 }
 
 class _LocalToolRegistry extends StatelessWidget {
-  const _LocalToolRegistry({required this.tools});
+  const _LocalToolRegistry({
+    required this.tools,
+    this.title = 'Phone tool registry',
+    this.subtitle,
+    this.icon = Icons.handyman_outlined,
+    this.color = _cyan,
+  });
 
   final List<_LocalToolSpec> tools;
+  final String title;
+  final String? subtitle;
+  final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
@@ -15009,17 +15099,24 @@ class _LocalToolRegistry extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.handyman_outlined, color: _cyan, size: 18),
+              Icon(icon, color: color, size: 18),
               const SizedBox(width: 8),
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'Phone tool registry',
-                  style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15),
+                  title,
+                  style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15),
                 ),
               ),
-              _Pill(label: '${tools.length} tools', icon: Icons.schema_outlined, color: _cyan),
+              _Pill(label: '${tools.length} tools', icon: Icons.schema_outlined, color: color),
             ],
           ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              subtitle!,
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+            ),
+          ],
           const SizedBox(height: 10),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -15095,6 +15192,121 @@ class _LocalToolTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AgentPresetToolMatrix extends StatelessWidget {
+  const _AgentPresetToolMatrix();
+
+  Color _presetColor(AgentPreset preset) {
+    return switch (preset) {
+      AgentPreset.autoAgent => _violet,
+      AgentPreset.builder => _mint,
+      AgentPreset.researchBuilder => _amber,
+      AgentPreset.repair => _cyan,
+      AgentPreset.reviewer => _blue,
+    };
+  }
+
+  IconData _presetIcon(AgentPreset preset) {
+    return switch (preset) {
+      AgentPreset.autoAgent => Icons.auto_awesome_outlined,
+      AgentPreset.builder => Icons.construction_outlined,
+      AgentPreset.researchBuilder => Icons.travel_explore_outlined,
+      AgentPreset.repair => Icons.healing_outlined,
+      AgentPreset.reviewer => Icons.fact_check_outlined,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.account_tree_outlined, color: _mint, size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Agent preset access',
+                  style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15),
+                ),
+              ),
+              _Pill(label: 'no shell', icon: Icons.block_outlined, color: _rose),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'A model can only call the tools allowed by the selected Agent preset. Unsupported providers must fall back to Single-shot instead of pretending to be Agent Loop.',
+            style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+          ),
+          const SizedBox(height: 10),
+          for (final preset in AgentPreset.values) ...[
+            _AgentPresetToolRow(
+              preset: preset,
+              color: _presetColor(preset),
+              icon: _presetIcon(preset),
+            ),
+            if (preset != AgentPreset.values.last) const Divider(height: 14, color: _line),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _AgentPresetToolRow extends StatelessWidget {
+  const _AgentPresetToolRow({
+    required this.preset,
+    required this.color,
+    required this.icon,
+  });
+
+  final AgentPreset preset;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withOpacity(0.35)),
+          ),
+          child: Icon(icon, color: color, size: 17),
+        ),
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${preset.label} · ${preset.shortDescription}',
+                style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 12),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 5,
+                runSpacing: 5,
+                children: [
+                  for (final toolName in preset.allowedToolNames) _MiniChip(label: toolName, color: color),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

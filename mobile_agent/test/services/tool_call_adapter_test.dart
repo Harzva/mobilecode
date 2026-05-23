@@ -85,6 +85,9 @@ void main() {
       'find_files',
       'grep_files',
       'project_summary',
+      'detect_project_type',
+      'change_history',
+      'virtual_status',
       'agent_open',
       'agent_eval',
       'agent_close',
@@ -100,9 +103,12 @@ void main() {
       'virtual_diff',
       'restore_snapshot',
       'validate_html',
+      'validate_json',
+      'validate_markdown',
       'apply_patch',
       'preview_html',
       'preview_snapshot',
+      'termux_task_start',
       'report_result',
     ]);
     for (final tool in tools) {
@@ -220,6 +226,82 @@ void main() {
 
     expect(schema.params['path'], 'demo.html');
     expect(schema.params['adapterRepair'], contains('normalized path from `filename`'));
+  });
+
+  test('maps history status validators and typed termux tools to ActionSchema', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-flash',
+      ),
+    );
+
+    final history = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_history',
+      name: 'change_history',
+      arguments: {
+        'count': 12,
+        'include_read_only': true,
+        'action_filter': '',
+      },
+    ))!;
+    final status = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_status',
+      name: 'virtual_status',
+      arguments: {
+        'path': '.',
+        'max_files': 50,
+        'max_recent': 8,
+      },
+    ))!;
+    final detect = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_detect',
+      name: 'detect_project_type',
+      arguments: {
+        'path': '.',
+        'max_depth': 3,
+        'max_files': 100,
+      },
+    ))!;
+    final json = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_json',
+      name: 'validate_json',
+      arguments: {
+        'path': 'package.json',
+        'json': '',
+        'max_bytes': 4096,
+      },
+    ))!;
+    final markdown = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_md',
+      name: 'validate_markdown',
+      arguments: {
+        'path': 'README.md',
+        'markdown': '',
+        'max_bytes': 4096,
+      },
+    ))!;
+    final termux = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_termux',
+      name: 'termux_task_start',
+      arguments: {
+        'task_kind': 'project_check',
+        'path': '.',
+        'args_json': '{}',
+        'timeout_ms': 30000,
+        'max_output_bytes': 4096,
+        'reason': 'verify',
+      },
+    ))!;
+
+    expect(history.actionName, MobileCodeAction.changeHistory);
+    expect(history.params['includeReadOnly'], true);
+    expect(status.actionName, MobileCodeAction.virtualStatus);
+    expect(detect.actionName, MobileCodeAction.detectProjectType);
+    expect(json.actionName, MobileCodeAction.validateJson);
+    expect(markdown.actionName, MobileCodeAction.validateMarkdown);
+    expect(termux.actionName, MobileCodeAction.termuxTaskStart);
+    expect(termux.params['taskKind'], 'project_check');
   });
 
   test('repairs malformed write_file arguments that contain a complete HTML document', () {

@@ -134,6 +134,9 @@ extension AgentPresetConfig on AgentPreset {
             'find_files',
             'grep_files',
             'project_summary',
+            'detect_project_type',
+            'change_history',
+            'virtual_status',
             'agent_open',
             'agent_eval',
             'agent_close',
@@ -149,9 +152,12 @@ extension AgentPresetConfig on AgentPreset {
             'virtual_diff',
             'restore_snapshot',
             'validate_html',
+            'validate_json',
+            'validate_markdown',
             'apply_patch',
             'preview_html',
             'preview_snapshot',
+            'termux_task_start',
             'report_result',
           ],
         AgentPreset.builder => const [
@@ -159,6 +165,9 @@ extension AgentPresetConfig on AgentPreset {
             'find_files',
             'grep_files',
             'project_summary',
+            'detect_project_type',
+            'change_history',
+            'virtual_status',
             'write_file',
             'read_file',
             'copy_file',
@@ -169,8 +178,11 @@ extension AgentPresetConfig on AgentPreset {
             'virtual_diff',
             'restore_snapshot',
             'validate_html',
+            'validate_json',
+            'validate_markdown',
             'apply_patch',
             'preview_html',
+            'termux_task_start',
             'report_result',
           ],
         AgentPreset.researchBuilder => const [
@@ -178,6 +190,9 @@ extension AgentPresetConfig on AgentPreset {
             'find_files',
             'grep_files',
             'project_summary',
+            'detect_project_type',
+            'change_history',
+            'virtual_status',
             'agent_open',
             'agent_eval',
             'agent_close',
@@ -191,9 +206,12 @@ extension AgentPresetConfig on AgentPreset {
             'save_snapshot',
             'virtual_diff',
             'validate_html',
+            'validate_json',
+            'validate_markdown',
             'apply_patch',
             'preview_html',
             'preview_snapshot',
+            'termux_task_start',
             'report_result',
           ],
         AgentPreset.repair => const [
@@ -201,6 +219,9 @@ extension AgentPresetConfig on AgentPreset {
             'find_files',
             'grep_files',
             'project_summary',
+            'detect_project_type',
+            'change_history',
+            'virtual_status',
             'read_file',
             'write_file',
             'copy_file',
@@ -211,9 +232,12 @@ extension AgentPresetConfig on AgentPreset {
             'virtual_diff',
             'restore_snapshot',
             'validate_html',
+            'validate_json',
+            'validate_markdown',
             'apply_patch',
             'preview_html',
             'preview_snapshot',
+            'termux_task_start',
             'report_result',
           ],
         AgentPreset.reviewer => const [
@@ -221,6 +245,9 @@ extension AgentPresetConfig on AgentPreset {
             'find_files',
             'grep_files',
             'project_summary',
+            'detect_project_type',
+            'change_history',
+            'virtual_status',
             'agent_open',
             'agent_eval',
             'agent_close',
@@ -228,6 +255,8 @@ extension AgentPresetConfig on AgentPreset {
             'save_snapshot',
             'virtual_diff',
             'validate_html',
+            'validate_json',
+            'validate_markdown',
             'preview_html',
             'preview_snapshot',
             'report_result',
@@ -236,15 +265,15 @@ extension AgentPresetConfig on AgentPreset {
 
   String get systemInstruction => switch (this) {
         AgentPreset.autoAgent =>
-          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may summarize/list/find/grep/read first, open read-only Sub-Agent Lite explorer/reviewer sessions when useful, then write/patch/preview/validate/restore only when the user intent and observations justify it. Do not follow a fixed sequence; call only useful tools, and stop with report_result when done or blocked.',
+          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may summarize/list/find/grep/read/detect project type/status/history first, open read-only Sub-Agent Lite explorer/reviewer sessions when useful, then write/patch/preview/validate/restore only when the user intent and observations justify it. Use termux_task_start only when exposed as a typed helper route, never raw shell. Do not follow a fixed sequence; call only useful tools, and stop with report_result when done or blocked.',
         AgentPreset.builder =>
-          'Agent preset Builder: inspect with project_summary/find_files/grep_files/read_file when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, preview and validate HTML when relevant, then report concise evidence. If apply_patch is blocked, do not repeat the same malformed patch; read the target and retry a valid unified diff or use complete write_file for a small generated artifact.',
+          'Agent preset Builder: inspect with project_summary/detect_project_type/find_files/grep_files/read_file/virtual_status when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, preview and validate HTML/JSON/Markdown when relevant, then report concise evidence. Use termux_task_start only when the typed helper route is exposed. If apply_patch is blocked, do not repeat the same malformed patch; read the target and retry a valid unified diff or use complete write_file for a small generated artifact.',
         AgentPreset.researchBuilder =>
           'Agent preset Research Builder: use public reference tools when they are useful, inspect/summarize local files, optionally open read-only background explorer/reviewer Sub-Agent Lite sessions, build or patch one local artifact, preview and validate it when relevant, capture preview evidence when needed, then report refIds and evidenceIds.',
         AgentPreset.repair =>
-          'Agent preset Repair: summarize, find, grep, and read the existing artifact or evidence, save a snapshot when useful, apply a focused patch or complete write_file replacement for small artifacts, restore a confirmed snapshot only when the user asks for rollback, preview/validate again, then report what changed. If apply_patch is blocked, switch strategy: read_file the exact target, send a valid unified diff, or use complete write_file for a small HTML artifact.',
+          'Agent preset Repair: summarize, find, grep, read the existing artifact or evidence, inspect virtual_status/change_history, save a snapshot when useful, apply a focused patch or complete write_file replacement for small artifacts, restore a confirmed snapshot only when the user asks for rollback, preview/validate again, then report what changed. If apply_patch is blocked, switch strategy: read_file the exact target, send a valid unified diff, or use complete write_file for a small HTML artifact.',
         AgentPreset.reviewer =>
-          'Agent preset Reviewer: summarize and inspect local files, save snapshots, inspect virtual diffs, validate HTML, preview evidence, and optionally open read-only background explorer/reviewer Sub-Agent Lite sessions. Do not write files, restore snapshots, publish, run shell, or mutate projects.',
+          'Agent preset Reviewer: summarize and inspect local files, detect project type, inspect change_history/virtual_status/virtual_diff, validate HTML/JSON/Markdown, preview evidence, and optionally open read-only background explorer/reviewer Sub-Agent Lite sessions. Do not write files, restore snapshots, run Termux tasks, publish, run shell, or mutate projects.',
       };
 
   bool get supportsWrite =>
@@ -274,10 +303,16 @@ class AgentLoopController {
 
   List<String> get allowedToolNames {
     final base = _allowedToolNames ?? preset.allowedToolNames;
-    if (actionRunner.webToolInvoker != null) return List<String>.unmodifiable(base);
-    return List<String>.unmodifiable(
-      base.where((name) => name != 'web_search' && name != 'fetch_url'),
-    );
+    final filtered = base.where((name) {
+      if (actionRunner.webToolInvoker == null && (name == 'web_search' || name == 'fetch_url')) {
+        return false;
+      }
+      if (actionRunner.termuxTaskInvoker == null && name == 'termux_task_start') {
+        return false;
+      }
+      return true;
+    });
+    return List<String>.unmodifiable(filtered);
   }
 
   Future<AgentLoopResult> run({
@@ -408,7 +443,15 @@ class AgentLoopController {
         final status = _statusForResult(result);
         observations.add('${call.name}: $status · evidence ${evidence.evidenceId}');
         toolSummaries.add(_AgentLoopToolSummary.from(call: call, result: result));
-        if (result.path != null && result.path!.trim().isNotEmpty && call.name != 'preview_snapshot') {
+        if (result.path != null &&
+            result.path!.trim().isNotEmpty &&
+            call.name != 'preview_snapshot' &&
+            call.name != 'change_history' &&
+            call.name != 'virtual_status' &&
+            call.name != 'detect_project_type' &&
+            call.name != 'validate_json' &&
+            call.name != 'validate_markdown' &&
+            call.name != 'termux_task_start') {
           generatedPath = result.path;
         }
         if (_isMutationTool(call.name) && result.success) {
@@ -418,11 +461,17 @@ class AgentLoopController {
             call.name == 'find_files' ||
             call.name == 'list_files' ||
             call.name == 'project_summary' ||
+            call.name == 'detect_project_type' ||
+            call.name == 'change_history' ||
+            call.name == 'virtual_status' ||
             call.name == 'preview_html' ||
             call.name == 'preview_snapshot' ||
             call.name == 'save_snapshot' ||
             call.name == 'virtual_diff' ||
-            call.name == 'validate_html') {
+            call.name == 'validate_html' ||
+            call.name == 'validate_json' ||
+            call.name == 'validate_markdown' ||
+            call.name == 'termux_task_start') {
           writeNeedsVerification = false;
         }
 
@@ -499,8 +548,8 @@ class AgentLoopController {
     if (_isMutationTool(call.name) && writeNeedsVerification) {
       return _blockedProviderToolResult(
         call,
-        'A workspace file was already changed successfully. Use read_file, grep_files, preview_html, preview_snapshot, or report_result before another mutation.',
-        const ['Read, grep, or preview the changed artifact before another mutating tool call.'],
+        'A workspace file was already changed successfully. Use read_file, grep_files, virtual_status, validate_html, validate_json, validate_markdown, preview_html, preview_snapshot, termux_task_start, or report_result before another mutation.',
+        const ['Read, grep, validate, preview, or inspect virtual status for the changed artifact before another mutating tool call.'],
       );
     }
 
@@ -1105,7 +1154,14 @@ String _roleForModelRequest(int round) {
 }
 
 String _roleForTool(String toolName) {
-  if (toolName == 'find_files' || toolName == 'grep_files' || toolName == 'list_files' || toolName == 'project_summary' || toolName == 'read_file') {
+  if (toolName == 'find_files' ||
+      toolName == 'grep_files' ||
+      toolName == 'list_files' ||
+      toolName == 'project_summary' ||
+      toolName == 'detect_project_type' ||
+      toolName == 'change_history' ||
+      toolName == 'virtual_status' ||
+      toolName == 'read_file') {
     return 'Planner';
   }
   if (toolName == 'write_file' ||
@@ -1120,6 +1176,8 @@ String _roleForTool(String toolName) {
   if (toolName == 'save_snapshot' ||
       toolName == 'virtual_diff' ||
       toolName == 'validate_html' ||
+      toolName == 'validate_json' ||
+      toolName == 'validate_markdown' ||
       toolName == 'preview_html' ||
       toolName == 'preview_snapshot' ||
       toolName == 'report_result') {
@@ -1127,6 +1185,9 @@ String _roleForTool(String toolName) {
   }
   if (toolName == 'web_search' || toolName == 'fetch_url') {
     return 'Research';
+  }
+  if (toolName == 'termux_task_start') {
+    return 'Builder';
   }
   return 'Repair';
 }
@@ -1144,6 +1205,8 @@ String _observationRoleForTool(String toolName) {
   if (toolName == 'save_snapshot' ||
       toolName == 'virtual_diff' ||
       toolName == 'validate_html' ||
+      toolName == 'validate_json' ||
+      toolName == 'validate_markdown' ||
       toolName == 'preview_html' ||
       toolName == 'preview_snapshot' ||
       toolName == 'report_result') {
@@ -1151,6 +1214,9 @@ String _observationRoleForTool(String toolName) {
   }
   if (toolName == 'web_search' || toolName == 'fetch_url') {
     return 'Research';
+  }
+  if (toolName == 'termux_task_start') {
+    return 'Reviewer';
   }
   return 'Planner';
 }

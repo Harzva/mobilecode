@@ -27,6 +27,7 @@ This lets models reuse Linux/macOS development habits while MobileCode keeps And
 | List files | `ls`, `dir` | App can list app-owned files | Supported | `list_files` |
 | Recursive find | `find`, `fd` | Safe only inside workspace | Supported | `find_files` |
 | Project summary | `pwd`, `tree`, `stat` overview | App can summarize bounded workspace files | Supported | `project_summary` |
+| Project type | package / framework sniffing | App can scan filenames safely | Supported | `detect_project_type` |
 | Read text | `cat`, `head`, `tail`, `less` | App can read workspace text | Supported | `read_file` |
 | Write text | `cat > file`, editor save | App can write workspace files | Supported | `write_file` |
 | Move / rename | `mv` | Safe inside workspace | Supported | `move_file` |
@@ -38,16 +39,19 @@ This lets models reuse Linux/macOS development habits while MobileCode keeps And
 | Replace text | `sed -i`, editor replace | Risky without diff preview | Partial | `apply_patch` unified diff |
 | Snapshot | checkpoint before changes | App can copy bounded workspace files | Supported | `save_snapshot` |
 | Diff | `diff`, `git diff` | Can be snapshot-based | Supported | `virtual_diff` |
+| Status / history | `git status`, `git log`, shell history | Git binary not guaranteed | Supported virtual | `virtual_status` / `change_history` |
 | Restore snapshot | `git restore`, rollback | Risky unless explicit and bounded | Guarded | `restore_snapshot` with `confirm=true` |
 | Patch | `patch`, `git apply` | Safe with workspace validation | Supported | `apply_patch` bounded auto-apply |
 | HTML sanity check | `tidy`, `htmlhint`, browser check | App can inspect text HTML safely | Supported | `validate_html` |
+| JSON check | `jq`, `python -m json.tool` | App can parse UTF-8 JSON | Supported | `validate_json` |
+| Markdown check | `markdownlint` basics | App can inspect Markdown text | Supported | `validate_markdown` |
 | Web fetch | `curl`, `wget` | App should not fetch private/local targets | Supported when relay configured | `fetch_url` relay |
 | Web search | search CLI / browser | Requires managed relay | Supported when relay configured | `web_search` relay |
 | Preview | browser open | App has WebView | Supported | `preview_html` |
 | Preview evidence | screenshot | Native bitmap capture not implemented | Partial | `preview_snapshot` metadata |
-| Package managers | `npm`, `pip`, `brew`, `apt` | Not guaranteed on Android app sandbox | Runtime only | Helper/Termux/CI later |
-| Build tools | `flutter`, `dart`, `gradle`, `make` | Not guaranteed in APK | Runtime only | Helper/Termux/CI later |
-| Git local | `git status`, `git diff` | Git binary not guaranteed | Partial virtual | `save_snapshot` / `virtual_diff`; status/restore later |
+| Package managers | `npm`, `pip`, `brew`, `apt` | Not guaranteed on Android app sandbox | Runtime only | typed Helper/Termux/CI later |
+| Build tools | `flutter`, `dart`, `gradle`, `make` | Not guaranteed in APK | Typed route designed | `termux_task_start` when Helper/Termux is configured |
+| Git local | `git status`, `git diff` | Git binary not guaranteed | Partial virtual | `virtual_status` / `change_history` / `save_snapshot` / `virtual_diff` / `restore_snapshot` |
 | Git remote | `git push`, release | High risk | Blocked | GitHub UI/CI only |
 | Android shell | `pm`, `am`, `dumpsys`, `logcat` | Requires privileges / debug mode | Blocked | Not provider-native |
 | Process control | `ps`, `top`, `kill` | Risky and limited | Blocked | Not exposed |
@@ -76,6 +80,9 @@ Supported today in provider-native Agent Loop:
 - `find_files`
 - `grep_files`
 - `project_summary`
+- `detect_project_type`
+- `change_history`
+- `virtual_status`
 - `web_search` when managed relay is configured
 - `fetch_url` when managed relay is configured
 - `write_file`
@@ -88,16 +95,19 @@ Supported today in provider-native Agent Loop:
 - `virtual_diff`
 - `restore_snapshot`
 - `validate_html`
+- `validate_json`
+- `validate_markdown`
 - `apply_patch`
 - `preview_html`
 - `preview_snapshot`
 - `report_result`
+- `termux_task_start` only when a typed Helper/Termux route is configured; otherwise it fails closed with evidence
 
 Not supported today:
 
 - arbitrary `ls` / `mv` / `cat` shell strings;
 - recursive delete, directory delete, or `rm -rf` semantics;
-- real package managers or shell builds;
+- real package managers or free-form shell builds;
 - Android system command execution.
 
 ## Failure Interpretation
@@ -139,22 +149,23 @@ Status: accepted.
 
 ### P2: Snapshot safety
 
-Status: accepted for bounded snapshot / diff / restore.
+Status: accepted for bounded snapshot / diff / restore / history / virtual status.
 
 - `save_snapshot`
 - `virtual_diff`
 - `restore_snapshot`
-- `change_history` remains future work
+- `change_history`
+- `virtual_status`
 
 ### P3: Project intelligence
 
-Status: partial.
+Status: accepted for lightweight project detection and content validation.
 
 - `project_summary`
 - `detect_project_type`
 - `validate_html`
-- `validate_json` remains future work
-- `validate_markdown` remains future work
+- `validate_json`
+- `validate_markdown`
 
 ### P4: Android-specific helpers
 
@@ -162,4 +173,4 @@ Status: partial.
 - `share_project`
 - `copy_to_downloads`
 - `request_workspace_permission`
-- optional Termux bridge, explicit user opt-in only
+- `termux_task_start` typed task route, explicit Helper/Termux configuration only

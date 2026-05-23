@@ -336,6 +336,79 @@ void main() {
     expect(result.evidence.actionName, MobileCodeAction.projectSummary);
   });
 
+  test('changeHistory and virtualStatus expose writes and restore points', () async {
+    final file = File('${workspace.path}/demo/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<h1>Before</h1>');
+    final snapshot = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.saveSnapshot,
+      params: const {
+        'path': 'demo',
+        'label': 'history baseline',
+        'maxFiles': 10,
+        'maxBytes': 4096,
+      },
+      requestId: 'ev-history-snapshot',
+    ));
+    final write = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.writeFile,
+      params: const {
+        'path': 'demo/index.html',
+        'content': '<h1>After</h1>',
+        'overwrite': true,
+      },
+      requestId: 'ev-history-write',
+    ));
+
+    final history = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.changeHistory,
+      params: const {'count': 10, 'includeReadOnly': false},
+      requestId: 'ev-history',
+    ));
+    final status = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.virtualStatus,
+      params: const {
+        'path': 'demo',
+        'maxFiles': 20,
+        'maxRecent': 10,
+      },
+      requestId: 'ev-status',
+    ));
+
+    expect(snapshot.success, true);
+    expect(write.success, true);
+    expect(history.success, true);
+    expect(history.text, contains('writeFile ok'));
+    expect(history.text, contains('saveSnapshot ok'));
+    expect(history.evidence.metadata['records'], isNotEmpty);
+    expect(status.success, true);
+    expect(status.text, contains('Restore points'));
+    expect(status.text, contains('Recent changes'));
+    expect(status.evidence.metadata['restorePoints'], isNotEmpty);
+  });
+
+  test('detectProjectType identifies static web and Flutter signals', () async {
+    await File('${workspace.path}/demo/index.html').create(recursive: true);
+    await File('${workspace.path}/demo/pubspec.yaml').writeAsString('name: demo\n');
+    await File('${workspace.path}/demo/lib/main.dart').create(recursive: true);
+
+    final result = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.detectProjectType,
+      params: const {
+        'path': 'demo',
+        'maxDepth': 4,
+        'maxFiles': 40,
+      },
+      requestId: 'ev-detect-project',
+    ));
+
+    expect(result.success, true);
+    expect(result.text, contains('flutter'));
+    expect(result.text, contains('static_web'));
+    expect(result.evidence.metadata['projectTypes'], contains('flutter'));
+    expect(result.evidence.metadata['projectTypes'], contains('static_web'));
+  });
+
   test('validateHtml reports mobile readiness warnings without executing scripts', () async {
     final file = File('${workspace.path}/demo/index.html');
     await file.parent.create(recursive: true);
@@ -355,6 +428,54 @@ void main() {
     expect(result.text, contains('missing_viewport'));
     expect(result.evidence.metadata['issueCount'], greaterThanOrEqualTo(2));
     expect(result.evidence.actionName, MobileCodeAction.validateHtml);
+  });
+
+  test('validateJson and validateMarkdown report structure issues without shell', () async {
+    final jsonFile = File('${workspace.path}/data/config.json');
+    await jsonFile.parent.create(recursive: true);
+    await jsonFile.writeAsString('{"name": "demo", "items": [1, 2]}');
+    final badMarkdown = File('${workspace.path}/README.md');
+    await badMarkdown.writeAsString('## Missing top heading\n#### Jumped\nSee https://example.com\n');
+
+    final jsonResult = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.validateJson,
+      params: const {
+        'path': 'data/config.json',
+        'maxBytes': 4096,
+      },
+      requestId: 'ev-json-valid',
+    ));
+    final markdownResult = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.validateMarkdown,
+      params: const {
+        'path': 'README.md',
+        'maxBytes': 4096,
+      },
+      requestId: 'ev-md-issues',
+    ));
+
+    expect(jsonResult.success, true);
+    expect(jsonResult.text, contains('JSON validation passed'));
+    expect(jsonResult.evidence.metadata['valid'], true);
+    expect(markdownResult.success, true);
+    expect(markdownResult.text, contains('missing_h1'));
+    expect(markdownResult.text, contains('bare_url'));
+    expect(markdownResult.evidence.metadata['issueCount'], greaterThanOrEqualTo(2));
+  });
+
+  test('validateJson reports invalid JSON as validation metadata, not shell failure', () async {
+    final result = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.validateJson,
+      params: const {
+        'json': '{"broken":',
+        'maxBytes': 4096,
+      },
+      requestId: 'ev-json-invalid',
+    ));
+
+    expect(result.success, true);
+    expect(result.text, contains('syntax issue'));
+    expect(result.evidence.metadata['valid'], false);
   });
 
   test('applyPatch modifies an existing file with snapshot evidence', () async {
@@ -444,6 +565,73 @@ void main() {
 
     expect(result.success, false);
     expect(result.evidence.failureKind, ActionFailureKind.commandBlocked);
+  });
+
+  test('termuxTaskStart fails closed without helper and never runs raw shell', () async {
+    final unavailable = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.termuxTaskStart,
+      params: const {
+        'taskKind': 'project_check',
+        'path': '.',
+        'argsJson': '{}',
+        'timeoutMs': 30000,
+        'maxOutputBytes': 4096,
+        'reason': 'verify workspace',
+      },
+      requestId: 'ev-termux-unavailable',
+    ));
+    final blockedRaw = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.termuxTaskStart,
+      params: const {
+        'taskKind': 'ls && rm -rf',
+        'path': '.',
+        'argsJson': '{}',
+      },
+      requestId: 'ev-termux-raw',
+    ));
+
+    expect(unavailable.success, false);
+    expect(unavailable.evidence.failureKind, ActionFailureKind.dependencyMissing);
+    expect(unavailable.text, contains('No raw shell was executed'));
+    expect(unavailable.evidence.metadata['taskKind'], 'project_check');
+    expect(blockedRaw.success, false);
+    expect(blockedRaw.evidence.failureKind, ActionFailureKind.commandBlocked);
+  });
+
+  test('termuxTaskStart records taskId stdout stderr from typed helper', () async {
+    final termuxRunner = ActionRunner(
+      workspaceRootPath: workspace.path,
+      evidenceStore: store,
+      termuxTaskInvoker: (taskKind, payload) async {
+        expect(taskKind, 'validate');
+        expect(payload['path'], '.');
+        return const {
+          'taskId': 'task-123',
+          'success': true,
+          'exitCode': 0,
+          'stdout': 'validated',
+          'stderr': '',
+        };
+      },
+    );
+
+    final result = await termuxRunner.run(ActionSchema(
+      actionName: MobileCodeAction.termuxTaskStart,
+      params: const {
+        'taskKind': 'validate',
+        'path': '.',
+        'argsJson': '{"entry":"index.html"}',
+        'timeoutMs': 30000,
+        'maxOutputBytes': 4096,
+        'reason': 'typed validation',
+      },
+      requestId: 'ev-termux-ok',
+    ));
+
+    expect(result.success, true);
+    expect(result.text, contains('taskId=task-123'));
+    expect(result.evidence.metadata['stdout'], 'validated');
+    expect(result.evidence.exitCode, 0);
   });
 
   test('previewHtml from inline html writes preview file and returns file url', () async {

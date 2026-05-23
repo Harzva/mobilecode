@@ -85,6 +85,7 @@ DeepSeek Provider
 - [x] DS04.2 AgentLoop 可用工具 gating 与缺省写入路径修复（本地实现完成，CI 待验收）
 - [ ] DS04.3 Search/Patch + 角色编排（本地实现完成，静态检查通过，CI 待验收）
 - [x] DS04.4 Sub-Agent Lite / mailbox-lite（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
+- [ ] DS04.8 History / Status / Project Understanding / Typed Termux Route（本地实现完成，CI 待验收）
 - [ ] DS05 DeepSeek 错误码映射
 - [ ] DS06 Usage / Cache / Reasoning 观测
 - [ ] DS07 JSON Output 降级路径
@@ -463,7 +464,7 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 
 剩余风险：
 
-- `edit_file / read_many_files / change_history / detect_project_type` 尚未作为 provider-native tool 暴露。
+- `change_history / detect_project_type` 已在 DS04.8 暴露为 provider-native typed tools；`edit_file / read_many_files` 仍未作为 provider-native tool 暴露。
 - `delete_file` 已进入 guard-railed typed tool 设计，但仍只能删除确认过的单个 workspace 文件，不支持目录删除或递归删除。
 - Runtime-only 命令仍依赖 Helper/Termux/CI，不能在当前 provider-native AgentLoop 中承诺可执行。
 
@@ -724,7 +725,7 @@ Termux 路线口径：
 - 后台 worker 仍是 App 进程内的轻量 worker，不是完整多进程/多模型并发 Agent。
 - `virtual_diff` 是移动端 compact line diff，不是完整 Git diff engine。
 - `delete_file` 仍需真实产品验收，避免模型误把“移动/替换”理解成删除。
-- `restore_snapshot / project_summary / validate_html` 已在 DS04.7 实现；`change_history / detect_project_type / validate_json / validate_markdown` 仍未实现。
+- `restore_snapshot / project_summary / validate_html` 已在 DS04.7 实现；`change_history / virtual_status / detect_project_type / validate_json / validate_markdown` 已在 DS04.8 本地实现，等待 CI 验证。
 
 ## DS05 DeepSeek 错误码映射
 
@@ -1094,4 +1095,42 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 - 本地 Flutter/Dart 不在 PATH，Dart 单元测试需依赖 GitHub Actions。
 - `restore_snapshot` 是确认式回滚，不是自动自由回滚；模型必须显式传 `confirm=true`，用户意图也必须清楚。
 - `validate_html` 是轻量结构检查，不等同于真实浏览器截图或视觉回归。
-- `change_history / detect_project_type / validate_json / validate_markdown / typed Termux task route` 仍在后续任务。
+- `change_history / virtual_status / detect_project_type / validate_json / validate_markdown / typed Termux task route` 已进入 DS04.8 本地实现与验证。
+
+## 2026-05-23 DS04.8 History / Status / Project Understanding / Typed Termux Route
+
+状态：`IN_PROGRESS`（本地实现完成，待 CI / APK 验证）
+
+目标：
+
+- P0：补齐 `change_history` 与 `virtual_status`，让用户能看到每轮写入、快照、恢复点、失败记录和 evidenceId。
+- P1：补齐 `detect_project_type / validate_json / validate_markdown`，让 AgentLoop 在写入前能理解项目形态和基础文件质量。
+- P2：设计 `termux_task_start` typed route，形成 `taskKind/path/args -> taskId/stdout/stderr -> ActionEvidence -> observation`，仍不开放 raw shell。
+
+本地实现：
+
+- `MobileCodeAction` 新增 `changeHistory / virtualStatus / detectProjectType / validateJson / validateMarkdown / termuxTaskStart`。
+- `ActionRunner` 新增对应执行分支：
+  - `change_history` 只读 ActionEvidence 最近记录；
+  - `virtual_status` 汇总 workspace 文件、扩展名、最近变更和 restore points；
+  - `detect_project_type` 检测 Flutter / Android Gradle / Node / Vite / Next / static web / PWA signals；
+  - `validate_json` 解析 JSON 并报告 valid/rootType/itemCount/error；
+  - `validate_markdown` 检查 H1、heading jump、bare URL、long line、trailing whitespace；
+  - `termux_task_start` 只接受 typed task kind，未配置 Helper/Termux 时 fail-closed 为 `dependencyMissing` evidence。
+- `ToolCallAdapter` 新增 provider-native tool definitions 与 `ActionSchema` 映射。
+- `AgentLoopController` 将新工具加入 preset allow-list，并在没有 Termux helper 时自动不暴露 `termux_task_start`。
+- Tools 页 Tool List / Command Map 更新，显示新增 tools 与 Linux/macOS/Android 类比。
+- GitHub Pages 实验日志更新用户向口径：MobileCode 是移动端 typed command facade；Termux 是 typed helper route，不是 raw shell。
+
+验证计划：
+
+- `git diff --check`
+- `node --check relay/mobilecode-token-relay-worker.js`
+- `cd app && npm run build`
+- GitHub Actions `Mobile Runtime CI`
+- 后续 APK 建议：`v0.1.65-last`
+
+剩余风险：
+
+- 本地 Flutter/Dart 不在 PATH，Dart 单元测试与 analyze 仍由 GitHub Actions 验证。
+- `termux_task_start` 当前是 typed route 与 fail-closed 行为；真正 Helper/Termux daemon 连接仍需下一阶段实现。

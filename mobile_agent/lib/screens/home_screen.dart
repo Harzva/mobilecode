@@ -132,8 +132,8 @@ const _managedRelayUrl = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_URL');
 const _managedRelayToken = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_TOKEN');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _currentProductVersion = 'v0.1.64-last';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.64-last';
+const _currentProductVersion = 'v0.1.65-last';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.65-last';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
 const _releaseBuildLabel = _currentProductVersion;
@@ -727,6 +727,30 @@ const _providerNativeToolSpecs = [
     risk: 'read-only',
   ),
   _LocalToolSpec(
+    name: 'detect_project_type',
+    description: 'Detect Flutter, static web, Node/Vite/PWA signals before choosing an action.',
+    surface: 'ActionRunner',
+    icon: Icons.category_outlined,
+    color: _blue,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
+    name: 'change_history',
+    description: 'Show recent writes, patches, snapshots, restores, failures, and evidence IDs.',
+    surface: 'ActionEvidence',
+    icon: Icons.history_outlined,
+    color: _violet,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
+    name: 'virtual_status',
+    description: 'Summarize current workspace files, restore points, and recent change evidence.',
+    surface: 'ActionEvidence',
+    icon: Icons.fact_check_outlined,
+    color: _mint,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
     name: 'web_search',
     description: 'Let the model ask for compact public web references through the managed relay.',
     surface: 'Relay read',
@@ -823,6 +847,22 @@ const _providerNativeToolSpecs = [
     risk: 'read-only',
   ),
   _LocalToolSpec(
+    name: 'validate_json',
+    description: 'Validate JSON syntax and root type without shell, jq, or Python.',
+    surface: 'ActionRunner',
+    icon: Icons.data_object_outlined,
+    color: _cyan,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
+    name: 'validate_markdown',
+    description: 'Check Markdown heading structure, links, and mobile readability basics.',
+    surface: 'ActionRunner',
+    icon: Icons.article_outlined,
+    color: _blue,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
     name: 'apply_patch',
     description: 'Apply a small unified diff inside the workspace with snapshot evidence.',
     surface: 'ActionRunner',
@@ -845,6 +885,14 @@ const _providerNativeToolSpecs = [
     icon: Icons.photo_camera_back_outlined,
     color: _cyan,
     risk: 'local evidence',
+  ),
+  _LocalToolSpec(
+    name: 'termux_task_start',
+    description: 'Start a typed Helper/Termux task when configured; taskId/stdout/stderr become evidence.',
+    surface: 'Runtime helper route',
+    icon: Icons.terminal_outlined,
+    color: _amber,
+    risk: 'typed runtime only',
   ),
   _LocalToolSpec(
     name: 'report_result',
@@ -888,10 +936,19 @@ const _androidCommandSpecs = [
     category: 'File metadata',
     commands: 'stat, file, wc, sort, uniq, cut, tr',
     support: 'Partial',
-    mobileCodePath: 'project_summary / list_files metadata',
-    note: 'project_summary returns compact structure, entrypoints, extensions, and sizes; detailed text transforms are not exposed yet.',
+    mobileCodePath: 'project_summary / detect_project_type / list_files metadata',
+    note: 'project_summary and detect_project_type return compact structure, entrypoints, extensions, project signals, and sizes; detailed text transforms are not exposed yet.',
     color: _amber,
     icon: Icons.info_outline,
+  ),
+  _AndroidCommandSpec(
+    category: 'Status / history',
+    commands: 'git status, git log, history',
+    support: 'Supported',
+    mobileCodePath: 'virtual_status / change_history',
+    note: 'Shows recent ActionEvidence, writes, failures, restore points, and workspace status without requiring Git.',
+    color: _mint,
+    icon: Icons.history_outlined,
   ),
   _AndroidCommandSpec(
     category: 'Move / rename',
@@ -913,10 +970,10 @@ const _androidCommandSpecs = [
   ),
   _AndroidCommandSpec(
     category: 'HTML validation',
-    commands: 'tidy, htmlhint, browser sanity check',
+    commands: 'tidy, htmlhint, jq, markdownlint, browser sanity check',
     support: 'Partial',
-    mobileCodePath: 'validate_html / preview_html',
-    note: 'validate_html checks compact structure and mobile viewport readiness; it does not execute JavaScript.',
+    mobileCodePath: 'validate_html / validate_json / validate_markdown / preview_html',
+    note: 'Validators check compact structure and readability in-process; they do not execute JavaScript or external linters.',
     color: _amber,
     icon: Icons.fact_check_outlined,
   ),
@@ -1014,8 +1071,8 @@ const _androidCommandSpecs = [
     category: 'Build / package',
     commands: 'npm, yarn, pnpm, pip, cargo, go, dart, flutter, gradle, make',
     support: 'Runtime only',
-    mobileCodePath: 'Runtime providers',
-    note: 'Depends on Helper/Termux/CI; not exposed as free-form model tools.',
+    mobileCodePath: 'termux_task_start typed route / Runtime providers / CI',
+    note: 'termux_task_start is a typed helper route with taskId/stdout/stderr evidence when configured; raw shell remains blocked.',
     color: _amber,
     icon: Icons.terminal_outlined,
   ),

@@ -298,9 +298,9 @@ class OpenAiCompatibleToolCallAdapter {
 
   String get systemInstruction => [
         'When a mobile coding request needs a file or preview, use the provided tools instead of only describing the result.',
-        'MobileCode tools may include list_files, find_files, grep_files, project_summary, agent_open, agent_eval, agent_close, web_search, fetch_url, write_file, read_file, copy_file, mkdir, delete_file, move_file, save_snapshot, virtual_diff, restore_snapshot, validate_html, apply_patch, preview_html, preview_snapshot, and report_result; only call tools exposed in the current request.',
+        'MobileCode tools may include list_files, find_files, grep_files, project_summary, detect_project_type, change_history, virtual_status, agent_open, agent_eval, agent_close, web_search, fetch_url, write_file, read_file, copy_file, mkdir, delete_file, move_file, save_snapshot, virtual_diff, restore_snapshot, validate_html, validate_json, validate_markdown, apply_patch, preview_html, preview_snapshot, termux_task_start, and report_result; only call tools exposed in the current request.',
         'Use web_search/fetch_url only for public reference gathering. Use preview_snapshot after preview_html when the user asks for a visible product check.',
-        'Use project_summary/list_files/find_files instead of shell pwd/tree/ls/find, grep_files instead of shell grep/rg, copy_file instead of shell cp, mkdir instead of shell mkdir, move_file instead of shell mv, delete_file instead of shell rm, save_snapshot/virtual_diff/restore_snapshot instead of shell git/diff/restore, validate_html instead of ad-hoc browser guessing, and apply_patch instead of shell patch/git apply. Do not ask for raw Android or Termux commands.',
+        'Use project_summary/detect_project_type/list_files/find_files instead of shell pwd/tree/ls/find, grep_files instead of shell grep/rg, change_history/virtual_status/save_snapshot/virtual_diff/restore_snapshot instead of shell git status/git log/diff/restore, copy_file instead of shell cp, mkdir instead of shell mkdir, move_file instead of shell mv, delete_file instead of shell rm, validate_html/validate_json/validate_markdown instead of ad-hoc validators, and apply_patch instead of shell patch/git apply. termux_task_start is a typed helper route only when exposed; never ask for raw Android or Termux shell commands.',
         'Never request shell, Git push, publishing, remote logging, or arbitrary commands.',
         'Use paths relative to the MobileCode workspace. If writing one web artifact and no path is obvious, use index.html. Do not include secrets in arguments.',
         'For complex work, choose the smallest safe next tool yourself. You may open read-only Sub-Agent Lite explorer/reviewer sessions for isolated inspection, then agent_eval/agent_close them. You may summarize, list, find, grep, search, fetch, write, read, copy, mkdir, delete a confirmed workspace file, move, save/restore snapshots, inspect virtual diffs, validate HTML, patch, preview, snapshot, or report depending on the current observation.',
@@ -447,6 +447,39 @@ class OpenAiCompatibleToolCallAdapter {
             'maxFiles': _intArg(args, 'max_files', defaultValue: 80),
           },
         );
+      case 'detect_project_type':
+        return ActionSchema(
+          actionName: MobileCodeAction.detectProjectType,
+          requestId: call.id,
+          paramsSummary: 'provider-native detect_project_type',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'maxDepth': _intArg(args, 'max_depth', defaultValue: 4),
+            'maxFiles': _intArg(args, 'max_files', defaultValue: 120),
+          },
+        );
+      case 'change_history':
+        return ActionSchema(
+          actionName: MobileCodeAction.changeHistory,
+          requestId: call.id,
+          paramsSummary: 'provider-native change_history',
+          params: {
+            'count': _intArg(args, 'count', defaultValue: 20),
+            'includeReadOnly': _boolArg(args, 'include_read_only', defaultValue: false),
+            'actionFilter': _stringArg(args, 'action_filter'),
+          },
+        );
+      case 'virtual_status':
+        return ActionSchema(
+          actionName: MobileCodeAction.virtualStatus,
+          requestId: call.id,
+          paramsSummary: 'provider-native virtual_status',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'maxFiles': _intArg(args, 'max_files', defaultValue: 80),
+            'maxRecent': _intArg(args, 'max_recent', defaultValue: 12),
+          },
+        );
       case 'write_file':
         final content = _stringArgAny(args, const ['content', 'html', 'body']);
         final path = _safeWritePath(args, content);
@@ -568,6 +601,28 @@ class OpenAiCompatibleToolCallAdapter {
             'maxBytes': _intArg(args, 'max_bytes', defaultValue: 256 * 1024),
           },
         );
+      case 'validate_json':
+        return ActionSchema(
+          actionName: MobileCodeAction.validateJson,
+          requestId: call.id,
+          paramsSummary: 'provider-native validate_json',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'json': _stringArg(args, 'json'),
+            'maxBytes': _intArg(args, 'max_bytes', defaultValue: 256 * 1024),
+          },
+        );
+      case 'validate_markdown':
+        return ActionSchema(
+          actionName: MobileCodeAction.validateMarkdown,
+          requestId: call.id,
+          paramsSummary: 'provider-native validate_markdown',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'markdown': _stringArg(args, 'markdown'),
+            'maxBytes': _intArg(args, 'max_bytes', defaultValue: 256 * 1024),
+          },
+        );
       case 'apply_patch':
         return ActionSchema(
           actionName: MobileCodeAction.applyPatch,
@@ -619,6 +674,20 @@ class OpenAiCompatibleToolCallAdapter {
             'html': _stringArg(args, 'html'),
             'viewportWidth': _intArg(args, 'viewport_width', defaultValue: 390),
             'viewportHeight': _intArg(args, 'viewport_height', defaultValue: 844),
+          },
+        );
+      case 'termux_task_start':
+        return ActionSchema(
+          actionName: MobileCodeAction.termuxTaskStart,
+          requestId: call.id,
+          paramsSummary: 'provider-native termux_task_start',
+          params: {
+            'taskKind': _stringArg(args, 'task_kind'),
+            'path': _stringArg(args, 'path'),
+            'argsJson': _stringArg(args, 'args_json'),
+            'timeoutMs': _intArg(args, 'timeout_ms', defaultValue: 30000),
+            'maxOutputBytes': _intArg(args, 'max_output_bytes', defaultValue: 32 * 1024),
+            'reason': _stringArg(args, 'reason'),
           },
         );
       default:
@@ -732,6 +801,36 @@ class OpenAiCompatibleToolCallAdapter {
           'max_files': {'type': 'integer', 'description': 'Maximum files to include in the compact summary.'},
         },
         required: const ['path', 'max_depth', 'max_files'],
+      ),
+      functionTool(
+        name: 'detect_project_type',
+        description: 'Detect likely project type and entrypoints from workspace files. Safe replacement for package/project sniffing before planning.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative workspace path to inspect. Use "." for workspace root.'},
+          'max_depth': {'type': 'integer', 'description': 'Maximum directory depth to inspect, 1 to 8.'},
+          'max_files': {'type': 'integer', 'description': 'Maximum files to inspect.'},
+        },
+        required: const ['path', 'max_depth', 'max_files'],
+      ),
+      functionTool(
+        name: 'change_history',
+        description: 'Return recent MobileCode action history, including writes, patches, snapshots, restores, failures, and evidence IDs. Safe replacement for git log/status history.',
+        properties: const {
+          'count': {'type': 'integer', 'description': 'Maximum history records to return, 1 to 80.'},
+          'include_read_only': {'type': 'boolean', 'description': 'Whether to include read-only inspection tools as well as writes/failures.'},
+          'action_filter': {'type': 'string', 'description': 'Optional MobileCode action enum name to filter, or empty string.'},
+        },
+        required: const ['count', 'include_read_only', 'action_filter'],
+      ),
+      functionTool(
+        name: 'virtual_status',
+        description: 'Summarize workspace status, recent changes, restore points, files, extensions, and evidence IDs without shell or Git.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative workspace path to summarize. Use "." for workspace root.'},
+          'max_files': {'type': 'integer', 'description': 'Maximum files to inspect.'},
+          'max_recent': {'type': 'integer', 'description': 'Maximum recent evidence records to summarize.'},
+        },
+        required: const ['path', 'max_files', 'max_recent'],
       ),
       functionTool(
         name: 'agent_open',
@@ -884,6 +983,26 @@ class OpenAiCompatibleToolCallAdapter {
         required: const ['path', 'html', 'max_bytes'],
       ),
       functionTool(
+        name: 'validate_json',
+        description: 'Validate a workspace JSON file or inline JSON string. Safe replacement for jq/python -m json.tool; returns syntax status and root type.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative JSON file path, or empty when json is provided.'},
+          'json': {'type': 'string', 'description': 'Inline JSON, or empty when path is provided.'},
+          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to validate.'},
+        },
+        required: const ['path', 'json', 'max_bytes'],
+      ),
+      functionTool(
+        name: 'validate_markdown',
+        description: 'Validate a workspace Markdown file or inline Markdown for basic structure and mobile readability. Does not run external markdownlint.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative Markdown file path, or empty when markdown is provided.'},
+          'markdown': {'type': 'string', 'description': 'Inline Markdown, or empty when path is provided.'},
+          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to validate.'},
+        },
+        required: const ['path', 'markdown', 'max_bytes'],
+      ),
+      functionTool(
         name: 'apply_patch',
         description: 'Apply a small unified diff patch inside the MobileCode workspace. Safe replacement for patch/git apply; deletion, binary patches, and outside paths are blocked.',
         properties: const {
@@ -912,6 +1031,19 @@ class OpenAiCompatibleToolCallAdapter {
           'viewport_height': {'type': 'integer', 'description': 'Expected viewport height for the evidence snapshot.'},
         },
         required: const ['path', 'url', 'html', 'viewport_width', 'viewport_height'],
+      ),
+      functionTool(
+        name: 'termux_task_start',
+        description: 'Start a typed Termux/MobileCode Helper task when the helper route is configured. This is not raw shell; only named task kinds are accepted and stdout/stderr are evidence-backed.',
+        properties: const {
+          'task_kind': {'type': 'string', 'description': 'Typed task kind such as project_check, validate, build_preview, flutter_analyze, flutter_test, or npm_build.'},
+          'path': {'type': 'string', 'description': 'Relative workspace path for the task, or "." for workspace root.'},
+          'args_json': {'type': 'string', 'description': 'Small JSON object string for typed task options, or "{}". Never pass raw shell.'},
+          'timeout_ms': {'type': 'integer', 'description': 'Timeout in milliseconds, 1000 to 120000.'},
+          'max_output_bytes': {'type': 'integer', 'description': 'Maximum stdout/stderr bytes to keep in evidence.'},
+          'reason': {'type': 'string', 'description': 'Short reason for starting this typed task.'},
+        },
+        required: const ['task_kind', 'path', 'args_json', 'timeout_ms', 'max_output_bytes', 'reason'],
       ),
       functionTool(
         name: 'report_result',

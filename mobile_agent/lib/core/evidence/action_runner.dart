@@ -12,6 +12,11 @@ typedef ActionRunnerWebToolInvoker = Future<Map<String, dynamic>> Function(
   Map<String, dynamic> payload,
 );
 
+typedef ActionRunnerTermuxTaskInvoker = Future<Map<String, dynamic>> Function(
+  String taskKind,
+  Map<String, dynamic> payload,
+);
+
 /// Result returned by [ActionRunner].
 ///
 /// The evidence is always recorded in [ActionEvidenceStore]. Optional output
@@ -57,13 +62,16 @@ class ActionRunner {
     required String workspaceRootPath,
     ActionEvidenceStore? evidenceStore,
     ActionRunnerWebToolInvoker? webToolInvoker,
+    ActionRunnerTermuxTaskInvoker? termuxTaskInvoker,
   })  : workspaceRootPath = p.normalize(p.absolute(workspaceRootPath)),
         evidenceStore = evidenceStore ?? ActionEvidenceStore.shared,
-        webToolInvoker = webToolInvoker;
+        webToolInvoker = webToolInvoker,
+        termuxTaskInvoker = termuxTaskInvoker;
 
   final String workspaceRootPath;
   final ActionEvidenceStore evidenceStore;
   final ActionRunnerWebToolInvoker? webToolInvoker;
+  final ActionRunnerTermuxTaskInvoker? termuxTaskInvoker;
 
   Future<ActionRunnerResult> run(ActionSchema schema) async {
     final startedAt = DateTime.now();
@@ -89,9 +97,15 @@ class ActionRunner {
         MobileCodeAction.saveSnapshot => await _saveSnapshot(schema, startedAt),
         MobileCodeAction.virtualDiff => await _virtualDiff(schema, startedAt),
         MobileCodeAction.restoreSnapshot => await _restoreSnapshot(schema, startedAt),
+        MobileCodeAction.changeHistory => await _changeHistory(schema, startedAt),
+        MobileCodeAction.virtualStatus => await _virtualStatus(schema, startedAt),
         MobileCodeAction.projectSummary => await _projectSummary(schema, startedAt),
+        MobileCodeAction.detectProjectType => await _detectProjectType(schema, startedAt),
         MobileCodeAction.validateHtml => await _validateHtml(schema, startedAt),
+        MobileCodeAction.validateJson => await _validateJson(schema, startedAt),
+        MobileCodeAction.validateMarkdown => await _validateMarkdown(schema, startedAt),
         MobileCodeAction.applyPatch => await _applyPatch(schema, startedAt),
+        MobileCodeAction.termuxTaskStart => await _termuxTaskStart(schema, startedAt),
         MobileCodeAction.previewHtml => await _previewHtml(schema, startedAt),
         MobileCodeAction.webSearch => await _webSearch(schema, startedAt),
         MobileCodeAction.fetchUrl => await _fetchUrl(schema, startedAt),
@@ -979,6 +993,218 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
+  Future<ActionRunnerResult> _changeHistory(ActionSchema schema, DateTime startedAt) async {
+    final count = _boundedIntParam(schema, 'count', defaultValue: 20, min: 1, max: 80);
+    final includeReadOnly = schema.params['includeReadOnly'] == true;
+    final actionFilter = _stringParam(schema, 'actionFilter');
+    final records = evidenceStore.recent(count: math.min(count * 4, 240).toInt());
+    final interestingActions = <MobileCodeAction>{
+      MobileCodeAction.writeFile,
+      MobileCodeAction.copyFile,
+      MobileCodeAction.makeDirectory,
+      MobileCodeAction.deleteFile,
+      MobileCodeAction.moveFile,
+      MobileCodeAction.saveSnapshot,
+      MobileCodeAction.virtualDiff,
+      MobileCodeAction.restoreSnapshot,
+      MobileCodeAction.applyPatch,
+      MobileCodeAction.previewHtml,
+      MobileCodeAction.previewSnapshot,
+      MobileCodeAction.termuxTaskStart,
+    };
+    final filtered = records.where((record) {
+      if (record.actionName == MobileCodeAction.changeHistory) return false;
+      if (actionFilter.isNotEmpty && record.actionName.name != actionFilter) return false;
+      if (!record.success) return true;
+      if (includeReadOnly) return true;
+      return interestingActions.contains(record.actionName);
+    }).take(count).toList();
+
+    final entries = filtered.map((record) {
+      final artifacts = record.artifactPaths.map(_relative).take(4).toList();
+      final urls = record.urls.take(3).toList();
+      return {
+        'evidenceId': record.evidenceId,
+        'actionName': record.actionName.name,
+        'success': record.success,
+        if (record.failureKind != null) 'failureKind': record.failureKind,
+        'startedAt': record.startedAt.toIso8601String(),
+        'durationMs': record.durationMs,
+        'artifactPaths': artifacts,
+        'urls': urls,
+        'summary': _compact(record.paramsSummary.isEmpty ? record.logs.join(' ') : record.paramsSummary, 180),
+      };
+    }).toList();
+    final text = entries.isEmpty
+        ? 'No recent MobileCode action history matched the current filters.'
+        : [
+            'Recent MobileCode action history (${entries.length}):',
+            ...entries.map((entry) {
+              final status = entry['success'] == true ? 'ok' : 'failed';
+              final artifacts = (entry['artifactPaths'] as List).isEmpty ? '' : ' paths=${(entry['artifactPaths'] as List).join(', ')}';
+              final failure = entry['failureKind'] == null ? '' : ' failure=${entry['failureKind']}';
+              return '- ${entry['startedAt']} ${entry['actionName']} $status${failure} evidence=${entry['evidenceId']}$artifacts';
+            }),
+          ].join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.changeHistory,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'change history count=$count' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      logs: ['Returned ${entries.length} history record(s).'],
+      metadata: {
+        'count': count,
+        'includeReadOnly': includeReadOnly,
+        if (actionFilter.isNotEmpty) 'actionFilter': actionFilter,
+        'records': entries,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text);
+  }
+
+  Future<ActionRunnerResult> _virtualStatus(ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+    final target = _resolveWorkspacePath(rawPath);
+    final maxFiles = _boundedIntParam(schema, 'maxFiles', defaultValue: 80, min: 10, max: 240);
+    final maxRecent = _boundedIntParam(schema, 'maxRecent', defaultValue: 12, min: 1, max: 40);
+    final targetType = await FileSystemEntity.type(target, followLinks: false);
+    if (targetType == FileSystemEntityType.notFound) {
+      throw _ActionRunnerFailure(
+        'virtual_status path does not exist: ${_relative(target)}',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Call list_files first or choose an existing workspace path.'],
+      );
+    }
+
+    final files = <Map<String, dynamic>>[];
+    final extensionCounts = <String, int>{};
+    var directoryCount = 0;
+    var totalBytes = 0;
+    var truncated = false;
+
+    bool shouldSkip(String relativePath) {
+      final normalized = relativePath.replaceAll('\\', '/');
+      return normalized == '.mobilecode_snapshots' ||
+          normalized.startsWith('.mobilecode_') ||
+          normalized.contains('/.mobilecode_');
+    }
+
+    Future<void> addFile(File file) async {
+      if (files.length >= maxFiles) {
+        truncated = true;
+        return;
+      }
+      final relativePath = _relative(file.path);
+      if (shouldSkip(relativePath)) return;
+      final stat = await file.stat();
+      final ext = p.extension(file.path).toLowerCase();
+      extensionCounts[ext.isEmpty ? '(none)' : ext] = (extensionCounts[ext.isEmpty ? '(none)' : ext] ?? 0) + 1;
+      totalBytes += stat.size;
+      files.add({
+        'path': relativePath,
+        'sizeBytes': stat.size,
+        'modifiedAt': stat.modified.toIso8601String(),
+      });
+    }
+
+    if (targetType == FileSystemEntityType.file) {
+      await addFile(File(target));
+    } else if (targetType == FileSystemEntityType.directory) {
+      await for (final entity in Directory(target).list(recursive: true, followLinks: false)) {
+        if (files.length >= maxFiles) {
+          truncated = true;
+          break;
+        }
+        final relativePath = _relative(entity.path);
+        if (shouldSkip(relativePath)) continue;
+        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        if (type == FileSystemEntityType.directory) {
+          directoryCount++;
+        } else if (type == FileSystemEntityType.file) {
+          await addFile(File(entity.path));
+        }
+      }
+    } else {
+      throw _ActionRunnerFailure(
+        'Unsupported virtual_status target: ${_relative(target)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+      );
+    }
+
+    final recent = evidenceStore.recent(count: maxRecent);
+    final snapshots = recent
+        .where((record) => record.actionName == MobileCodeAction.saveSnapshot)
+        .map((record) => {
+              'evidenceId': record.evidenceId,
+              'snapshotId': record.metadata['snapshotId'],
+              'label': record.metadata['label'],
+              'sourcePath': record.metadata['sourcePath'],
+              'createdAt': record.startedAt.toIso8601String(),
+            })
+        .take(6)
+        .toList();
+    final recentChanges = recent
+        .where((record) =>
+            record.actionName == MobileCodeAction.writeFile ||
+            record.actionName == MobileCodeAction.applyPatch ||
+            record.actionName == MobileCodeAction.copyFile ||
+            record.actionName == MobileCodeAction.makeDirectory ||
+            record.actionName == MobileCodeAction.deleteFile ||
+            record.actionName == MobileCodeAction.moveFile ||
+            record.actionName == MobileCodeAction.restoreSnapshot ||
+            !record.success)
+        .map((record) => {
+              'evidenceId': record.evidenceId,
+              'actionName': record.actionName.name,
+              'success': record.success,
+              if (record.failureKind != null) 'failureKind': record.failureKind,
+              'startedAt': record.startedAt.toIso8601String(),
+              'artifactPaths': record.artifactPaths.map(_relative).take(4).toList(),
+            })
+        .take(maxRecent)
+        .toList();
+
+    final extensionSummary = extensionCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final text = [
+      'Virtual status for ${_relative(target)}',
+      'Files: ${files.length}${truncated ? '+' : ''}, directories: $directoryCount, bytes: $totalBytes',
+      if (extensionSummary.isNotEmpty) 'Extensions: ${extensionSummary.take(8).map((entry) => '${entry.key}:${entry.value}').join(', ')}',
+      if (snapshots.isNotEmpty) 'Restore points: ${snapshots.map((entry) => entry['snapshotId']).join(', ')}',
+      if (recentChanges.isNotEmpty)
+        'Recent changes:\n${recentChanges.map((entry) => '- ${entry['actionName']} ${entry['success'] == true ? 'ok' : 'failed'} evidence=${entry['evidenceId']}').join('\n')}',
+      if (files.isNotEmpty) 'Files:\n${files.take(20).map((file) => '- ${file['path']} (${file['sizeBytes']} bytes)').join('\n')}',
+      if (truncated) 'Status truncated by max_files limit.',
+    ].join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.virtualStatus,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'virtual status ${_relative(target)}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [target],
+      logs: ['Computed virtual status for ${_relative(target)} with ${files.length} file(s).'],
+      metadata: {
+        'relativePath': _relative(target),
+        'fileCount': files.length,
+        'directoryCount': directoryCount,
+        'totalBytes': totalBytes,
+        'truncated': truncated,
+        'extensionCounts': extensionCounts,
+        'files': files.take(80).toList(),
+        'recentChanges': recentChanges,
+        'restorePoints': snapshots,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text, path: target);
+  }
+
   Future<ActionRunnerResult> _projectSummary(ActionSchema schema, DateTime startedAt) async {
     final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
     final target = _resolveWorkspacePath(rawPath);
@@ -1097,6 +1323,144 @@ class ActionRunner {
         'extensionCounts': extensionCounts,
         'files': files.take(80).toList(),
         'directories': directories.take(80).toList(),
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text, path: target);
+  }
+
+  Future<ActionRunnerResult> _detectProjectType(ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+    final target = _resolveWorkspacePath(rawPath);
+    final maxDepth = _boundedIntParam(schema, 'maxDepth', defaultValue: 4, min: 1, max: 8);
+    final maxFiles = _boundedIntParam(schema, 'maxFiles', defaultValue: 120, min: 10, max: 300);
+    final targetType = await FileSystemEntity.type(target, followLinks: false);
+    if (targetType == FileSystemEntityType.notFound) {
+      throw _ActionRunnerFailure(
+        'detect_project_type path does not exist: ${_relative(target)}',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Call list_files first or choose an existing workspace path.'],
+      );
+    }
+
+    final files = <String>[];
+    final basenames = <String>{};
+    var truncated = false;
+
+    bool shouldSkip(String relativePath) {
+      final normalized = relativePath.replaceAll('\\', '/');
+      return normalized.startsWith('.mobilecode_') || normalized.contains('/.mobilecode_');
+    }
+
+    Future<void> addFile(File file) async {
+      if (files.length >= maxFiles) {
+        truncated = true;
+        return;
+      }
+      final relativePath = _relative(file.path);
+      if (shouldSkip(relativePath)) return;
+      files.add(relativePath);
+      basenames.add(p.basename(relativePath).toLowerCase());
+    }
+
+    Future<void> walk(Directory directory, int depth) async {
+      if (depth > maxDepth || files.length >= maxFiles) {
+        truncated = true;
+        return;
+      }
+      await for (final entity in directory.list(recursive: false, followLinks: false)) {
+        if (files.length >= maxFiles) {
+          truncated = true;
+          break;
+        }
+        final relativePath = _relative(entity.path);
+        if (shouldSkip(relativePath)) continue;
+        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        if (type == FileSystemEntityType.file) {
+          await addFile(File(entity.path));
+        } else if (type == FileSystemEntityType.directory) {
+          await walk(Directory(entity.path), depth + 1);
+        }
+      }
+    }
+
+    if (targetType == FileSystemEntityType.file) {
+      await addFile(File(target));
+    } else if (targetType == FileSystemEntityType.directory) {
+      await walk(Directory(target), 1);
+    } else {
+      throw _ActionRunnerFailure(
+        'Unsupported detect_project_type target: ${_relative(target)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+      );
+    }
+
+    final signals = <String>[];
+    final projectTypes = <String>[];
+    void addType(String type, String signal) {
+      if (!projectTypes.contains(type)) projectTypes.add(type);
+      signals.add(signal);
+    }
+
+    if (basenames.contains('pubspec.yaml') || files.any((file) => file.replaceAll('\\', '/') == 'lib/main.dart')) {
+      addType('flutter', 'pubspec.yaml or lib/main.dart');
+    }
+    if (basenames.contains('build.gradle') || basenames.contains('settings.gradle') || basenames.contains('gradlew')) {
+      addType('android_gradle', 'Gradle build files');
+    }
+    if (basenames.contains('package.json')) {
+      addType('node_or_web', 'package.json');
+    }
+    if (basenames.contains('vite.config.ts') || basenames.contains('vite.config.js')) {
+      addType('vite', 'vite config');
+    }
+    if (basenames.contains('next.config.js') || basenames.contains('next.config.mjs') || basenames.contains('next.config.ts')) {
+      addType('nextjs', 'next config');
+    }
+    if (basenames.contains('index.html')) {
+      addType('static_web', 'index.html');
+    }
+    if (basenames.contains('manifest.json') && (basenames.contains('service-worker.js') || basenames.contains('sw.js'))) {
+      addType('pwa', 'manifest + service worker');
+    }
+    if (basenames.contains('readme.md')) {
+      signals.add('README present');
+    }
+    if (projectTypes.isEmpty) projectTypes.add('unknown');
+
+    final entrypoints = files.where((file) {
+      final base = p.basename(file).toLowerCase();
+      return base == 'index.html' ||
+          base == 'main.dart' ||
+          base == 'package.json' ||
+          base == 'pubspec.yaml' ||
+          base == 'manifest.json' ||
+          base == 'readme.md';
+    }).take(20).toList();
+    final text = [
+      'Detected project type(s): ${projectTypes.join(', ')}',
+      if (signals.isNotEmpty) 'Signals: ${signals.take(12).join('; ')}',
+      if (entrypoints.isNotEmpty) 'Entrypoints: ${entrypoints.join(', ')}',
+      'Files inspected: ${files.length}${truncated ? '+' : ''}',
+      if (truncated) 'Detection truncated by max_files/max_depth limits.',
+    ].join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.detectProjectType,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'detect project type ${_relative(target)}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [target],
+      logs: ['Detected ${projectTypes.join(', ')} from ${files.length} file(s).'],
+      metadata: {
+        'relativePath': _relative(target),
+        'projectTypes': projectTypes,
+        'signals': signals,
+        'entrypoints': entrypoints,
+        'filesInspected': files.length,
+        'truncated': truncated,
       },
     );
     evidenceStore.add(evidence);
@@ -1226,6 +1590,211 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
+  Future<ActionRunnerResult> _validateJson(ActionSchema schema, DateTime startedAt) async {
+    final pathParam = _stringParam(schema, 'path');
+    final jsonParam = _stringParam(schema, 'json');
+    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
+    String content;
+    String? target;
+    if (pathParam.isNotEmpty) {
+      target = _resolveWorkspacePath(pathParam);
+      final file = File(target);
+      if (!await file.exists()) {
+        throw _ActionRunnerFailure(
+          'JSON file does not exist: ${_relative(target)}',
+          failureKind: ActionFailureKind.processFailed,
+          recoveryActions: const ['Create or find the JSON file before validating it.'],
+        );
+      }
+      final bytes = await file.readAsBytes();
+      if (bytes.length > maxBytes) {
+        throw _ActionRunnerFailure(
+          'JSON file is too large to validate on mobile (${bytes.length} bytes).',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: const ['Validate a smaller file or increase max_bytes within the supported cap.'],
+        );
+      }
+      if (_looksBinary(bytes)) {
+        throw const _ActionRunnerFailure(
+          'validate_json only supports UTF-8 text JSON files.',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: ['Choose a text JSON file.'],
+        );
+      }
+      content = utf8.decode(bytes, allowMalformed: true);
+    } else if (jsonParam.isNotEmpty) {
+      content = jsonParam;
+      if (utf8.encode(content).length > maxBytes) {
+        throw const _ActionRunnerFailure(
+          'Inline JSON is too large to validate on mobile.',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: ['Validate a smaller JSON payload or write it to a file first.'],
+        );
+      }
+    } else {
+      throw const _ActionRunnerFailure(
+        'validate_json requires path or json.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: ['Pass a workspace JSON file path or inline JSON content.'],
+      );
+    }
+
+    var valid = true;
+    String? error;
+    String rootType = 'unknown';
+    int? itemCount;
+    try {
+      final parsed = jsonDecode(content);
+      if (parsed is Map) {
+        rootType = 'object';
+        itemCount = parsed.length;
+      } else if (parsed is List) {
+        rootType = 'array';
+        itemCount = parsed.length;
+      } else {
+        rootType = parsed.runtimeType.toString();
+      }
+    } on FormatException catch (e) {
+      valid = false;
+      error = _compact(e.message, 240);
+    }
+
+    final text = valid
+        ? 'JSON validation passed${target == null ? '' : ' for ${_relative(target)}'}: root=$rootType${itemCount == null ? '' : ', items=$itemCount'}.'
+        : 'JSON validation found syntax issue${target == null ? '' : ' in ${_relative(target)}'}: $error';
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.validateJson,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'validate json${target == null ? '' : ' ${_relative(target)}'}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [if (target != null) target],
+      logs: ['Validated JSON: ${valid ? 'valid' : 'invalid'}.'],
+      metadata: {
+        if (target != null) 'relativePath': _relative(target),
+        'jsonBytes': utf8.encode(content).length,
+        'valid': valid,
+        'rootType': rootType,
+        if (itemCount != null) 'itemCount': itemCount,
+        if (error != null) 'error': error,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text, path: target);
+  }
+
+  Future<ActionRunnerResult> _validateMarkdown(ActionSchema schema, DateTime startedAt) async {
+    final pathParam = _stringParam(schema, 'path');
+    final markdownParam = _stringParam(schema, 'markdown');
+    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
+    String content;
+    String? target;
+    if (pathParam.isNotEmpty) {
+      target = _resolveWorkspacePath(pathParam);
+      final file = File(target);
+      if (!await file.exists()) {
+        throw _ActionRunnerFailure(
+          'Markdown file does not exist: ${_relative(target)}',
+          failureKind: ActionFailureKind.processFailed,
+          recoveryActions: const ['Create or find the Markdown file before validating it.'],
+        );
+      }
+      final bytes = await file.readAsBytes();
+      if (bytes.length > maxBytes) {
+        throw _ActionRunnerFailure(
+          'Markdown file is too large to validate on mobile (${bytes.length} bytes).',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: const ['Validate a smaller file or increase max_bytes within the supported cap.'],
+        );
+      }
+      if (_looksBinary(bytes)) {
+        throw const _ActionRunnerFailure(
+          'validate_markdown only supports UTF-8 text Markdown files.',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: ['Choose a text Markdown file.'],
+        );
+      }
+      content = utf8.decode(bytes, allowMalformed: true);
+    } else if (markdownParam.isNotEmpty) {
+      content = markdownParam;
+      if (utf8.encode(content).length > maxBytes) {
+        throw const _ActionRunnerFailure(
+          'Inline Markdown is too large to validate on mobile.',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: ['Validate a smaller Markdown payload or write it to a file first.'],
+        );
+      }
+    } else {
+      throw const _ActionRunnerFailure(
+        'validate_markdown requires path or markdown.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: ['Pass a workspace Markdown file path or inline Markdown content.'],
+      );
+    }
+
+    final issues = <Map<String, dynamic>>[];
+    void addIssue(String severity, String code, String message, int line) {
+      issues.add({'severity': severity, 'code': code, 'message': message, 'line': line});
+    }
+
+    final lines = content.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+    var hasH1 = false;
+    var lastHeadingLevel = 0;
+    for (var i = 0; i < lines.length; i++) {
+      final line = lines[i];
+      final lineNo = i + 1;
+      final heading = RegExp(r'^(#{1,6})\s+\S').firstMatch(line);
+      if (heading != null) {
+        final level = heading.group(1)!.length;
+        if (level == 1) hasH1 = true;
+        if (lastHeadingLevel > 0 && level > lastHeadingLevel + 1) {
+          addIssue('warning', 'heading_jump', 'Heading jumps from H$lastHeadingLevel to H$level.', lineNo);
+        }
+        lastHeadingLevel = level;
+      }
+      if (line.length > 160) {
+        addIssue('info', 'long_line', 'Line is longer than 160 characters; consider wrapping for mobile readability.', lineNo);
+      }
+      if (RegExp(r'https?://\S+').hasMatch(line) && !RegExp(r'\[[^\]]+\]\(https?://').hasMatch(line)) {
+        addIssue('info', 'bare_url', 'Bare URL found; consider Markdown link text for readability.', lineNo);
+      }
+      if (line.endsWith(' ') || line.endsWith('\t')) {
+        addIssue('info', 'trailing_whitespace', 'Trailing whitespace.', lineNo);
+      }
+      if (issues.length >= 30) break;
+    }
+    if (!hasH1 && content.trim().isNotEmpty) {
+      addIssue('warning', 'missing_h1', 'No top-level # heading found.', 1);
+    }
+
+    final text = issues.isEmpty
+        ? 'Markdown validation passed${target == null ? '' : ' for ${_relative(target)}'}: no basic structure issues.'
+        : [
+            'Markdown validation found ${issues.length} issue(s)${target == null ? '' : ' in ${_relative(target)}'}:',
+            ...issues.take(20).map((issue) => '- line ${issue['line']} ${issue['severity']} ${issue['code']}: ${issue['message']}'),
+          ].join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.validateMarkdown,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'validate markdown${target == null ? '' : ' ${_relative(target)}'}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [if (target != null) target],
+      logs: ['Validated Markdown with ${issues.length} issue(s).'],
+      metadata: {
+        if (target != null) 'relativePath': _relative(target),
+        'markdownBytes': utf8.encode(content).length,
+        'lineCount': lines.length,
+        'issueCount': issues.length,
+        'issues': issues,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text, path: target);
+  }
+
   Future<ActionRunnerResult> _applyPatch(ActionSchema schema, DateTime startedAt) async {
     final patch = _requiredString(schema, 'patch');
     final reason = _stringParam(schema, 'reason');
@@ -1338,6 +1907,131 @@ class ActionRunner {
       text: 'Applied patch to ${relativeChanged.join(', ')}.',
       path: changedPaths.isEmpty ? null : changedPaths.first,
     );
+  }
+
+  Future<ActionRunnerResult> _termuxTaskStart(ActionSchema schema, DateTime startedAt) async {
+    final taskKind = _requiredString(schema, 'taskKind');
+    final pathParam = _stringParam(schema, 'path');
+    final reason = _stringParam(schema, 'reason');
+    final argsJson = _stringParam(schema, 'argsJson');
+    final timeoutMs = _boundedIntParam(schema, 'timeoutMs', defaultValue: 30000, min: 1000, max: 120000);
+    final maxOutputBytes = _boundedIntParam(schema, 'maxOutputBytes', defaultValue: 32 * 1024, min: 1024, max: 128 * 1024);
+    const allowedKinds = {
+      'project_check',
+      'validate',
+      'build_preview',
+      'flutter_analyze',
+      'flutter_test',
+      'npm_build',
+    };
+    if (!allowedKinds.contains(taskKind)) {
+      throw _ActionRunnerFailure(
+        'termux_task_start only accepts typed task kinds, not raw shell: $taskKind',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose one of project_check, validate, build_preview, flutter_analyze, flutter_test, or npm_build.'],
+      );
+    }
+    Map<String, dynamic> args = const {};
+    if (argsJson.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(argsJson);
+        if (decoded is Map<String, dynamic>) {
+          args = decoded;
+        } else {
+          throw const FormatException('args_json must decode to an object');
+        }
+      } on Object catch (error) {
+        throw _ActionRunnerFailure(
+          'Invalid args_json for termux_task_start: $error',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: const ['Pass a small JSON object string, for example {"entry":"index.html"}, or "{}".'],
+        );
+      }
+    }
+    final target = pathParam.isEmpty ? workspaceRootPath : _resolveWorkspacePath(pathParam);
+    final taskId = 'termux_${DateTime.now().millisecondsSinceEpoch}';
+    final payload = <String, dynamic>{
+      'taskId': taskId,
+      'taskKind': taskKind,
+      'path': _relative(target),
+      'args': args,
+      'timeoutMs': timeoutMs,
+      'maxOutputBytes': maxOutputBytes,
+      if (reason.isNotEmpty) 'reason': reason,
+    };
+
+    final invoker = termuxTaskInvoker;
+    if (invoker == null) {
+      final text = 'Termux typed task route is not connected. taskId=$taskId, taskKind=$taskKind. No raw shell was executed.';
+      final evidence = ActionEvidence(
+        evidenceId: schema.requestId ?? generateEvidenceId(),
+        actionName: MobileCodeAction.termuxTaskStart,
+        paramsSummary: schema.paramsSummary.isEmpty ? 'termux task $taskKind' : schema.paramsSummary,
+        startedAt: startedAt,
+        endedAt: DateTime.now(),
+        success: false,
+        artifactPaths: [target],
+        logs: [
+          text,
+          'MobileCode requires a configured Termux daemon or MobileCode Helper before typed runtime tasks can run.',
+        ],
+        failureKind: ActionFailureKind.dependencyMissing,
+        recoveryActions: const [
+          'Configure the MobileCode Helper or Termux daemon bridge.',
+          'Use MobileCode typed file tools or GitHub Actions for validation until the helper is connected.',
+        ],
+        metadata: {
+          ...payload,
+          'status': 'unavailable',
+          'stdout': '',
+          'stderr': 'Termux helper unavailable',
+        },
+      );
+      evidenceStore.add(evidence);
+      return ActionRunnerResult(evidence: evidence, text: text, path: target);
+    }
+
+    final raw = await invoker(taskKind, payload);
+    final stdout = _compact(_stringValue(raw['stdout']), maxOutputBytes);
+    final stderr = _compact(_stringValue(raw['stderr']), maxOutputBytes);
+    final exitCodeRaw = raw['exitCode'];
+    final exitCode = exitCodeRaw is num ? exitCodeRaw.toInt() : null;
+    final success = raw['success'] == true || exitCode == 0;
+    final returnedTaskId = _stringValue(raw['taskId']).isEmpty ? taskId : _stringValue(raw['taskId']);
+    final text = [
+      'Termux typed task $taskKind ${success ? 'completed' : 'failed'} with taskId=$returnedTaskId.',
+      if (stdout.isNotEmpty) 'stdout: $stdout',
+      if (stderr.isNotEmpty) 'stderr: $stderr',
+    ].join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.termuxTaskStart,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'termux task $taskKind' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: success,
+      artifactPaths: [target],
+      logs: [
+        'Termux typed task $taskKind returned taskId=$returnedTaskId.',
+        if (stdout.isNotEmpty) 'stdout: $stdout',
+        if (stderr.isNotEmpty) 'stderr: $stderr',
+      ],
+      exitCode: exitCode,
+      failureKind: success ? null : ActionFailureKind.processFailed,
+      recoveryActions: success
+          ? const []
+          : const ['Inspect stdout/stderr and rerun a narrower typed task, or fall back to GitHub Actions.'],
+      metadata: {
+        ...payload,
+        ...raw,
+        'taskId': returnedTaskId,
+        'status': success ? 'completed' : 'failed',
+        'stdout': stdout,
+        'stderr': stderr,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
   Future<ActionRunnerResult> _previewHtml(ActionSchema schema, DateTime startedAt) async {

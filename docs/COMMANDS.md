@@ -43,10 +43,16 @@ Streaming note: provider SSE deltas are buffered as in-memory tool-call drafts f
 | `save_snapshot` | checkpoint / local snapshot | Local evidence | Bounded workspace copy | Supported |
 | `virtual_diff` | `diff`, limited `git diff` | Read | Snapshot-vs-workspace compare | Supported |
 | `restore_snapshot` | guarded `git restore` | Confirmed rollback | Snapshot-to-workspace restore | Supported |
+| `change_history` | `git log`, recent history | Read | ActionEvidence history | Supported |
+| `virtual_status` | `git status`, workspace status | Read | Workspace + evidence summary | Supported |
+| `detect_project_type` | project sniffing | Read | Bounded workspace scan | Supported |
 | `validate_html` | `tidy`, `htmlhint`, browser sanity check | Read | HTML structure check | Supported |
+| `validate_json` | `jq`, `python -m json.tool` | Read | JSON syntax/root check | Supported |
+| `validate_markdown` | `markdownlint` basics | Read | Markdown structure check | Supported |
 | `apply_patch` | `patch`, `git apply` | Bounded write | Unified diff, workspace only | Supported |
 | `preview_html` | browser preview | Local preview | Workspace HTML / inline HTML | Supported |
 | `preview_snapshot` | screenshot-like evidence | Local evidence | Metadata / DOM summary, not bitmap | Supported |
+| `termux_task_start` | typed runtime task | Runtime bridge | Helper/Termux when configured | Designed, fail-closed |
 | `report_result` | final status | No execution | Conversation summary | Supported |
 
 ## Tool Contracts
@@ -266,6 +272,54 @@ Notes:
 - Does not delete files that are absent from the snapshot.
 - Backs up overwritten files under `.mobilecode_restore_snapshots/` and records ActionEvidence.
 
+### `change_history`
+
+Purpose: show recent evidence-backed writes, patches, snapshots, restores, failures, and recovery points.
+
+Parameters:
+
+- `count`: maximum history records to return.
+- `include_read_only`: whether to include read-only tools as well as writes/failures.
+- `action_filter`: optional action enum name filter, or empty string.
+
+Notes:
+
+- Safe replacement for a compact `git log` / activity history view.
+- Returns evidence IDs, action names, success/failure, failure kind, duration, artifact paths, and URLs.
+- Reads ActionEvidence only; it does not inspect secrets or execute commands.
+
+### `virtual_status`
+
+Purpose: summarize current workspace status without Git or shell.
+
+Parameters:
+
+- `path`: relative workspace path, use `.` for root.
+- `max_files`: maximum files to inspect.
+- `max_recent`: maximum recent evidence records to summarize.
+
+Notes:
+
+- Safe replacement for a limited `git status` mental model.
+- Returns file counts, directory counts, extension counts, recent changes, restore points, and evidence IDs.
+- This is virtual status: it reports MobileCode workspace state and ActionEvidence, not a real Git index.
+
+### `detect_project_type`
+
+Purpose: identify likely project shape before choosing a build or edit strategy.
+
+Parameters:
+
+- `path`: relative workspace path, use `.` for root.
+- `max_depth`: maximum directory depth to inspect.
+- `max_files`: maximum files to inspect.
+
+Notes:
+
+- Detects signals such as static web, Flutter, Android Gradle, Node/Vite/Next, and PWA.
+- Helps models avoid blindly writing `index.html` when the workspace already has a structured project.
+- Read-only and bounded to the workspace.
+
 ### `validate_html`
 
 Purpose: run a lightweight mobile-readiness and structural HTML check without executing scripts.
@@ -281,6 +335,37 @@ Notes:
 - Safe replacement for basic `tidy` / `htmlhint` / browser sanity checks.
 - Checks for doctype, html/body/title, mobile viewport, external asset references, and obvious tag balance issues.
 - This is not a full browser render or native bitmap screenshot.
+
+### `validate_json`
+
+Purpose: validate JSON syntax and root shape without shell.
+
+Parameters:
+
+- `path`: relative JSON file path, or empty string when validating inline JSON.
+- `json`: inline JSON, or empty string when validating a file path.
+- `max_bytes`: maximum bytes to inspect.
+
+Notes:
+
+- Safe replacement for `jq` / `python -m json.tool` syntax checks.
+- Returns `valid`, root type, item count, and compact error text when invalid.
+- Invalid JSON is reported as validation metadata, not as a raw process failure.
+
+### `validate_markdown`
+
+Purpose: validate basic Markdown structure and mobile readability without external linters.
+
+Parameters:
+
+- `path`: relative Markdown file path, or empty string when validating inline Markdown.
+- `markdown`: inline Markdown, or empty string when validating a file path.
+- `max_bytes`: maximum bytes to inspect.
+
+Notes:
+
+- Checks for top-level heading, heading jumps, bare URLs, long lines, and trailing whitespace.
+- This is a lightweight mobile-side check, not a full markdownlint replacement.
 
 ### `apply_patch`
 
@@ -353,6 +438,25 @@ Notes:
 
 - This is metadata/DOM evidence, not native bitmap screenshot yet.
 
+### `termux_task_start`
+
+Purpose: start a typed Termux / MobileCode Helper runtime task when a helper route is configured.
+
+Parameters:
+
+- `task_kind`: one of the allowed typed task kinds, such as `project_check`, `validate`, `build_preview`, `flutter_analyze`, `flutter_test`, or `npm_build`.
+- `path`: relative workspace path for the task.
+- `args_json`: small JSON object string with typed task options.
+- `timeout_ms`: task timeout.
+- `max_output_bytes`: maximum stdout/stderr bytes retained in evidence.
+- `reason`: short reason for the task.
+
+Notes:
+
+- This is not raw shell and does not accept command strings.
+- When no Helper/Termux daemon is configured, the tool fails closed with `dependencyMissing` evidence.
+- A connected helper must return `taskId`, `stdout`, `stderr`, status, and optional exit code so the model receives a real observation.
+
 ### `report_result`
 
 Purpose: finish the loop with concise status and evidence references.
@@ -379,9 +483,6 @@ These are intentionally blocked in provider-native Agent Loop:
 
 The next safe commands should remain typed tools, not raw shell:
 
-- `change_history`: readable history of recent evidence-backed changes;
-- `detect_project_type`: identify static HTML / Flutter / Node-like project shape;
-- `validate_json` / `validate_markdown`: read-only content checks;
 - `export_zip`: user-approved project export.
 
 ## Model Prompt Rule
@@ -392,6 +493,6 @@ The provider system prompt should say:
 You are running inside MobileCode, an Android app workspace.
 This is not a full Linux environment.
 Use provider-native typed tools instead of raw shell commands.
-Translate pwd/tree/ls/find/grep/cat/cp/mkdir/rm/mv/diff/restore/patch/html-check/curl-style requests into project_summary/list_files/find_files/grep_files/read_file/copy_file/mkdir/delete_file/move_file/save_snapshot/virtual_diff/restore_snapshot/apply_patch/validate_html/fetch_url when possible.
+Translate pwd/tree/ls/find/grep/cat/cp/mkdir/rm/mv/diff/status/history/restore/patch/html-check/json-check/markdown-check/curl-style requests into project_summary/detect_project_type/list_files/find_files/grep_files/read_file/copy_file/mkdir/delete_file/move_file/save_snapshot/virtual_diff/virtual_status/change_history/restore_snapshot/apply_patch/validate_html/validate_json/validate_markdown/fetch_url when possible.
 Never attempt sudo, package installation, system Android commands, or writes outside the workspace.
 ```

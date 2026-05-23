@@ -132,8 +132,8 @@ const _managedRelayUrl = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_URL');
 const _managedRelayToken = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_TOKEN');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _currentProductVersion = 'v0.1.61-last';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.61-last';
+const _currentProductVersion = 'v0.1.62-last';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.62-last';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
 const _releaseBuildLabel = _currentProductVersion;
@@ -12715,7 +12715,6 @@ class _ChatPanelState extends State<_ChatPanel> {
                   ),
                   const SizedBox(width: 8),
                   _TaskDispatchStrip(
-                    onPrompt: (prompt, {runAgent = false}) => unawaited(setPromptFromShell(prompt, runAgent: runAgent)),
                     onMore: () => _openTaskDispatchSheet(),
                   ),
                 ],
@@ -14011,14 +14010,14 @@ class _AgentModeSummaryButton extends StatelessWidget {
       message: '打开模式面板：选择执行模式、Agent preset 与 RR 角色增强。',
       child: InkWell(
         onTap: running ? null : onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          height: 38,
+          height: 42,
           constraints: const BoxConstraints(maxWidth: 172),
           padding: const EdgeInsets.symmetric(horizontal: 11),
           decoration: BoxDecoration(
             color: color.withOpacity(0.10),
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: color.withOpacity(0.34)),
           ),
           child: Row(
@@ -14450,57 +14449,47 @@ class _CompactAgentModeToggle extends StatelessWidget {
 
 class _TaskDispatchStrip extends StatelessWidget {
   const _TaskDispatchStrip({
-    required this.onPrompt,
     required this.onMore,
   });
 
-  final void Function(String prompt, {bool runAgent}) onPrompt;
   final VoidCallback onMore;
 
   @override
   Widget build(BuildContext context) {
-    const prompts = [
-      _PromptShortcutData(
-        label: '贪吃蛇',
-        icon: Icons.videogame_asset_outlined,
-        prompt: '帮我在手机端创建一个可运行的贪吃蛇网页小游戏，生成 index.html、展示写代码过程，并用 WebView 预览。',
-        color: _mint,
-      ),
-      _PromptShortcutData(
-        label: '2048',
-        icon: Icons.grid_4x4_outlined,
-        prompt: '帮我创建一个 2048 网页小游戏，保存为 index.html，并打开本地 WebView 预览。',
-        color: _cyan,
-      ),
-      _PromptShortcutData(
-        label: 'GitHub',
-        icon: Icons.hub_outlined,
-        prompt: '测试 GitHub token 与 Harzva/mobilecode 仓库是否联通，并说明失败原因。',
-        color: _violet,
-      ),
-      _PromptShortcutData(
-        label: '复杂验收',
-        icon: Icons.travel_explore_outlined,
-        prompt: '复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 list_files、find_files、grep_files、web_search、fetch_url、write_file、read_file、move_file、apply_patch、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。',
-        color: _amber,
-      ),
-    ];
-    final quickPrompts = prompts.take(3).toList();
+    return _ComposerTaskDispatchButton(onTap: onMore);
+  }
+}
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final item in quickPrompts) ...[
-          _PromptShortcutChip(item: item, onTap: () => onPrompt(item.prompt, runAgent: true)),
-          const SizedBox(width: 8),
-        ],
-        _ActionChipButton(
-          icon: Icons.rocket_launch_outlined,
-          label: '任务派发',
-          color: _amber,
-          onTap: onMore,
+class _ComposerTaskDispatchButton extends StatelessWidget {
+  const _ComposerTaskDispatchButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: '打开任务派发：贪吃蛇、2048、GitHub、复杂验收等预置任务都在这里。',
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            color: _amber.withOpacity(0.10),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: _amber.withOpacity(0.36)),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.rocket_launch_outlined, color: _amber, size: 17),
+              SizedBox(width: 7),
+              Text('任务派发', style: TextStyle(color: _text, fontSize: 12, fontWeight: FontWeight.w900)),
+            ],
+          ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -14624,54 +14613,6 @@ class _ManagementSurfacePanel extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _PromptShortcutData {
-  const _PromptShortcutData({
-    required this.label,
-    required this.icon,
-    required this.prompt,
-    required this.color,
-  });
-
-  final String label;
-  final IconData icon;
-  final String prompt;
-  final Color color;
-}
-
-class _PromptShortcutChip extends StatelessWidget {
-  const _PromptShortcutChip({
-    required this.item,
-    required this.onTap,
-  });
-
-  final _PromptShortcutData item;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-        decoration: BoxDecoration(
-          color: item.color.withOpacity(0.10),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: item.color.withOpacity(0.34)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(item.icon, color: item.color, size: 15),
-            const SizedBox(width: 5),
-            Text(item.label, style: const TextStyle(color: _text, fontSize: 11.5, fontWeight: FontWeight.w800)),
-          ],
-        ),
       ),
     );
   }

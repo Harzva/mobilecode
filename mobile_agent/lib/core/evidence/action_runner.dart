@@ -88,6 +88,9 @@ class ActionRunner {
         MobileCodeAction.moveFile => await _moveFile(schema, startedAt),
         MobileCodeAction.saveSnapshot => await _saveSnapshot(schema, startedAt),
         MobileCodeAction.virtualDiff => await _virtualDiff(schema, startedAt),
+        MobileCodeAction.restoreSnapshot => await _restoreSnapshot(schema, startedAt),
+        MobileCodeAction.projectSummary => await _projectSummary(schema, startedAt),
+        MobileCodeAction.validateHtml => await _validateHtml(schema, startedAt),
         MobileCodeAction.applyPatch => await _applyPatch(schema, startedAt),
         MobileCodeAction.previewHtml => await _previewHtml(schema, startedAt),
         MobileCodeAction.webSearch => await _webSearch(schema, startedAt),
@@ -826,6 +829,397 @@ class ActionRunner {
         'targetPath': _relative(target),
         'changedFiles': changedFiles,
         'inspectedBytes': inspectedBytes,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text, path: target);
+  }
+
+  Future<ActionRunnerResult> _restoreSnapshot(ActionSchema schema, DateTime startedAt) async {
+    final confirm = schema.params['confirm'] == true;
+    if (!confirm) {
+      throw const _ActionRunnerFailure(
+        'restore_snapshot requires confirm=true because it overwrites workspace files.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: ['Set confirm=true only after the user asks to restore a MobileCode snapshot.'],
+      );
+    }
+    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+    final target = _resolveWorkspacePath(rawPath);
+    final snapshotId = _stringParam(schema, 'snapshotId');
+    final snapshotPathParam = _stringParam(schema, 'snapshotPath');
+    if (snapshotId.isEmpty && snapshotPathParam.isEmpty) {
+      throw const _ActionRunnerFailure(
+        'restore_snapshot requires snapshot_id or snapshot_path.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: ['Call save_snapshot first, then pass the returned snapshot_id to restore_snapshot.'],
+      );
+    }
+    if (snapshotId.isNotEmpty && !RegExp(r'^snapshot_\d+$').hasMatch(snapshotId)) {
+      throw const _ActionRunnerFailure(
+        'Invalid snapshot_id format for restore_snapshot.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: ['Use the snapshot_id returned by save_snapshot, for example snapshot_1234567890.'],
+      );
+    }
+    final snapshotRoot = snapshotPathParam.isNotEmpty
+        ? _resolveWorkspacePath(snapshotPathParam)
+        : _resolveWorkspacePath('.mobilecode_snapshots/$snapshotId');
+    if (!await Directory(snapshotRoot).exists()) {
+      throw _ActionRunnerFailure(
+        'Snapshot root does not exist: ${_relative(snapshotRoot)}',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Call save_snapshot and use the returned snapshot_id.'],
+      );
+    }
+    final maxFiles = _boundedIntParam(schema, 'maxFiles', defaultValue: 40, min: 1, max: 120);
+    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 1024 * 1024, min: 1024, max: 5 * 1024 * 1024);
+    final targetRelative = _relative(target);
+    final source = targetRelative == '.' ? snapshotRoot : p.join(snapshotRoot, targetRelative);
+    final sourceType = await FileSystemEntity.type(source, followLinks: false);
+    if (sourceType == FileSystemEntityType.notFound) {
+      throw _ActionRunnerFailure(
+        'Snapshot does not contain ${targetRelative == '.' ? 'workspace root' : targetRelative}.',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Run virtual_diff or project_summary against the snapshot before restoring.'],
+      );
+    }
+
+    final restoredFiles = <Map<String, dynamic>>[];
+    final backupFiles = <Map<String, dynamic>>[];
+    var totalBytes = 0;
+    final backupRoot = _resolveWorkspacePath(
+      '.mobilecode_restore_snapshots/restore_${DateTime.now().millisecondsSinceEpoch}',
+    );
+
+    Future<void> restoreFile(File snapshotFile) async {
+      if (restoredFiles.length >= maxFiles) return;
+      final relativeToSnapshot = p.relative(snapshotFile.path, from: snapshotRoot);
+      if (relativeToSnapshot == 'manifest.json' || relativeToSnapshot.startsWith('.mobilecode_')) {
+        return;
+      }
+      final stat = await snapshotFile.stat();
+      if (totalBytes + stat.size > maxBytes) return;
+      final destination = _resolveWorkspacePath(relativeToSnapshot);
+      final existingType = await FileSystemEntity.type(destination, followLinks: false);
+      if (existingType == FileSystemEntityType.directory) {
+        throw _ActionRunnerFailure(
+          'Cannot restore file over existing directory: ${_relative(destination)}',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: const ['Choose a file path restore target, not a directory with the same name.'],
+        );
+      }
+      if (existingType == FileSystemEntityType.file) {
+        final backupPath = p.join(backupRoot, relativeToSnapshot);
+        await File(backupPath).parent.create(recursive: true);
+        await File(destination).copy(backupPath);
+        backupFiles.add({'path': _relative(backupPath), 'sizeBytes': await File(backupPath).length()});
+      }
+      await File(destination).parent.create(recursive: true);
+      await snapshotFile.copy(destination);
+      totalBytes += stat.size;
+      restoredFiles.add({'path': _relative(destination), 'sizeBytes': stat.size});
+    }
+
+    if (sourceType == FileSystemEntityType.file) {
+      await restoreFile(File(source));
+    } else if (sourceType == FileSystemEntityType.directory) {
+      await for (final entity in Directory(source).list(recursive: true, followLinks: false)) {
+        if (restoredFiles.length >= maxFiles || totalBytes >= maxBytes) break;
+        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        if (type == FileSystemEntityType.file) await restoreFile(File(entity.path));
+      }
+    } else {
+      throw _ActionRunnerFailure(
+        'Unsupported snapshot restore source: ${_relative(source)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Restore regular files or directories saved by save_snapshot.'],
+      );
+    }
+    if (restoredFiles.isEmpty) {
+      throw _ActionRunnerFailure(
+        'No files were restored from ${_relative(snapshotRoot)} within the current limits.',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Increase max_files/max_bytes or choose a narrower snapshot path.'],
+      );
+    }
+
+    final text = [
+      'Restored ${restoredFiles.length} file(s) from ${snapshotId.isEmpty ? _relative(snapshotRoot) : snapshotId}:',
+      ...restoredFiles.map((file) => '- ${file['path']} (${file['sizeBytes']} bytes)'),
+      if (backupFiles.isNotEmpty) 'Previous versions backed up under ${_relative(backupRoot)}.',
+    ].join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.restoreSnapshot,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'restore snapshot to $targetRelative' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [
+        snapshotRoot,
+        target,
+        if (backupFiles.isNotEmpty) backupRoot,
+      ],
+      logs: [
+        'Restored ${restoredFiles.length} file(s) from ${_relative(snapshotRoot)} to workspace path $targetRelative.',
+        if (backupFiles.isNotEmpty) 'Backed up ${backupFiles.length} previous file(s) under ${_relative(backupRoot)}.',
+      ],
+      metadata: {
+        if (snapshotId.isNotEmpty) 'snapshotId': snapshotId,
+        'snapshotRoot': _relative(snapshotRoot),
+        'targetPath': targetRelative,
+        'restoredFiles': restoredFiles,
+        'backupFiles': backupFiles,
+        'totalBytes': totalBytes,
+        'confirm': confirm,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text, path: target);
+  }
+
+  Future<ActionRunnerResult> _projectSummary(ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+    final target = _resolveWorkspacePath(rawPath);
+    final maxDepth = _boundedIntParam(schema, 'maxDepth', defaultValue: 3, min: 1, max: 6);
+    final maxFiles = _boundedIntParam(schema, 'maxFiles', defaultValue: 80, min: 10, max: 240);
+    final targetType = await FileSystemEntity.type(target, followLinks: false);
+    if (targetType == FileSystemEntityType.notFound) {
+      throw _ActionRunnerFailure(
+        'Project summary path does not exist: ${_relative(target)}',
+        failureKind: ActionFailureKind.processFailed,
+        recoveryActions: const ['Call list_files first or choose an existing workspace path.'],
+      );
+    }
+
+    final files = <Map<String, dynamic>>[];
+    final directories = <String>[];
+    final extensionCounts = <String, int>{};
+    final entrypoints = <String>[];
+    var totalBytes = 0;
+    var truncated = false;
+
+    bool shouldSkip(String relativePath) {
+      final normalized = relativePath.replaceAll('\\', '/');
+      return normalized == '.mobilecode_snapshots' ||
+          normalized.startsWith('.mobilecode_') ||
+          normalized.contains('/.mobilecode_');
+    }
+
+    Future<void> addFile(File file) async {
+      if (files.length >= maxFiles) {
+        truncated = true;
+        return;
+      }
+      final relativePath = _relative(file.path);
+      if (shouldSkip(relativePath)) return;
+      final stat = await file.stat();
+      final ext = p.extension(file.path).toLowerCase();
+      extensionCounts[ext.isEmpty ? '(none)' : ext] = (extensionCounts[ext.isEmpty ? '(none)' : ext] ?? 0) + 1;
+      totalBytes += stat.size;
+      final basename = p.basename(file.path).toLowerCase();
+      if (basename == 'index.html' ||
+          basename == 'package.json' ||
+          basename == 'pubspec.yaml' ||
+          basename == 'manifest.json' ||
+          basename == 'readme.md') {
+        entrypoints.add(relativePath);
+      }
+      files.add({
+        'path': relativePath,
+        'sizeBytes': stat.size,
+        'modifiedAt': stat.modified.toIso8601String(),
+      });
+    }
+
+    Future<void> walkDirectory(Directory directory, int depth) async {
+      if (depth > maxDepth || files.length >= maxFiles) {
+        truncated = true;
+        return;
+      }
+      await for (final entity in directory.list(recursive: false, followLinks: false)) {
+        if (files.length >= maxFiles) {
+          truncated = true;
+          break;
+        }
+        final relativePath = _relative(entity.path);
+        if (shouldSkip(relativePath)) continue;
+        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        if (type == FileSystemEntityType.directory) {
+          directories.add(relativePath);
+          await walkDirectory(Directory(entity.path), depth + 1);
+        } else if (type == FileSystemEntityType.file) {
+          await addFile(File(entity.path));
+        }
+      }
+    }
+
+    if (targetType == FileSystemEntityType.file) {
+      await addFile(File(target));
+    } else if (targetType == FileSystemEntityType.directory) {
+      await walkDirectory(Directory(target), 1);
+    } else {
+      throw _ActionRunnerFailure(
+        'Unsupported project summary target: ${_relative(target)}',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+      );
+    }
+
+    final sortedExtensions = extensionCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final text = [
+      'Project summary for ${_relative(target)}',
+      'Files: ${files.length}${truncated ? '+' : ''}, directories: ${directories.length}, bytes: $totalBytes',
+      if (entrypoints.isNotEmpty) 'Likely entrypoints: ${entrypoints.take(8).join(', ')}',
+      if (sortedExtensions.isNotEmpty) 'Extensions: ${sortedExtensions.take(8).map((entry) => '${entry.key}:${entry.value}').join(', ')}',
+      if (directories.isNotEmpty) 'Directories: ${directories.take(12).join(', ')}',
+      if (files.isNotEmpty) 'Files:\n${files.take(30).map((file) => '- ${file['path']} (${file['sizeBytes']} bytes)').join('\n')}',
+      if (truncated) 'Summary truncated by max_files/max_depth limits.',
+    ].join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.projectSummary,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'project summary ${_relative(target)}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [target],
+      logs: ['Summarized ${files.length} file(s) and ${directories.length} directorie(s) under ${_relative(target)}.'],
+      metadata: {
+        'relativePath': _relative(target),
+        'maxDepth': maxDepth,
+        'maxFiles': maxFiles,
+        'truncated': truncated,
+        'totalBytes': totalBytes,
+        'entrypoints': entrypoints.take(20).toList(),
+        'extensionCounts': extensionCounts,
+        'files': files.take(80).toList(),
+        'directories': directories.take(80).toList(),
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text, path: target);
+  }
+
+  Future<ActionRunnerResult> _validateHtml(ActionSchema schema, DateTime startedAt) async {
+    final pathParam = _stringParam(schema, 'path');
+    final htmlParam = _stringParam(schema, 'html');
+    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
+    String html;
+    String? target;
+    if (pathParam.isNotEmpty) {
+      target = _resolveWorkspacePath(pathParam);
+      final file = File(target);
+      if (!await file.exists()) {
+        throw _ActionRunnerFailure(
+          'HTML file does not exist: ${_relative(target)}',
+          failureKind: ActionFailureKind.processFailed,
+          recoveryActions: const ['Create or find the HTML file before validating it.'],
+        );
+      }
+      final bytes = await file.readAsBytes();
+      if (bytes.length > maxBytes) {
+        throw _ActionRunnerFailure(
+          'HTML file is too large to validate on mobile (${bytes.length} bytes).',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: const ['Validate a smaller file or increase max_bytes within the supported cap.'],
+        );
+      }
+      if (_looksBinary(bytes)) {
+        throw const _ActionRunnerFailure(
+          'validate_html only supports text HTML files.',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: ['Choose a UTF-8 text HTML file.'],
+        );
+      }
+      html = utf8.decode(bytes, allowMalformed: true);
+    } else if (htmlParam.isNotEmpty) {
+      html = htmlParam;
+      if (utf8.encode(html).length > maxBytes) {
+        throw const _ActionRunnerFailure(
+          'Inline HTML is too large to validate on mobile.',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: ['Validate a smaller HTML payload or write it to a file first.'],
+        );
+      }
+    } else {
+      throw const _ActionRunnerFailure(
+        'validate_html requires path or html.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: ['Pass a workspace HTML file path or inline HTML content.'],
+      );
+    }
+
+    final issues = <Map<String, dynamic>>[];
+    void addIssue(String severity, String code, String message) {
+      issues.add({'severity': severity, 'code': code, 'message': message});
+    }
+
+    final lower = html.toLowerCase();
+    if (!lower.contains('<!doctype html')) addIssue('warning', 'missing_doctype', 'Missing <!DOCTYPE html>.');
+    if (!RegExp(r'<html[\s>]', caseSensitive: false).hasMatch(html)) addIssue('warning', 'missing_html_tag', 'Missing <html> tag.');
+    if (!RegExp(r'<body[\s>]', caseSensitive: false).hasMatch(html)) addIssue('warning', 'missing_body_tag', 'Missing <body> tag.');
+    if (_extractHtmlTitle(html).isEmpty) addIssue('warning', 'missing_title', 'Missing non-empty <title>.');
+    if (!RegExp('<meta[^>]+name=["\\\']viewport["\\\']', caseSensitive: false).hasMatch(html)) {
+      addIssue('warning', 'missing_viewport', 'Missing mobile viewport meta tag.');
+    } else if (!lower.contains('width=device-width')) {
+      addIssue('warning', 'viewport_not_mobile_width', 'Viewport exists but does not include width=device-width.');
+    }
+    if (RegExp(r'(http://|https://)', caseSensitive: false).hasMatch(html)) {
+      addIssue('info', 'external_asset_reference', 'HTML references external network URLs; prefer inline assets for offline WebView demos.');
+    }
+    final voidTags = <String>{'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'};
+    final stack = <String>[];
+    final tagExp = RegExp(r'<\s*(/)?\s*([a-zA-Z][a-zA-Z0-9-]*)\b([^>]*)>', caseSensitive: false);
+    for (final match in tagExp.allMatches(html).take(400)) {
+      final closing = match.group(1) == '/';
+      final tag = (match.group(2) ?? '').toLowerCase();
+      final tail = match.group(3) ?? '';
+      if (tag.isEmpty || voidTags.contains(tag) || tail.trim().endsWith('/')) continue;
+      if (!closing) {
+        stack.add(tag);
+      } else if (stack.isNotEmpty && stack.last == tag) {
+        stack.removeLast();
+      } else if (stack.contains(tag)) {
+        while (stack.isNotEmpty && stack.last != tag) {
+          addIssue('warning', 'tag_order_mismatch', 'Tag <${stack.removeLast()}> was not closed before </$tag>.');
+          if (issues.length >= 20) break;
+        }
+        if (stack.isNotEmpty && stack.last == tag) stack.removeLast();
+      } else {
+        addIssue('warning', 'unexpected_closing_tag', 'Unexpected closing tag </$tag>.');
+      }
+      if (issues.length >= 24) break;
+    }
+    for (final tag in stack.reversed.take(8)) {
+      addIssue('warning', 'unclosed_tag', 'Unclosed tag <$tag>.');
+    }
+
+    final text = issues.isEmpty
+        ? 'HTML validation passed${target == null ? '' : ' for ${_relative(target)}'}: no obvious structural issues.'
+        : [
+            'HTML validation found ${issues.length} issue(s)${target == null ? '' : ' in ${_relative(target)}'}:',
+            ...issues.take(20).map((issue) => '- ${issue['severity']} ${issue['code']}: ${issue['message']}'),
+          ].join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.validateHtml,
+      paramsSummary: schema.paramsSummary.isEmpty ? 'validate html${target == null ? '' : ' ${_relative(target)}'}' : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: true,
+      artifactPaths: [
+        if (target != null) target,
+      ],
+      logs: ['Validated HTML with ${issues.length} issue(s).'],
+      metadata: {
+        if (target != null) 'relativePath': _relative(target),
+        'htmlBytes': utf8.encode(html).length,
+        'title': _extractHtmlTitle(html),
+        'issueCount': issues.length,
+        'issues': issues,
       },
     );
     evidenceStore.add(evidence);

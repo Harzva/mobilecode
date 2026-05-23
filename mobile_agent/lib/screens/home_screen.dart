@@ -132,8 +132,8 @@ const _managedRelayUrl = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_URL');
 const _managedRelayToken = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_TOKEN');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _currentProductVersion = 'v0.1.63-last';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.63-last';
+const _currentProductVersion = 'v0.1.64-last';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.64-last';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
 const _releaseBuildLabel = _currentProductVersion;
@@ -719,6 +719,14 @@ const _providerNativeToolSpecs = [
     risk: 'read-only',
   ),
   _LocalToolSpec(
+    name: 'project_summary',
+    description: 'Summarize workspace structure, entrypoints, extensions, and file sizes before planning.',
+    surface: 'ActionRunner',
+    icon: Icons.account_tree_outlined,
+    color: _blue,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
     name: 'web_search',
     description: 'Let the model ask for compact public web references through the managed relay.',
     surface: 'Relay read',
@@ -799,6 +807,22 @@ const _providerNativeToolSpecs = [
     risk: 'read-only',
   ),
   _LocalToolSpec(
+    name: 'restore_snapshot',
+    description: 'Restore confirmed files from a MobileCode snapshot; previous versions are backed up.',
+    surface: 'ActionRunner',
+    icon: Icons.settings_backup_restore_outlined,
+    color: _rose,
+    risk: 'confirmed restore',
+  ),
+  _LocalToolSpec(
+    name: 'validate_html',
+    description: 'Check HTML structure and mobile WebView readiness without running scripts.',
+    surface: 'ActionRunner',
+    icon: Icons.fact_check_outlined,
+    color: _mint,
+    risk: 'read-only',
+  ),
+  _LocalToolSpec(
     name: 'apply_patch',
     description: 'Apply a small unified diff inside the workspace with snapshot evidence.',
     surface: 'ActionRunner',
@@ -864,8 +888,8 @@ const _androidCommandSpecs = [
     category: 'File metadata',
     commands: 'stat, file, wc, sort, uniq, cut, tr',
     support: 'Partial',
-    mobileCodePath: 'list_files metadata',
-    note: 'list_files returns path/type/size/modifiedAt; detailed text transforms are not exposed yet.',
+    mobileCodePath: 'project_summary / list_files metadata',
+    note: 'project_summary returns compact structure, entrypoints, extensions, and sizes; detailed text transforms are not exposed yet.',
     color: _amber,
     icon: Icons.info_outline,
   ),
@@ -880,12 +904,21 @@ const _androidCommandSpecs = [
   ),
   _AndroidCommandSpec(
     category: 'Patch / diff apply',
-    commands: 'patch, git apply, diff, git diff',
+    commands: 'patch, git apply, diff, git diff, git restore',
     support: 'Supported',
-    mobileCodePath: 'apply_patch / save_snapshot / virtual_diff',
-    note: 'Unified diff apply is bounded; virtual_diff compares workspace files against MobileCode snapshots.',
+    mobileCodePath: 'apply_patch / save_snapshot / virtual_diff / restore_snapshot',
+    note: 'Unified diff apply is bounded; snapshots can be compared and explicitly restored without shell or Git.',
     color: _mint,
     icon: Icons.difference_outlined,
+  ),
+  _AndroidCommandSpec(
+    category: 'HTML validation',
+    commands: 'tidy, htmlhint, browser sanity check',
+    support: 'Partial',
+    mobileCodePath: 'validate_html / preview_html',
+    note: 'validate_html checks compact structure and mobile viewport readiness; it does not execute JavaScript.',
+    color: _amber,
+    icon: Icons.fact_check_outlined,
   ),
   _AndroidCommandSpec(
     category: 'Copy / mkdir',

@@ -2,6 +2,8 @@
 
 Date: 2026-05-22
 
+Last updated: 2026-05-23
+
 Branch baseline: `last-recover-from-v039`
 
 ## Positioning
@@ -29,6 +31,7 @@ Streaming note: provider SSE deltas are buffered as in-memory tool-call drafts f
 | `list_files` | `ls`, `dir`, limited `find` | Read | Workspace only | Supported |
 | `find_files` | `find`, `fd` | Read | Workspace only | Supported |
 | `grep_files` | `grep`, `rg`, `ag` | Read | Bounded text files | Supported |
+| `project_summary` | `pwd`, `tree`, `stat` summary | Read | Workspace only | Supported |
 | `web_search` | web search, not shell | Network read | Relay-backed public web | Supported when relay configured |
 | `fetch_url` | safe `curl` / `wget` | Network read | Public HTTPS via relay | Supported when relay configured |
 | `write_file` | `cat > file` | Write | Workspace only | Supported |
@@ -39,6 +42,8 @@ Streaming note: provider SSE deltas are buffered as in-memory tool-call drafts f
 | `move_file` | `mv` | Guarded write | File-only, workspace only | Supported |
 | `save_snapshot` | checkpoint / local snapshot | Local evidence | Bounded workspace copy | Supported |
 | `virtual_diff` | `diff`, limited `git diff` | Read | Snapshot-vs-workspace compare | Supported |
+| `restore_snapshot` | guarded `git restore` | Confirmed rollback | Snapshot-to-workspace restore | Supported |
+| `validate_html` | `tidy`, `htmlhint`, browser sanity check | Read | HTML structure check | Supported |
 | `apply_patch` | `patch`, `git apply` | Bounded write | Unified diff, workspace only | Supported |
 | `preview_html` | browser preview | Local preview | Workspace HTML / inline HTML | Supported |
 | `preview_snapshot` | screenshot-like evidence | Local evidence | Metadata / DOM summary, not bitmap | Supported |
@@ -95,6 +100,22 @@ Notes:
 - Safe replacement for `grep` / `rg`.
 - Skips binary-looking files and overly large files.
 - Returns path, line number, and compact preview for each match.
+
+### `project_summary`
+
+Purpose: summarize workspace structure before planning changes.
+
+Parameters:
+
+- `path`: relative workspace path, use `.` for root.
+- `max_depth`: maximum directory depth to inspect.
+- `max_files`: maximum files to include in the compact summary.
+
+Notes:
+
+- Safe replacement for a small `pwd` / `tree` / `stat` planning pass.
+- Returns likely entrypoints, directory list, extension counts, file sizes, and truncation metadata.
+- Skips `.mobilecode_*` recovery directories to avoid recursive noise.
 
 ### `read_file`
 
@@ -226,6 +247,41 @@ Notes:
 - Read-only: it does not write files.
 - The first version is a compact line-level diff, not a complete Git diff engine.
 
+### `restore_snapshot`
+
+Purpose: restore files from a prior MobileCode snapshot when rollback is explicitly requested.
+
+Parameters:
+
+- `path`: relative file or directory path to restore, use `.` for workspace root.
+- `snapshot_id`: ID returned by `save_snapshot`, or empty when `snapshot_path` is used.
+- `snapshot_path`: workspace-relative snapshot directory path, or empty when `snapshot_id` is used.
+- `confirm`: must be `true` because restore overwrites workspace files.
+- `max_files`: maximum files to restore.
+- `max_bytes`: maximum total bytes to restore.
+
+Notes:
+
+- Guarded replacement for a limited `git restore` workflow.
+- Does not delete files that are absent from the snapshot.
+- Backs up overwritten files under `.mobilecode_restore_snapshots/` and records ActionEvidence.
+
+### `validate_html`
+
+Purpose: run a lightweight mobile-readiness and structural HTML check without executing scripts.
+
+Parameters:
+
+- `path`: relative HTML file path, or empty string when validating inline HTML.
+- `html`: inline HTML, or empty string when validating a file path.
+- `max_bytes`: maximum bytes to inspect.
+
+Notes:
+
+- Safe replacement for basic `tidy` / `htmlhint` / browser sanity checks.
+- Checks for doctype, html/body/title, mobile viewport, external asset references, and obvious tag balance issues.
+- This is not a full browser render or native bitmap screenshot.
+
 ### `apply_patch`
 
 Purpose: apply a small unified diff inside the workspace.
@@ -323,9 +379,9 @@ These are intentionally blocked in provider-native Agent Loop:
 
 The next safe commands should remain typed tools, not raw shell:
 
-- `restore_snapshot`: user-approved rollback to a prior MobileCode snapshot;
 - `change_history`: readable history of recent evidence-backed changes;
-- `project_summary`: compact project structure and entrypoint summary;
+- `detect_project_type`: identify static HTML / Flutter / Node-like project shape;
+- `validate_json` / `validate_markdown`: read-only content checks;
 - `export_zip`: user-approved project export.
 
 ## Model Prompt Rule
@@ -336,6 +392,6 @@ The provider system prompt should say:
 You are running inside MobileCode, an Android app workspace.
 This is not a full Linux environment.
 Use provider-native typed tools instead of raw shell commands.
-Translate ls/find/grep/cat/cp/mkdir/rm/mv/diff/patch/curl-style requests into list_files/find_files/grep_files/read_file/copy_file/mkdir/delete_file/move_file/save_snapshot/virtual_diff/apply_patch/fetch_url when possible.
+Translate pwd/tree/ls/find/grep/cat/cp/mkdir/rm/mv/diff/restore/patch/html-check/curl-style requests into project_summary/list_files/find_files/grep_files/read_file/copy_file/mkdir/delete_file/move_file/save_snapshot/virtual_diff/restore_snapshot/apply_patch/validate_html/fetch_url when possible.
 Never attempt sudo, package installation, system Android commands, or writes outside the workspace.
 ```

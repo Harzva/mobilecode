@@ -19,6 +19,7 @@ const implemented = [
   'Agent Loop can now inspect and modify a mobile workspace with find_files, grep_files, and bounded apply_patch.',
   'Sub-Agent Lite v2 introduces background read-only Explorer / Reviewer workers with cancellation, timeout, token budget, and a two-worker concurrency cap.',
   'The Virtual Command Layer now covers copy_file, mkdir, delete_file, save_snapshot, and virtual_diff without opening raw shell.',
+  'v0.1.64 expands that layer with project_summary, restore_snapshot, and validate_html so the Agent can summarize, roll back confirmed snapshots, and check HTML structure before reporting.',
   'Tools now exposes Activity / Logs, provider tool list, preset permissions, and Android/Linux/macOS command compatibility.',
   'The composer now separates Mode, Model, Task Dispatch, and Input so mobile users can see how a run will execute before sending.',
   'Task Dispatch Center now groups quick generation, Agent validation, repair/review, and command-map prompts without crowding the mobile composer.',
@@ -27,7 +28,7 @@ const implemented = [
 
 const missing = [
   'The Agent Loop is still minimal and safety-bounded, not a full autonomous coding runtime.',
-  'Rollback restore, project summary, package/build execution, and full visual verification are not implemented yet.',
+  'Package/build execution, change history, detect_project_type, and full visual verification are not implemented yet.',
   'Native bitmap preview screenshots and rich visual verification are not implemented yet.',
   'Sub-Agent Lite v2 is still read-only; background workers can inspect and review, but real writes must return to the main AgentLoop.',
   'A Termux or Helper execution lane is still a future typed task route, not a raw shell exposed to the model.',
@@ -37,6 +38,7 @@ const safeTools = [
   'list_files',
   'find_files',
   'grep_files',
+  'project_summary',
   'agent_open',
   'agent_eval',
   'agent_close',
@@ -50,6 +52,8 @@ const safeTools = [
   'move_file',
   'save_snapshot',
   'virtual_diff',
+  'restore_snapshot',
+  'validate_html',
   'apply_patch',
   'preview_html',
   'preview_snapshot',
@@ -71,6 +75,9 @@ const dailyLogs = [
     date: '2026-05-23',
     title: 'Sub-Agent Lite v2 and safer mobile commands',
     points: [
+      'v0.1.64 adds project_summary so the Agent can inspect workspace entrypoints, directory shape, extensions, and file sizes before choosing a write strategy.',
+      'restore_snapshot is now a confirmed rollback tool: it restores files from MobileCode snapshots, backs up overwritten versions, and records ActionEvidence.',
+      'validate_html gives the phone a lightweight mobile-readiness check for doctype, viewport, title, body, external URLs, and obvious tag balance issues without running scripts.',
       'Sub-Agent Lite moved from one-run read-only sessions to background read-only workers with cancellation, timeout, token budget, and at most two concurrent lanes.',
       'Explorer and Reviewer workers can inspect, search, collect evidence, and return mailbox observations, but they still cannot write files or run shell.',
       'The main AgentLoop remains the only write lane: write_file, apply_patch, move_file, copy_file, mkdir, and delete_file still pass through ActionRunner, snapshots, evidence, and observation.',
@@ -169,7 +176,7 @@ export default function Experiments() {
             <span>Truth line</span>
             <strong>v0.1.39 UI + DeepSeek Agent Loop</strong>
             <span>Next gate</span>
-            <strong>Restore snapshot / project summary / typed Termux tasks</strong>
+            <strong>Change history / typed Termux tasks / richer preview verification</strong>
           </div>
         </div>
 
@@ -178,7 +185,7 @@ export default function Experiments() {
           <p>
             Current version is <strong>a mixed harness</strong>: Single-shot remains the stable default,
             while DeepSeek can use a <strong>minimal provider-native Agent Loop</strong>. The next target
-            is a richer typed tool surface without opening raw shell.
+            is better recovery, typed runtime tasks, and stronger mobile preview verification without opening raw shell.
           </p>
         </div>
 

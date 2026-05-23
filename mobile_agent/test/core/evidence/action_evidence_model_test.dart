@@ -4,12 +4,13 @@ import 'package:mobile_agent/core/evidence/action_evidence_store.dart';
 
 void main() {
   group('MobileCodeAction enum', () {
-    test('contains all 32 canonical action names', () {
-      expect(MobileCodeAction.values.length, 32);
+    test('contains all 35 canonical action names', () {
+      expect(MobileCodeAction.values.length, 35);
       expect(MobileCodeAction.values.map((e) => e.name), containsAll([
         'listFiles', 'findFiles', 'grepFiles', 'writeFile', 'readFile',
         'copyFile', 'makeDirectory', 'deleteFile', 'moveFile',
-        'saveSnapshot', 'virtualDiff', 'applyPatch', 'openFile', 'previewHtml',
+        'saveSnapshot', 'virtualDiff', 'restoreSnapshot', 'projectSummary',
+        'validateHtml', 'applyPatch', 'openFile', 'previewHtml',
         'webSearch', 'fetchUrl', 'previewSnapshot',
         'publishPages', 'runCommand', 'cloneRepo', 'linkRemoteRepo',
         'commitFiles', 'triggerGitHubAction', 'inspectRelease',

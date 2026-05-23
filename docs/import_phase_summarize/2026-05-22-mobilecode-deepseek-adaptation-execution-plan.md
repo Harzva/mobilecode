@@ -463,7 +463,7 @@ CI 链接：`https://github.com/Harzva/mobilecode/actions/runs/26275224712`
 
 剩余风险：
 
-- `edit_file / read_many_files / restore_snapshot / project_summary` 尚未作为 provider-native tool 暴露。
+- `edit_file / read_many_files / change_history / detect_project_type` 尚未作为 provider-native tool 暴露。
 - `delete_file` 已进入 guard-railed typed tool 设计，但仍只能删除确认过的单个 workspace 文件，不支持目录删除或递归删除。
 - Runtime-only 命令仍依赖 Helper/Termux/CI，不能在当前 provider-native AgentLoop 中承诺可执行。
 
@@ -590,7 +590,7 @@ Shell 边界：
 剩余风险：
 
 - 第一版 `apply_patch` 是移动端轻量 unified diff 执行器，不等同于完整 `git apply`。
-- `copy_file / mkdir / delete_file / save_snapshot / virtual_diff` 已在后续 DS04.5 扩展，但 `restore_snapshot / change_history / project_summary` 仍未完成。
+- `copy_file / mkdir / delete_file / save_snapshot / virtual_diff / restore_snapshot / project_summary / validate_html` 已在后续 DS04.5/DS04.7 扩展；`change_history / edit_file / read_many_files` 仍未完成。
 - 多角色仍是单 loop 内的职责切换；真实后台子 Agent 本阶段延后，先落地角色编排 + event/mailbox-lite 方向。
 
 ## DS04.4 Sub-Agent Lite / mailbox-lite
@@ -724,7 +724,7 @@ Termux 路线口径：
 - 后台 worker 仍是 App 进程内的轻量 worker，不是完整多进程/多模型并发 Agent。
 - `virtual_diff` 是移动端 compact line diff，不是完整 Git diff engine。
 - `delete_file` 仍需真实产品验收，避免模型误把“移动/替换”理解成删除。
-- `restore_snapshot / change_history / project_summary` 仍未实现。
+- `restore_snapshot / project_summary / validate_html` 已在 DS04.7 实现；`change_history / detect_project_type / validate_json / validate_markdown` 仍未实现。
 
 ## DS05 DeepSeek 错误码映射
 
@@ -1030,3 +1030,66 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 
 - `apply_patch` 自修复仍依赖 provider 能理解 observation；当前策略是不替模型猜路径，而是把合法恢复路径压缩回传。
 - 任务派发中心是产品入口优化，不替代真实 AgentLoop 验收；复杂任务仍需 APK 手动测试。
+
+## 2026-05-23 DS04.7 Recoverable AgentLoop + Command Restore
+
+状态：`IN_PROGRESS`（本地实现完成，CI 待验收）
+
+目标：
+
+- 继续扩展 MobileCode Virtual Command Layer，让模型在手机端具备更完整的“先理解项目、再修改、再验证、必要时回滚”的闭环。
+- 让 AgentLoop 最终回答不再堆叠零散 observation，而是输出面向用户可读的 `SUMMARY / FILES / EVIDENCE / PREVIEW / TOOLS / BLOCKERS / NEXT`。
+- 仍然不开放 raw shell、Git push、发布、远程日志或任意命令。
+
+实际改动：
+
+- 新增 provider-native typed tools：
+  - `project_summary(path, max_depth, max_files)`
+  - `restore_snapshot(path, snapshot_id, snapshot_path, confirm, max_files, max_bytes)`
+  - `validate_html(path, html, max_bytes)`
+- `ActionRunner` 新增：
+  - `projectSummary`：只读返回 entrypoints、目录、扩展名统计、文件大小和截断信息。
+  - `restoreSnapshot`：只在 `confirm=true` 时恢复 MobileCode snapshot，覆盖前备份旧文件到 `.mobilecode_restore_snapshots/`，不删除 snapshot 中缺失的文件。
+  - `validateHtml`：不执行脚本，只做 HTML 结构与移动端 viewport 检查。
+- `ToolCallAdapter` tool schema 与 ActionSchema 映射同步新增三类工具。
+- `AgentPreset.allowedToolNames` 更新：
+  - Auto / Builder / Repair 可使用 `restore_snapshot`。
+  - Reviewer 仍保持只读，不允许 restore。
+  - 各 preset 可用 `project_summary / validate_html` 做理解与验证。
+- `AgentLoopController` 增加工具执行 summary 聚合：
+  - 收集每个 tool 的 status、evidenceId、artifactPaths、urls、logs。
+  - 安全轮数停止或无最终 answer 时，输出结构化最终总结而不是长 observation 串。
+- Tools 页和命令映射文档同步：
+  - `pwd/tree/stat -> project_summary`
+  - `git restore -> restore_snapshot`
+  - `tidy/htmlhint/browser sanity check -> validate_html`
+- GitHub Pages 实验日志更新用户向口径：MobileCode 是移动端安全 typed command facade，不是 Linux shell；v0.1.64 增加项目理解、确认回滚和 HTML 验证。
+
+关键文件：
+
+- `mobile_agent/lib/core/evidence/evidence_model.dart`
+- `mobile_agent/lib/core/evidence/action_runner.dart`
+- `mobile_agent/lib/services/tool_call_adapter.dart`
+- `mobile_agent/lib/services/agent_loop_controller.dart`
+- `mobile_agent/lib/screens/home_screen.dart`
+- `mobile_agent/test/core/evidence/action_evidence_model_test.dart`
+- `mobile_agent/test/core/evidence/action_runner_test.dart`
+- `mobile_agent/test/services/tool_call_adapter_test.dart`
+- `docs/COMMANDS.md`
+- `docs/COMMAND_COMPATIBILITY.md`
+- `app/src/pages/Experiments.tsx`
+
+验证结果：
+
+- [x] `git diff --check` 通过（仅 Windows 换行提示，无 whitespace error）。
+- [x] `node --check relay/mobilecode-token-relay-worker.js` 通过。
+- [ ] `cd app && npm run build`
+- [ ] GitHub Actions `Mobile Runtime CI`
+- [ ] GitHub Actions `Build Android APK`
+
+剩余风险：
+
+- 本地 Flutter/Dart 不在 PATH，Dart 单元测试需依赖 GitHub Actions。
+- `restore_snapshot` 是确认式回滚，不是自动自由回滚；模型必须显式传 `confirm=true`，用户意图也必须清楚。
+- `validate_html` 是轻量结构检查，不等同于真实浏览器截图或视觉回归。
+- `change_history / detect_project_type / validate_json / validate_markdown / typed Termux task route` 仍在后续任务。

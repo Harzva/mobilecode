@@ -71,6 +71,39 @@ typedef AgentLoopProviderCall = Future<ProviderToolCallResponse> Function(
   required int round,
 });
 
+class _AgentLoopToolSummary {
+  const _AgentLoopToolSummary({
+    required this.toolName,
+    required this.status,
+    required this.evidenceId,
+    required this.artifactPaths,
+    required this.urls,
+    required this.message,
+  });
+
+  final String toolName;
+  final String status;
+  final String evidenceId;
+  final List<String> artifactPaths;
+  final List<String> urls;
+  final String message;
+
+  factory _AgentLoopToolSummary.from({
+    required ProviderToolCall call,
+    required ActionRunnerResult result,
+  }) {
+    final evidence = result.evidence;
+    return _AgentLoopToolSummary(
+      toolName: call.name,
+      status: _statusForResult(result),
+      evidenceId: evidence.evidenceId,
+      artifactPaths: evidence.artifactPaths,
+      urls: evidence.urls,
+      message: evidence.logs.join(' '),
+    );
+  }
+}
+
 extension AgentExecutionModeCopy on AgentExecutionMode {
   String get label => switch (this) {
         AgentExecutionMode.singleShot => 'Single-shot',
@@ -100,6 +133,7 @@ extension AgentPresetConfig on AgentPreset {
             'list_files',
             'find_files',
             'grep_files',
+            'project_summary',
             'agent_open',
             'agent_eval',
             'agent_close',
@@ -113,6 +147,8 @@ extension AgentPresetConfig on AgentPreset {
             'move_file',
             'save_snapshot',
             'virtual_diff',
+            'restore_snapshot',
+            'validate_html',
             'apply_patch',
             'preview_html',
             'preview_snapshot',
@@ -122,6 +158,7 @@ extension AgentPresetConfig on AgentPreset {
             'list_files',
             'find_files',
             'grep_files',
+            'project_summary',
             'write_file',
             'read_file',
             'copy_file',
@@ -130,6 +167,8 @@ extension AgentPresetConfig on AgentPreset {
             'move_file',
             'save_snapshot',
             'virtual_diff',
+            'restore_snapshot',
+            'validate_html',
             'apply_patch',
             'preview_html',
             'report_result',
@@ -138,6 +177,7 @@ extension AgentPresetConfig on AgentPreset {
             'list_files',
             'find_files',
             'grep_files',
+            'project_summary',
             'agent_open',
             'agent_eval',
             'agent_close',
@@ -150,6 +190,7 @@ extension AgentPresetConfig on AgentPreset {
             'move_file',
             'save_snapshot',
             'virtual_diff',
+            'validate_html',
             'apply_patch',
             'preview_html',
             'preview_snapshot',
@@ -159,6 +200,7 @@ extension AgentPresetConfig on AgentPreset {
             'list_files',
             'find_files',
             'grep_files',
+            'project_summary',
             'read_file',
             'write_file',
             'copy_file',
@@ -167,6 +209,8 @@ extension AgentPresetConfig on AgentPreset {
             'move_file',
             'save_snapshot',
             'virtual_diff',
+            'restore_snapshot',
+            'validate_html',
             'apply_patch',
             'preview_html',
             'preview_snapshot',
@@ -176,12 +220,14 @@ extension AgentPresetConfig on AgentPreset {
             'list_files',
             'find_files',
             'grep_files',
+            'project_summary',
             'agent_open',
             'agent_eval',
             'agent_close',
             'read_file',
             'save_snapshot',
             'virtual_diff',
+            'validate_html',
             'preview_html',
             'preview_snapshot',
             'report_result',
@@ -190,15 +236,15 @@ extension AgentPresetConfig on AgentPreset {
 
   String get systemInstruction => switch (this) {
         AgentPreset.autoAgent =>
-          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may open read-only Sub-Agent Lite explorer/reviewer sessions with agent_open/agent_eval/agent_close when a task needs isolated inspection. Do not follow a fixed sequence; call only the tools that are useful, and stop with report_result when the task is done or blocked.',
+          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may summarize/list/find/grep/read first, open read-only Sub-Agent Lite explorer/reviewer sessions when useful, then write/patch/preview/validate/restore only when the user intent and observations justify it. Do not follow a fixed sequence; call only useful tools, and stop with report_result when done or blocked.',
         AgentPreset.builder =>
-          'Agent preset Builder: inspect with find_files/grep_files/read_file when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, preview them, then report concise evidence. If apply_patch is blocked, do not repeat the same malformed patch; read the target and retry a valid unified diff or use complete write_file for a small generated artifact.',
+          'Agent preset Builder: inspect with project_summary/find_files/grep_files/read_file when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, preview and validate HTML when relevant, then report concise evidence. If apply_patch is blocked, do not repeat the same malformed patch; read the target and retry a valid unified diff or use complete write_file for a small generated artifact.',
         AgentPreset.researchBuilder =>
-          'Agent preset Research Builder: use public reference tools when they are useful, inspect local files, optionally open read-only background explorer/reviewer Sub-Agent Lite sessions, build or patch one local artifact, preview it, capture preview evidence when needed, then report refIds and evidenceIds.',
+          'Agent preset Research Builder: use public reference tools when they are useful, inspect/summarize local files, optionally open read-only background explorer/reviewer Sub-Agent Lite sessions, build or patch one local artifact, preview and validate it when relevant, capture preview evidence when needed, then report refIds and evidenceIds.',
         AgentPreset.repair =>
-          'Agent preset Repair: find, grep, and read the existing artifact or evidence, save a snapshot when useful, apply a focused patch or complete write_file replacement for small artifacts, preview again, then report what changed. If apply_patch is blocked, switch strategy: read_file the exact target, send a valid unified diff, or use complete write_file for a small HTML artifact.',
+          'Agent preset Repair: summarize, find, grep, and read the existing artifact or evidence, save a snapshot when useful, apply a focused patch or complete write_file replacement for small artifacts, restore a confirmed snapshot only when the user asks for rollback, preview/validate again, then report what changed. If apply_patch is blocked, switch strategy: read_file the exact target, send a valid unified diff, or use complete write_file for a small HTML artifact.',
         AgentPreset.reviewer =>
-          'Agent preset Reviewer: inspect local files, save snapshots, inspect virtual diffs, preview evidence, and optionally open read-only background explorer/reviewer Sub-Agent Lite sessions. Do not write files, publish, run shell, or mutate projects.',
+          'Agent preset Reviewer: summarize and inspect local files, save snapshots, inspect virtual diffs, validate HTML, preview evidence, and optionally open read-only background explorer/reviewer Sub-Agent Lite sessions. Do not write files, restore snapshots, publish, run shell, or mutate projects.',
       };
 
   bool get supportsWrite =>
@@ -207,7 +253,8 @@ extension AgentPresetConfig on AgentPreset {
       allowedToolNames.contains('move_file') ||
       allowedToolNames.contains('copy_file') ||
       allowedToolNames.contains('mkdir') ||
-      allowedToolNames.contains('delete_file');
+      allowedToolNames.contains('delete_file') ||
+      allowedToolNames.contains('restore_snapshot');
 }
 
 class AgentLoopController {
@@ -241,6 +288,7 @@ class AgentLoopController {
   }) async {
     final messages = initialMessages.map((message) => Map<String, dynamic>.from(message)).toList();
     final observations = <String>[];
+    final toolSummaries = <_AgentLoopToolSummary>[];
     String? generatedPath;
     var usedNativeToolCalls = false;
     var toolCallCount = 0;
@@ -276,7 +324,12 @@ class AgentLoopController {
           success: true,
         ));
         return AgentLoopResult(
-          answer: answer.isNotEmpty ? answer : 'Agent loop completed.\n\n${observations.join('\n')}',
+          answer: answer.isNotEmpty ? answer : _finalAnswer(
+            summary: 'Agent loop completed from observations.',
+            generatedPath: generatedPath,
+            toolSummaries: toolSummaries,
+            observations: observations,
+          ),
           usedNativeToolCalls: usedNativeToolCalls,
           rounds: round,
           toolCallCount: toolCallCount,
@@ -312,7 +365,14 @@ class AgentLoopController {
             success: true,
           ));
           return AgentLoopResult(
-            answer: report.isEmpty ? 'Agent loop completed.\n\n${observations.join('\n')}' : report,
+            answer: report.isEmpty
+                ? _finalAnswer(
+                    summary: 'Agent loop completed.',
+                    generatedPath: generatedPath,
+                    toolSummaries: toolSummaries,
+                    observations: observations,
+                  )
+                : report,
             usedNativeToolCalls: true,
             rounds: round,
             toolCallCount: toolCallCount,
@@ -347,6 +407,7 @@ class AgentLoopController {
         ));
         final status = _statusForResult(result);
         observations.add('${call.name}: $status · evidence ${evidence.evidenceId}');
+        toolSummaries.add(_AgentLoopToolSummary.from(call: call, result: result));
         if (result.path != null && result.path!.trim().isNotEmpty && call.name != 'preview_snapshot') {
           generatedPath = result.path;
         }
@@ -356,10 +417,12 @@ class AgentLoopController {
             call.name == 'grep_files' ||
             call.name == 'find_files' ||
             call.name == 'list_files' ||
+            call.name == 'project_summary' ||
             call.name == 'preview_html' ||
             call.name == 'preview_snapshot' ||
             call.name == 'save_snapshot' ||
-            call.name == 'virtual_diff') {
+            call.name == 'virtual_diff' ||
+            call.name == 'validate_html') {
           writeNeedsVerification = false;
         }
 
@@ -382,9 +445,14 @@ class AgentLoopController {
       success: true,
     ));
     return AgentLoopResult(
-      answer: generatedPath == null
-          ? 'Agent loop stopped after the $maxRounds-round safety limit.\n\n${observations.join('\n')}'
-          : 'Agent loop reached the $maxRounds-round safety limit after saving an artifact.\n\nArtifact: $generatedPath\n\n${observations.join('\n')}',
+      answer: _finalAnswer(
+        summary: generatedPath == null
+            ? 'Agent loop stopped at the $maxRounds-round safety limit.'
+            : 'Agent loop reached the $maxRounds-round safety limit after saving an artifact.',
+        generatedPath: generatedPath,
+        toolSummaries: toolSummaries,
+        observations: observations,
+      ),
       usedNativeToolCalls: usedNativeToolCalls,
       rounds: maxRounds,
       toolCallCount: toolCallCount,
@@ -534,6 +602,59 @@ class AgentLoopController {
         : 'Choose the smallest safe read-only or typed action that resolves the blocker.';
   }
 
+  String _finalAnswer({
+    required String summary,
+    required String? generatedPath,
+    required List<_AgentLoopToolSummary> toolSummaries,
+    required List<String> observations,
+  }) {
+    final files = <String>{
+      if (generatedPath != null && generatedPath.trim().isNotEmpty) generatedPath.trim(),
+      for (final item in toolSummaries) ...item.artifactPaths.take(4),
+    }.where((path) => path.trim().isNotEmpty).take(8).toList();
+    final previews = <String>{
+      for (final item in toolSummaries) ...item.urls.take(3),
+    }.where((url) => url.trim().isNotEmpty).take(4).toList();
+    final evidenceIds = toolSummaries.map((item) => item.evidenceId).where((id) => id.trim().isNotEmpty).take(10).toList();
+    final blockers = toolSummaries
+        .where((item) => item.status != 'ok')
+        .map((item) => '${item.toolName}: ${item.status}${item.message.isEmpty ? '' : ' - ${_compact(item.message, 120)}'}')
+        .take(6)
+        .toList();
+    final recentTools = toolSummaries.length > 12 ? toolSummaries.sublist(toolSummaries.length - 12) : toolSummaries;
+    return [
+      'SUMMARY',
+      summary,
+      '',
+      'FILES',
+      files.isEmpty ? '- none' : files.map((path) => '- $path').join('\n'),
+      '',
+      'EVIDENCE',
+      evidenceIds.isEmpty ? '- none' : evidenceIds.map((id) => '- $id').join('\n'),
+      '',
+      'PREVIEW',
+      previews.isEmpty ? '- not prepared' : previews.map((url) => '- $url').join('\n'),
+      '',
+      'TOOLS',
+      recentTools.isEmpty
+          ? '- no provider-native tool calls'
+          : recentTools.map((item) => '- ${item.toolName}: ${item.status} (${item.evidenceId})').join('\n'),
+      '',
+      'BLOCKERS',
+      blockers.isEmpty ? '- none' : blockers.map((blocker) => '- $blocker').join('\n'),
+      '',
+      'NEXT',
+      blockers.isEmpty
+          ? '- Open the generated file or preview to verify the result.'
+          : '- Inspect the blocker evidence, then retry with the suggested safe recovery action.',
+      if (observations.isNotEmpty) ...[
+        '',
+        'OBSERVATIONS',
+        observations.take(12).map((line) => '- $line').join('\n'),
+      ],
+    ].join('\n');
+  }
+
   void _throwIfCancelled(bool Function()? isCancelled) {
     if (isCancelled?.call() == true) {
       throw Exception('Agent run stopped by user.');
@@ -547,7 +668,8 @@ bool _isMutationTool(String toolName) {
       toolName == 'move_file' ||
       toolName == 'copy_file' ||
       toolName == 'mkdir' ||
-      toolName == 'delete_file';
+      toolName == 'delete_file' ||
+      toolName == 'restore_snapshot';
 }
 
 bool _isSubAgentTool(String toolName) {
@@ -983,19 +1105,21 @@ String _roleForModelRequest(int round) {
 }
 
 String _roleForTool(String toolName) {
-  if (toolName == 'find_files' || toolName == 'grep_files' || toolName == 'list_files' || toolName == 'read_file') {
+  if (toolName == 'find_files' || toolName == 'grep_files' || toolName == 'list_files' || toolName == 'project_summary' || toolName == 'read_file') {
     return 'Planner';
   }
   if (toolName == 'write_file' ||
       toolName == 'copy_file' ||
       toolName == 'mkdir' ||
       toolName == 'delete_file' ||
+      toolName == 'restore_snapshot' ||
       toolName == 'move_file' ||
       toolName == 'apply_patch') {
     return 'Builder';
   }
   if (toolName == 'save_snapshot' ||
       toolName == 'virtual_diff' ||
+      toolName == 'validate_html' ||
       toolName == 'preview_html' ||
       toolName == 'preview_snapshot' ||
       toolName == 'report_result') {
@@ -1012,12 +1136,14 @@ String _observationRoleForTool(String toolName) {
       toolName == 'copy_file' ||
       toolName == 'mkdir' ||
       toolName == 'delete_file' ||
+      toolName == 'restore_snapshot' ||
       toolName == 'move_file' ||
       toolName == 'apply_patch') {
     return 'Reviewer';
   }
   if (toolName == 'save_snapshot' ||
       toolName == 'virtual_diff' ||
+      toolName == 'validate_html' ||
       toolName == 'preview_html' ||
       toolName == 'preview_snapshot' ||
       toolName == 'report_result') {

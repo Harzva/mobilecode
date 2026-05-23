@@ -298,12 +298,12 @@ class OpenAiCompatibleToolCallAdapter {
 
   String get systemInstruction => [
         'When a mobile coding request needs a file or preview, use the provided tools instead of only describing the result.',
-        'MobileCode tools may include list_files, find_files, grep_files, agent_open, agent_eval, agent_close, web_search, fetch_url, write_file, read_file, copy_file, mkdir, delete_file, move_file, save_snapshot, virtual_diff, apply_patch, preview_html, preview_snapshot, and report_result; only call tools exposed in the current request.',
+        'MobileCode tools may include list_files, find_files, grep_files, project_summary, agent_open, agent_eval, agent_close, web_search, fetch_url, write_file, read_file, copy_file, mkdir, delete_file, move_file, save_snapshot, virtual_diff, restore_snapshot, validate_html, apply_patch, preview_html, preview_snapshot, and report_result; only call tools exposed in the current request.',
         'Use web_search/fetch_url only for public reference gathering. Use preview_snapshot after preview_html when the user asks for a visible product check.',
-        'Use list_files/find_files instead of shell ls/find, grep_files instead of shell grep/rg, copy_file instead of shell cp, mkdir instead of shell mkdir, move_file instead of shell mv, delete_file instead of shell rm, virtual_diff instead of shell diff, and apply_patch instead of shell patch/git apply. Do not ask for raw Android or Termux commands.',
+        'Use project_summary/list_files/find_files instead of shell pwd/tree/ls/find, grep_files instead of shell grep/rg, copy_file instead of shell cp, mkdir instead of shell mkdir, move_file instead of shell mv, delete_file instead of shell rm, save_snapshot/virtual_diff/restore_snapshot instead of shell git/diff/restore, validate_html instead of ad-hoc browser guessing, and apply_patch instead of shell patch/git apply. Do not ask for raw Android or Termux commands.',
         'Never request shell, Git push, publishing, remote logging, or arbitrary commands.',
         'Use paths relative to the MobileCode workspace. If writing one web artifact and no path is obvious, use index.html. Do not include secrets in arguments.',
-        'For complex work, choose the smallest safe next tool yourself. You may open read-only Sub-Agent Lite explorer/reviewer sessions for isolated inspection, then agent_eval/agent_close them. You may list, find, grep, search, fetch, write, read, copy, mkdir, delete a confirmed workspace file, move, save snapshots, inspect virtual diffs, patch, preview, snapshot, or report depending on the current observation.',
+        'For complex work, choose the smallest safe next tool yourself. You may open read-only Sub-Agent Lite explorer/reviewer sessions for isolated inspection, then agent_eval/agent_close them. You may summarize, list, find, grep, search, fetch, write, read, copy, mkdir, delete a confirmed workspace file, move, save/restore snapshots, inspect virtual diffs, validate HTML, patch, preview, snapshot, or report depending on the current observation.',
         'After tool observations, call report_result or answer with a concise final summary.',
       ].join('\n');
 
@@ -436,6 +436,17 @@ class OpenAiCompatibleToolCallAdapter {
             'maxBytes': _intArg(args, 'max_bytes', defaultValue: 256 * 1024),
           },
         );
+      case 'project_summary':
+        return ActionSchema(
+          actionName: MobileCodeAction.projectSummary,
+          requestId: call.id,
+          paramsSummary: 'provider-native project_summary',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'maxDepth': _intArg(args, 'max_depth', defaultValue: 3),
+            'maxFiles': _intArg(args, 'max_files', defaultValue: 80),
+          },
+        );
       case 'write_file':
         final content = _stringArgAny(args, const ['content', 'html', 'body']);
         final path = _safeWritePath(args, content);
@@ -529,6 +540,31 @@ class OpenAiCompatibleToolCallAdapter {
             'path': _stringArg(args, 'path'),
             'snapshotId': _stringArg(args, 'snapshot_id'),
             'snapshotPath': _stringArg(args, 'snapshot_path'),
+            'maxBytes': _intArg(args, 'max_bytes', defaultValue: 256 * 1024),
+          },
+        );
+      case 'restore_snapshot':
+        return ActionSchema(
+          actionName: MobileCodeAction.restoreSnapshot,
+          requestId: call.id,
+          paramsSummary: 'provider-native restore_snapshot',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'snapshotId': _stringArg(args, 'snapshot_id'),
+            'snapshotPath': _stringArg(args, 'snapshot_path'),
+            'confirm': _boolArg(args, 'confirm', defaultValue: false),
+            'maxFiles': _intArg(args, 'max_files', defaultValue: 40),
+            'maxBytes': _intArg(args, 'max_bytes', defaultValue: 1024 * 1024),
+          },
+        );
+      case 'validate_html':
+        return ActionSchema(
+          actionName: MobileCodeAction.validateHtml,
+          requestId: call.id,
+          paramsSummary: 'provider-native validate_html',
+          params: {
+            'path': _stringArg(args, 'path'),
+            'html': _stringArg(args, 'html'),
             'maxBytes': _intArg(args, 'max_bytes', defaultValue: 256 * 1024),
           },
         );
@@ -688,6 +724,16 @@ class OpenAiCompatibleToolCallAdapter {
         required: const ['query', 'path', 'include_glob', 'max_results', 'max_bytes'],
       ),
       functionTool(
+        name: 'project_summary',
+        description: 'Summarize workspace structure, likely entrypoints, directories, extensions, and file sizes. Safe replacement for pwd/tree/stat before planning.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative workspace path to summarize. Use "." for workspace root.'},
+          'max_depth': {'type': 'integer', 'description': 'Maximum directory depth to inspect, 1 to 6.'},
+          'max_files': {'type': 'integer', 'description': 'Maximum files to include in the compact summary.'},
+        },
+        required: const ['path', 'max_depth', 'max_files'],
+      ),
+      functionTool(
         name: 'agent_open',
         description: 'Open a read-only background Sub-Agent Lite v2 worker for isolated Explorer or Reviewer inspection. It is not a shell and cannot mutate files.',
         properties: const {
@@ -813,6 +859,29 @@ class OpenAiCompatibleToolCallAdapter {
           'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to inspect while producing the virtual diff.'},
         },
         required: const ['path', 'snapshot_id', 'snapshot_path', 'max_bytes'],
+      ),
+      functionTool(
+        name: 'restore_snapshot',
+        description: 'Restore files from a MobileCode snapshot back into the workspace after explicit confirmation. Does not delete files absent from the snapshot.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative workspace path to restore. Use "." for the whole snapshot root.'},
+          'snapshot_id': {'type': 'string', 'description': 'Snapshot ID returned by save_snapshot, or empty when snapshot_path is used.'},
+          'snapshot_path': {'type': 'string', 'description': 'Workspace-relative snapshot directory path, or empty when snapshot_id is used.'},
+          'confirm': {'type': 'boolean', 'description': 'Must be true only when the user explicitly asked to restore files.'},
+          'max_files': {'type': 'integer', 'description': 'Maximum files to restore, 1 to 120.'},
+          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to restore.'},
+        },
+        required: const ['path', 'snapshot_id', 'snapshot_path', 'confirm', 'max_files', 'max_bytes'],
+      ),
+      functionTool(
+        name: 'validate_html',
+        description: 'Validate an HTML file or inline HTML for mobile WebView readiness. Returns compact structural warnings; does not run browser scripts.',
+        properties: const {
+          'path': {'type': 'string', 'description': 'Relative HTML file path, or empty when html is provided.'},
+          'html': {'type': 'string', 'description': 'Inline HTML, or empty when path is provided.'},
+          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to validate.'},
+        },
+        required: const ['path', 'html', 'max_bytes'],
       ),
       functionTool(
         name: 'apply_patch',

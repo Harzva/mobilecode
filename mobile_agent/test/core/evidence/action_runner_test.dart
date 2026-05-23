@@ -266,6 +266,97 @@ void main() {
     expect(diff.evidence.actionName, MobileCodeAction.virtualDiff);
   });
 
+  test('restoreSnapshot restores confirmed files and backs up current versions', () async {
+    final file = File('${workspace.path}/demo/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<h1>Before</h1>\n<p>Keep</p>');
+    final snapshot = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.saveSnapshot,
+      params: const {
+        'path': 'demo',
+        'label': 'before restore',
+        'maxFiles': 10,
+        'maxBytes': 4096,
+      },
+      requestId: 'ev-restore-save',
+    ));
+    final snapshotPayload = jsonDecode(snapshot.text!) as Map<String, dynamic>;
+    await file.writeAsString('<h1>Broken</h1>\n<p>Keep</p>');
+
+    final blocked = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.restoreSnapshot,
+      params: {
+        'path': 'demo',
+        'snapshotId': snapshotPayload['snapshotId'],
+        'confirm': false,
+      },
+      requestId: 'ev-restore-blocked',
+    ));
+    final restored = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.restoreSnapshot,
+      params: {
+        'path': 'demo',
+        'snapshotId': snapshotPayload['snapshotId'],
+        'confirm': true,
+        'maxFiles': 10,
+        'maxBytes': 4096,
+      },
+      requestId: 'ev-restore',
+    ));
+
+    expect(blocked.success, false);
+    expect(blocked.evidence.failureKind, ActionFailureKind.commandBlocked);
+    expect(restored.success, true);
+    expect(await file.readAsString(), '<h1>Before</h1>\n<p>Keep</p>');
+    expect(restored.evidence.actionName, MobileCodeAction.restoreSnapshot);
+    expect(restored.evidence.metadata['restoredFiles'], isNotEmpty);
+    expect(restored.evidence.metadata['backupFiles'], isNotEmpty);
+  });
+
+  test('projectSummary returns compact entrypoints and extension counts', () async {
+    final file = File('${workspace.path}/demo/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<!doctype html><title>Demo</title>');
+    await File('${workspace.path}/demo/app.js').writeAsString('console.log("hi");');
+
+    final result = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.projectSummary,
+      params: const {
+        'path': 'demo',
+        'maxDepth': 2,
+        'maxFiles': 20,
+      },
+      requestId: 'ev-summary',
+    ));
+
+    expect(result.success, true);
+    expect(result.text, contains('Project summary'));
+    expect(result.text, contains('index.html'));
+    expect(result.evidence.metadata['entrypoints'], contains('demo${Platform.pathSeparator}index.html'));
+    expect(result.evidence.actionName, MobileCodeAction.projectSummary);
+  });
+
+  test('validateHtml reports mobile readiness warnings without executing scripts', () async {
+    final file = File('${workspace.path}/demo/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<html><head><title>Demo</title></head><body><h1>Hello</h1></body></html>');
+
+    final result = await runner.run(ActionSchema(
+      actionName: MobileCodeAction.validateHtml,
+      params: const {
+        'path': 'demo/index.html',
+        'maxBytes': 4096,
+      },
+      requestId: 'ev-validate-html',
+    ));
+
+    expect(result.success, true);
+    expect(result.text, contains('missing_doctype'));
+    expect(result.text, contains('missing_viewport'));
+    expect(result.evidence.metadata['issueCount'], greaterThanOrEqualTo(2));
+    expect(result.evidence.actionName, MobileCodeAction.validateHtml);
+  });
+
   test('applyPatch modifies an existing file with snapshot evidence', () async {
     final file = File('${workspace.path}/demo/index.html');
     await file.parent.create(recursive: true);

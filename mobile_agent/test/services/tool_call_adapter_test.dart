@@ -84,6 +84,7 @@ void main() {
       'list_files',
       'find_files',
       'grep_files',
+      'project_summary',
       'agent_open',
       'agent_eval',
       'agent_close',
@@ -97,6 +98,8 @@ void main() {
       'move_file',
       'save_snapshot',
       'virtual_diff',
+      'restore_snapshot',
+      'validate_html',
       'apply_patch',
       'preview_html',
       'preview_snapshot',
@@ -294,7 +297,7 @@ void main() {
     expect(snapshot.params['viewportWidth'], 390);
   });
 
-  test('maps list/find/grep/copy/mkdir/delete/move/snapshot/diff/patch to safe ActionSchema actions', () {
+  test('maps list/find/grep/summary/copy/mkdir/delete/move/snapshot/diff/restore/validate/patch to safe ActionSchema actions', () {
     final adapter = OpenAiCompatibleToolCallAdapter(
       profile: ToolCallProviderProfile.detect(
         'https://api.deepseek.com',
@@ -336,6 +339,15 @@ void main() {
     expect(grep.params['query'], 'score');
     expect(grep.params['includeGlob'], '*.html');
     expect(grep.params['maxBytes'], 4096);
+
+    final summary = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_summary',
+      name: 'project_summary',
+      arguments: {'path': '.', 'max_depth': 2, 'max_files': 30},
+    ))!;
+    expect(summary.actionName, MobileCodeAction.projectSummary);
+    expect(summary.params['maxDepth'], 2);
+    expect(summary.params['maxFiles'], 30);
 
     final copy = adapter.toActionSchema(const ProviderToolCall(
       id: 'call_copy',
@@ -406,6 +418,35 @@ void main() {
     expect(diff.actionName, MobileCodeAction.virtualDiff);
     expect(diff.params['snapshotId'], 'snapshot_123');
     expect(diff.params['maxBytes'], 4096);
+
+    final restore = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_restore',
+      name: 'restore_snapshot',
+      arguments: {
+        'path': 'demo',
+        'snapshot_id': 'snapshot_123',
+        'snapshot_path': '',
+        'confirm': true,
+        'max_files': 20,
+        'max_bytes': 4096,
+      },
+    ))!;
+    expect(restore.actionName, MobileCodeAction.restoreSnapshot);
+    expect(restore.params['snapshotId'], 'snapshot_123');
+    expect(restore.params['confirm'], true);
+
+    final validate = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_validate',
+      name: 'validate_html',
+      arguments: {
+        'path': 'index.html',
+        'html': '',
+        'max_bytes': 8192,
+      },
+    ))!;
+    expect(validate.actionName, MobileCodeAction.validateHtml);
+    expect(validate.params['path'], 'index.html');
+    expect(validate.params['maxBytes'], 8192);
 
     final patch = adapter.toActionSchema(const ProviderToolCall(
       id: 'call_patch',

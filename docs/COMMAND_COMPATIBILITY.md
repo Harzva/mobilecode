@@ -26,6 +26,7 @@ This lets models reuse Linux/macOS development habits while MobileCode keeps And
 | Current directory | `pwd` | App has private workspace roots | Partial | Runtime/workspace display |
 | List files | `ls`, `dir` | App can list app-owned files | Supported | `list_files` |
 | Recursive find | `find`, `fd` | Safe only inside workspace | Supported | `find_files` |
+| Project summary | `pwd`, `tree`, `stat` overview | App can summarize bounded workspace files | Supported | `project_summary` |
 | Read text | `cat`, `head`, `tail`, `less` | App can read workspace text | Supported | `read_file` |
 | Write text | `cat > file`, editor save | App can write workspace files | Supported | `write_file` |
 | Move / rename | `mv` | Safe inside workspace | Supported | `move_file` |
@@ -37,7 +38,9 @@ This lets models reuse Linux/macOS development habits while MobileCode keeps And
 | Replace text | `sed -i`, editor replace | Risky without diff preview | Partial | `apply_patch` unified diff |
 | Snapshot | checkpoint before changes | App can copy bounded workspace files | Supported | `save_snapshot` |
 | Diff | `diff`, `git diff` | Can be snapshot-based | Supported | `virtual_diff` |
+| Restore snapshot | `git restore`, rollback | Risky unless explicit and bounded | Guarded | `restore_snapshot` with `confirm=true` |
 | Patch | `patch`, `git apply` | Safe with workspace validation | Supported | `apply_patch` bounded auto-apply |
+| HTML sanity check | `tidy`, `htmlhint`, browser check | App can inspect text HTML safely | Supported | `validate_html` |
 | Web fetch | `curl`, `wget` | App should not fetch private/local targets | Supported when relay configured | `fetch_url` relay |
 | Web search | search CLI / browser | Requires managed relay | Supported when relay configured | `web_search` relay |
 | Preview | browser open | App has WebView | Supported | `preview_html` |
@@ -72,6 +75,7 @@ Supported today in provider-native Agent Loop:
 - `list_files`
 - `find_files`
 - `grep_files`
+- `project_summary`
 - `web_search` when managed relay is configured
 - `fetch_url` when managed relay is configured
 - `write_file`
@@ -82,6 +86,8 @@ Supported today in provider-native Agent Loop:
 - `move_file`
 - `save_snapshot`
 - `virtual_diff`
+- `restore_snapshot`
+- `validate_html`
 - `apply_patch`
 - `preview_html`
 - `preview_snapshot`
@@ -133,20 +139,22 @@ Status: accepted.
 
 ### P2: Snapshot safety
 
-Status: partial.
+Status: accepted for bounded snapshot / diff / restore.
 
 - `save_snapshot`
 - `virtual_diff`
 - `restore_snapshot`
-- change history
+- `change_history` remains future work
 
 ### P3: Project intelligence
+
+Status: partial.
 
 - `project_summary`
 - `detect_project_type`
 - `validate_html`
-- `validate_json`
-- `validate_markdown`
+- `validate_json` remains future work
+- `validate_markdown` remains future work
 
 ### P4: Android-specific helpers
 

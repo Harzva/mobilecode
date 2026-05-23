@@ -1033,7 +1033,7 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 
 ## 2026-05-23 DS04.7 Recoverable AgentLoop + Command Restore
 
-状态：`IN_PROGRESS`（本地实现完成，CI 待验收）
+状态：`ACCEPTED`
 
 目标：
 
@@ -1083,9 +1083,11 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 
 - [x] `git diff --check` 通过（仅 Windows 换行提示，无 whitespace error）。
 - [x] `node --check relay/mobilecode-token-relay-worker.js` 通过。
-- [ ] `cd app && npm run build`
-- [ ] GitHub Actions `Mobile Runtime CI`
-- [ ] GitHub Actions `Build Android APK`
+- [x] `cd app && npm run build` 通过。
+- [x] GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26326749743`
+- [x] GitHub Actions `Deploy MobileCode Demo Pages` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26326749756`
+- [x] GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26326779312`
+- [x] GitHub Release APK：`https://github.com/Harzva/mobilecode/releases/download/v0.1.64-last/mobilecode-v0.1.64-last.apk`
 
 剩余风险：
 

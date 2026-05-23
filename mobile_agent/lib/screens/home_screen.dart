@@ -2599,7 +2599,7 @@ class _HomeScreenState extends State<HomeScreen> {
   RuntimeTaskMonitor? _helperRuntimeMonitor() {
     for (final provider in _runtimeManager.providers) {
       if (provider.type == RuntimeProviderType.mobileCodeHelper && provider is RuntimeTaskMonitor) {
-        return provider;
+        return provider as RuntimeTaskMonitor;
       }
     }
     return null;

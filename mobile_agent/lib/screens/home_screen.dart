@@ -2672,6 +2672,7 @@ class _HomeScreenState extends State<HomeScreen> {
         relayUrl: _managedProviderActive ? _managedRelayUrl : '',
         relayToken: _managedProviderActive ? _managedRelayToken : '',
         browserOpenMode: _browserOpenMode,
+        runtimeManager: _runtimeManager,
         onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
         onAgentPrompt: _handleAgentPrompt,
         onProviderPresetSelected: (preset) => unawaited(_selectProviderFromComposer(preset)),
@@ -3128,6 +3129,7 @@ class _HomeScreenState extends State<HomeScreen> {
             relayUrl: _managedProviderActive ? _managedRelayUrl : '',
             relayToken: _managedProviderActive ? _managedRelayToken : '',
             browserOpenMode: _browserOpenMode,
+            runtimeManager: _runtimeManager,
             embedded: true,
             onLog: (title, detail, icon, color) => _addLog(title, detail, icon, color),
             onAgentPrompt: _handleAgentPrompt,
@@ -10181,6 +10183,7 @@ class _ChatPanel extends StatefulWidget {
     required this.relayUrl,
     required this.relayToken,
     required this.browserOpenMode,
+    required this.runtimeManager,
     required this.onLog,
     required this.onAgentPrompt,
     required this.onProviderPresetSelected,
@@ -10196,6 +10199,7 @@ class _ChatPanel extends StatefulWidget {
   final String relayUrl;
   final String relayToken;
   final String browserOpenMode;
+  final RuntimeManager runtimeManager;
   final void Function(String title, String detail, IconData icon, Color color) onLog;
   final Future<void> Function(String prompt) onAgentPrompt;
   final ValueChanged<_ProviderPreset> onProviderPresetSelected;

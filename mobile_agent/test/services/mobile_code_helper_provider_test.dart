@@ -252,6 +252,42 @@ void main() {
       expect(profile.hasGit, isTrue);
       expect(profile.detectedFiles, ['./.git', './package.json']);
     });
+
+    test('starts typed termux task through helper protocol', () async {
+      _serve((request) async {
+        expect(request.uri.path, '/v1/task/start');
+        expect(request.method, 'POST');
+        final body = await utf8.decoder.bind(request).join();
+        final payload = jsonDecode(body) as Map<String, dynamic>;
+        expect(payload['taskKind'], 'project_check');
+        expect(payload['path'], '.');
+        expect(payload['args'], {'entry': 'index.html'});
+        await _json(request.response, {
+          'success': true,
+          'taskId': 'typed-123',
+          'taskKind': 'project_check',
+          'status': 'succeeded',
+          'stdout': '{"detectedFiles":["./package.json"]}',
+          'stderr': '',
+          'exitCode': 0,
+          'durationMs': 10,
+          'failureKind': 'none',
+        });
+      }, server);
+
+      final provider = MobileCodeHelperProvider(baseUri: baseUri);
+      final result = await provider.runTermuxTask(
+        taskKind: 'project_check',
+        payload: const {
+          'path': '.',
+          'args': {'entry': 'index.html'},
+        },
+      );
+
+      expect(result['taskId'], 'typed-123');
+      expect(result['status'], 'succeeded');
+      expect(result['exitCode'], 0);
+    });
   });
 }
 

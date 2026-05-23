@@ -260,3 +260,12 @@ abstract class RuntimeTaskMonitor {
 abstract class RuntimeTaskController {
   Future<void> stopTask(String taskId);
 }
+
+/// Optional extension for runtimes that expose a typed Termux-like task endpoint
+/// used by `termux_task_start`.
+abstract class RuntimeTypedTaskRunner {
+  Future<Map<String, dynamic>> runTermuxTask({
+    required String taskKind,
+    required Map<String, dynamic> payload,
+  });
+}

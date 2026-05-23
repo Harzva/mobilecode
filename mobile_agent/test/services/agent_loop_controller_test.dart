@@ -637,6 +637,50 @@ void main() {
     expect(store.failures(), isNotEmpty);
   });
 
+  test('repeated blocked write_file escalates to read_file first strategy', () async {
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.builder,
+      maxRounds: 3,
+    );
+    final events = <AgentLoopEvent>[];
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'run repeated write_file with invalid args'},
+      ],
+      onEvent: events.add,
+      requestModel: (messages, {required round}) async {
+        if (round <= 2) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_repeat_write',
+                name: 'write_file',
+                arguments: {
+                  'content': '<h1>broken</h1>',
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: 'write_file must recover with read_file guidance.',
+          toolCalls: [],
+        );
+      },
+    );
+
+    expect(result.answer, contains('write_file must recover with read_file guidance.'));
+    final blocked = events.where((event) => event.type == AgentLoopEventType.blocked).toList();
+    expect(blocked, hasLength(2));
+    expect(blocked[1].message, contains('Switch strategy'));
+    expect(blocked[1].message, contains('read_file'));
+    expect(blocked[1].message, contains('apply_patch'));
+  });
+
   test('invalid apply_patch can recover with complete write_file replacement', () async {
     final file = File('${workspace.path}/safe_write_recover/index.html');
     await file.parent.create(recursive: true);

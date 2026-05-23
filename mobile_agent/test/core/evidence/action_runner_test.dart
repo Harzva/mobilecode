@@ -632,6 +632,24 @@ void main() {
     expect(result.text, contains('taskId=task-123'));
     expect(result.evidence.metadata['stdout'], 'validated');
     expect(result.evidence.exitCode, 0);
+    expect(result.evidence.metadata['status'], 'completed');
+  });
+
+  test('termuxTaskStart rejects shell-style args payload keys', () async {
+    final termuxRunner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final result = await termuxRunner.run(ActionSchema(
+      actionName: MobileCodeAction.termuxTaskStart,
+      params: const {
+        'taskKind': 'validate',
+        'path': '.',
+        'argsJson': '{"command":"echo blocked"}',
+      },
+      requestId: 'ev-termux-guard',
+    ));
+
+    expect(result.success, false);
+    expect(result.evidence.failureKind, ActionFailureKind.commandBlocked);
+    expect(result.evidence.recoveryActions.join(' '), contains('Do not pass command'));
   });
 
   test('previewHtml from inline html writes preview file and returns file url', () async {

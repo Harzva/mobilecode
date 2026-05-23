@@ -165,6 +165,7 @@ class MobileCodeHelperService : Service() {
                 method == "POST" && path == "/v1/execute" -> handleExecute(socket, body)
                 method == "POST" && path == "/v1/execute/stream" -> handleExecuteStream(socket, body)
                 method == "POST" && path == "/v1/project/preflight" -> handleProjectPreflight(socket, body)
+                method == "POST" && path == "/v1/task/start" -> handleTypedTaskStart(socket, body)
                 method == "POST" && path == "/v1/task/stop" -> {
                     writeJson(socket, 200, stopTask(null))
                 }
@@ -311,6 +312,213 @@ class MobileCodeHelperService : Service() {
                 .put("success", true)
                 .put("cwd", cwd.path)
                 .put("detectedFiles", inspectProjectFiles(cwd))
+        )
+    }
+
+    private fun handleTypedTaskStart(socket: Socket, body: String) {
+        val payload = if (body.isBlank()) JSONObject() else JSONObject(body)
+        val taskKind = payload.optString("taskKind", payload.optString("task_kind", "")).trim().lowercase(Locale.US)
+        if (!typedTaskKinds.contains(taskKind)) {
+            writeJson(
+                socket,
+                400,
+                JSONObject()
+                    .put("success", false)
+                    .put("status", "commandBlocked")
+                    .put("failureKind", "commandBlocked")
+                    .put("error", "typed task kind is not allowed: $taskKind")
+            )
+            return
+        }
+
+        val typedArgs: JSONObject
+        val cwd: File
+        try {
+            typedArgs = typedArgsFromJson(payload.optJSONObject("args") ?: JSONObject())
+            cwd = resolveTypedTaskPath(payload)
+        } catch (error: IllegalArgumentException) {
+            val message = error.message ?: error.javaClass.simpleName
+            val failureKind =
+                if (message.contains("command/cmd/shell") || message.contains("simple scalars")) {
+                    "commandBlocked"
+                } else {
+                    "cwdOutsideWorkspace"
+                }
+            writeJson(
+                socket,
+                400,
+                JSONObject()
+                    .put("success", false)
+                    .put("status", failureKind)
+                    .put("failureKind", failureKind)
+                    .put("error", message)
+            )
+            return
+        }
+        val taskId = payload.optString("taskId", "").ifBlank { UUID.randomUUID().toString() }
+        val timeoutMs = payload.optLong("timeoutMs", 120_000L).coerceIn(1_000L, 120_000L)
+        val maxOutputBytes = payload.optInt("maxOutputBytes", 32_768).coerceIn(1_024, 262_144)
+
+        when (taskKind) {
+            "project_check", "validate", "build_preview" -> handleBuiltinTypedTask(socket, taskId, taskKind, cwd, typedArgs, maxOutputBytes)
+            "flutter_analyze" -> runTypedProcessTask(socket, taskId, taskKind, listOf("flutter", "analyze"), cwd, timeoutMs, maxOutputBytes)
+            "flutter_test" -> runTypedProcessTask(socket, taskId, taskKind, listOf("flutter", "test"), cwd, timeoutMs, maxOutputBytes)
+            "npm_build" -> runTypedProcessTask(socket, taskId, taskKind, listOf("npm", "run", "build"), cwd, timeoutMs, maxOutputBytes)
+        }
+    }
+
+    private fun resolveTypedTaskPath(payload: JSONObject): File {
+        val absolutePath = payload.optString("absolutePath", "").trim()
+        val relativePath = payload.optString("path", ".").trim()
+        if (absolutePath.isNotBlank()) {
+            try {
+                return validateTypedTaskPath(absolutePath)
+            } catch (error: IllegalArgumentException) {
+                if (relativePath.isBlank()) throw error
+            }
+        }
+        return validateTypedTaskPath(relativePath.ifBlank { "." })
+    }
+
+    private fun handleBuiltinTypedTask(
+        socket: Socket,
+        taskId: String,
+        taskKind: String,
+        cwd: File,
+        typedArgs: JSONObject,
+        maxOutputBytes: Int
+    ) {
+        beginTask(taskId, "typed:$taskKind", cwd)
+        recordLog(taskId, "typed task $taskKind")
+        val started = System.nanoTime()
+        var stdout = ""
+        var stderr = ""
+        var exitCode = 0
+        try {
+            stdout = when (taskKind) {
+                "project_check" -> JSONObject()
+                    .put("cwd", cwd.path)
+                    .put("detectedFiles", inspectProjectFiles(cwd))
+                    .toString()
+                "build_preview" -> {
+                    val entry = typedArgs.optString("entry", typedArgs.optString("path", "index.html"))
+                    val entryFile = resolveChildPath(cwd, entry)
+                    if (!entryFile.exists()) throw IllegalArgumentException("preview entry not found: $entry")
+                    JSONObject().put("entry", entry).put("bytes", entryFile.length()).toString()
+                }
+                else -> validateTypedFile(cwd, typedArgs.optString("path", typedArgs.optString("entry", "")))
+            }
+        } catch (error: Throwable) {
+            exitCode = 1
+            stderr = error.message ?: error.javaClass.simpleName
+        }
+        val durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+        stdout.lines().filter { it.isNotBlank() }.forEach { recordLog(taskId, "stdout: $it") }
+        if (stderr.isNotBlank()) recordLog(taskId, "stderr: $stderr")
+        val status = if (exitCode == 0) "succeeded" else "failed"
+        finishTask(taskId, status, exitCode, durationMs, stderr.ifBlank { null })
+        writeJson(
+            socket,
+            200,
+            JSONObject()
+                .put("success", exitCode == 0)
+                .put("taskId", taskId)
+                .put("taskKind", taskKind)
+                .put("status", status)
+                .put("stdout", truncateText(stdout, maxOutputBytes))
+                .put("stderr", truncateText(stderr, maxOutputBytes))
+                .put("exitCode", exitCode)
+                .put("durationMs", durationMs)
+                .put("failureKind", taskFailureKind(taskId))
+        )
+    }
+
+    private fun runTypedProcessTask(
+        socket: Socket,
+        taskId: String,
+        taskKind: String,
+        args: List<String>,
+        cwd: File,
+        timeoutMs: Long,
+        maxOutputBytes: Int
+    ) {
+        val command = args.joinToString(" ")
+        beginTask(taskId, command, cwd)
+        recordLog(taskId, "typed task $taskKind: $command")
+        val started = System.nanoTime()
+        val process = try {
+            ProcessBuilder(args)
+                .directory(cwd)
+                .redirectErrorStream(false)
+                .start()
+        } catch (error: Throwable) {
+            val durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+            val stderr = error.message ?: error.javaClass.simpleName
+            recordLog(taskId, "stderr: $stderr")
+            finishTask(taskId, "failed", 127, durationMs, stderr)
+            writeJson(
+                socket,
+                200,
+                JSONObject()
+                    .put("success", false)
+                    .put("taskId", taskId)
+                    .put("taskKind", taskKind)
+                    .put("status", "failed")
+                    .put("stdout", "")
+                    .put("stderr", truncateText(stderr, maxOutputBytes))
+                    .put("exitCode", 127)
+                    .put("durationMs", durationMs)
+                    .put("failureKind", taskFailureKind(taskId))
+            )
+            return
+        }
+        registerTaskProcess(taskId, process)
+        val stdout = StringBuilder()
+        val stderr = StringBuilder()
+        val stdoutThread = thread(isDaemon = true) {
+            process.inputStream.bufferedReader().forEachLine {
+                stdout.appendLine(it)
+                recordLog(taskId, "stdout: $it")
+            }
+        }
+        val stderrThread = thread(isDaemon = true) {
+            process.errorStream.bufferedReader().forEachLine {
+                stderr.appendLine(it)
+                recordLog(taskId, "stderr: $it")
+            }
+        }
+        val finished = process.waitFor(timeoutMs.coerceAtLeast(1), TimeUnit.MILLISECONDS)
+        if (!finished) {
+            process.destroyForcibly()
+            stderr.appendLine("Typed task timed out after ${timeoutMs}ms.")
+            recordLog(taskId, "typed task timed out after ${timeoutMs}ms")
+        }
+        stdoutThread.join(500)
+        stderrThread.join(500)
+        val exitCode = if (finished) process.exitValue() else 124
+        val durationMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+        clearTaskProcess(taskId, process)
+        val status = when {
+            isTaskCancelled(taskId) -> "cancelled"
+            !finished -> "timedOut"
+            exitCode == 0 -> "succeeded"
+            else -> "failed"
+        }
+        val stderrText = stderr.toString().trim()
+        finishTask(taskId, status, exitCode, durationMs, if (stderrText.isBlank()) null else stderrText)
+        writeJson(
+            socket,
+            200,
+            JSONObject()
+                .put("success", status == "succeeded")
+                .put("taskId", taskId)
+                .put("taskKind", taskKind)
+                .put("status", status)
+                .put("stdout", truncateText(stdout.toString(), maxOutputBytes))
+                .put("stderr", truncateText(stderr.toString(), maxOutputBytes))
+                .put("exitCode", exitCode)
+                .put("durationMs", durationMs)
+                .put("failureKind", taskFailureKind(taskId))
         )
     }
 
@@ -636,6 +844,87 @@ class MobileCodeHelperService : Service() {
         throw IllegalArgumentException("cwd is outside MobileCode app data: ${cwd.path}")
     }
 
+    private fun validateTypedTaskPath(rawPath: String): File {
+        val candidate = when {
+            rawPath.isBlank() || rawPath == "." -> defaultWorkspaceRoot
+            File(rawPath).isAbsolute -> File(rawPath)
+            else -> File(defaultWorkspaceRoot, rawPath)
+        }.canonicalFile
+        val rootPath = appDataRoot.path
+        if (!(candidate.path == rootPath || candidate.path.startsWith(rootPath + File.separator))) {
+            throw IllegalArgumentException("typed task path is outside MobileCode app data: ${candidate.path}")
+        }
+        val cwd = if (candidate.exists() && candidate.isFile) candidate.parentFile ?: defaultWorkspaceRoot else candidate
+        if (!cwd.exists()) cwd.mkdirs()
+        return cwd.canonicalFile
+    }
+
+    private fun resolveChildPath(root: File, rawPath: String): File {
+        val child = File(root, rawPath.ifBlank { "." }).canonicalFile
+        if (!(child.path == root.path || child.path.startsWith(root.path + File.separator))) {
+            throw IllegalArgumentException("typed task child path is outside task path: $rawPath")
+        }
+        return child
+    }
+
+    private fun typedArgsFromJson(args: JSONObject): JSONObject {
+        val cleaned = JSONObject()
+        val keys = args.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val normalized = key.trim().lowercase(Locale.US)
+            if (blockedTypedArgKeys.contains(normalized) || normalized.contains("shell")) {
+                throw IllegalArgumentException("typed task args must not include command/cmd/shell fields")
+            }
+            val value = args.get(key)
+            if (value is JSONObject || value is JSONArray) {
+                throw IllegalArgumentException("typed task args values must be simple scalars")
+            }
+            cleaned.put(key, value)
+        }
+        return cleaned
+    }
+
+    private fun validateTypedFile(cwd: File, rawPath: String): String {
+        if (rawPath.isBlank()) {
+            return JSONObject().put("valid", true).put("cwd", cwd.path).put("note", "No file target supplied; workspace path is reachable.").toString()
+        }
+        val target = resolveChildPath(cwd, rawPath)
+        if (!target.exists() || !target.isFile) throw IllegalArgumentException("validate target not found: $rawPath")
+        val text = target.readText()
+        return when (target.extension.lowercase(Locale.US)) {
+            "json" -> {
+                val trimmed = text.trim()
+                val rootType = if (trimmed.startsWith("[")) {
+                    JSONArray(trimmed)
+                    "array"
+                } else {
+                    JSONObject(trimmed)
+                    "object"
+                }
+                JSONObject().put("valid", true).put("path", rawPath).put("rootType", rootType).toString()
+            }
+            "md", "markdown" -> {
+                val headings = text.lines().count { it.trimStart().startsWith("#") }
+                JSONObject().put("valid", true).put("path", rawPath).put("headings", headings).put("bytes", text.toByteArray(StandardCharsets.UTF_8).size).toString()
+            }
+            "html", "htm" -> {
+                val lower = text.lowercase(Locale.US)
+                val warnings = JSONArray()
+                if (!lower.contains("<html")) warnings.put("missing <html>")
+                if (!lower.contains("viewport")) warnings.put("missing viewport meta")
+                JSONObject().put("valid", warnings.length() == 0).put("path", rawPath).put("warnings", warnings).toString()
+            }
+            else -> JSONObject().put("valid", true).put("path", rawPath).put("bytes", text.toByteArray(StandardCharsets.UTF_8).size).toString()
+        }
+    }
+
+    private fun truncateText(value: String, maxBytes: Int): String {
+        val bytes = value.toByteArray(StandardCharsets.UTF_8)
+        if (bytes.size <= maxBytes) return value
+        return String(bytes, 0, (maxBytes - 24).coerceAtLeast(0), StandardCharsets.UTF_8) + "\n... truncated ..."
+    }
+
     private fun commandArgs(command: String): List<String> {
         if (command.isBlank()) throw IllegalArgumentException("command cannot be empty")
         val lowered = command.lowercase(Locale.US)
@@ -924,6 +1213,17 @@ class MobileCodeHelperService : Service() {
             "javac", "gradle", "chmod", "tar", "zip", "unzip", "curl", "wget",
             "which", "whoami", "date", "echo"
         )
+
+        private val typedTaskKinds = setOf(
+            "project_check",
+            "validate",
+            "build_preview",
+            "flutter_analyze",
+            "flutter_test",
+            "npm_build"
+        )
+
+        private val blockedTypedArgKeys = setOf("command", "cmd", "shell")
 
         private val dangerousFragments = listOf(
             "rm -rf /",

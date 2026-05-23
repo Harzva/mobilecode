@@ -21,7 +21,7 @@ const implemented = [
   'The Virtual Command Layer now covers copy_file, mkdir, delete_file, save_snapshot, and virtual_diff without opening raw shell.',
   'v0.1.64 expands that layer with project_summary, restore_snapshot, and validate_html so the Agent can summarize, roll back confirmed snapshots, and check HTML structure before reporting.',
   'The next layer adds change_history, virtual_status, detect_project_type, validate_json, and validate_markdown so the Agent can understand project shape and evidence history before changing files.',
-  'termux_task_start is now designed as a typed Helper/Termux route: task kind in, taskId/stdout/stderr/evidence out, with fail-closed behavior when no helper is configured.',
+  'termux_task_start now connects to the typed Helper/Termux daemon route: task kind in, taskId/stdout/stderr/exitCode/evidence out, while raw shell strings remain blocked.',
   'Tools now exposes Activity / Logs, provider tool list, preset permissions, and Android/Linux/macOS command compatibility.',
   'The composer now separates Mode, Model, Task Dispatch, and Input so mobile users can see how a run will execute before sending.',
   'Task Dispatch Center now groups quick generation, Agent validation, repair/review, and command-map prompts without crowding the mobile composer.',
@@ -30,10 +30,10 @@ const implemented = [
 
 const missing = [
   'The Agent Loop is still minimal and safety-bounded, not a full autonomous coding runtime.',
-  'Package/build execution through a real Helper/Termux daemon is not connected yet; the route is typed and evidence-backed but currently fail-closed without configuration.',
+  'Package/build execution depends on an installed Helper or Termux environment with the required tools; missing dependencies become evidence instead of being hidden.',
   'Native bitmap preview screenshots and rich visual verification are not implemented yet.',
   'Sub-Agent Lite v2 is still read-only; background workers can inspect and review, but real writes must return to the main AgentLoop.',
-  'A Termux or Helper execution lane is still a future typed task route, not a raw shell exposed to the model.',
+  'The Termux or Helper execution lane is typed task execution, not a raw shell exposed to the model.',
 ];
 
 const safeTools = [
@@ -86,7 +86,7 @@ const dailyLogs = [
       'v0.1.64 adds project_summary so the Agent can inspect workspace entrypoints, directory shape, extensions, and file sizes before choosing a write strategy.',
       'change_history and virtual_status now make the phone workspace feel recoverable: users can see recent writes, patches, snapshots, restores, failures, evidence IDs, and restore points without Git.',
       'detect_project_type, validate_json, and validate_markdown add lightweight project understanding before the model chooses to write, patch, preview, or report.',
-      'termux_task_start is intentionally typed: MobileCode can later call a Helper/Termux task and capture taskId/stdout/stderr as evidence, but it still does not expose raw shell strings.',
+      'termux_task_start is intentionally typed: MobileCode can call a Helper/Termux task and capture taskId/stdout/stderr/exitCode as evidence, but it still does not expose raw shell strings.',
       'restore_snapshot is now a confirmed rollback tool: it restores files from MobileCode snapshots, backs up overwritten versions, and records ActionEvidence.',
       'validate_html gives the phone a lightweight mobile-readiness check for doctype, viewport, title, body, external URLs, and obvious tag balance issues without running scripts.',
       'Sub-Agent Lite moved from one-run read-only sessions to background read-only workers with cancellation, timeout, token budget, and at most two concurrent lanes.',
@@ -94,7 +94,9 @@ const dailyLogs = [
       'The main AgentLoop remains the only write lane: write_file, apply_patch, move_file, copy_file, mkdir, and delete_file still pass through ActionRunner, snapshots, evidence, and observation.',
       'MobileCode expanded the Virtual Command Layer with copy_file, mkdir, guarded delete_file, save_snapshot, and virtual_diff so common Unix intentions map to Android-safe typed actions.',
       'The product direction is not “turn Android into Linux.” It is a Mobile Unix Facade: familiar coding workflow for models, strict Android workspace safety underneath.',
-      'A future Termux/Helper route can run typed long tasks with taskId, stdout/stderr, evidence, and observation, but it should stay separate from provider-native raw shell.',
+      'The Termux/Helper route now runs typed tasks with taskId, stdout/stderr, exitCode, evidence, and observation, while staying separate from provider-native raw shell.',
+      'Recovery Points now surface recent snapshot, diff, and restore evidence so a phone workspace feels recoverable without pretending to be a full Git worktree.',
+      'AgentLoop recovery observations became more specific: repeated malformed write_file or apply_patch calls should switch to read_file, a valid unified diff, or a complete small-file replacement.',
       'Task Dispatch Center moved preset work into a product sheet: quick games, complex Agent validation, repair/review, and command-map explanations are now grouped by intent.',
       'When apply_patch is rejected, MobileCode gives the model a compact recovery contract: do not repeat the malformed patch, read the target, retry a valid unified diff, or use complete write_file for small HTML artifacts.',
       'The mobile lesson is that a good phone Agent needs fewer permanent buttons and clearer execution contracts, not just a larger tool list.',
@@ -187,7 +189,7 @@ export default function Experiments() {
             <span>Truth line</span>
             <strong>v0.1.39 UI + DeepSeek Agent Loop</strong>
             <span>Next gate</span>
-            <strong>Change history / typed Termux tasks / richer preview verification</strong>
+            <strong>Recovery evidence UI / typed Helper validation / richer preview verification</strong>
           </div>
         </div>
 
@@ -196,7 +198,7 @@ export default function Experiments() {
           <p>
             Current version is <strong>a mixed harness</strong>: Single-shot remains the stable default,
             while DeepSeek can use a <strong>minimal provider-native Agent Loop</strong>. The next target
-            is better recovery, typed runtime tasks, and stronger mobile preview verification without opening raw shell.
+            is stronger recovery, typed Helper validation, and richer mobile preview verification without opening raw shell.
           </p>
         </div>
 

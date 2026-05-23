@@ -205,6 +205,18 @@ class RuntimeManager {
     return (provider as RuntimeTaskMonitor).taskLogs(taskId, limit: limit);
   }
 
+  Future<Map<String, dynamic>> startTermuxTask(
+    String taskKind,
+    Map<String, dynamic> payload,
+  ) async {
+    await _ensureReady();
+    final provider = _activeProvider;
+    if (provider is RuntimeTypedTaskRunner) {
+      return provider.runTermuxTask(taskKind: taskKind, payload: payload);
+    }
+    throw StateError('Active runtime provider does not expose a typed Termux task endpoint.');
+  }
+
   Future<RuntimeProjectProfile> preflightProject(
     String projectPath, {
     String? packageManager,

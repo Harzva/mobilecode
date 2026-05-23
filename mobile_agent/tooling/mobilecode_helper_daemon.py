@@ -85,6 +85,15 @@ DANGEROUS_FRAGMENTS = (
 )
 
 PROJECT_MARKERS = {"package.json", "pubspec.yaml", "requirements.txt", "pyproject.toml", ".git"}
+TYPED_TASK_KINDS = {
+    "project_check",
+    "validate",
+    "build_preview",
+    "flutter_analyze",
+    "flutter_test",
+    "npm_build",
+}
+BLOCKED_TYPED_ARG_KEYS = {"command", "cmd", "shell"}
 
 
 class HelperState:
@@ -128,6 +137,16 @@ class HelperState:
         if path == self.workspace_root or self.workspace_root in path.parents:
             return path
         raise ValueError(f"cwd is outside workspace root: {path}")
+
+    def validate_task_path(self, raw_path: str | None) -> Path:
+        if not raw_path or raw_path == ".":
+            path = self.workspace_root
+        else:
+            candidate = Path(raw_path).expanduser()
+            path = candidate.resolve() if candidate.is_absolute() else (self.workspace_root / candidate).resolve()
+        if path == self.workspace_root or self.workspace_root in path.parents:
+            return path.parent if path.exists() and path.is_file() else path
+        raise ValueError(f"typed task path is outside workspace root: {path}")
 
     def command_args(self, command: str) -> list[str]:
         if not command.strip():
@@ -445,6 +464,67 @@ def classify_failure(status: str, exit_code: int | None, error: str | None) -> s
     return "unknown"
 
 
+def sanitize_typed_args(raw: Any) -> dict[str, Any]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("typed task args must be a JSON object")
+    cleaned: dict[str, Any] = {}
+    for key, value in raw.items():
+        normalized_key = str(key).strip().lower()
+        if normalized_key in BLOCKED_TYPED_ARG_KEYS or "shell" in normalized_key:
+            raise ValueError("typed task args must not include command/cmd/shell fields")
+        if isinstance(value, (dict, list)):
+            raise ValueError("typed task args values must be simple scalars")
+        if value is not None and not isinstance(value, (str, int, float, bool)):
+            raise ValueError("typed task args values must be strings, numbers, or booleans")
+        cleaned[str(key)] = value
+    return cleaned
+
+
+def bounded_int(raw: Any, default: int, minimum: int, maximum: int) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = default
+    return max(minimum, min(maximum, value))
+
+
+def validate_typed_file(cwd: Path, target: str) -> str:
+    if not target:
+        return json.dumps({"valid": True, "cwd": str(cwd), "note": "No file target supplied; workspace path is reachable."})
+    target_path = (cwd / target).resolve()
+    if cwd not in target_path.parents and target_path != cwd:
+        raise ValueError(f"validate target is outside task path: {target}")
+    if not target_path.exists() or not target_path.is_file():
+        raise FileNotFoundError(f"validate target not found: {target}")
+    text = target_path.read_text(encoding="utf-8", errors="replace")
+    suffix = target_path.suffix.lower()
+    if suffix == ".json":
+        decoded = json.loads(text)
+        root_type = type(decoded).__name__
+        return json.dumps({"valid": True, "path": target, "rootType": root_type}, ensure_ascii=False)
+    if suffix in {".md", ".markdown"}:
+        headings = [line for line in text.splitlines() if line.lstrip().startswith("#")]
+        return json.dumps({"valid": True, "path": target, "headings": len(headings), "bytes": len(text.encode("utf-8"))}, ensure_ascii=False)
+    if suffix in {".html", ".htm"}:
+        lower = text.lower()
+        warnings = []
+        if "<html" not in lower:
+            warnings.append("missing <html>")
+        if "<meta" not in lower or "viewport" not in lower:
+            warnings.append("missing viewport meta")
+        return json.dumps({"valid": not warnings, "path": target, "warnings": warnings}, ensure_ascii=False)
+    return json.dumps({"valid": True, "path": target, "bytes": len(text.encode("utf-8"))}, ensure_ascii=False)
+
+
+def truncate_text(value: str, max_bytes: int) -> str:
+    encoded = value.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value
+    return encoded[: max(0, max_bytes - 24)].decode("utf-8", errors="ignore") + "\n... truncated ..."
+
+
 def json_bytes(payload: dict[str, Any]) -> bytes:
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
 
@@ -569,6 +649,9 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                 return
             if path == "/v1/project/preflight":
                 self.handle_project_preflight()
+                return
+            if path == "/v1/task/start":
+                self.handle_typed_task_start()
                 return
             if path == "/v1/task/stop":
                 self.handle_stop()
@@ -716,6 +799,179 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                 "success": True,
                 "cwd": str(cwd),
                 "detectedFiles": detected_files,
+            }
+        )
+
+    def handle_typed_task_start(self) -> None:
+        payload = read_json(self)
+        task_kind = str(payload.get("taskKind") or payload.get("task_kind") or "").strip().lower()
+        if task_kind not in TYPED_TASK_KINDS:
+            self.send_error_json(HTTPStatus.BAD_REQUEST, f"typed task kind is not allowed: {task_kind}", "commandBlocked")
+            return
+        timeout_ms = bounded_int(payload.get("timeoutMs"), 120000, 1000, 120000)
+        max_output_bytes = bounded_int(payload.get("maxOutputBytes"), 32768, 1024, 262144)
+        try:
+            typed_args = sanitize_typed_args(payload.get("args"))
+            cwd = self.resolve_typed_task_path(payload)
+        except ValueError as exc:
+            message = str(exc)
+            failure_kind = "commandBlocked" if "command/cmd/shell" in message or "simple scalars" in message else "cwdOutsideWorkspace"
+            self.send_error_json(HTTPStatus.BAD_REQUEST, message, failure_kind)
+            return
+        task_id = str(payload.get("taskId") or f"typed-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}")
+
+        if task_kind in {"project_check", "validate", "build_preview"}:
+            self.run_builtin_typed_task(task_id, task_kind, cwd, typed_args, max_output_bytes)
+            return
+
+        command_map = {
+            "flutter_analyze": ["flutter", "analyze"],
+            "flutter_test": ["flutter", "test"],
+            "npm_build": ["npm", "run", "build"],
+        }
+        args = command_map[task_kind]
+        self.run_process_typed_task(task_id, task_kind, args, cwd, timeout_ms, max_output_bytes)
+
+    def resolve_typed_task_path(self, payload: dict[str, Any]) -> Path:
+        absolute_path = str(payload.get("absolutePath") or "").strip()
+        relative_path = str(payload.get("path") or ".").strip()
+        if absolute_path:
+            try:
+                return self.state.validate_task_path(absolute_path)
+            except ValueError:
+                if not relative_path:
+                    raise
+        return self.state.validate_task_path(relative_path or ".")
+
+    def run_builtin_typed_task(
+        self,
+        task_id: str,
+        task_kind: str,
+        cwd: Path,
+        typed_args: dict[str, Any],
+        max_output_bytes: int,
+    ) -> None:
+        command = f"typed:{task_kind}"
+        task = self.state.begin_task(command, cwd)
+        task_id = str(task.get("id") or task_id)
+        started = time.monotonic()
+        stdout = ""
+        stderr = ""
+        exit_code = 0
+        try:
+            if task_kind == "project_check":
+                markers = self.state.inspect_project(cwd)
+                stdout = json.dumps({"cwd": str(cwd), "detectedFiles": markers}, ensure_ascii=False)
+            elif task_kind == "build_preview":
+                entry = str(typed_args.get("entry") or typed_args.get("path") or "index.html")
+                entry_path = (cwd / entry).resolve()
+                if cwd not in entry_path.parents and entry_path != cwd:
+                    raise ValueError(f"preview entry is outside task path: {entry}")
+                if not entry_path.exists():
+                    raise FileNotFoundError(f"preview entry not found: {entry}")
+                stdout = json.dumps({"entry": entry, "bytes": entry_path.stat().st_size}, ensure_ascii=False)
+            else:
+                target = str(typed_args.get("path") or typed_args.get("entry") or "")
+                stdout = validate_typed_file(cwd, target)
+        except Exception as exc:
+            exit_code = 1
+            stderr = str(exc)
+        duration_ms = int((time.monotonic() - started) * 1000)
+        for line in stdout.splitlines():
+            self.state.append_log(task_id, f"stdout: {line}")
+        if stderr:
+            self.state.append_log(task_id, f"stderr: {stderr}")
+        status = "succeeded" if exit_code == 0 else "failed"
+        self.state.finish_task(task_id, status, exit_code, duration_ms, stderr or None)
+        snapshot = self.state.find_task(task_id) or {}
+        self.send_json(
+            {
+                "success": exit_code == 0,
+                "taskId": task_id,
+                "taskKind": task_kind,
+                "status": status,
+                "stdout": truncate_text(stdout, max_output_bytes),
+                "stderr": truncate_text(stderr, max_output_bytes),
+                "exitCode": exit_code,
+                "durationMs": duration_ms,
+                "failureKind": snapshot.get("failureKind", "none"),
+            }
+        )
+
+    def run_process_typed_task(
+        self,
+        task_id: str,
+        task_kind: str,
+        args: list[str],
+        cwd: Path,
+        timeout_ms: int,
+        max_output_bytes: int,
+    ) -> None:
+        command = " ".join(args)
+        task = self.state.begin_task(command, cwd)
+        task_id = str(task.get("id") or task_id)
+        self.state.append_log(task_id, f"typed task {task_kind}: {command}")
+        started = time.monotonic()
+        try:
+            process = subprocess.Popen(
+                args,
+                cwd=str(cwd),
+                env=os.environ.copy(),
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except FileNotFoundError as exc:
+            duration_ms = int((time.monotonic() - started) * 1000)
+            stderr = str(exc)
+            self.state.append_log(task_id, f"stderr: {stderr}")
+            self.state.finish_task(task_id, "failed", 127, duration_ms, stderr)
+            snapshot = self.state.find_task(task_id) or {}
+            self.send_json(
+                {
+                    "success": False,
+                    "taskId": task_id,
+                    "taskKind": task_kind,
+                    "status": "failed",
+                    "stdout": "",
+                    "stderr": truncate_text(stderr, max_output_bytes),
+                    "exitCode": 127,
+                    "durationMs": duration_ms,
+                    "failureKind": snapshot.get("failureKind", "dependencyMissing"),
+                }
+            )
+            return
+        self.state.register_process(task_id, process)
+        timed_out = False
+        try:
+            stdout, stderr = process.communicate(timeout=max(timeout_ms / 1000, 1))
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            process.kill()
+            stdout, stderr = process.communicate()
+            stderr = (stderr or "") + f"\nTyped task timed out after {timeout_ms}ms.\n"
+        duration_ms = int((time.monotonic() - started) * 1000)
+        exit_code = 124 if timed_out else process.returncode
+        for line in (stdout or "").splitlines():
+            self.state.append_log(task_id, f"stdout: {line}")
+        for line in (stderr or "").splitlines():
+            self.state.append_log(task_id, f"stderr: {line}")
+        self.state.clear_process(task_id, process)
+        cancelled = self.state.is_task_cancelled(task_id)
+        status = "cancelled" if cancelled else "timedOut" if timed_out else "succeeded" if exit_code == 0 else "failed"
+        self.state.finish_task(task_id, status, exit_code, duration_ms, (stderr or "").strip() or None)
+        snapshot = self.state.find_task(task_id) or {}
+        self.send_json(
+            {
+                "success": status == "succeeded",
+                "taskId": task_id,
+                "taskKind": task_kind,
+                "status": status,
+                "stdout": truncate_text(stdout or "", max_output_bytes),
+                "stderr": truncate_text(stderr or "", max_output_bytes),
+                "exitCode": exit_code,
+                "durationMs": duration_ms,
+                "failureKind": snapshot.get("failureKind", "none"),
             }
         )
 

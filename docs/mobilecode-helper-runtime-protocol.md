@@ -43,7 +43,9 @@ python3 tooling/mobilecode_helper_daemon.py \
   --auth-token "$MOBILECODE_HELPER_TOKEN"
 ```
 
-Both prototypes implement `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/project/preflight`, `/v1/tasks/current`, `/v1/tasks`, `/v1/tasks/:id/logs`, `/v1/task/stop`, and `/v1/tasks/:id/stop`. Both prototypes intentionally run allowlisted commands without shell expansion and reject working directories outside the configured workspace boundary.
+Both prototypes implement `/v1/health`, `/v1/execute`, `/v1/execute/stream`, `/v1/project/preflight`, `/v1/task/start`, `/v1/tasks/current`, `/v1/tasks`, `/v1/tasks/:id/logs`, `/v1/task/stop`, and `/v1/tasks/:id/stop`. Both prototypes intentionally run allowlisted commands without shell expansion and reject working directories outside the configured workspace boundary.
+
+`/v1/task/start` is the preferred AgentLoop route. It accepts typed task kinds and structured args, then returns `taskId/stdout/stderr/exitCode` for ActionEvidence and model observation. Provider-native tools must not call `/v1/execute` directly or pass raw shell strings.
 
 ## Localhost Auth
 
@@ -103,6 +105,8 @@ Response:
 
 ## Command Execution
 
+`/v1/execute` is a helper-level compatibility endpoint for allowlisted runtime commands. It is not exposed to model provider-native tool calls. MobileCode AgentLoop should prefer `/v1/task/start` so the app can validate task kind, path, args, timeout, output limits, and evidence before any process starts.
+
 ```http
 POST /v1/execute
 Content-Type: application/json
@@ -132,6 +136,73 @@ Response:
   "failureKind": "none"
 }
 ```
+
+## Typed Task Execution
+
+Typed task execution is the safe bridge used by the `termux_task_start` provider-native tool:
+
+```text
+provider-native tool_call: termux_task_start
+-> ActionRunner validates taskKind/path/args
+-> RuntimeManager
+-> MobileCode Helper or Termux daemon POST /v1/task/start
+-> taskId/stdout/stderr/exitCode
+-> ActionEvidence
+-> compact observation returned to the model
+```
+
+```http
+POST /v1/task/start
+Content-Type: application/json
+```
+
+Request:
+
+```json
+{
+  "taskId": "termux_1715780000000",
+  "taskKind": "build_preview",
+  "path": ".",
+  "absolutePath": "/data/user/0/com.mobilecode.mobile_agent/app_flutter/mobilecode_projects",
+  "args": {
+    "entry": "index.html"
+  },
+  "timeoutMs": 120000,
+  "maxOutputBytes": 32768,
+  "reason": "verify generated preview artifact"
+}
+```
+
+Allowed first-stage task kinds:
+
+```text
+project_check, validate, build_preview, flutter_analyze, flutter_test, npm_build
+```
+
+Response:
+
+```json
+{
+  "success": true,
+  "taskId": "termux_1715780000000",
+  "taskKind": "build_preview",
+  "status": "succeeded",
+  "stdout": "{\"entry\":\"index.html\",\"bytes\":12048}",
+  "stderr": "",
+  "exitCode": 0,
+  "durationMs": 31,
+  "failureKind": "none"
+}
+```
+
+Safety rules:
+
+- `taskKind` must be allowlisted.
+- `path` / `absolutePath` must stay inside the helper workspace boundary.
+- `args` must be flat scalar JSON fields.
+- `command`, `cmd`, `shell`, nested objects, and nested arrays are rejected.
+- Process-backed tasks use fixed argv lists, for example `["flutter", "analyze"]`, not a model-provided command string.
+- Missing dependencies return typed failure evidence instead of falling back to raw shell.
 
 ## Project Preflight
 

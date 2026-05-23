@@ -27,7 +27,8 @@ import 'termux_service.dart';
 /// - GET  /v1/tasks
 /// - GET  /v1/tasks/:id/logs
 /// - POST /v1/project/preflight
-class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor, RuntimeTaskController, RuntimeProjectInspector {
+class MobileCodeHelperProvider
+    implements RuntimeProvider, RuntimeTaskMonitor, RuntimeTaskController, RuntimeProjectInspector, RuntimeTypedTaskRunner {
   final Uri baseUri;
   final Duration probeTimeout;
   final String? authToken;
@@ -130,6 +131,18 @@ class MobileCodeHelperProvider implements RuntimeProvider, RuntimeTaskMonitor, R
       taskId: payload['taskId'] as String?,
       failureKind: _taskFailureKindFromString(payload['failureKind']?.toString()),
     );
+  }
+
+  @override
+  Future<Map<String, dynamic>> runTermuxTask({
+    required String taskKind,
+    required Map<String, dynamic> payload,
+  }) async {
+    final requestPayload = <String, dynamic>{
+      'taskKind': taskKind,
+      ...payload,
+    };
+    return _postJson('/v1/task/start', requestPayload);
   }
 
   @override

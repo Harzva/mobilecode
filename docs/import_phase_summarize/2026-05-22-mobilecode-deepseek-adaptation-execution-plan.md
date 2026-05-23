@@ -86,6 +86,7 @@ DeepSeek Provider
 - [ ] DS04.3 Search/Patch + 角色编排（本地实现完成，静态检查通过，CI 待验收）
 - [x] DS04.4 Sub-Agent Lite / mailbox-lite（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
 - [x] DS04.8 History / Status / Project Understanding / Typed Termux Route（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
+- [ ] DS04.9 Helper/Termux Typed Daemon + Recovery UI + AgentLoop Recovery（本地实现完成，CI 待验收）
 - [ ] DS05 DeepSeek 错误码映射
 - [ ] DS06 Usage / Cache / Reasoning 观测
 - [ ] DS07 JSON Output 降级路径
@@ -1142,5 +1143,65 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 剩余风险：
 
 - 本地 Flutter/Dart 不在 PATH，Dart 单元测试与 analyze 仍由 GitHub Actions 验证。
-- `termux_task_start` 当前是 typed route 与 fail-closed 行为；真正 Helper/Termux daemon 连接仍需下一阶段实现。
+- `termux_task_start` 在 DS04.8 是 typed route 与 fail-closed 行为；真实 Helper/Termux daemon 连接已进入 DS04.9 本地实现，仍需 CI 与 APK 验证。
 - `validate_json / validate_markdown / detect_project_type` 是轻量移动端检查，不等同于完整外部 lint/build 工具链。
+
+## 2026-05-23 DS04.9 Helper/Termux Typed Daemon + Recovery UI + AgentLoop Recovery
+
+状态：`IN REVIEW`（本地实现完成，等待 CI / APK 验证）
+
+目标：
+
+- P0：把 `termux_task_start` 从“只设计 typed route / fail-closed”推进到真实 Helper/Termux typed daemon route。
+- P1：让 Activity / Logs 可视化最近 `saveSnapshot / virtualDiff / restoreSnapshot` recovery points。
+- P2：增强 AgentLoop 自修复 observation，减少模型在 `write_file` 缺少 path、`apply_patch` hunk 非法、重复同类错误时的无效重试。
+
+本地实现：
+
+- `ActionRunner.termux_task_start` 现在生成 typed payload，并通过 `RuntimeManager.startTermuxTask()` 调用 active runtime provider：
+  - 传入 `taskKind / path / absolutePath / args / timeoutMs / maxOutputBytes / reason`；
+  - `argsJson` 禁止 `command / cmd / shell` 字段、禁止嵌套对象和数组；
+  - Helper 返回的 `taskId / stdout / stderr / exitCode / status` 会进入 `ActionEvidence.metadata/logs/failureKind`；
+  - `dependencyMissing / commandBlocked / timeout / cancelled / processFailed` 被映射为可观察 failure kind。
+- `MobileCodeHelperProvider` 新增 `RuntimeTypedTaskRunner`，将 typed task POST 到 `/v1/task/start`。
+- `RuntimeManager` 新增 `startTermuxTask(taskKind, payload)`，只在 active provider 实现 typed runner 时执行。
+- Android foreground-service helper 与 Python Termux prototype 均新增 `/v1/task/start`：
+  - 支持 `project_check / validate / build_preview / flutter_analyze / flutter_test / npm_build`；
+  - built-in 任务直接检查 workspace / entry 文件；
+  - process-backed 任务使用固定 argv 列表，不接收模型传入的 raw command；
+  - 路径必须保持在 helper workspace / app data 边界内；
+  - 输出被 `maxOutputBytes` 截断，返回 `taskId/stdout/stderr/exitCode/durationMs/failureKind`。
+- Home 页的 AgentLoop 与 single-shot artifact flow 都把 active runtime typed runner 注入 `ActionRunner`。
+- Activity / Logs sheet 增加 `Recovery Points` 区块，展示最近 snapshot / diff / restore evidence。
+- AgentLoop self-recovery 增强：
+  - 重复 blocked signature 会携带 compact args snapshot；
+  - `write_file` 缺 path 时建议模型先 `read_file` 明确目标，再用完整 `write_file`；
+  - `apply_patch` hunk 非法时建议模型先 `read_file` 获取上下文，再发合法 unified diff，或对小型 HTML 走完整 `write_file`。
+
+安全边界：
+
+- 仍不开放 provider-native raw shell。
+- `termux_task_start` 只接 typed task kind 和扁平 args。
+- `/v1/execute` 仍是 helper-level allowlisted compatibility endpoint，不给模型直接调用。
+- `flutter_analyze / flutter_test / npm_build` 是否成功取决于 Helper/Termux 环境是否安装依赖；失败会成为 evidence，不会伪装成功。
+
+本地验证：
+
+- [x] `git diff --check` 通过。
+- [x] `python -m py_compile mobile_agent/tooling/mobilecode_helper_daemon.py` 通过。
+- [x] `node --check relay/mobilecode-token-relay-worker.js` 通过。
+- [x] `cd app && npm run build` 通过。
+- [x] Python daemon `/v1/task/start` smoke：`build_preview` 返回真实 `taskId/stdout/exitCode=0`。
+- [x] Python daemon raw-shell guard：`args.command` 被 HTTP 400 / `commandBlocked` 拒绝。
+
+待验证：
+
+- [ ] GitHub Actions `Mobile Runtime CI`
+- [ ] GitHub Actions `Deploy MobileCode Demo Pages`
+- [ ] GitHub Actions `Build Android APK`
+
+剩余风险：
+
+- Kotlin foreground-service helper 未在本地编译，需 GitHub Actions / APK 手动验收确认。
+- typed task route 只是受限任务通道，不是完整 Termux shell；用户若需要真实包管理/构建，还需要 Helper 或 Termux 环境具备对应命令。
+- Recovery Points 目前展示最近 evidence，不是完整 Git checkout 级版本树。

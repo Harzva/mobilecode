@@ -11118,10 +11118,14 @@ class _ChatPanelState extends State<_ChatPanel> {
     if (adapter == null) return null;
 
     final rootDirectory = await _mobileCodeProjectsRootDirectory();
+    final supportsRuntimeTermuxTask = widget.runtimeManager.activeProvider is RuntimeTypedTaskRunner;
     final actionRunner = ActionRunner(
       workspaceRootPath: rootDirectory.path,
       evidenceStore: _agentEvidenceStore,
       webToolInvoker: _usesManagedRelay ? _callManagedRelayWebTool : null,
+      termuxTaskInvoker: supportsRuntimeTermuxTask
+          ? (taskKind, payload) => widget.runtimeManager.startTermuxTask(taskKind, payload)
+          : null,
     );
     final messages = _providerMessages(history).map((message) => Map<String, dynamic>.from(message)).toList();
     final model = widget.model.trim().isEmpty ? 'deepseek-v4-flash' : widget.model.trim();
@@ -12024,9 +12028,13 @@ class _ChatPanelState extends State<_ChatPanel> {
     final rootDirectory = await _mobileCodeProjectsRootDirectory();
     final projectDirectory = Directory(p.join(rootDirectory.path, slug));
     await projectDirectory.create(recursive: true);
+    final supportsRuntimeTermuxTask = widget.runtimeManager.activeProvider is RuntimeTypedTaskRunner;
     final actionRunner = ActionRunner(
       workspaceRootPath: rootDirectory.path,
       evidenceStore: _agentEvidenceStore,
+      termuxTaskInvoker: supportsRuntimeTermuxTask
+          ? (taskKind, payload) => widget.runtimeManager.startTermuxTask(taskKind, payload)
+          : null,
     );
 
     if (isWebArtifact) {
@@ -17491,6 +17499,12 @@ class _ActionEvidenceCenterSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     const maxItems = 12;
     final recent = ActionEvidenceStore.shared.recent(count: maxItems);
+    final recoveryEvidence = recent
+        .where((evidence) =>
+            evidence.actionName == MobileCodeAction.saveSnapshot ||
+            evidence.actionName == MobileCodeAction.virtualDiff ||
+            evidence.actionName == MobileCodeAction.restoreSnapshot)
+        .toList();
     final failures = ActionEvidenceStore.shared
         .failures()
         .where((evidence) => !evidence.success)
@@ -17538,6 +17552,20 @@ class _ActionEvidenceCenterSheet extends StatelessWidget {
                   ],
                   const SizedBox(height: 10),
                 ],
+                if (recoveryEvidence.isNotEmpty) ...[
+                  const Text('Recovery Points', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 8),
+                  for (final evidence in recoveryEvidence.take(6)) ...[
+                    _ActionEvidenceCenterItem(
+                      evidence: evidence,
+                      onOpenDetails: () => _showActionEvidenceSheet(context, evidence),
+                      showFailureCopy: evidence.success == false,
+                      customSubtitle: _recoveryEvidenceSubtitle(evidence),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  const SizedBox(height: 10),
+                ],
                 if (failures.isNotEmpty) ...[
                   const Text('Failed Action Evidence', style: TextStyle(color: _text, fontWeight: FontWeight.w900)),
                   const SizedBox(height: 8),
@@ -17564,11 +17592,13 @@ class _ActionEvidenceCenterItem extends StatelessWidget {
     required this.evidence,
     this.onOpenDetails,
     this.showFailureCopy = false,
+    this.customSubtitle,
   });
 
   final ActionEvidence evidence;
   final VoidCallback? onOpenDetails;
   final bool showFailureCopy;
+  final String? customSubtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -17646,6 +17676,15 @@ class _ActionEvidenceCenterItem extends StatelessWidget {
               ],
             ),
           ],
+          if (customSubtitle != null && customSubtitle!.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              customSubtitle!,
+              style: const TextStyle(color: _muted, fontSize: 10, height: 1.3),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ],
       ),
     );
@@ -17659,6 +17698,43 @@ class _ActionEvidenceCenterItem extends StatelessWidget {
         child: card,
       ),
     );
+  }
+}
+
+String _recoveryEvidenceSubtitle(ActionEvidence evidence) {
+  final metadata = evidence.metadata;
+  switch (evidence.actionName) {
+    case MobileCodeAction.saveSnapshot:
+      final snapshotId = metadata['snapshotId']?.toString();
+      final sourcePath = metadata['sourcePath']?.toString();
+      final fileCount = metadata['fileCount'];
+      if (snapshotId == null || snapshotId.isEmpty) return '';
+      final parts = <String>[
+        'snapshotId=$snapshotId',
+        if (sourcePath != null && sourcePath.isNotEmpty) 'source=$sourcePath',
+        if (fileCount != null) 'files=$fileCount',
+      ];
+      return parts.join(' · ');
+    case MobileCodeAction.virtualDiff:
+      final snapshotId = metadata['snapshotId']?.toString();
+      final changedFiles = metadata['changedFiles'];
+      final changedCount = (changedFiles is List) ? changedFiles.length : null;
+      if ((snapshotId == null || snapshotId.isEmpty) && changedCount == null) return '';
+      return [
+        if (snapshotId != null && snapshotId.isNotEmpty) 'snapshot=$snapshotId',
+        if (changedCount != null) 'changed=$changedCount',
+      ].join(' · ');
+    case MobileCodeAction.restoreSnapshot:
+      final snapshotId = metadata['snapshotId']?.toString();
+      final restoredFiles = metadata['restoredFiles'];
+      final restoreCount = (restoredFiles is List) ? restoredFiles.length : null;
+      if ((snapshotId == null || snapshotId.isEmpty) && restoreCount == null) return '';
+      return [
+        if (snapshotId != null && snapshotId.isNotEmpty) 'snapshot=$snapshotId',
+        if (restoreCount != null) 'restored=$restoreCount',
+      ].join(' · ');
+    default:
+      return '';
   }
 }
 

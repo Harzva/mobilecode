@@ -601,27 +601,28 @@ class AgentLoopController {
     required ProviderToolCall call,
     required ActionEvidence evidence,
   }) {
+    final argsSnapshot = _compact(jsonEncode(call.arguments), 220);
     final whatFailed = evidence.logs.isNotEmpty ? evidence.logs.join(' ') : 'tool call blocked';
-    return '${call.name}|${evidence.failureKind}|${_compact(whatFailed, 140)}';
+    return '${call.name}|${evidence.failureKind}|$argsSnapshot|${_compact(whatFailed, 100)}';
   }
 
   String _escalateRecovery(String toolName, String fallback) {
     final previousRecovery = fallback.trim().isEmpty ? '' : ' Previous recovery: ${_compact(fallback, 160)}';
     if (toolName == 'apply_patch') {
-      return 'Switch strategy: do not resend the same apply_patch. Call read_file for the exact target, then send a valid @@-based unified diff, or use complete write_file for a small HTML artifact.$previousRecovery';
+      return 'Switch strategy: do not resend the same apply_patch. Call read_file for the exact target first, then send a valid @@-based unified diff, or use complete write_file for a small artifact.$previousRecovery';
     }
     if (toolName == 'write_file') {
-      return 'Switch strategy: do not resend write_file with the same blocked arguments. Provide path and content, or inspect with find_files/read_file before trying again.$previousRecovery';
+      return 'Switch strategy: do not resend write_file with the same blocked arguments. Read the existing target with read_file first, then either write the full file content again (same path) or send a valid apply_patch flow from the latest lines.$previousRecovery';
     }
     return 'Switch strategy: avoid repeating the same blocked call and choose a different safe tool flow.$previousRecovery';
   }
 
   String _toolSpecificRecovery(String toolName) {
     if (toolName == 'apply_patch') {
-      return 'Valid apply_patch requires unified diff headers (--- a/path, +++ b/path) and @@ -oldStart,oldCount +newStart,newCount @@ hunks; if context is uncertain, call read_file first, then retry a smaller patch or use complete write_file for a small artifact.';
+      return 'Valid apply_patch requires unified diff headers (--- a/path, +++ b/path) and @@ -oldStart,oldCount +newStart,newCount @@ hunks; if context is uncertain, call read_file with the exact target first, then retry a smaller patch or use complete write_file.';
     }
     if (toolName == 'write_file') {
-      return 'write_file requires path, content, and overwrite. For a generated web preview artifact, use path=index.html only when that is the requested artifact target, with complete file content.';
+      return 'write_file requires path and content. If uncertain, call read_file on the target first and then use write_file with full file content (overwrite=true) or apply_patch for a tight unified diff.';
     }
     return '';
   }
@@ -635,13 +636,13 @@ class AgentLoopController {
       final prefix = repeatedFailure
           ? 'Do not resend the same apply_patch. This exact failure has happened $blockedCount times.'
           : 'Do not guess patch syntax or target context.';
-      return '$prefix Next tool options: find_files if the target path is unknown; read_file with the exact target path before patching; apply_patch only with a minimal unified diff containing --- a/path, +++ b/path, and @@ -oldStart,oldCount +newStart,newCount @@; or write_file(path, complete content) for a small generated HTML artifact. Never send @@ ... @@ or prose as a patch.';
+      return '$prefix Next tool options: find_files if the target path is unknown; read_file with the exact target path before patching; apply_patch only with a minimal unified diff containing --- a/path, +++ b/path, and @@ -oldStart,oldCount +newStart,newCount @@; or complete write_file(path, content) for a small artifact. Never send @@ ... @@ or prose as a patch.';
     }
     if (toolName == 'write_file') {
       final prefix = repeatedFailure
           ? 'Do not repeat the same missing or invalid write_file arguments.'
           : 'write_file is allowed only with explicit structured arguments.';
-      return '$prefix Required args: path, content, overwrite. If the user asked for a generated preview artifact and no other target was specified, path=index.html is acceptable; otherwise call find_files/read_file to confirm the target first.';
+      return '$prefix Required args: path, content, overwrite. If the user asked for a generated preview artifact and no other target was specified, path=index.html is acceptable; otherwise call read_file before write_file so the next payload is deterministic.';
     }
     if (toolName == 'delete_file') {
       return 'Only delete a confirmed workspace file. If unsure, call find_files or list_files first, then report_result instead of guessing.';

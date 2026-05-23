@@ -1948,13 +1948,38 @@ class ActionRunner {
         );
       }
     }
+    final cleanArgs = <String, dynamic>{};
+    final blockedKeys = {'command', 'cmd', 'shell'};
+    for (final entry in args.entries) {
+      final key = entry.key.trim().toLowerCase();
+      final value = entry.value;
+      if (blockedKeys.contains(key) || key.contains('shell')) {
+        throw _ActionRunnerFailure(
+          'termux_task_start argsJson is typed payload only and must not include shell execution fields.',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: const [
+            'Only pass typed task arguments (for example {"entry":"index.html"}).',
+            'Do not pass command or shell-style fields.',
+          ],
+        );
+      }
+      if (value is Map || value is List) {
+        throw _ActionRunnerFailure(
+          'termux_task_start argsJson values must be simple scalars only.',
+          failureKind: ActionFailureKind.commandBlocked,
+          recoveryActions: const ['Flatten argsJson to simple key/value fields; avoid nested objects or arrays.'],
+        );
+      }
+      cleanArgs[entry.key] = value;
+    }
     final target = pathParam.isEmpty ? workspaceRootPath : _resolveWorkspacePath(pathParam);
-    final taskId = 'termux_${DateTime.now().millisecondsSinceEpoch}';
+    final generatedTaskId = 'termux_${DateTime.now().millisecondsSinceEpoch}';
     final payload = <String, dynamic>{
-      'taskId': taskId,
+      'taskId': generatedTaskId,
       'taskKind': taskKind,
       'path': _relative(target),
-      'args': args,
+      'absolutePath': target,
+      'args': cleanArgs,
       'timeoutMs': timeoutMs,
       'maxOutputBytes': maxOutputBytes,
       if (reason.isNotEmpty) 'reason': reason,
@@ -1962,7 +1987,8 @@ class ActionRunner {
 
     final invoker = termuxTaskInvoker;
     if (invoker == null) {
-      final text = 'Termux typed task route is not connected. taskId=$taskId, taskKind=$taskKind. No raw shell was executed.';
+      final text =
+          'Termux typed task route is not connected. taskId=$generatedTaskId, taskKind=$taskKind. No raw shell was executed.';
       final evidence = ActionEvidence(
         evidenceId: schema.requestId ?? generateEvidenceId(),
         actionName: MobileCodeAction.termuxTaskStart,
@@ -1985,6 +2011,7 @@ class ActionRunner {
           'status': 'unavailable',
           'stdout': '',
           'stderr': 'Termux helper unavailable',
+          'requestedTaskId': generatedTaskId,
         },
       );
       evidenceStore.add(evidence);
@@ -1992,16 +2019,37 @@ class ActionRunner {
     }
 
     final raw = await invoker(taskKind, payload);
-    final stdout = _compact(_stringValue(raw['stdout']), maxOutputBytes);
-    final stderr = _compact(_stringValue(raw['stderr']), maxOutputBytes);
+    final rawStatus = raw['status']?.toString();
+    final status = rawStatus != null && rawStatus.trim().isNotEmpty ? rawStatus.toLowerCase() : null;
+    final normalizedStatus = status?.replaceAll(RegExp(r'[^a-z]'), '');
+    final rawStdout = _compact(_stringValue(raw['stdout']), maxOutputBytes);
+    final rawStderr = _compact(_stringValue(raw['stderr']), maxOutputBytes);
     final exitCodeRaw = raw['exitCode'];
     final exitCode = exitCodeRaw is num ? exitCodeRaw.toInt() : null;
-    final success = raw['success'] == true || exitCode == 0;
-    final returnedTaskId = _stringValue(raw['taskId']).isEmpty ? taskId : _stringValue(raw['taskId']);
+    final success = normalizedStatus == 'succeeded' ||
+        normalizedStatus == 'completed' ||
+        normalizedStatus == 'success' ||
+        (status == null && (raw['success'] == true || exitCode == 0));
+    final returnedTaskId = _stringValue(raw['taskId']).isEmpty ? generatedTaskId : _stringValue(raw['taskId']);
+    final resolvedStatus = status == null ? (success ? 'completed' : 'failed') : status;
+    final String? failureKind;
+    if (success) {
+      failureKind = null;
+    } else if (normalizedStatus == 'dependencymissing') {
+      failureKind = ActionFailureKind.dependencyMissing;
+    } else if (normalizedStatus == 'commandblocked') {
+      failureKind = ActionFailureKind.commandBlocked;
+    } else if (normalizedStatus == 'timeout' || normalizedStatus == 'timedout') {
+      failureKind = ActionFailureKind.timeout;
+    } else if (normalizedStatus == 'cancelled') {
+      failureKind = ActionFailureKind.cancelled;
+    } else {
+      failureKind = ActionFailureKind.processFailed;
+    }
     final text = [
       'Termux typed task $taskKind ${success ? 'completed' : 'failed'} with taskId=$returnedTaskId.',
-      if (stdout.isNotEmpty) 'stdout: $stdout',
-      if (stderr.isNotEmpty) 'stderr: $stderr',
+      if (rawStdout.isNotEmpty) 'stdout: $rawStdout',
+      if (rawStderr.isNotEmpty) 'stderr: $rawStderr',
     ].join('\n');
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
@@ -2013,21 +2061,22 @@ class ActionRunner {
       artifactPaths: [target],
       logs: [
         'Termux typed task $taskKind returned taskId=$returnedTaskId.',
-        if (stdout.isNotEmpty) 'stdout: $stdout',
-        if (stderr.isNotEmpty) 'stderr: $stderr',
+        if (rawStdout.isNotEmpty) 'stdout: $rawStdout',
+        if (rawStderr.isNotEmpty) 'stderr: $rawStderr',
       ],
       exitCode: exitCode,
-      failureKind: success ? null : ActionFailureKind.processFailed,
+      failureKind: failureKind,
       recoveryActions: success
           ? const []
           : const ['Inspect stdout/stderr and rerun a narrower typed task, or fall back to GitHub Actions.'],
       metadata: {
         ...payload,
         ...raw,
+        'status': resolvedStatus,
         'taskId': returnedTaskId,
-        'status': success ? 'completed' : 'failed',
-        'stdout': stdout,
-        'stderr': stderr,
+        'requestedTaskId': generatedTaskId,
+        'stdout': rawStdout,
+        'stderr': rawStderr,
       },
     );
     evidenceStore.add(evidence);

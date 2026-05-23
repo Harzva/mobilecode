@@ -86,7 +86,7 @@ DeepSeek Provider
 - [ ] DS04.3 Search/Patch + 角色编排（本地实现完成，静态检查通过，CI 待验收）
 - [x] DS04.4 Sub-Agent Lite / mailbox-lite（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
 - [x] DS04.8 History / Status / Project Understanding / Typed Termux Route（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
-- [ ] DS04.9 Helper/Termux Typed Daemon + Recovery UI + AgentLoop Recovery（本地实现完成，CI 待验收）
+- [x] DS04.9 Helper/Termux Typed Daemon + Recovery UI + AgentLoop Recovery（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
 - [ ] DS05 DeepSeek 错误码映射
 - [ ] DS06 Usage / Cache / Reasoning 观测
 - [ ] DS07 JSON Output 降级路径
@@ -1148,7 +1148,7 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 
 ## 2026-05-23 DS04.9 Helper/Termux Typed Daemon + Recovery UI + AgentLoop Recovery
 
-状态：`IN REVIEW`（本地实现完成，等待 CI / APK 验证）
+状态：`ACCEPTED`（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
 
 目标：
 
@@ -1194,11 +1194,15 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 - [x] Python daemon `/v1/task/start` smoke：`build_preview` 返回真实 `taskId/stdout/exitCode=0`。
 - [x] Python daemon raw-shell guard：`args.command` 被 HTTP 400 / `commandBlocked` 拒绝。
 
-待验证：
+验证证据：
 
-- [ ] GitHub Actions `Mobile Runtime CI`
-- [ ] GitHub Actions `Deploy MobileCode Demo Pages`
-- [ ] GitHub Actions `Build Android APK`
+- [x] GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26329799644`
+- [x] GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26329838692`
+- [x] GitHub Release APK：`https://github.com/Harzva/mobilecode/releases/download/v0.1.66-last/mobilecode-v0.1.66-last.apk`
+- [x] APK sha256：`9b2ed34ecda943af8658d9fa733490bf3b76feeebc85eb81a1965766e074b963`
+- [x] 代码提交：`fad2bb8 feat: connect helper typed task route`
+- [x] CI 修复提交：`4f6aee7 fix: guard typed runtime provider call`
+- [x] CI 修复提交：`5c96910 fix: pass runtime manager into chat panel`
 
 剩余风险：
 

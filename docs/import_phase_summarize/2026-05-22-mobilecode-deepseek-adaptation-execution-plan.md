@@ -1019,9 +1019,12 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 
 验证结果：
 
-- 待本轮 `git diff --check`
-- 待 GitHub Actions `Mobile Runtime CI`
-- 待 GitHub Actions `Build Android APK`
+- `git diff --check` 通过（仅 Windows 换行提示，无 whitespace error）。
+- `node --check relay/mobilecode-token-relay-worker.js` 通过。
+- `cd app && npm run build` 通过。
+- GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26323688530`
+- GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26323726867`
+- GitHub Release APK：`https://github.com/Harzva/mobilecode/releases/download/v0.1.63-last/mobilecode-v0.1.63-last.apk`
 
 剩余风险：
 

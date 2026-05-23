@@ -132,10 +132,11 @@ const _managedRelayUrl = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_URL');
 const _managedRelayToken = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_TOKEN');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.30';
+const _currentProductVersion = 'v0.1.61-last';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.61-last';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
-const _releaseBuildLabel = 'v0.1.30+49';
+const _releaseBuildLabel = _currentProductVersion;
 const _systemToolsChannel = MethodChannel('mobilecode/system_tools');
 const _mobileCodeProjectsFolderName = 'mobilecode_projects';
 const _browserOpenModeSystem = 'systemDefault';
@@ -3374,7 +3375,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     return Scaffold(
       key: _scaffoldKey,
       resizeToAvoidBottomInset: true,
@@ -3409,7 +3409,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
-            if (!keyboardOpen) _BottomNav(tab: _tab, onChanged: _setTab),
           ],
         ),
       ),
@@ -3539,12 +3538,30 @@ class _MobileChatTopBar extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         Expanded(
-          child: Text(
-            title,
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: _text, fontSize: 20, fontWeight: FontWeight.w900),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: _text, fontSize: 20, fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 3),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: _blue.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: _blue.withOpacity(0.18)),
+                ),
+                child: const Text(
+                  _currentProductVersion,
+                  style: TextStyle(color: _muted, fontSize: 10.5, fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(width: 6),
@@ -7473,46 +7490,6 @@ class _WorkItemRow extends StatelessWidget {
             ),
           ),
           Text(detail, style: const TextStyle(color: _muted, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-}
-
-class _BottomNav extends StatelessWidget {
-  const _BottomNav({required this.tab, required this.onChanged});
-
-  final _HomeTab tab;
-  final ValueChanged<_HomeTab> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final selectedIndex = switch (tab) {
-      _HomeTab.control => 0,
-      _HomeTab.ai => 0,
-      _HomeTab.ship => 1,
-      _HomeTab.guard => 2,
-      _HomeTab.insight => 2,
-    };
-    return Container(
-      decoration: const BoxDecoration(
-        color: _panel,
-        border: Border(top: BorderSide(color: _line)),
-      ),
-      child: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: (index) => onChanged(switch (index) {
-          0 => _HomeTab.control,
-          1 => _HomeTab.ship,
-          _ => _HomeTab.guard,
-        }),
-        backgroundColor: _panel,
-        indicatorColor: _mint.withOpacity(0.16),
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.forum_outlined), selectedIcon: Icon(Icons.forum), label: 'Chat'),
-          NavigationDestination(icon: Icon(Icons.handyman_outlined), selectedIcon: Icon(Icons.handyman), label: 'Tools'),
-          NavigationDestination(icon: Icon(Icons.tune_outlined), selectedIcon: Icon(Icons.tune), label: 'Settings'),
         ],
       ),
     );
@@ -12718,23 +12695,31 @@ class _ChatPanelState extends State<_ChatPanel> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Row(
-              children: [
-                _AgentModeSummaryButton(
-                  mode: _agentExecutionMode,
-                  preset: _agentPreset,
-                  rrEnabled: _agentModeEnabled,
-                  running: _agentRunning || _sending,
-                  onTap: _openAgentModeSheet,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _TaskDispatchStrip(
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _ComposerModelButton(
+                    preset: widget.providerPreset,
+                    model: widget.model,
+                    managed: widget.managedProviderPresets.contains(widget.providerPreset),
+                    onTap: _sending || _agentRunning ? null : _openModelSelectionSheet,
+                  ),
+                  const SizedBox(width: 8),
+                  _AgentModeSummaryButton(
+                    mode: _agentExecutionMode,
+                    preset: _agentPreset,
+                    rrEnabled: _agentModeEnabled,
+                    running: _agentRunning || _sending,
+                    onTap: _openAgentModeSheet,
+                  ),
+                  const SizedBox(width: 8),
+                  _TaskDispatchStrip(
                     onPrompt: (prompt, {runAgent = false}) => unawaited(setPromptFromShell(prompt, runAgent: runAgent)),
                     onMore: () => _openTaskDispatchSheet(),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             const SizedBox(height: 7),
             Container(
@@ -12762,13 +12747,6 @@ class _ChatPanelState extends State<_ChatPanel> {
                     ),
                   ),
                   const SizedBox(width: 6),
-                  _ComposerModelButton(
-                    preset: widget.providerPreset,
-                    model: widget.model,
-                    managed: widget.managedProviderPresets.contains(widget.providerPreset),
-                    onTap: _sending || _agentRunning ? null : _openModelSelectionSheet,
-                  ),
-                  const SizedBox(width: 4),
                   _VoiceInputButton(
                     enabled: !_sending && (!_agentRunning || voiceActive),
                     available: _voiceAvailable,
@@ -14509,52 +14487,20 @@ class _TaskDispatchStrip extends StatelessWidget {
     ];
     final quickPrompts = prompts.take(3).toList();
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          const _TaskDispatchLabel(),
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final item in quickPrompts) ...[
+          _PromptShortcutChip(item: item, onTap: () => onPrompt(item.prompt, runAgent: true)),
           const SizedBox(width: 8),
-          for (final item in quickPrompts) ...[
-            _PromptShortcutChip(item: item, onTap: () => onPrompt(item.prompt, runAgent: true)),
-            const SizedBox(width: 8),
-          ],
-          _ActionChipButton(
-            icon: Icons.more_horiz_outlined,
-            label: '更多',
-            color: _muted,
-            onTap: onMore,
-          ),
         ],
-      ),
-    );
-  }
-}
-
-class _TaskDispatchLabel extends StatelessWidget {
-  const _TaskDispatchLabel();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 34,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      decoration: BoxDecoration(
-        color: _panelSoft,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: _line),
-      ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.rocket_launch_outlined, color: _amber, size: 15),
-          SizedBox(width: 5),
-          Text(
-            '任务派发',
-            style: TextStyle(color: _text, fontSize: 11.5, fontWeight: FontWeight.w900),
-          ),
-        ],
-      ),
+        _ActionChipButton(
+          icon: Icons.rocket_launch_outlined,
+          label: '任务派发',
+          color: _amber,
+          onTap: onMore,
+        ),
+      ],
     );
   }
 }

@@ -3111,9 +3111,9 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 12),
         _PromptLaunchPanel(
-          mode: _agentExecutionMode,
-          preset: _agentPreset,
-          providerPreset: widget.providerPreset,
+          mode: AgentExecutionMode.agentLoop,
+          preset: AgentPreset.autoAgent,
+          providerPreset: _managedProviderActive ? _activeManagedProviderPreset : _detectProviderPreset(_effectiveBaseUrl, _effectiveModel),
           onPrompt: _usePromptShortcut,
         ),
         const SizedBox(height: 12),

@@ -192,11 +192,11 @@ extension AgentPresetConfig on AgentPreset {
         AgentPreset.autoAgent =>
           'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may open read-only Sub-Agent Lite explorer/reviewer sessions with agent_open/agent_eval/agent_close when a task needs isolated inspection. Do not follow a fixed sequence; call only the tools that are useful, and stop with report_result when the task is done or blocked.',
         AgentPreset.builder =>
-          'Agent preset Builder: inspect with find_files/grep_files/read_file when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, preview them, then report concise evidence.',
+          'Agent preset Builder: inspect with find_files/grep_files/read_file when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, preview them, then report concise evidence. If apply_patch is blocked, do not repeat the same malformed patch; read the target and retry a valid unified diff or use complete write_file for a small generated artifact.',
         AgentPreset.researchBuilder =>
           'Agent preset Research Builder: use public reference tools when they are useful, inspect local files, optionally open read-only background explorer/reviewer Sub-Agent Lite sessions, build or patch one local artifact, preview it, capture preview evidence when needed, then report refIds and evidenceIds.',
         AgentPreset.repair =>
-          'Agent preset Repair: find, grep, and read the existing artifact or evidence, save a snapshot when useful, apply a focused patch or complete write_file replacement for small artifacts, preview again, then report what changed.',
+          'Agent preset Repair: find, grep, and read the existing artifact or evidence, save a snapshot when useful, apply a focused patch or complete write_file replacement for small artifacts, preview again, then report what changed. If apply_patch is blocked, switch strategy: read_file the exact target, send a valid unified diff, or use complete write_file for a small HTML artifact.',
         AgentPreset.reviewer =>
           'Agent preset Reviewer: inspect local files, save snapshots, inspect virtual diffs, preview evidence, and optionally open read-only background explorer/reviewer Sub-Agent Lite sessions. Do not write files, publish, run shell, or mutate projects.',
       };
@@ -245,7 +245,7 @@ class AgentLoopController {
     var usedNativeToolCalls = false;
     var toolCallCount = 0;
     var writeNeedsVerification = false;
-    String? lastBlockedSignature;
+    final blockedCounts = <String, int>{};
     final subAgentLite = _SubAgentLiteManager(actionRunner: actionRunner);
 
     onEvent?.call(AgentLoopEvent(
@@ -329,14 +329,15 @@ class AgentLoopController {
         );
         final evidence = result.evidence;
         final isBlocked = evidence.failureKind == ActionFailureKind.commandBlocked;
-        final blockedSignature = '${call.name}|${evidence.failureKind}';
-        final repeatedFailure = isBlocked && blockedSignature == lastBlockedSignature;
-        lastBlockedSignature = isBlocked ? blockedSignature : null;
+        final blockedSignature = _blockedSignature(call: call, evidence: evidence);
+        final blockedCount = isBlocked ? (blockedCounts[blockedSignature] = (blockedCounts[blockedSignature] ?? 0) + 1) : 0;
+        final repeatedFailure = blockedCount > 1;
         final blockedObservation = isBlocked
             ? _blockedActionMessage(
                 call: call,
                 evidence: evidence,
                 repeatedFailure: repeatedFailure,
+                blockedCount: blockedCount,
               )
             : null;
         messages.add(adapter.buildToolResultMessage(
@@ -460,6 +461,7 @@ class AgentLoopController {
     required ProviderToolCall call,
     required ActionEvidence evidence,
     required bool repeatedFailure,
+    required int blockedCount,
   }) {
     final whatFailed = evidence.logs.isNotEmpty ? evidence.logs.join(' ') : 'tool call blocked';
     final baseRecovery = evidence.recoveryActions.isNotEmpty
@@ -470,28 +472,66 @@ class AgentLoopController {
     final safeNextAction = repeatedFailure
         ? _escalateRecovery(call.name, recovery)
         : recovery;
-    return 'failureKind=${evidence.failureKind}; toolName=${call.name}; what failed: ${_compact(whatFailed, 200)}; safeNextAction: $safeNextAction';
+    final recoveryContract = _recoveryContract(
+      call.name,
+      repeatedFailure: repeatedFailure,
+      blockedCount: blockedCount,
+    );
+    return 'failureKind=${evidence.failureKind}; toolName=${call.name}; blockedCount=$blockedCount; what failed: ${_compact(whatFailed, 200)}; safeNextAction: $safeNextAction; recoveryContract: $recoveryContract';
+  }
+
+  String _blockedSignature({
+    required ProviderToolCall call,
+    required ActionEvidence evidence,
+  }) {
+    final whatFailed = evidence.logs.isNotEmpty ? evidence.logs.join(' ') : 'tool call blocked';
+    return '${call.name}|${evidence.failureKind}|${_compact(whatFailed, 140)}';
   }
 
   String _escalateRecovery(String toolName, String fallback) {
     final previousRecovery = fallback.trim().isEmpty ? '' : ' Previous recovery: ${_compact(fallback, 160)}';
     if (toolName == 'apply_patch') {
-      return 'Switch strategy: read_file target first, then send a valid @@-based unified diff, or use complete write_file for a small HTML artifact.$previousRecovery';
+      return 'Switch strategy: do not resend the same apply_patch. Call read_file for the exact target, then send a valid @@-based unified diff, or use complete write_file for a small HTML artifact.$previousRecovery';
     }
     if (toolName == 'write_file') {
-      return 'Switch strategy: do not resend write with the same blocked arguments; provide a confirmed safe path or use read/preview flow.$previousRecovery';
+      return 'Switch strategy: do not resend write_file with the same blocked arguments. Provide path and content, or inspect with find_files/read_file before trying again.$previousRecovery';
     }
     return 'Switch strategy: avoid repeating the same blocked call and choose a different safe tool flow.$previousRecovery';
   }
 
   String _toolSpecificRecovery(String toolName) {
     if (toolName == 'apply_patch') {
-      return 'Valid apply_patch requires unified diff headers (--- a/path, +++ b/path) and @@ -oldStart,oldCount +newStart,newCount @@ hunks; if context is uncertain, read_file first, then retry a smaller patch or use complete write_file for a small artifact.';
+      return 'Valid apply_patch requires unified diff headers (--- a/path, +++ b/path) and @@ -oldStart,oldCount +newStart,newCount @@ hunks; if context is uncertain, call read_file first, then retry a smaller patch or use complete write_file for a small artifact.';
     }
     if (toolName == 'write_file') {
-      return 'write_file requires path, content, and overwrite; for the default generated web artifact, use path=index.html with complete file content.';
+      return 'write_file requires path, content, and overwrite. For a generated web preview artifact, use path=index.html only when that is the requested artifact target, with complete file content.';
     }
     return '';
+  }
+
+  String _recoveryContract(
+    String toolName, {
+    required bool repeatedFailure,
+    required int blockedCount,
+  }) {
+    if (toolName == 'apply_patch') {
+      final prefix = repeatedFailure
+          ? 'Do not resend the same apply_patch. This exact failure has happened $blockedCount times.'
+          : 'Do not guess patch syntax or target context.';
+      return '$prefix Next tool options: find_files if the target path is unknown; read_file with the exact target path before patching; apply_patch only with a minimal unified diff containing --- a/path, +++ b/path, and @@ -oldStart,oldCount +newStart,newCount @@; or write_file(path, complete content) for a small generated HTML artifact. Never send @@ ... @@ or prose as a patch.';
+    }
+    if (toolName == 'write_file') {
+      final prefix = repeatedFailure
+          ? 'Do not repeat the same missing or invalid write_file arguments.'
+          : 'write_file is allowed only with explicit structured arguments.';
+      return '$prefix Required args: path, content, overwrite. If the user asked for a generated preview artifact and no other target was specified, path=index.html is acceptable; otherwise call find_files/read_file to confirm the target first.';
+    }
+    if (toolName == 'delete_file') {
+      return 'Only delete a confirmed workspace file. If unsure, call find_files or list_files first, then report_result instead of guessing.';
+    }
+    return repeatedFailure
+        ? 'Do not repeat the same blocked call. Inspect with a read-only tool or report_result with the blocker.'
+        : 'Choose the smallest safe read-only or typed action that resolves the blocker.';
   }
 
   void _throwIfCancelled(bool Function()? isCancelled) {

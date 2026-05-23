@@ -995,3 +995,35 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 - 错误码能映射为可理解、可恢复的失败。
 - usage / cache / reasoning 成本可观察。
 - Single-shot 稳定路径不被破坏。
+
+## 2026-05-23 DS04.6 Task Dispatch + Patch Recovery
+
+状态：`ACCEPTED`
+
+实际改动：
+
+- 任务派发中心产品化：预置任务从底部按钮堆叠改为 sheet 内分组卡片，覆盖快速生成、Agent 验收、修复复盘、工具理解。
+- 任务派发中心显示当前模型、执行模式和 Agent preset，明确“任务派发只填入任务，不强行改变模型或模式”。
+- `apply_patch` blocked observation 增加恢复契约：记录 `failureKind / toolName / blockedCount / what failed / safeNextAction / recoveryContract`。
+- `apply_patch` 非法 hunk 或重复 blocked 时，下一轮 observation 明确要求模型不要重复同一 patch，先 `find_files/read_file` 确认目标，再发合法 unified diff，或对小型 HTML artifact 改用完整 `write_file`。
+- `write_file` 缺少 path 时，observation 明确 `path/content/overwrite` 必填，并说明只有在生成预览 artifact 场景下才建议 `path=index.html`。
+- GitHub Pages 实验日志补充用户向说明：移动端 AgentLoop 需要更少常驻按钮、更清楚的任务派发和失败恢复契约。
+
+关键文件：
+
+- `mobile_agent/lib/screens/home_screen.dart`
+- `mobile_agent/lib/services/agent_loop_controller.dart`
+- `mobile_agent/test/services/agent_loop_controller_test.dart`
+- `app/src/pages/Experiments.tsx`
+- `docs/import_phase_summarize/2026-05-22-mobilecode-deepseek-adaptation-execution-plan.md`
+
+验证结果：
+
+- 待本轮 `git diff --check`
+- 待 GitHub Actions `Mobile Runtime CI`
+- 待 GitHub Actions `Build Android APK`
+
+剩余风险：
+
+- `apply_patch` 自修复仍依赖 provider 能理解 observation；当前策略是不替模型猜路径，而是把合法恢复路径压缩回传。
+- 任务派发中心是产品入口优化，不替代真实 AgentLoop 验收；复杂任务仍需 APK 手动测试。

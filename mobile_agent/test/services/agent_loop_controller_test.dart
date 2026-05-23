@@ -571,7 +571,11 @@ void main() {
     final blockedMessage = blockedEvents.first.message;
     expect(blockedMessage, contains('failureKind=commandBlocked'));
     expect(blockedMessage, contains('toolName=apply_patch'));
+    expect(blockedMessage, contains('blockedCount=1'));
     expect(blockedMessage, contains('safeNextAction'));
+    expect(blockedMessage, contains('recoveryContract'));
+    expect(blockedMessage, contains('read_file'));
+    expect(blockedMessage, contains('write_file'));
     expect(blockedMessage, contains('unified diff headers'));
   });
 
@@ -621,12 +625,84 @@ void main() {
     final blocked = events.where((event) => event.type == AgentLoopEventType.blocked).toList();
     expect(blocked.length, 2);
     expect(blocked[1].message, contains('Switch strategy'));
+    expect(blocked[1].message, contains('blockedCount=2'));
+    expect(blocked[1].message, contains('Do not resend the same apply_patch'));
     final toolObservations = round3Messages!
         .where((message) => message['role'] == 'tool')
         .map((message) => message['content'].toString())
         .join(' ');
     expect(toolObservations, contains('Switch strategy'));
+    expect(toolObservations, contains('read_file'));
+    expect(toolObservations, contains('write_file'));
     expect(store.failures(), isNotEmpty);
+  });
+
+  test('invalid apply_patch can recover with complete write_file replacement', () async {
+    final file = File('${workspace.path}/safe_write_recover/index.html');
+    await file.parent.create(recursive: true);
+    await file.writeAsString('<h1>Broken</h1>');
+    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final controller = AgentLoopController(
+      adapter: adapter,
+      actionRunner: runner,
+      preset: AgentPreset.repair,
+      maxRounds: 3,
+    );
+    final events = <AgentLoopEvent>[];
+
+    final result = await controller.run(
+      initialMessages: const [
+        {'role': 'user', 'content': 'repair the small html artifact'},
+      ],
+      onEvent: events.add,
+      requestModel: (messages, {required round}) async {
+        if (round == 1) {
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_bad_patch_then_write',
+                name: 'apply_patch',
+                arguments: {
+                  'patch': '--- a/safe_write_recover/index.html\n+++ b/safe_write_recover/index.html\n@@ ... @@\n-<h1>Broken</h1>\n+<h1>Recovered</h1>',
+                },
+              ),
+            ],
+          );
+        }
+        if (round == 2) {
+          final observations = messages
+              .where((message) => message['role'] == 'tool')
+              .map((message) => message['content'].toString())
+              .join(' ');
+          expect(observations, contains('write_file'));
+          return const ProviderToolCallResponse(
+            content: '',
+            toolCalls: [
+              ProviderToolCall(
+                id: 'call_complete_write_recovery',
+                name: 'write_file',
+                arguments: {
+                  'path': 'safe_write_recover/index.html',
+                  'content': '<h1>Recovered via write_file</h1>',
+                  'overwrite': true,
+                },
+              ),
+            ],
+          );
+        }
+        return const ProviderToolCallResponse(
+          content: 'Recovered with complete write_file after blocked patch.',
+          toolCalls: [],
+        );
+      },
+    );
+
+    expect(result.answer, contains('Recovered with complete write_file'));
+    expect(await file.readAsString(), contains('Recovered via write_file'));
+    final blocked = events.where((event) => event.type == AgentLoopEventType.blocked).toList();
+    expect(blocked, hasLength(1));
+    expect(blocked.single.message, contains('complete write_file'));
   });
 
   test('missing write_file path is reported with clear blocked observation', () async {
@@ -672,7 +748,9 @@ void main() {
     expect(blocked, isNotEmpty);
     expect(blocked.first.message, contains('failureKind=commandBlocked'));
     expect(blocked.first.message, contains('toolName=write_file'));
+    expect(blocked.first.message, contains('blockedCount=1'));
     expect(blocked.first.message, contains('safeNextAction'));
+    expect(blocked.first.message, contains('recoveryContract'));
     expect(blocked.first.message, contains('path'));
     expect(blocked.first.message, contains('path=index.html'));
   });

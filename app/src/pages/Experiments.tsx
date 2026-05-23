@@ -21,6 +21,8 @@ const implemented = [
   'The Virtual Command Layer now covers copy_file, mkdir, delete_file, save_snapshot, and virtual_diff without opening raw shell.',
   'Tools now exposes Activity / Logs, provider tool list, preset permissions, and Android/Linux/macOS command compatibility.',
   'The composer now separates Mode, Model, Task Dispatch, and Input so mobile users can see how a run will execute before sending.',
+  'Task Dispatch Center now groups quick generation, Agent validation, repair/review, and command-map prompts without crowding the mobile composer.',
+  'Blocked apply_patch observations now return a recovery contract so the model can read context, send a valid unified diff, or use complete write_file for small artifacts.',
 ];
 
 const missing = [
@@ -75,6 +77,9 @@ const dailyLogs = [
       'MobileCode expanded the Virtual Command Layer with copy_file, mkdir, guarded delete_file, save_snapshot, and virtual_diff so common Unix intentions map to Android-safe typed actions.',
       'The product direction is not “turn Android into Linux.” It is a Mobile Unix Facade: familiar coding workflow for models, strict Android workspace safety underneath.',
       'A future Termux/Helper route can run typed long tasks with taskId, stdout/stderr, evidence, and observation, but it should stay separate from provider-native raw shell.',
+      'Task Dispatch Center moved preset work into a product sheet: quick games, complex Agent validation, repair/review, and command-map explanations are now grouped by intent.',
+      'When apply_patch is rejected, MobileCode gives the model a compact recovery contract: do not repeat the malformed patch, read the target, retry a valid unified diff, or use complete write_file for small HTML artifacts.',
+      'The mobile lesson is that a good phone Agent needs fewer permanent buttons and clearer execution contracts, not just a larger tool list.',
     ],
   },
   {

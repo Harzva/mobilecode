@@ -132,8 +132,8 @@ const _managedRelayUrl = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_URL');
 const _managedRelayToken = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_TOKEN');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
-const _currentProductVersion = 'v0.1.62-last';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.62-last';
+const _currentProductVersion = 'v0.1.63-last';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.63-last';
 const _androidSmokeRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl = 'https://github.com/Harzva/mobilecode/actions/workflows/ios-simulator.yml';
 const _releaseBuildLabel = _currentProductVersion;
@@ -3110,7 +3110,12 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        _PromptLaunchPanel(onPrompt: _usePromptShortcut),
+        _PromptLaunchPanel(
+          mode: _agentExecutionMode,
+          preset: _agentPreset,
+          providerPreset: widget.providerPreset,
+          onPrompt: _usePromptShortcut,
+        ),
         const SizedBox(height: 12),
         for (final command in commands) ...[
           _CommandShortcutTile(
@@ -12563,6 +12568,9 @@ class _ChatPanelState extends State<_ChatPanel> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(10)),
       ),
       builder: (sheetContext) => _PromptLaunchPanel(
+        mode: _agentExecutionMode,
+        preset: _agentPreset,
+        providerPreset: widget.providerPreset,
         onPrompt: (prompt, {runAgent = false}) async {
           Navigator.of(sheetContext).pop();
           await setPromptFromShell(prompt, runAgent: runAgent);
@@ -14495,65 +14503,349 @@ class _ComposerTaskDispatchButton extends StatelessWidget {
 }
 
 class _PromptLaunchPanel extends StatelessWidget {
-  const _PromptLaunchPanel({required this.onPrompt});
+  const _PromptLaunchPanel({
+    required this.mode,
+    required this.preset,
+    required this.providerPreset,
+    required this.onPrompt,
+  });
 
+  final AgentExecutionMode mode;
+  final AgentPreset preset;
+  final _ProviderPreset providerPreset;
+  final Future<void> Function(String prompt, {bool runAgent}) onPrompt;
+
+  @override
+  Widget build(BuildContext context) {
+    final sections = _taskDispatchSections();
+    return _SheetScaffold(
+      icon: Icons.rocket_launch_outlined,
+      title: '任务派发中心',
+      subtitle: '选择任务模板，不强行改变当前模型或执行模式。',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TaskDispatchContextCard(
+            mode: mode,
+            preset: preset,
+            providerPreset: providerPreset,
+          ),
+          const SizedBox(height: 12),
+          for (final section in sections) ...[
+            _TaskDispatchSection(section: section, onPrompt: onPrompt),
+            const SizedBox(height: 10),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PromptTaskSectionData {
+  const _PromptTaskSectionData({
+    required this.title,
+    required this.subtitle,
+    required this.tasks,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<_PromptTaskData> tasks;
+}
+
+class _PromptTaskData {
+  const _PromptTaskData({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.meta,
+    required this.color,
+    required this.prompt,
+    this.runAgent = true,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final List<String> meta;
+  final Color color;
+  final String prompt;
+  final bool runAgent;
+}
+
+List<_PromptTaskSectionData> _taskDispatchSections() {
+  return const [
+    _PromptTaskSectionData(
+      title: '快速生成',
+      subtitle: '检查写文件、读回验证和 WebView 预览链路。',
+      tasks: [
+        _PromptTaskData(
+          icon: Icons.videogame_asset_outlined,
+          title: '贪吃蛇游戏',
+          subtitle: '生成 index.html，展示写代码过程，并用 WebView 预览。',
+          meta: ['Builder', 'write/read/preview'],
+          color: _mint,
+          prompt: '帮我在手机端创建一个可运行的贪吃蛇网页小游戏，生成 index.html、展示写代码过程，并用 WebView 预览。',
+        ),
+        _PromptTaskData(
+          icon: Icons.grid_4x4_outlined,
+          title: '2048 Demo',
+          subtitle: '生成单文件 2048 小游戏，适合回归 artifact 保存。',
+          meta: ['Builder', 'index.html'],
+          color: _cyan,
+          prompt: '帮我创建一个 2048 网页小游戏，保存为 index.html，并打开本地 WebView 预览。',
+        ),
+        _PromptTaskData(
+          icon: Icons.edit_note_outlined,
+          title: '日记 App',
+          subtitle: '本地保存、列表、编辑、删除和空状态，检查更完整 UI。',
+          meta: ['Builder', 'localStorage'],
+          color: _amber,
+          prompt: '帮我做一个最小日记 App：本地保存、列表、编辑、删除和空状态都要能在 APK 里体验。',
+        ),
+      ],
+    ),
+    _PromptTaskSectionData(
+      title: 'Agent 验收',
+      subtitle: '观察 provider-native tool call、evidence、preview 和报告闭环。',
+      tasks: [
+        _PromptTaskData(
+          icon: Icons.travel_explore_outlined,
+          title: '复杂 Harness 验收',
+          subtitle: '自主选择搜索、读取、写入、预览、快照和报告步骤。',
+          meta: ['Research', 'tool loop'],
+          color: _violet,
+          prompt: '复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 list_files、find_files、grep_files、web_search、fetch_url、write_file、read_file、move_file、apply_patch、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。',
+        ),
+        _PromptTaskData(
+          icon: Icons.account_tree_outlined,
+          title: 'Sub-Agent 只读审查',
+          subtitle: '让 Explorer / Reviewer 只读扫描，再由主 Agent 汇总。',
+          meta: ['Sub-Agent Lite', 'read-only'],
+          color: _blue,
+          prompt: '请使用 Agent Loop 做一次只读审查：如果有必要，打开 explorer 或 reviewer Sub-Agent Lite 会话检查当前 workspace；只允许 list_files、find_files、grep_files、read_file、virtual_diff、agent_open、agent_eval、agent_close、report_result。最后用 SUMMARY / CHANGES / EVIDENCE / RISKS / BLOCKERS 汇总，不要写文件。',
+        ),
+      ],
+    ),
+    _PromptTaskSectionData(
+      title: '修复与复盘',
+      subtitle: '面向失败 evidence、非法 patch、移动端 UI 回归和可恢复性。',
+      tasks: [
+        _PromptTaskData(
+          icon: Icons.healing_outlined,
+          title: '修复当前页面',
+          subtitle: '优先读文件和小 patch；patch blocked 后换合法策略。',
+          meta: ['Repair', 'apply_patch recovery'],
+          color: _rose,
+          prompt: '请修复最近生成的 index.html：先用 find_files/read_file 确认目标和上下文；如果需要修改，优先发送合法 unified diff 的 apply_patch；如果 apply_patch 被 blocked，不要重复同一错误，改为 read_file 后重发合法 patch，或对小型 HTML artifact 使用完整 write_file；最后 preview_html 并 report_result。',
+        ),
+        _PromptTaskData(
+          icon: Icons.fact_check_outlined,
+          title: '执行复盘',
+          subtitle: '总结工具、evidence、失败原因和下一步最小动作。',
+          meta: ['Reviewer', 'evidence'],
+          color: _lime,
+          prompt: '请复盘最近一次 AgentLoop 执行：总结用了哪些工具、哪些 evidence 成功或失败、失败是否可恢复、下一步最小安全动作是什么。不要写文件，必要时只读检查当前 artifact。',
+        ),
+      ],
+    ),
+    _PromptTaskSectionData(
+      title: '工具理解',
+      subtitle: '说明 MobileCode 虚拟命令层，以及为什么不开放 raw shell。',
+      tasks: [
+        _PromptTaskData(
+          icon: Icons.map_outlined,
+          title: '命令地图问答',
+          subtitle: '解释 Linux/macOS/Android 常见命令如何映射到 typed tools。',
+          meta: ['Command Map', 'no shell'],
+          color: _cyan,
+          prompt: '请用用户能理解的方式说明 MobileCode 当前支持的 Virtual Command Layer：list_files、find_files、grep_files、read_file、write_file、copy_file、mkdir、delete_file、move_file、save_snapshot、virtual_diff、apply_patch、preview_html 分别对应哪些 Linux/macOS/Android 常见操作，以及为什么不开放 raw shell。',
+          runAgent: false,
+        ),
+      ],
+    ),
+  ];
+}
+
+class _TaskDispatchContextCard extends StatelessWidget {
+  const _TaskDispatchContextCard({
+    required this.mode,
+    required this.preset,
+    required this.providerPreset,
+  });
+
+  final AgentExecutionMode mode;
+  final AgentPreset preset;
+  final _ProviderPreset providerPreset;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('当前派发上下文', style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 13.5)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              _TaskMetaPill(
+                icon: Icons.auto_awesome_outlined,
+                label: _providerPresetLabel(providerPreset),
+                color: providerPreset == _ProviderPreset.deepSeek ? _violet : _mint,
+              ),
+              _TaskMetaPill(
+                icon: Icons.tune_outlined,
+                label: mode.label,
+                color: mode == AgentExecutionMode.agentLoop ? _violet : _mint,
+              ),
+              if (mode == AgentExecutionMode.agentLoop)
+                _TaskMetaPill(
+                  icon: Icons.account_tree_outlined,
+                  label: preset.label,
+                  color: _blue,
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '任务派发只填入任务并按当前模式启动；模型选择、Agent preset 和安全边界仍由 composer 与 ActionRunner 控制。',
+            style: TextStyle(color: _muted, fontSize: 11.5, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TaskDispatchSection extends StatelessWidget {
+  const _TaskDispatchSection({
+    required this.section,
+    required this.onPrompt,
+  });
+
+  final _PromptTaskSectionData section;
   final Future<void> Function(String prompt, {bool runAgent}) onPrompt;
 
   @override
   Widget build(BuildContext context) {
     return _Panel(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
-            children: [
-              Icon(Icons.bolt_outlined, color: _mint, size: 19),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'One-tap coding prompts',
-                  style: TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 15),
-                ),
+          Text(section.title, style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 14)),
+          const SizedBox(height: 4),
+          Text(section.subtitle, style: const TextStyle(color: _muted, fontSize: 11.5, height: 1.3)),
+          const SizedBox(height: 10),
+          for (final task in section.tasks) ...[
+            _TaskDispatchCard(
+              task: task,
+              onTap: () => onPrompt(task.prompt, runAgent: task.runAgent),
+            ),
+            if (task != section.tasks.last) const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TaskDispatchCard extends StatelessWidget {
+  const _TaskDispatchCard({
+    required this.task,
+    required this.onTap,
+  });
+
+  final _PromptTaskData task;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: task.color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: task.color.withOpacity(0.24)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: task.color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: task.color.withOpacity(0.22)),
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            '这些按钮会回到聊天页并填入任务，让 agent 以“思考 -> 工具调用 -> 写文件 -> 预览”的方式执行。',
-            style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _ActionChipButton(
-                icon: Icons.videogame_asset_outlined,
-                label: '贪吃蛇游戏',
-                color: _mint,
-                onTap: () => onPrompt('帮我在手机端创建一个可运行的贪吃蛇网页小游戏，生成 index.html、展示写代码过程，并用 WebView 预览。', runAgent: true),
+              child: Icon(task.icon, color: task.color, size: 18),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(task.title, style: const TextStyle(color: _text, fontWeight: FontWeight.w900, fontSize: 13.5)),
+                  const SizedBox(height: 4),
+                  Text(task.subtitle, style: const TextStyle(color: _muted, fontSize: 11.5, height: 1.3)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final label in task.meta)
+                        _TaskMetaPill(
+                          icon: Icons.label_important_outline,
+                          label: label,
+                          color: task.color,
+                        ),
+                    ],
+                  ),
+                ],
               ),
-              _ActionChipButton(
-                icon: Icons.grid_4x4_outlined,
-                label: '2048 Demo',
-                color: _cyan,
-                onTap: () => onPrompt('帮我创建一个 2048 网页小游戏，保存为 index.html，并打开本地 WebView 预览。', runAgent: true),
-              ),
-              _ActionChipButton(
-                icon: Icons.edit_note_outlined,
-                label: '日记 App',
-                color: _amber,
-                onTap: () => onPrompt('帮我做一个最小日记 App：本地保存、列表、编辑、删除和空状态都要能在 APK 里体验。'),
-              ),
-              _ActionChipButton(
-                icon: Icons.travel_explore_outlined,
-                label: '复杂 Harness 验收',
-                color: _violet,
-                onTap: () => onPrompt('复杂验收：请在手机本地生成一个动物森友会风格 3D 小岛 HTML 展示页。可用工具包括 list_files、find_files、grep_files、web_search、fetch_url、write_file、read_file、move_file、apply_patch、preview_html、preview_snapshot、report_result；请根据观察结果自主选择最小安全步骤，必要时搜索/读取公开 HTTPS 参考，最后报告有用的 refId、evidenceId、预览路径和快照结果。', runAgent: true),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.arrow_forward_ios_rounded, color: task.color, size: 15),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TaskMetaPill extends StatelessWidget {
+  const _TaskMetaPill({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.24)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(color: _text, fontSize: 10.5, fontWeight: FontWeight.w800)),
         ],
       ),
     );
@@ -14614,32 +14906,6 @@ class _ManagementSurfacePanel extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ActionChipButton extends StatelessWidget {
-  const _ActionChipButton({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return ActionChip(
-      avatar: Icon(icon, color: color, size: 17),
-      label: Text(label),
-      side: BorderSide(color: color.withOpacity(0.35)),
-      backgroundColor: color.withOpacity(0.10),
-      labelStyle: const TextStyle(color: _text, fontWeight: FontWeight.w800),
-      onPressed: onTap,
     );
   }
 }

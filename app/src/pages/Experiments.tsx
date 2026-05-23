@@ -102,6 +102,7 @@ const dailyLogs = [
       'v0.1.66 shipped this as an APK candidate after Mobile Runtime CI, helper daemon smoke, and Android APK build passed.',
       'Helper visibility is now part of the product surface: Tools and Settings can show whether the helper is reachable, which task ran last, recent task history, stdout/stderr excerpts, and dependency recovery hints.',
       'Preview validation is no longer just a pass/fail label: validate_html records structural issue counts and top issue summaries, while preview_snapshot records source/path/viewport metadata as evidence.',
+      'v0.1.67 shipped Helper status and preview evidence polish after Mobile Runtime CI and Android APK build passed.',
       'Task Dispatch Center moved preset work into a product sheet: quick games, complex Agent validation, repair/review, and command-map explanations are now grouped by intent.',
       'When apply_patch is rejected, MobileCode gives the model a compact recovery contract: do not repeat the malformed patch, read the target, retry a valid unified diff, or use complete write_file for small HTML artifacts.',
       'The mobile lesson is that a good phone Agent needs fewer permanent buttons and clearer execution contracts, not just a larger tool list.',

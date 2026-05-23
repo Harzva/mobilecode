@@ -87,7 +87,7 @@ DeepSeek Provider
 - [x] DS04.4 Sub-Agent Lite / mailbox-lite（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
 - [x] DS04.8 History / Status / Project Understanding / Typed Termux Route（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
 - [x] DS04.9 Helper/Termux Typed Daemon + Recovery UI + AgentLoop Recovery（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
-- [x] DS04.10 Helper Status Entry + Preview Evidence Validation（本地实现完成，静态检查通过，CI 待验收）
+- [x] DS04.10 Helper Status Entry + Preview Evidence Validation（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
 - [ ] DS05 DeepSeek 错误码映射
 - [ ] DS06 Usage / Cache / Reasoning 观测
 - [ ] DS07 JSON Output 降级路径
@@ -1213,7 +1213,7 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 
 ## 2026-05-23 DS04.10 Helper Status Entry + Preview Evidence Validation
 
-状态：`ACCEPTED`（本地实现完成，静态检查通过，GitHub Actions 待验收）
+状态：`ACCEPTED`（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
 
 目标：
 
@@ -1257,9 +1257,14 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 - [x] `git diff --check` 通过。
 - [x] `node --check relay/mobilecode-token-relay-worker.js` 通过。
 - [x] `cd app && npm run build` 通过。
+- [x] GitHub Actions `Mobile Runtime CI` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26331101481`
+- [x] GitHub Actions `Deploy MobileCode Demo Pages` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26331009354`
+- [x] GitHub Actions `Build Android APK` 通过：`https://github.com/Harzva/mobilecode/actions/runs/26331144393`
+- [x] GitHub Release APK：`https://github.com/Harzva/mobilecode/releases/download/v0.1.67-last/mobilecode-v0.1.67-last.apk`
+- [x] 远端代码提交：`52466e3 fix: cast helper task monitor`
 
 剩余风险：
 
-- Flutter/Dart 编译与单元测试继续交给 GitHub Actions `Mobile Runtime CI` 验证。
+- Flutter/Dart 编译与单元测试已由 GitHub Actions `Mobile Runtime CI` 验证。
 - Helper status 读取依赖 Helper daemon 是否实现 `/v1/tasks/current`、`/v1/tasks`、`/v1/tasks/:id/logs`；未启动时 UI 会显示不可达/无任务，不阻断其他 runtime。
 - `preview_snapshot` 仍是 metadata/DOM evidence，不是原生 bitmap 截图或视觉回归。

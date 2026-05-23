@@ -85,7 +85,7 @@ DeepSeek Provider
 - [x] DS04.2 AgentLoop 可用工具 gating 与缺省写入路径修复（本地实现完成，CI 待验收）
 - [ ] DS04.3 Search/Patch + 角色编排（本地实现完成，静态检查通过，CI 待验收）
 - [x] DS04.4 Sub-Agent Lite / mailbox-lite（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
-- [ ] DS04.8 History / Status / Project Understanding / Typed Termux Route（本地实现完成，CI 待验收）
+- [x] DS04.8 History / Status / Project Understanding / Typed Termux Route（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
 - [ ] DS05 DeepSeek 错误码映射
 - [ ] DS06 Usage / Cache / Reasoning 观测
 - [ ] DS07 JSON Output 降级路径
@@ -1099,7 +1099,7 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 
 ## 2026-05-23 DS04.8 History / Status / Project Understanding / Typed Termux Route
 
-状态：`IN_PROGRESS`（本地实现完成，待 CI / APK 验证）
+状态：`ACCEPTED`（本地实现完成，Mobile Runtime CI、Pages、APK 构建通过）
 
 目标：
 
@@ -1124,13 +1124,23 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 
 验证计划：
 
-- `git diff --check`
-- `node --check relay/mobilecode-token-relay-worker.js`
-- `cd app && npm run build`
-- GitHub Actions `Mobile Runtime CI`
-- 后续 APK 建议：`v0.1.65-last`
+- `git diff --check`：通过。
+- `node --check relay/mobilecode-token-relay-worker.js`：通过。
+- `cd app && npm run build`：通过。
+- GitHub Actions `Mobile Runtime CI`：通过。
+- GitHub Actions `Deploy MobileCode Demo Pages`：通过。
+- GitHub Actions `Build Android APK`：通过。
+
+证据：
+
+- 代码提交：`2973d63 feat: add history status project validation tools`
+- Mobile Runtime CI：`https://github.com/Harzva/mobilecode/actions/runs/26328367107`
+- Pages：`https://github.com/Harzva/mobilecode/actions/runs/26328367122`
+- APK Build：`https://github.com/Harzva/mobilecode/actions/runs/26328404353`
+- APK：`https://github.com/Harzva/mobilecode/releases/download/v0.1.65-last/mobilecode-v0.1.65-last.apk`
 
 剩余风险：
 
 - 本地 Flutter/Dart 不在 PATH，Dart 单元测试与 analyze 仍由 GitHub Actions 验证。
 - `termux_task_start` 当前是 typed route 与 fail-closed 行为；真正 Helper/Termux daemon 连接仍需下一阶段实现。
+- `validate_json / validate_markdown / detect_project_type` 是轻量移动端检查，不等同于完整外部 lint/build 工具链。

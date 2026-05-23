@@ -22,6 +22,8 @@ const implemented = [
   'v0.1.64 expands that layer with project_summary, restore_snapshot, and validate_html so the Agent can summarize, roll back confirmed snapshots, and check HTML structure before reporting.',
   'The next layer adds change_history, virtual_status, detect_project_type, validate_json, and validate_markdown so the Agent can understand project shape and evidence history before changing files.',
   'v0.1.66 connects termux_task_start to the typed Helper/Termux daemon route: task kind in, taskId/stdout/stderr/exitCode/evidence out, while raw shell strings remain blocked.',
+  'Tools and Settings now expose Helper status: connection state, latest task, recent task history, stdout/stderr excerpts, missing dependencies, and recovery hints.',
+  'Preview evidence is becoming more useful: validate_html records structural issue summaries, and preview_snapshot records captured source/path/viewport metadata.',
   'Tools now exposes Activity / Logs, provider tool list, preset permissions, and Android/Linux/macOS command compatibility.',
   'The composer now separates Mode, Model, Task Dispatch, and Input so mobile users can see how a run will execute before sending.',
   'Task Dispatch Center now groups quick generation, Agent validation, repair/review, and command-map prompts without crowding the mobile composer.',
@@ -31,7 +33,7 @@ const implemented = [
 const missing = [
   'The Agent Loop is still minimal and safety-bounded, not a full autonomous coding runtime.',
   'Package/build execution depends on an installed Helper or Termux environment with the required tools; missing dependencies become evidence instead of being hidden.',
-  'Native bitmap preview screenshots and rich visual verification are not implemented yet.',
+  'Native bitmap preview screenshots and full visual regression are not implemented yet; preview_snapshot is still metadata-first evidence.',
   'Sub-Agent Lite v2 is still read-only; background workers can inspect and review, but real writes must return to the main AgentLoop.',
   'The Termux or Helper execution lane is typed task execution, not a raw shell exposed to the model.',
 ];
@@ -98,6 +100,8 @@ const dailyLogs = [
       'Recovery Points now surface recent snapshot, diff, and restore evidence so a phone workspace feels recoverable without pretending to be a full Git worktree.',
       'AgentLoop recovery observations became more specific: repeated malformed write_file or apply_patch calls should switch to read_file, a valid unified diff, or a complete small-file replacement.',
       'v0.1.66 shipped this as an APK candidate after Mobile Runtime CI, helper daemon smoke, and Android APK build passed.',
+      'Helper visibility is now part of the product surface: Tools and Settings can show whether the helper is reachable, which task ran last, recent task history, stdout/stderr excerpts, and dependency recovery hints.',
+      'Preview validation is no longer just a pass/fail label: validate_html records structural issue counts and top issue summaries, while preview_snapshot records source/path/viewport metadata as evidence.',
       'Task Dispatch Center moved preset work into a product sheet: quick games, complex Agent validation, repair/review, and command-map explanations are now grouped by intent.',
       'When apply_patch is rejected, MobileCode gives the model a compact recovery contract: do not repeat the malformed patch, read the target, retry a valid unified diff, or use complete write_file for small HTML artifacts.',
       'The mobile lesson is that a good phone Agent needs fewer permanent buttons and clearer execution contracts, not just a larger tool list.',

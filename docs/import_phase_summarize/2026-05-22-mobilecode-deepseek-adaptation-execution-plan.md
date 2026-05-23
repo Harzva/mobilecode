@@ -87,6 +87,7 @@ DeepSeek Provider
 - [x] DS04.4 Sub-Agent Lite / mailbox-lite（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
 - [x] DS04.8 History / Status / Project Understanding / Typed Termux Route（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
 - [x] DS04.9 Helper/Termux Typed Daemon + Recovery UI + AgentLoop Recovery（本地实现完成，Mobile Runtime CI 与 APK 构建通过）
+- [x] DS04.10 Helper Status Entry + Preview Evidence Validation（本地实现完成，静态检查通过，CI 待验收）
 - [ ] DS05 DeepSeek 错误码映射
 - [ ] DS06 Usage / Cache / Reasoning 观测
 - [ ] DS07 JSON Output 降级路径
@@ -1209,3 +1210,56 @@ DeepSeek 全面适配不是“能聊天”就算完成，至少要满足：
 - Kotlin foreground-service helper 未在本地编译，需 GitHub Actions / APK 手动验收确认。
 - typed task route 只是受限任务通道，不是完整 Termux shell；用户若需要真实包管理/构建，还需要 Helper 或 Termux 环境具备对应命令。
 - Recovery Points 目前展示最近 evidence，不是完整 Git checkout 级版本树。
+
+## 2026-05-23 DS04.10 Helper Status Entry + Preview Evidence Validation
+
+状态：`ACCEPTED`（本地实现完成，静态检查通过，GitHub Actions 待验收）
+
+目标：
+
+- P1：在 Tools / Settings 增加 Helper 状态入口，让用户能看到连接状态、任务历史、stdout/stderr、依赖缺失和恢复提示。
+- P2：增强预览验证证据：HTML 结构检查更可读，WebView snapshot metadata 更明确，失败摘要更短、更适合手机端复盘。
+- 继续保持 `termux_task_start` 为 typed task route，不开放 raw shell。
+
+本地实现：
+
+- Home / Tools / Settings：
+  - 新增 Helper status card，显示 Helper reachable/unavailable、当前 active runtime / fallback 状态；
+  - 展示最新 Helper task 的 `taskId / status / exitCode / failureKind / command`；
+  - 展示最近 task history；
+  - 展示 stdout/stderr/log excerpt；
+  - 展示 missing dependency 与 recovery hints；
+  - Helper task/log 读取失败时 fail-soft，不影响 RuntimeManager fallback 状态。
+- `ActionRunner.validate_html`：
+  - evidence metadata 增加 `hasStructuralIssues`；
+  - evidence metadata 增加 `issueSeverityCount`；
+  - logs 增加 compact `Top issues` 摘要。
+- `ActionRunner.preview_snapshot`：
+  - snapshot/evidence metadata 增加 `status=captured`；
+  - 增加 `source=file|inline|url`；
+  - 增加 `path / relativePath / viewport / previewUrl` 等更稳定的复盘字段。
+- 失败 evidence：
+  - `_recordFailure` 日志压缩到 compact summary，避免手机端 Activity / Logs 被超长异常淹没。
+- 测试断言：
+  - `action_runner_test.dart` 增加 validate_html 结构字段与 preview_snapshot metadata 断言。
+
+关键文件：
+
+- `mobile_agent/lib/screens/home_screen.dart`
+- `mobile_agent/lib/core/evidence/action_runner.dart`
+- `mobile_agent/test/core/evidence/action_runner_test.dart`
+- `docs/COMMANDS.md`
+- `docs/COMMAND_COMPATIBILITY.md`
+- `app/src/pages/Experiments.tsx`
+
+本地验证：
+
+- [x] `git diff --check` 通过。
+- [x] `node --check relay/mobilecode-token-relay-worker.js` 通过。
+- [x] `cd app && npm run build` 通过。
+
+剩余风险：
+
+- Flutter/Dart 编译与单元测试继续交给 GitHub Actions `Mobile Runtime CI` 验证。
+- Helper status 读取依赖 Helper daemon 是否实现 `/v1/tasks/current`、`/v1/tasks`、`/v1/tasks/:id/logs`；未启动时 UI 会显示不可达/无任务，不阻断其他 runtime。
+- `preview_snapshot` 仍是 metadata/DOM evidence，不是原生 bitmap 截图或视觉回归。

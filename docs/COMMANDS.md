@@ -52,7 +52,7 @@ Streaming note: provider SSE deltas are buffered as in-memory tool-call drafts f
 | `apply_patch` | `patch`, `git apply` | Bounded write | Unified diff, workspace only | Supported |
 | `preview_html` | browser preview | Local preview | Workspace HTML / inline HTML | Supported |
 | `preview_snapshot` | screenshot-like evidence | Local evidence | Metadata / DOM summary, not bitmap | Supported |
-| `termux_task_start` | typed runtime task | Runtime bridge | Helper/Termux when configured | Designed, fail-closed |
+| `termux_task_start` | typed runtime task | Runtime bridge | Helper/Termux when configured | Supported when configured |
 | `report_result` | final status | No execution | Conversation summary | Supported |
 
 ## Tool Contracts
@@ -455,7 +455,8 @@ Notes:
 
 - This is not raw shell and does not accept command strings.
 - When no Helper/Termux daemon is configured, the tool fails closed with `dependencyMissing` evidence.
-- A connected helper must return `taskId`, `stdout`, `stderr`, status, and optional exit code so the model receives a real observation.
+- A connected helper returns `taskId`, `stdout`, `stderr`, status, and optional exit code so the model receives a real observation.
+- Tools and Settings expose a Helper status entry with connection state, latest task, recent task history, stdout/stderr excerpts, and dependency recovery hints.
 
 ### `report_result`
 

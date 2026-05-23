@@ -1517,8 +1517,10 @@ class ActionRunner {
     }
 
     final issues = <Map<String, dynamic>>[];
+    final issueSeverityCount = <String, int>{};
     void addIssue(String severity, String code, String message) {
       issues.add({'severity': severity, 'code': code, 'message': message});
+      issueSeverityCount[severity] = (issueSeverityCount[severity] ?? 0) + 1;
     }
 
     final lower = html.toLowerCase();
@@ -1567,6 +1569,11 @@ class ActionRunner {
             'HTML validation found ${issues.length} issue(s)${target == null ? '' : ' in ${_relative(target)}'}:',
             ...issues.take(20).map((issue) => '- ${issue['severity']} ${issue['code']}: ${issue['message']}'),
           ].join('\n');
+    final topIssueSummary = issues.take(4).map((issue) {
+      final code = issue['code'];
+      final message = issue['message'];
+      return '$code: $message';
+    }).join(' | ');
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.validateHtml,
@@ -1577,12 +1584,17 @@ class ActionRunner {
       artifactPaths: [
         if (target != null) target,
       ],
-      logs: ['Validated HTML with ${issues.length} issue(s).'],
+      logs: [
+        'Validated HTML with ${issues.length} issue(s).',
+        if (topIssueSummary.isNotEmpty) 'Top issues: $topIssueSummary',
+      ],
       metadata: {
         if (target != null) 'relativePath': _relative(target),
         'htmlBytes': utf8.encode(html).length,
         'title': _extractHtmlTitle(html),
         'issueCount': issues.length,
+        'issueSeverityCount': issueSeverityCount,
+        'hasStructuralIssues': issues.isNotEmpty,
         'issues': issues,
       },
     );
@@ -2222,6 +2234,7 @@ class ActionRunner {
     String? target;
     String? previewUrl;
     String html = '';
+    String source = 'inline';
 
     if (path is String && path.trim().isNotEmpty) {
       target = _resolveWorkspacePath(path);
@@ -2235,6 +2248,7 @@ class ActionRunner {
       }
       html = await file.readAsString();
       previewUrl = file.uri.toString();
+      source = 'file';
     } else if (htmlParam is String && htmlParam.trim().isNotEmpty) {
       html = htmlParam;
       target = _resolveWorkspacePath('.mobilecode_preview_snapshot/inline.html');
@@ -2242,9 +2256,11 @@ class ActionRunner {
       await file.parent.create(recursive: true);
       await file.writeAsString(html, flush: true);
       previewUrl = file.uri.toString();
+      source = 'inline';
     } else if (urlParam is String && urlParam.trim().isNotEmpty) {
       final uri = _safePreviewUri(urlParam);
       previewUrl = uri.toString();
+      source = 'url';
     } else {
       throw const _ActionRunnerFailure(
         'previewSnapshot requires params.path, params.html, or params.url.',
@@ -2256,11 +2272,14 @@ class ActionRunner {
     final snapshot = {
       'snapshotType': 'evidence',
       'capturedAt': DateTime.now().toIso8601String(),
+      'status': 'captured',
+      'source': source,
       'viewport': {
         'width': viewportWidth,
         'height': viewportHeight,
       },
       if (target != null) 'relativePath': _relative(target),
+      if (target != null) 'path': _relative(target),
       if (previewUrl != null) 'previewUrl': previewUrl,
       if (html.isNotEmpty) ...{
         'htmlBytes': utf8.encode(html).length,
@@ -2325,7 +2344,7 @@ class ActionRunner {
       startedAt: startedAt,
       failureKind: failureKind,
       recoveryActions: recoveryActions,
-      logs: [message],
+      logs: [_compact(message, 400)],
     );
     evidenceStore.add(evidence);
     return ActionRunnerResult(evidence: evidence);

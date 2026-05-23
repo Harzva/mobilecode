@@ -50,7 +50,7 @@ This lets models reuse Linux/macOS development habits while MobileCode keeps And
 | Preview | browser open | App has WebView | Supported | `preview_html` |
 | Preview evidence | screenshot | Native bitmap capture not implemented | Partial | `preview_snapshot` metadata |
 | Package managers | `npm`, `pip`, `brew`, `apt` | Not guaranteed on Android app sandbox | Runtime only | typed Helper/Termux/CI later |
-| Build tools | `flutter`, `dart`, `gradle`, `make` | Not guaranteed in APK | Typed route designed | `termux_task_start` when Helper/Termux is configured |
+| Build tools | `flutter`, `dart`, `gradle`, `make` | Not guaranteed in APK | Supported when configured | `termux_task_start` through typed Helper/Termux route |
 | Git local | `git status`, `git diff` | Git binary not guaranteed | Partial virtual | `virtual_status` / `change_history` / `save_snapshot` / `virtual_diff` / `restore_snapshot` |
 | Git remote | `git push`, release | High risk | Blocked | GitHub UI/CI only |
 | Android shell | `pm`, `am`, `dumpsys`, `logcat` | Requires privileges / debug mode | Blocked | Not provider-native |
@@ -102,6 +102,7 @@ Supported today in provider-native Agent Loop:
 - `preview_snapshot`
 - `report_result`
 - `termux_task_start` only when a typed Helper/Termux route is configured; otherwise it fails closed with evidence
+- Helper status in Tools/Settings shows connection, latest task, task history, stdout/stderr excerpts, missing dependencies, and recovery hints
 
 Not supported today:
 

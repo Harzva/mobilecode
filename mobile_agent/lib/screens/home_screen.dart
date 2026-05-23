@@ -1899,6 +1899,9 @@ class _HomeScreenState extends State<HomeScreen> {
   String _runtimeMessage = 'Checking runtime providers...';
   List<RuntimeHealth> _runtimeHealth = const [];
   RuntimeCapabilities _runtimeCapabilities = RuntimeCapabilities.none;
+  RuntimeHealth? _helperHealth;
+  RuntimeTaskSnapshot? _helperCurrentTask;
+  List<RuntimeTaskSnapshot> _helperTaskHistory = const [];
   List<_ChatSession> _drawerSessions = const [];
   String? _drawerActiveSessionId;
 
@@ -2475,6 +2478,9 @@ class _HomeScreenState extends State<HomeScreen> {
       final runtimeHealth = await _runtimeManager.refresh();
       final runtimeCapabilities = await _runtimeManager.capabilities();
       final activeRuntime = _runtimeManager.activeHealth;
+      final helperHealth = _findHelperHealth(runtimeHealth);
+      final helperSnapshotTask = await _resolveHelperTask();
+      final helperTaskHistory = await _resolveHelperTaskHistory();
       final termux = await _isAndroidPackageInstalled('com.termux');
       final termuxApi = await _isAndroidPackageInstalled('com.termux.api');
       final rootProbe = await _probeRootAvailability();
@@ -2485,6 +2491,9 @@ class _HomeScreenState extends State<HomeScreen> {
         _termuxInstalled = termux;
         _termuxApiInstalled = termuxApi;
         _rootAvailable = root;
+        _helperHealth = helperHealth;
+        _helperCurrentTask = helperSnapshotTask;
+        _helperTaskHistory = helperTaskHistory;
         _runtimeHealth = runtimeHealth;
         _runtimeCapabilities = runtimeCapabilities;
         _runtimeMessage = message;
@@ -2535,6 +2544,65 @@ class _HomeScreenState extends State<HomeScreen> {
       if (capabilities.webViewPreview) 'webview',
     ];
     return labels.isEmpty ? 'webview-only' : labels.join(', ');
+  }
+
+  RuntimeHealth? _findHelperHealth(List<RuntimeHealth> runtimeHealth) {
+    for (final health in runtimeHealth) {
+      if (health.type == RuntimeProviderType.mobileCodeHelper) {
+        return health;
+      }
+    }
+    return null;
+  }
+
+  Future<RuntimeTaskSnapshot?> _resolveHelperTask() async {
+    final monitor = _helperRuntimeMonitor();
+    if (monitor == null) return null;
+    try {
+      final task = await monitor.currentTask();
+      if (task == null || task.taskId.isEmpty) return task;
+      final logs = await _resolveHelperTaskLogs(task.taskId);
+      if (logs.isEmpty) return task;
+      return task.copyWith(logs: logs);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<List<RuntimeTaskSnapshot>> _resolveHelperTaskHistory() async {
+    final monitor = _helperRuntimeMonitor();
+    if (monitor == null) return const [];
+    try {
+      final tasks = await monitor.listTasks(limit: 8);
+      final mergedTasks = <RuntimeTaskSnapshot>[];
+      for (final task in tasks) {
+        final logs = await _resolveHelperTaskLogs(task.taskId);
+        mergedTasks.add(logs.isEmpty ? task : task.copyWith(logs: logs));
+      }
+      return mergedTasks;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<List<String>> _resolveHelperTaskLogs(String taskId) async {
+    if (taskId.trim().isEmpty) return const [];
+    final monitor = _helperRuntimeMonitor();
+    if (monitor == null) return const [];
+    try {
+      return monitor.taskLogs(taskId, limit: 48);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  RuntimeTaskMonitor? _helperRuntimeMonitor() {
+    for (final provider in _runtimeManager.providers) {
+      if (provider.type == RuntimeProviderType.mobileCodeHelper && provider is RuntimeTaskMonitor) {
+        return provider;
+      }
+    }
+    return null;
   }
 
   void _setTab(_HomeTab tab) {
@@ -3327,6 +3395,22 @@ class _HomeScreenState extends State<HomeScreen> {
           onOpenRuntime: _openTermuxSheet,
         ),
         const SizedBox(height: 12),
+        _HelperStatusCard(
+          helperHealth: _helperHealth,
+          fallbackUsed: _runtimeManager.activeHealth?.type != RuntimeProviderType.mobileCodeHelper,
+          activeRuntimeName: _activeRuntimeName,
+          currentTask: _helperCurrentTask,
+          taskHistory: _helperTaskHistory,
+          onOpenTask: _helperCurrentTask == null
+              ? null
+              : () => _showRuntimeTaskDetailsSheet(
+                    context: context,
+                    runtimeManager: _runtimeManager,
+                    task: _helperCurrentTask!,
+                    onLog: _addLog,
+                  ),
+        ),
+        const SizedBox(height: 12),
         _ManagementSurfacePanel(
           onOpenAgent: () => _openManagementScreen('Agent Manager', const AgentDashboardScreen()),
           onOpenRoles: () => _openManagementScreen(
@@ -3390,6 +3474,22 @@ class _HomeScreenState extends State<HomeScreen> {
           message: _healthMessage,
           flavor: _flavor,
           onCheck: _checkHealth,
+        ),
+        const SizedBox(height: 12),
+        _HelperStatusCard(
+          helperHealth: _helperHealth,
+          fallbackUsed: _runtimeManager.activeHealth?.type != RuntimeProviderType.mobileCodeHelper,
+          activeRuntimeName: _activeRuntimeName,
+          currentTask: _helperCurrentTask,
+          taskHistory: _helperTaskHistory,
+          onOpenTask: _helperCurrentTask == null
+              ? null
+              : () => _showRuntimeTaskDetailsSheet(
+                    context: context,
+                    runtimeManager: _runtimeManager,
+                    task: _helperCurrentTask!,
+                    onLog: _addLog,
+                  ),
         ),
         const SizedBox(height: 12),
         _ThemePreferenceCard(
@@ -4070,6 +4170,134 @@ class _RuntimePermissionBanner extends StatelessWidget {
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.refresh_outlined, size: 18),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HelperStatusCard extends StatelessWidget {
+  const _HelperStatusCard({
+    required this.helperHealth,
+    required this.fallbackUsed,
+    required this.activeRuntimeName,
+    required this.currentTask,
+    required this.taskHistory,
+    this.onOpenTask,
+  });
+
+  final RuntimeHealth? helperHealth;
+  final bool fallbackUsed;
+  final String activeRuntimeName;
+  final RuntimeTaskSnapshot? currentTask;
+  final List<RuntimeTaskSnapshot> taskHistory;
+  final VoidCallback? onOpenTask;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = helperHealth?.ready == true;
+    final statusColor = ready ? _mint : _amber;
+    final statusText = ready ? 'Helper reachable' : 'Helper unavailable';
+    final fallbackText = fallbackUsed ? 'Fallback active: $activeRuntimeName' : 'Using Helper directly';
+    final latestTask = currentTask;
+    final latestTaskLog = latestTask == null ? const [] : _recentLogLines(latestTask.logs, limit: 4);
+    final stdoutLines = latestTask == null ? const <String>[] : latestTask.logs.where((line) => line.startsWith('stdout:')).take(2).toList();
+    final stderrLines = latestTask == null ? const <String>[] : latestTask.logs.where((line) => line.startsWith('stderr:')).take(2).toList();
+    final missingDeps = helperHealth?.missingDependencies ?? const <String>[];
+    final recovery = helperHealth?.recoveryActions ?? const <String>[];
+    final taskHistoryText = taskHistory
+        .take(3)
+        .map((task) => '${task.taskId} ${task.status.name} ${task.exitCode == null ? '' : '(exit ${task.exitCode})'}'.trim())
+        .join('\n');
+
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.monitor_heart_outlined, color: statusColor, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Helper status',
+                  style: const TextStyle(color: _text, fontWeight: FontWeight.w900),
+                ),
+              ),
+              Text(
+                statusText,
+                style: TextStyle(color: statusColor, fontWeight: FontWeight.w800, fontSize: 11),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(fallbackText, style: const TextStyle(color: _muted, fontSize: 11, height: 1.35)),
+          const SizedBox(height: 8),
+          Text(
+            helperHealth == null ? 'No Helper health record yet.' : '${helperHealth!.name}: ${helperHealth!.status}',
+            style: const TextStyle(color: _text, fontSize: 12, height: 1.25),
+          ),
+          if (missingDeps.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('Missing: ${missingDeps.join(', ')}', style: const TextStyle(color: _rose, fontSize: 11, height: 1.25)),
+          ],
+          if (recovery.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text('Recovery: ${recovery.join(' / ')}', style: const TextStyle(color: _amber, fontSize: 11, height: 1.25)),
+          ],
+          if (latestTask != null) ...[
+            const SizedBox(height: 10),
+            const Text('Latest task', style: TextStyle(color: _muted, fontSize: 11, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            Text(
+              '${latestTask.taskId} · ${latestTask.status.name} · exit=${latestTask.exitCode ?? 0} · failure=${latestTask.failureKind.name}',
+              style: const TextStyle(color: _faint, fontSize: 11, height: 1.35),
+            ),
+            if (latestTask.command.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                _compact(latestTask.command, limit: 96),
+                style: const TextStyle(color: _faint, fontSize: 11, height: 1.35),
+              ),
+            ],
+            const SizedBox(height: 4),
+            if (latestTaskLog.isNotEmpty)
+            Text(
+              'I/O: ${latestTaskLog.join(' | ')}',
+              style: const TextStyle(color: _faint, fontSize: 11, height: 1.35),
+            ),
+            if (stdoutLines.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'stdout: ${stdoutLines.join(' | ')}',
+                style: const TextStyle(color: _faint, fontSize: 11, height: 1.35),
+              ),
+            ],
+            if (stderrLines.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'stderr: ${stderrLines.join(' | ')}',
+                style: const TextStyle(color: _faint, fontSize: 11, height: 1.35),
+              ),
+            ],
+          ],
+          if (taskHistoryText.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            const Text('Recent task history', style: TextStyle(color: _muted, fontSize: 11, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 4),
+            Text(taskHistoryText, style: const TextStyle(color: _faint, fontSize: 11, height: 1.35)),
+          ],
+          if (onOpenTask != null) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: OutlinedButton.icon(
+                onPressed: onOpenTask,
+                icon: const Icon(Icons.open_in_new_outlined, size: 16),
+                label: const Text('Open task detail'),
+              ),
+            ),
+          ],
         ],
       ),
     );

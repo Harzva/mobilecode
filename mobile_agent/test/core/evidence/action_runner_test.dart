@@ -427,6 +427,9 @@ void main() {
     expect(result.text, contains('missing_doctype'));
     expect(result.text, contains('missing_viewport'));
     expect(result.evidence.metadata['issueCount'], greaterThanOrEqualTo(2));
+    expect(result.evidence.metadata['hasStructuralIssues'], isTrue);
+    expect(result.evidence.metadata['issueSeverityCount'], isNotEmpty);
+    expect(result.evidence.logs.join('\n'), contains('Top issues'));
     expect(result.evidence.actionName, MobileCodeAction.validateHtml);
   });
 
@@ -743,6 +746,13 @@ void main() {
     final snapshot = jsonDecode(await File(result.path!).readAsString()) as Map<String, dynamic>;
     expect(snapshot['title'], 'Island');
     expect(snapshot['bodyTextPreview'], contains('3D Island'));
+    expect(snapshot['status'], 'captured');
+    expect(snapshot['source'], 'file');
+    expect(snapshot['path'], 'demo/index.html');
+    expect(snapshot['viewport']['width'], 390);
+    expect(snapshot['viewport']['height'], 844);
+    expect(result.evidence.metadata['source'], 'file');
+    expect(result.evidence.metadata['status'], 'captured');
     expect(result.evidence.artifactPaths.length, 2);
     expect(store.getById('ev-snapshot'), isNotNull);
   });

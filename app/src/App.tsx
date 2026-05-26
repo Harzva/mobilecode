@@ -5,6 +5,7 @@ import Features from './pages/Features';
 import Docs from './pages/Docs';
 import Changelog from './pages/Changelog';
 import Experiments from './pages/Experiments';
+import Developer from './pages/Developer';
 import About from './pages/About';
 import Contact from './pages/Contact';
 
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/docs" element={<Docs />} />
         <Route path="/changelog" element={<Changelog />} />
         <Route path="/experiments" element={<Experiments />} />
+        <Route path="/developer" element={<Developer />} />
         <Route path="/about" element={<About />} />
         <Route path="/contact" element={<Contact />} />
       </Routes>

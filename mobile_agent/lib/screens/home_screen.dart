@@ -14878,6 +14878,7 @@ class _PromptLaunchPanel extends StatelessWidget {
       icon: Icons.rocket_launch_outlined,
       title: '任务派发中心',
       subtitle: '选择任务模板，不强行改变当前模型或执行模式。',
+      closeTooltip: '关闭任务派发中心',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -16027,12 +16028,14 @@ class _SheetScaffold extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
+    this.closeTooltip = 'Close panel',
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
   final Widget child;
+  final String closeTooltip;
 
   @override
   Widget build(BuildContext context) {
@@ -16077,6 +16080,19 @@ class _SheetScaffold extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filledTonal(
+                tooltip: closeTooltip,
+                onPressed: () => Navigator.of(context).maybePop(),
+                style: IconButton.styleFrom(
+                  backgroundColor: _line.withOpacity(0.55),
+                  foregroundColor: _text,
+                  minimumSize: const Size(44, 44),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                icon: const Icon(Icons.close_rounded, size: 20),
               ),
             ],
           ),

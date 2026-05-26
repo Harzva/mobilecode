@@ -2272,7 +2272,10 @@ class ActionRunner {
     final snapshot = {
       'snapshotType': 'evidence',
       'capturedAt': DateTime.now().toIso8601String(),
-      'status': 'captured',
+      'status': 'metadata_captured',
+      'captureMode': 'metadata',
+      'artifactType': 'json',
+      'bitmapCaptured': false,
       'source': source,
       'viewport': {
         'width': viewportWidth,
@@ -2309,7 +2312,8 @@ class ActionRunner {
         if (previewUrl != null) previewUrl,
       ],
       logs: [
-        'Saved evidence snapshot for ${target == null ? previewUrl : _relative(target)}.',
+        'Saved metadata/DOM evidence snapshot for ${target == null ? previewUrl : _relative(target)}.',
+        'No native bitmap screenshot was captured for this action.',
         'Snapshot metadata file: ${_relative(snapshotPath)}.',
       ],
       metadata: snapshot,

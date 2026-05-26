@@ -12,10 +12,11 @@
 
 <p align="center">
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml"><img alt="Mobile Runtime CI" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml/badge.svg?branch=v011-streaming-fix"></a>
+  <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml"><img alt="Mobile App Release" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml/badge.svg"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=v011-streaming-fix"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=v011-streaming-fix"></a>
   <img alt="Version" src="https://img.shields.io/badge/version-0.1.30%2B49-2555FF">
-  <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20Flutter-0B9B7E">
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Flutter-0B9B7E">
 </p>
 
 <p align="center">
@@ -39,7 +40,7 @@
   ·
   <a href="https://harzva.github.io/mobilecode/github-test/">GitHub Test</a>
   ·
-  <a href="https://github.com/Harzva/mobilecode/releases">Download APK</a>
+  <a href="https://github.com/Harzva/mobilecode/releases">Download app builds</a>
   ·
   <a href="docs/mobilecode-release-qa.md">Release QA</a>
 </p>

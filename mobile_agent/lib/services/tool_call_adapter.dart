@@ -1022,7 +1022,7 @@ class OpenAiCompatibleToolCallAdapter {
       ),
       functionTool(
         name: 'preview_snapshot',
-        description: 'Create a lightweight evidence snapshot for a prepared WebView preview. This is metadata/DOM evidence, not a native bitmap screenshot.',
+        description: 'Create a lightweight evidence snapshot for a prepared WebView preview. This records metadata/DOM validation only and never claims a native bitmap screenshot unless an image artifact exists.',
         properties: const {
           'path': {'type': 'string', 'description': 'Relative HTML file path, or an empty string when url/html is provided.'},
           'url': {'type': 'string', 'description': 'Preview URL, or an empty string when path/html is provided.'},

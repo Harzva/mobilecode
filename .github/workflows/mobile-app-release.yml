@@ -1,0 +1,486 @@
+name: Build Mobile Apps
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub Release tag for Android and iOS app artifacts
+        required: false
+        default: v0.1.68-last
+      upload_to_release:
+        description: Upload app artifacts to the GitHub Release
+        required: false
+        default: true
+        type: boolean
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-app-release-${{ github.ref }}-${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+  cancel-in-progress: false
+
+jobs:
+  build-android-apk:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Recreate Android platform project
+        working-directory: mobile_agent
+        run: |
+          rm -rf android
+          flutter create --platforms=android --project-name mobile_agent --org com.mobilecode .
+          python3 tooling/prepare_android_project.py
+
+      - name: Resolve Flutter dependencies
+        working-directory: mobile_agent
+        run: flutter pub get
+
+      - name: Analyze release entry surfaces
+        working-directory: mobile_agent
+        run: |
+          flutter analyze \
+            lib/main.dart \
+            lib/screens/home_screen.dart \
+            lib/screens/github_screen.dart \
+            lib/screens/github_repo_hub_screen.dart \
+            lib/screens/role_manager_screen.dart \
+            lib/screens/api_usage_screen.dart \
+            lib/screens/device_telemetry_screen.dart \
+            lib/services/github_deep_service.dart \
+            lib/services/github_oauth_flow.dart \
+            lib/services/role_library_service.dart \
+            lib/services/token_usage_service.dart \
+            lib/services/token_pricing_service.dart \
+            lib/services/device_telemetry_service.dart \
+            lib/services/agent_loop_controller.dart \
+            lib/services/tool_call_adapter.dart \
+            lib/core/evidence/action_runner.dart \
+            --no-fatal-infos \
+            --no-fatal-warnings
+
+      - name: Configure Android release signing
+        working-directory: mobile_agent
+        env:
+          MOBILECODE_RELEASE_KEYSTORE_BASE64: ${{ secrets.MOBILECODE_RELEASE_KEYSTORE_BASE64 }}
+          MOBILECODE_RELEASE_STORE_PASSWORD: ${{ secrets.MOBILECODE_RELEASE_STORE_PASSWORD }}
+          MOBILECODE_RELEASE_KEY_ALIAS: ${{ secrets.MOBILECODE_RELEASE_KEY_ALIAS }}
+          MOBILECODE_RELEASE_KEY_PASSWORD: ${{ secrets.MOBILECODE_RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$MOBILECODE_RELEASE_KEYSTORE_BASE64" ] && [ -n "$MOBILECODE_RELEASE_STORE_PASSWORD" ] && [ -n "$MOBILECODE_RELEASE_KEY_ALIAS" ] && [ -n "$MOBILECODE_RELEASE_KEY_PASSWORD" ]; then
+            mkdir -p android/app
+            KEYSTORE_PATH="$PWD/android/app/mobilecode-release.jks"
+            printf '%s' "$MOBILECODE_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+            {
+              echo "storeFile=$KEYSTORE_PATH"
+              echo "storePassword=$MOBILECODE_RELEASE_STORE_PASSWORD"
+              echo "keyAlias=$MOBILECODE_RELEASE_KEY_ALIAS"
+              echo "keyPassword=$MOBILECODE_RELEASE_KEY_PASSWORD"
+            } > android/key.properties
+            echo "Stable release signing configured."
+          else
+            echo "Release signing secrets are not fully configured; falling back to Flutter debug signing."
+          fi
+
+      - name: Build release APK
+        working-directory: mobile_agent
+        env:
+          MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
+          MOBILECODE_DEEPSEEK_API_KEY: ${{ secrets.MOBILECODE_DEEPSEEK_API_KEY || secrets.DEEPSEEK_API_KEY }}
+          MOBILECODE_MANAGED_RELAY_URL: ${{ vars.MOBILECODE_MANAGED_RELAY_URL }}
+          MOBILECODE_MANAGED_RELAY_TOKEN: ${{ secrets.MOBILECODE_MANAGED_RELAY_TOKEN }}
+          MOBILECODE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.MOBILECODE_GITHUB_OAUTH_CLIENT_ID }}
+          MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET }}
+          MOBILECODE_GITHUB_OAUTH_REDIRECT_URI: ${{ vars.MOBILECODE_GITHUB_OAUTH_REDIRECT_URI }}
+        run: |
+          DART_DEFINES=()
+          if [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_RELAY_URL="$MOBILECODE_MANAGED_RELAY_URL")
+          fi
+          if [ -n "$MOBILECODE_MANAGED_RELAY_TOKEN" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_RELAY_TOKEN="$MOBILECODE_MANAGED_RELAY_TOKEN")
+          fi
+          if [ -n "$MOBILECODE_MANAGED_API_KEY" ] || [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_PROVIDER=true)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro)
+          fi
+          if [ -z "$MOBILECODE_MANAGED_RELAY_URL" ] && [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY")
+          fi
+          if [ -n "$MOBILECODE_DEEPSEEK_API_KEY" ] || [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_PROVIDER=true)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_BASE_URL=https://api.deepseek.com)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_MODEL=deepseek-v4-flash)
+          fi
+          if [ -z "$MOBILECODE_MANAGED_RELAY_URL" ] && [ -n "$MOBILECODE_DEEPSEEK_API_KEY" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_DEEPSEEK_API_KEY="$MOBILECODE_DEEPSEEK_API_KEY")
+          fi
+          if [ -n "$MOBILECODE_GITHUB_OAUTH_CLIENT_ID" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_GITHUB_OAUTH_CLIENT_ID="$MOBILECODE_GITHUB_OAUTH_CLIENT_ID")
+          fi
+          if [ -n "$MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET="$MOBILECODE_GITHUB_OAUTH_CLIENT_SECRET")
+          fi
+          if [ -n "$MOBILECODE_GITHUB_OAUTH_REDIRECT_URI" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_GITHUB_OAUTH_REDIRECT_URI="$MOBILECODE_GITHUB_OAUTH_REDIRECT_URI")
+          fi
+          flutter build apk --release --target lib/main.dart "${DART_DEFINES[@]}"
+
+      - name: Stage APK
+        id: stage_apk
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+        run: |
+          mkdir -p artifacts
+          APK_PATH="artifacts/mobilecode-${RELEASE_TAG}.apk"
+          cp mobile_agent/build/app/outputs/flutter-apk/app-release.apk "$APK_PATH"
+          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobilecode-android-apk
+          path: ${{ steps.stage_apk.outputs.apk_path }}
+
+      - name: Ensure GitHub Release exists
+        if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+          else
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "MobileCode $RELEASE_TAG" \
+              --notes "Automated MobileCode Android and iOS app build." \
+              --prerelease \
+              --repo "$GITHUB_REPOSITORY" || gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          fi
+
+      - name: Upload APK to GitHub Release
+        if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+        run: |
+          gh release upload "$RELEASE_TAG" "${{ steps.stage_apk.outputs.apk_path }}" --clobber --repo "$GITHUB_REPOSITORY"
+
+  build-ios-simulator:
+    name: iOS Simulator App
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      - name: Recreate iOS platform project
+        working-directory: mobile_agent
+        run: |
+          rm -rf ios
+          flutter create --platforms=ios --project-name mobile_agent --org com.mobilecode .
+          python3 tooling/prepare_ios_project.py
+
+      - name: Resolve Flutter dependencies
+        working-directory: mobile_agent
+        run: flutter pub get
+
+      - name: Analyze iOS entry surfaces
+        working-directory: mobile_agent
+        run: |
+          flutter analyze \
+            lib/main.dart \
+            lib/screens/home_screen.dart \
+            lib/screens/role_manager_screen.dart \
+            lib/screens/api_usage_screen.dart \
+            lib/screens/device_telemetry_screen.dart \
+            lib/services/role_library_service.dart \
+            lib/services/token_usage_service.dart \
+            lib/services/token_pricing_service.dart \
+            lib/services/device_telemetry_service.dart \
+            lib/services/tool_call_adapter.dart \
+            lib/core/evidence/action_runner.dart \
+            --no-fatal-infos \
+            --no-fatal-warnings
+
+      - name: Build iOS simulator app
+        working-directory: mobile_agent
+        env:
+          MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
+          MOBILECODE_MANAGED_RELAY_URL: ${{ vars.MOBILECODE_MANAGED_RELAY_URL }}
+          MOBILECODE_MANAGED_RELAY_TOKEN: ${{ secrets.MOBILECODE_MANAGED_RELAY_TOKEN }}
+        run: |
+          DART_DEFINES=()
+          if [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_RELAY_URL="$MOBILECODE_MANAGED_RELAY_URL")
+          fi
+          if [ -n "$MOBILECODE_MANAGED_RELAY_TOKEN" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_RELAY_TOKEN="$MOBILECODE_MANAGED_RELAY_TOKEN")
+          fi
+          if [ -n "$MOBILECODE_MANAGED_API_KEY" ] || [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_PROVIDER=true)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro)
+          fi
+          if [ -z "$MOBILECODE_MANAGED_RELAY_URL" ] && [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY")
+          fi
+          flutter build ios --simulator --debug --target lib/main.dart "${DART_DEFINES[@]}"
+
+      - name: Install and launch on iOS simulator
+        working-directory: mobile_agent
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+        run: |
+          set -euxo pipefail
+          mkdir -p ../artifacts
+          SIM_ID="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ && /Shutdown/ {print $2; exit}')"
+          if [ -z "$SIM_ID" ]; then
+            xcrun simctl list devices
+            exit 1
+          fi
+          xcrun simctl boot "$SIM_ID" || true
+          xcrun simctl bootstatus "$SIM_ID" -b
+          APP_PATH="build/ios/iphonesimulator/Runner.app"
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          xcrun simctl install "$SIM_ID" "$APP_PATH"
+          xcrun simctl launch "$SIM_ID" "$BUNDLE_ID"
+          sleep 15
+          xcrun simctl io "$SIM_ID" screenshot ../artifacts/mobilecode-ios-smoke.png
+          xcrun simctl spawn "$SIM_ID" log show --style compact --last 3m --predicate 'process == "Runner"' > ../artifacts/ios-runner.log || true
+          if grep -E "Terminating app due to uncaught exception|Fatal error|EXC_CRASH|SIGABRT" ../artifacts/ios-runner.log; then
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "../artifacts/mobilecode-ios-simulator-${RELEASE_TAG}.zip"
+
+      - name: Upload iOS simulator workflow artifacts
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mobilecode-ios-simulator
+          path: artifacts/
+
+      - name: Ensure GitHub Release exists
+        if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+          else
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "MobileCode $RELEASE_TAG" \
+              --notes "Automated MobileCode Android and iOS app build." \
+              --prerelease \
+              --repo "$GITHUB_REPOSITORY" || gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          fi
+
+      - name: Upload iOS simulator app to GitHub Release
+        if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+        run: |
+          gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-simulator-"$RELEASE_TAG".zip artifacts/mobilecode-ios-smoke.png artifacts/ios-runner.log --clobber --repo "$GITHUB_REPOSITORY"
+
+  build-ios-archive:
+    name: iOS Unsigned Archive
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun --find xcodebuild
+
+      - name: Recreate iOS platform project
+        working-directory: mobile_agent
+        run: |
+          rm -rf ios
+          flutter create --platforms=ios --project-name mobile_agent --org com.mobilecode .
+          python3 tooling/prepare_ios_project.py
+
+      - name: Resolve Flutter dependencies
+        working-directory: mobile_agent
+        run: flutter pub get
+
+      - name: Build unsigned iOS device app
+        working-directory: mobile_agent
+        env:
+          MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
+          MOBILECODE_MANAGED_RELAY_URL: ${{ vars.MOBILECODE_MANAGED_RELAY_URL }}
+          MOBILECODE_MANAGED_RELAY_TOKEN: ${{ secrets.MOBILECODE_MANAGED_RELAY_TOKEN }}
+        run: |
+          DART_DEFINES=()
+          if [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_RELAY_URL="$MOBILECODE_MANAGED_RELAY_URL")
+          fi
+          if [ -n "$MOBILECODE_MANAGED_RELAY_TOKEN" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_RELAY_TOKEN="$MOBILECODE_MANAGED_RELAY_TOKEN")
+          fi
+          if [ -n "$MOBILECODE_MANAGED_API_KEY" ] || [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_PROVIDER=true)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro)
+          fi
+          if [ -z "$MOBILECODE_MANAGED_RELAY_URL" ] && [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY")
+          fi
+          flutter build ios --release --no-codesign --target lib/main.dart "${DART_DEFINES[@]}"
+
+      - name: Package unsigned xcarchive
+        working-directory: mobile_agent
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+        run: |
+          set -euxo pipefail
+          mkdir -p ../artifacts
+          APP_PATH="build/ios/iphoneos/Runner.app"
+          ARCHIVE_PATH="../artifacts/MobileCode-${RELEASE_TAG}.xcarchive"
+          ZIP_PATH="../artifacts/mobilecode-ios-archive-${RELEASE_TAG}.xcarchive.zip"
+
+          if [ ! -d "$APP_PATH" ]; then
+            echo "Expected iOS app bundle was not found at $APP_PATH"
+            exit 1
+          fi
+
+          rm -rf "$ARCHIVE_PATH" "$ZIP_PATH"
+          mkdir -p "$ARCHIVE_PATH/Products/Applications"
+          ditto "$APP_PATH" "$ARCHIVE_PATH/Products/Applications/Runner.app"
+
+          DSYM_ROOT="build/ios/Release-iphoneos"
+          mkdir -p "$ARCHIVE_PATH/dSYMs"
+          copied_dsym=0
+          for dsym in "$DSYM_ROOT"/*.dSYM; do
+            if [ -e "$dsym" ]; then
+              cp -R "$dsym" "$ARCHIVE_PATH/dSYMs/"
+              copied_dsym=1
+            fi
+          done
+          if [ "$copied_dsym" -eq 0 ]; then
+            rmdir "$ARCHIVE_PATH/dSYMs"
+          fi
+
+          BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          SHORT_VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP_PATH/Info.plist")"
+          BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$APP_PATH/Info.plist")"
+          CREATION_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          cat > "$ARCHIVE_PATH/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>ApplicationProperties</key>
+            <dict>
+              <key>ApplicationPath</key>
+              <string>Applications/Runner.app</string>
+              <key>CFBundleIdentifier</key>
+              <string>${BUNDLE_ID}</string>
+              <key>CFBundleShortVersionString</key>
+              <string>${SHORT_VERSION}</string>
+              <key>CFBundleVersion</key>
+              <string>${BUILD_VERSION}</string>
+              <key>SigningIdentity</key>
+              <string>Unsigned CI archive</string>
+            </dict>
+            <key>ArchiveVersion</key>
+            <integer>2</integer>
+            <key>CreationDate</key>
+            <date>${CREATION_DATE}</date>
+            <key>Name</key>
+            <string>MobileCode</string>
+            <key>SchemeName</key>
+            <string>Runner</string>
+          </dict>
+          </plist>
+          PLIST
+
+          plutil -lint "$ARCHIVE_PATH/Info.plist"
+          ditto -c -k --sequesterRsrc --keepParent "$ARCHIVE_PATH" "$ZIP_PATH"
+          {
+            echo "MobileCode iOS archive"
+            echo "Release tag: $RELEASE_TAG"
+            echo "Bundle ID: $BUNDLE_ID"
+            echo "Version: $SHORT_VERSION+$BUILD_VERSION"
+            echo "Signed: no"
+            echo "Installable on physical iPhone: no; export/sign this archive first."
+          } > ../artifacts/ios-archive-summary.txt
+
+      - name: Upload iOS archive workflow artifacts
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mobilecode-ios-archive
+          path: artifacts/
+
+      - name: Ensure GitHub Release exists
+        if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+        run: |
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists."
+          else
+            gh release create "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "MobileCode $RELEASE_TAG" \
+              --notes "Automated MobileCode Android and iOS app build." \
+              --prerelease \
+              --repo "$GITHUB_REPOSITORY" || gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          fi
+
+      - name: Upload iOS archive to GitHub Release
+        if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+        run: |
+          gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-archive-"$RELEASE_TAG".xcarchive.zip artifacts/ios-archive-summary.txt --clobber --repo "$GITHUB_REPOSITORY"

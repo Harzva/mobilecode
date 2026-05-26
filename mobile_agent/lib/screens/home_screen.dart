@@ -9884,14 +9884,21 @@ class _RuntimeTaskDetailSheetState extends State<_RuntimeTaskDetailSheet> {
     }
   }
 
+  Future<void> _copyTaskSummary() async {
+    await Clipboard.setData(ClipboardData(text: _taskSummary()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Task summary copied.')));
+    widget.onLog('Runtime task summary copied', 'Task ${_task.taskId}', Icons.copy_outlined, _cyan);
+  }
+
   Future<void> _copyFailureSummary() async {
     await Clipboard.setData(ClipboardData(text: _failureSummary()));
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Task summary copied.')));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failure summary copied.')));
     widget.onLog('Runtime failure summary copied', 'Task ${_task.taskId}', Icons.copy_outlined, _cyan);
   }
 
-  String _failureSummary() {
+  String _taskSummary() {
     final lines = <String>[
       'Task: ${_task.taskId}',
       'Status: ${_task.status.name}',
@@ -9899,6 +9906,24 @@ class _RuntimeTaskDetailSheetState extends State<_RuntimeTaskDetailSheet> {
       if (_task.workingDir != null && _task.workingDir!.isNotEmpty) 'cwd: ${_task.workingDir}',
       if (_task.startedAt != null) 'Started: ${_task.startedAt!.toIso8601String()}',
       if (_task.duration != null) 'Duration: ${_durationLabel(_task.duration!)}',
+      if (_task.exitCode != null) 'Exit code: ${_task.exitCode}',
+      if (_task.failureKind != RuntimeTaskFailureKind.none) 'Failure kind: ${_task.failureKind.name}',
+      if (_task.error != null && _task.error!.isNotEmpty) 'Error: ${_task.error}',
+      if (runtimeFailureKindHint(_task.failureKind) != null) 'Recovery: ${runtimeFailureKindHint(_task.failureKind)!}',
+    ];
+    final logs = _recentLogLines(_task.logs, limit: 24);
+    if (logs.isNotEmpty) {
+      lines
+        ..add('Recent logs:')
+        ..addAll(logs);
+    }
+    return lines.join('\n');
+  }
+
+  String _failureSummary() {
+    final lines = <String>[
+      'Task: ${_task.taskId}',
+      'Status: ${_task.status.name}',
       if (_task.exitCode != null) 'Exit code: ${_task.exitCode}',
       if (_task.failureKind != RuntimeTaskFailureKind.none) 'Failure kind: ${_task.failureKind.name}',
       if (_task.error != null && _task.error!.isNotEmpty) 'Error: ${_task.error}',
@@ -9993,6 +10018,7 @@ class _RuntimeTaskDetailSheetState extends State<_RuntimeTaskDetailSheet> {
               _RuntimeActionButton(icon: Icons.refresh_outlined, label: _loading ? 'Refreshing' : 'Refresh', disabled: _loading, onTap: () => unawaited(_refresh())),
               _RuntimeActionButton(icon: Icons.stop_circle_outlined, label: _stopping ? 'Stopping' : 'Stop', disabled: _stopping || !_task.canCancel, onTap: () => unawaited(_stopTask())),
               _RuntimeActionButton(icon: Icons.replay_outlined, label: _retrying ? 'Retrying' : 'Retry taskId', disabled: _retrying || _task.command.trim().isEmpty, onTap: () => unawaited(_retryTask())),
+              _RuntimeActionButton(icon: Icons.copy_outlined, label: 'Copy summary', disabled: false, onTap: () => unawaited(_copyTaskSummary())),
               _RuntimeActionButton(icon: Icons.copy_outlined, label: 'Copy failure', disabled: false, onTap: () => unawaited(_copyFailureSummary())),
             ],
           ),

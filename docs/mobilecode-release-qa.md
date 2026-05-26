@@ -6,6 +6,12 @@ This checklist defines the deployable release path for the Flutter app, Android 
 
 Required GitHub Actions before publishing:
 
+- `.github/workflows/mobile-app-release.yml`
+  - Builds the release Android APK on Ubuntu.
+  - Builds and smoke-launches an iOS simulator app on macOS.
+  - Builds an unsigned iOS device archive on macOS.
+  - Uploads `mobilecode-${release_tag}.apk`, `mobilecode-ios-simulator-${release_tag}.zip`, `mobilecode-ios-smoke.png`, `ios-runner.log`, `mobilecode-ios-archive-${release_tag}.xcarchive.zip`, and `ios-archive-summary.txt` as workflow artifacts and optional GitHub Release assets.
+  - The iOS archive is unsigned by default; signed `.ipa` output requires Apple signing secrets and provisioning profile configuration.
 - `.github/workflows/mobile-runtime-ci.yml`
   - Runs `flutter pub get`.
   - Runs `flutter analyze` on the runtime provider files, Home/Build runtime surfaces, and runtime tests.

@@ -143,6 +143,8 @@ export default function Developer() {
             <strong>APK + iOS artifacts</strong>
             <span>Main workline</span>
             <strong>last-recover-from-v039</strong>
+            <span>Public surface</span>
+            <strong>GitHub Pages</strong>
           </div>
         </div>
 

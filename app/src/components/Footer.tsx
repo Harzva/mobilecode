@@ -12,6 +12,7 @@ export default function Footer() {
         <div className="footer-links">
           <Link to="/features">产品特性</Link>
           <Link to="/docs">文档中心</Link>
+          <Link to="/developer">开发者</Link>
           <Link to="/contact">联系</Link>
           <a href="https://github.com/Harzva/mobilecode" target="_blank" rel="noreferrer" aria-label="GitHub">
             <Github size={18} />

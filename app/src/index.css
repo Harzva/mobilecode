@@ -963,6 +963,272 @@ select {
   line-height: 1.55;
 }
 
+.developer-page {
+  overflow: hidden;
+}
+
+.developer-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 28px;
+  align-items: stretch;
+}
+
+.developer-hero h1 {
+  max-width: 900px;
+  margin: 10px 0 18px;
+  font-size: clamp(2.55rem, 7vw, 5.45rem);
+  line-height: 0.94;
+  letter-spacing: 0;
+}
+
+.developer-hero p,
+.developer-callout p,
+.developer-section p,
+.developer-split p,
+.release-evidence p,
+.developer-roadmap p {
+  color: var(--muted);
+  line-height: 1.72;
+}
+
+.developer-proof,
+.developer-callout,
+.layer-card,
+.solved-card,
+.developer-split article,
+.release-evidence,
+.developer-roadmap {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.02)),
+    rgba(8, 8, 21, 0.82);
+  box-shadow: var(--shadow);
+}
+
+.developer-proof {
+  display: grid;
+  gap: 8px;
+  align-content: center;
+  padding: 22px;
+  border-color: rgba(115, 243, 208, 0.28);
+}
+
+.developer-proof span,
+.layer-card small,
+.layer-card > span,
+.system-flow span {
+  color: var(--mint);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.developer-proof strong {
+  margin: 0 0 10px;
+  color: #ffffff;
+  line-height: 1.32;
+}
+
+.developer-callout {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin: 22px 0;
+  padding: 18px 20px;
+  border-color: rgba(255, 211, 138, 0.34);
+}
+
+.developer-callout svg,
+.developer-panel-title svg,
+.solved-card svg,
+.release-links svg,
+.developer-roadmap svg {
+  color: var(--mint);
+  flex: none;
+}
+
+.developer-section,
+.developer-split {
+  margin-top: 22px;
+}
+
+.section-heading.compact {
+  max-width: 820px;
+}
+
+.section-heading.compact h2,
+.developer-panel-title h2,
+.release-evidence h2,
+.developer-roadmap h2 {
+  margin: 0;
+  font-size: clamp(1.75rem, 4vw, 2.7rem);
+  line-height: 1.08;
+}
+
+.layer-grid,
+.solved-grid,
+.system-flow,
+.roadmap-grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 22px;
+}
+
+.layer-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.layer-card,
+.solved-card {
+  min-height: 220px;
+  padding: 22px;
+}
+
+.layer-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.layer-card > span {
+  color: var(--amber);
+  font-size: 0.92rem;
+}
+
+.layer-card h3,
+.solved-card h3,
+.challenge-list h3,
+.system-flow h3,
+.roadmap-grid h3 {
+  margin: 8px 0 6px;
+  color: #ffffff;
+  line-height: 1.22;
+}
+
+.solved-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.solved-card {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.developer-split {
+  display: grid;
+  grid-template-columns: 1fr 0.86fr;
+  gap: 16px;
+  align-items: stretch;
+}
+
+.developer-split article,
+.developer-roadmap {
+  padding: 24px;
+}
+
+.developer-panel-title {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.challenge-list,
+.method-list {
+  display: grid;
+  gap: 12px;
+}
+
+.challenge-list div {
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(3, 5, 11, 0.38);
+}
+
+.method-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.method-list li {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  align-items: start;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.system-flow {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.system-flow article {
+  min-height: 160px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.system-flow span {
+  color: var(--amber);
+  font-size: 0.9rem;
+}
+
+.release-evidence {
+  display: grid;
+  grid-template-columns: minmax(0, 0.86fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: center;
+  padding: 24px;
+  border-color: rgba(39, 215, 230, 0.25);
+}
+
+.release-links {
+  display: grid;
+  gap: 10px;
+}
+
+.release-links a {
+  display: grid;
+  grid-template-columns: 22px 1fr 18px;
+  gap: 10px;
+  align-items: center;
+  min-height: 52px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(3, 5, 11, 0.42);
+  font-weight: 900;
+  transition: border-color 180ms ease, transform 180ms ease, background 180ms ease;
+}
+
+.release-links a:hover {
+  transform: translateY(-2px);
+  border-color: rgba(115, 243, 208, 0.45);
+  background: rgba(115, 243, 208, 0.07);
+}
+
+.roadmap-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.roadmap-grid article {
+  min-height: 178px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(3, 5, 11, 0.38);
+}
+
 .final-cta {
   text-align: center;
 }
@@ -1034,6 +1300,13 @@ select {
   .split,
   .release-strip,
   .contact-grid,
+  .developer-hero,
+  .layer-grid,
+  .solved-grid,
+  .developer-split,
+  .system-flow,
+  .release-evidence,
+  .roadmap-grid,
   .experiment-hero,
   .experiment-grid,
   .experiment-split,
@@ -1097,11 +1370,16 @@ select {
 
   .experiment-card,
   .experiment-panel,
-  .experiment-ledger {
+  .experiment-ledger,
+  .developer-proof,
+  .developer-split article,
+  .developer-roadmap,
+  .release-evidence {
     padding: 18px;
   }
 
-  .experiment-callout {
+  .experiment-callout,
+  .developer-callout {
     align-items: flex-start;
   }
 }

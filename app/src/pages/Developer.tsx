@@ -121,6 +121,10 @@ const releaseAssets = [
     label: 'Build Mobile Apps run',
     href: 'https://github.com/Harzva/mobilecode/actions/runs/26446492011',
   },
+  {
+    label: 'Source branch',
+    href: 'https://github.com/Harzva/mobilecode/tree/last-recover-from-v039',
+  },
 ];
 
 export default function Developer() {

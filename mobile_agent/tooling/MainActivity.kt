@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -12,6 +13,7 @@ import android.os.Debug
 import android.os.Environment
 import android.os.PowerManager
 import android.os.StatFs
+import android.provider.OpenableColumns
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -22,10 +24,12 @@ class MainActivity : FlutterActivity() {
     private var lastCpuTotal: Long? = null
     private var lastCpuIdle: Long? = null
     private var pendingDeepLink: String? = null
+    private var pendingSharedFile: Map<String, Any?>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         captureDeepLink(intent)
+        captureSharedFile(intent)
         maybeStartHelperFromIntent(intent)
     }
 
@@ -33,6 +37,7 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         captureDeepLink(intent)
+        captureSharedFile(intent)
         maybeStartHelperFromIntent(intent)
     }
 
@@ -83,6 +88,11 @@ class MainActivity : FlutterActivity() {
                     val link = pendingDeepLink
                     pendingDeepLink = null
                     result.success(link)
+                }
+                "consumePendingSharedFile" -> {
+                    val shared = pendingSharedFile
+                    pendingSharedFile = null
+                    result.success(shared)
                 }
                 else -> result.notImplemented()
             }
@@ -254,8 +264,103 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun captureSharedFile(intent: Intent?) {
+        if (intent == null) return
+        val action = intent.action ?: return
+        val uri = when (action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> streamExtra(intent)
+            else -> null
+        } ?: return
+
+        if (uri.scheme == "mobilecode") return
+
+        try {
+            val mimeType = intent.type ?: contentResolver.getType(uri).orEmpty()
+            pendingSharedFile = copySharedFile(uri, mimeType, action)
+            Log.i(TAG, "Captured shared file for preview: ${pendingSharedFile?.get("displayName")}")
+        } catch (error: Throwable) {
+            Log.e(TAG, "Failed to copy shared file for preview", error)
+            pendingSharedFile = null
+        }
+    }
+
+    private fun streamExtra(intent: Intent): Uri? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(Intent.EXTRA_STREAM)
+        }
+    }
+
+    private fun copySharedFile(uri: Uri, mimeType: String, action: String): Map<String, Any?> {
+        val displayName = queryDisplayName(uri)
+            ?: uri.lastPathSegment?.substringAfterLast('/')
+            ?: "external-file"
+        val targetDir = File(cacheDir, "external_previews").apply { mkdirs() }
+        val safeName = sanitizeFileName(displayName)
+        val target = File(targetDir, "${System.currentTimeMillis()}-$safeName")
+        var copied = 0L
+
+        try {
+            inputStreamFor(uri).use { input ->
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        copied += read
+                        if (copied > MAX_SHARED_FILE_BYTES) {
+                            throw IllegalArgumentException("Shared file is larger than ${MAX_SHARED_FILE_BYTES / 1024 / 1024} MB.")
+                        }
+                        output.write(buffer, 0, read)
+                    }
+                }
+            }
+        } catch (error: Throwable) {
+            target.delete()
+            throw error
+        }
+
+        return mapOf(
+            "path" to target.absolutePath,
+            "displayName" to displayName,
+            "mimeType" to mimeType,
+            "sizeBytes" to copied,
+            "source" to "android_intent",
+            "sourceUri" to uri.toString(),
+            "action" to action,
+            "receivedAt" to System.currentTimeMillis()
+        )
+    }
+
+    private fun inputStreamFor(uri: Uri) = when (uri.scheme) {
+        "file" -> File(uri.path ?: "").inputStream()
+        else -> contentResolver.openInputStream(uri)
+            ?: throw IllegalArgumentException("Cannot open shared file stream.")
+    }
+
+    private fun queryDisplayName(uri: Uri): String? {
+        return try {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+                }
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private fun sanitizeFileName(name: String): String {
+        val cleaned = name.replace(Regex("[^A-Za-z0-9._-]"), "_").trim('_')
+        return cleaned.ifBlank { "external-file" }.take(96)
+    }
+
     companion object {
         private const val TAG = "MobileCodeMain"
         private const val EXTRA_START_HELPER = "mobilecode_start_helper"
+        private const val MAX_SHARED_FILE_BYTES = 16L * 1024L * 1024L
     }
 }

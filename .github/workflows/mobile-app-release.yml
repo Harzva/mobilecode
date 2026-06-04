@@ -67,8 +67,10 @@ jobs:
             lib/screens/role_manager_screen.dart \
             lib/screens/api_usage_screen.dart \
             lib/screens/device_telemetry_screen.dart \
+            lib/screens/external_file_preview_screen.dart \
             lib/services/github_deep_service.dart \
             lib/services/github_oauth_flow.dart \
+            lib/services/external_file_preview_service.dart \
             lib/services/role_library_service.dart \
             lib/services/token_usage_service.dart \
             lib/services/token_pricing_service.dart \

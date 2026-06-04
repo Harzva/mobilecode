@@ -87,6 +87,30 @@ def main() -> None:
             '            </intent-filter>'
         )
         text = text.replace('            </intent-filter>\n        </activity>', '            </intent-filter>\n' + oauth_filter + '\n        </activity>', 1)
+    if 'application/octet-stream' not in text:
+        shared_file_filters = (
+            '            <intent-filter>\n'
+            '                <action android:name="android.intent.action.VIEW"/>\n'
+            '                <category android:name="android.intent.category.DEFAULT"/>\n'
+            '                <data android:scheme="content"/>\n'
+            '                <data android:scheme="file"/>\n'
+            '                <data android:mimeType="text/*"/>\n'
+            '                <data android:mimeType="application/xhtml+xml"/>\n'
+            '                <data android:mimeType="application/xml"/>\n'
+            '                <data android:mimeType="application/json"/>\n'
+            '                <data android:mimeType="application/octet-stream"/>\n'
+            '            </intent-filter>\n'
+            '            <intent-filter>\n'
+            '                <action android:name="android.intent.action.SEND"/>\n'
+            '                <category android:name="android.intent.category.DEFAULT"/>\n'
+            '                <data android:mimeType="text/*"/>\n'
+            '                <data android:mimeType="application/xhtml+xml"/>\n'
+            '                <data android:mimeType="application/xml"/>\n'
+            '                <data android:mimeType="application/json"/>\n'
+            '                <data android:mimeType="application/octet-stream"/>\n'
+            '            </intent-filter>'
+        )
+        text = text.replace('            </intent-filter>\n        </activity>', '            </intent-filter>\n' + shared_file_filters + '\n        </activity>', 1)
     impeller_opt_out = (
         '        <meta-data\n'
         '            android:name="io.flutter.embedding.android.EnableImpeller"\n'

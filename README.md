@@ -79,6 +79,16 @@ MobileCode 的第一性原理很简单：手机端不适合塞一个完整桌面
 | Web artifacts | Generate HTML, run publish readiness checks, open browser/WebView | GitHub Pages hosting |
 | Heavy builds | Show workflow status, jobs, artifacts | GitHub Actions APK/Web/release builds |
 
+## Research Signal: Mobile Harness Era
+
+PhoneWorld 的最新研究把 phone-use agent 的瓶颈从“模型是否会点手机”推进到“谁能规模化提供可控环境、任务、验证器、轨迹和训练/评测 harness”。这不是对 MobileCode 的直接背书，但它清晰说明了一个方向：手机 Agent 的下一阶段核心资产是可执行、可复现、可验证的 harness。
+
+MobileCode 选择从 AI coding 切入同一条趋势：模型可以远程，重构建可以交给 GitHub Actions，但会话、工具轨迹、文件、HTML/Markdown 预览、运行时路由、GitHub 发布、构建 artifact 和结果证据需要在手机端形成闭环。
+
+- Paper: [PhoneWorld: Scaling Phone-Use Agent Environments](https://arxiv.org/abs/2605.29486)
+- Local PDF: [docs/research/phoneworld-scaling-phone-use-agent-environments-2605.29486.pdf](docs/research/phoneworld-scaling-phone-use-agent-environments-2605.29486.pdf)
+- MobileCode analysis: [PhoneWorld 与 Mobile Harness 时代](docs/mobile-harness/phoneworld-mobile-harness-era.md)
+
 ## Effect Showcase
 
 These thumbnails are generated from the live GitHub Pages demos with `just-thumbnail`, so the README shows rendered pages rather than mock claims.

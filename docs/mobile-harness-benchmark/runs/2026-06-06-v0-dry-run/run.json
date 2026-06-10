@@ -1,0 +1,299 @@
+{
+  "benchmark": "MobileHarnessBench",
+  "version": "0.0.1",
+  "run_id": "2026-06-06-v0-dry-run",
+  "task_set": "representative-v0",
+  "generated_at": "2026-06-06T11:12:25+00:00",
+  "environment": {
+    "mode": "offline_fixture_dry_run",
+    "model_provider": "none",
+    "model_name": "deterministic-stdlib-verifiers",
+    "runtime_backend": "fixture_runner",
+    "app_version": "0.1.30+49"
+  },
+  "summary": {
+    "total": 5,
+    "passed": 4,
+    "blocked": 1,
+    "failed": 0,
+    "warning": 0,
+    "categories": [
+      "code_edit",
+      "file_intake",
+      "github_delivery",
+      "harness_evidence",
+      "preview_verification"
+    ]
+  },
+  "results": [
+    {
+      "task_id": "MH-FI-001",
+      "category": "file_intake",
+      "title": "Open shared HTML file",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "incoming_path_recorded",
+          "status": "passed",
+          "message": "fixture path is repo-relative",
+          "details": {
+            "incoming_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"
+          }
+        },
+        {
+          "name": "detected_type",
+          "status": "passed",
+          "message": "HTML file type detected",
+          "details": {
+            "detected_type": "html"
+          }
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "preview contains title and readable body text",
+          "details": {
+            "title": "Mobile Harness Fixture",
+            "body_text_length": 88
+          }
+        },
+        {
+          "name": "preview_route",
+          "status": "passed",
+          "message": "preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-FI-001/fixtures/file-intake/simple-page.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/artifacts/MH-FI-001/detected-file.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-FI-001/fixtures/file-intake/simple-page.html"
+        ],
+        "logs": [
+          "external_file_open",
+          "html_preview"
+        ]
+      },
+      "notes": "External HTML intake and WebView-style route are verified from the fixture."
+    },
+    {
+      "task_id": "MH-CE-004",
+      "category": "code_edit",
+      "title": "Repair invalid JSON",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "validation_before",
+          "status": "passed",
+          "message": "fixture is invalid before repair",
+          "details": {
+            "error": "Expecting property name enclosed in double quotes: line 4 column 1 (char 48)"
+          }
+        },
+        {
+          "name": "repair_action",
+          "status": "passed",
+          "message": "trailing comma was removed"
+        },
+        {
+          "name": "validation_after",
+          "status": "passed",
+          "message": "repaired JSON parses successfully",
+          "details": {
+            "top_level_keys": [
+              "enabled",
+              "name"
+            ]
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "fixed JSON artifact exists"
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/artifacts/MH-CE-004/fixed-config.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "read_file",
+          "write_file",
+          "validate_json"
+        ],
+        "validation_before": {
+          "valid": false,
+          "error": "Expecting property name enclosed in double quotes: line 4 column 1 (char 48)"
+        },
+        "validation_after": {
+          "valid": true,
+          "top_level_keys": [
+            "enabled",
+            "name"
+          ]
+        }
+      },
+      "notes": "Invalid JSON fixture is repaired deterministically and written as a run artifact."
+    },
+    {
+      "task_id": "MH-PV-001",
+      "category": "preview_verification",
+      "title": "Preview generated HTML",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "HTML preview fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "snapshot_text",
+          "status": "passed",
+          "message": "snapshot has non-empty mobile preview text",
+          "details": {
+            "dom_text_length": 74
+          }
+        },
+        {
+          "name": "preview_url",
+          "status": "passed",
+          "message": "preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-PV-001/fixtures/preview/index.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/artifacts/MH-PV-001/snapshot-summary.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-PV-001/fixtures/preview/index.html"
+        ],
+        "logs": [
+          "preview_html",
+          "preview_snapshot"
+        ],
+        "snapshot_metadata": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "title": "Preview Fixture",
+          "dom_text_length": 74,
+          "heading_count": 1,
+          "route": "mobilecode-preview://bench/MH-PV-001/fixtures/preview/index.html"
+        }
+      },
+      "notes": "Generated HTML preview has a non-empty snapshot summary and route."
+    },
+    {
+      "task_id": "MH-GD-001",
+      "category": "github_delivery",
+      "title": "Commit generated artifact",
+      "status": "blocked",
+      "score": 0,
+      "failure_kind": "github_auth_blocked",
+      "checks": [
+        {
+          "name": "repo_metadata",
+          "status": "passed",
+          "message": "repo delivery metadata is complete",
+          "details": {
+            "missing": []
+          }
+        },
+        {
+          "name": "external_auth",
+          "status": "blocked",
+          "message": "offline dry run does not perform remote GitHub writes"
+        },
+        {
+          "name": "blocked_report",
+          "status": "passed",
+          "message": "blocked delivery report is exported",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/artifacts/MH-GD-001/github-delivery-blocked.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/artifacts/MH-GD-001/github-delivery-blocked.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "github_delivery_fixture_loaded",
+          "blocked_report"
+        ],
+        "repo": "example/mobile-harness-bench-target",
+        "branch": "bench",
+        "failure_kind": "github_auth_blocked",
+        "recovery_suggestion": "Run this verifier again with an authorized GitHub delivery environment."
+      },
+      "notes": "GitHub delivery is intentionally marked blocked in the offline dry run; metadata and recovery path are still verified."
+    },
+    {
+      "task_id": "MH-HE-001",
+      "category": "harness_evidence",
+      "title": "Complete action trace",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "user_prompt",
+          "status": "passed",
+          "message": "user prompt is recorded"
+        },
+        {
+          "name": "action_sequence",
+          "status": "passed",
+          "message": "required action sequence is complete",
+          "details": {
+            "missing_actions": []
+          }
+        },
+        {
+          "name": "result",
+          "status": "passed",
+          "message": "expected result is recorded"
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "trace report artifact exists"
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/artifacts/MH-HE-001/trace-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "action_evidence",
+          "report_result"
+        ]
+      },
+      "notes": "Trace fixture has prompt, ordered actions, result and exported report artifact."
+    }
+  ],
+  "privacy_check": {
+    "status": "passed",
+    "findings": []
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "provider": "WebViewOnly",
+  "runtime_mode": "preview_only",
+  "preview_url": "mobilecode-preview://runtime/webview-only",
+  "blocked_actions": ["shell_execute", "package_install", "native_build"],
+  "allowed_actions": ["preview_html", "open_local_file", "report_result"]
+}

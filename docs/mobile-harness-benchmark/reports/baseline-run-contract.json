@@ -1,0 +1,84 @@
+{
+  "report": "baseline-run-contract",
+  "generated_at": "2026-06-06T12:53:58Z",
+  "status": "contract_defined_no_results",
+  "counts_as_experiment": false,
+  "counts_as_baseline_result": false,
+  "schema": {
+    "path": "docs/mobile-harness-benchmark/schema/baseline_run.schema.json",
+    "schema_id": "https://anonymous.example/mobile-harness/schema/baseline_run.schema.json",
+    "title": "MobileHarnessBench Baseline Run",
+    "required_top_level": [
+      "benchmark",
+      "schema_version",
+      "run_id",
+      "run_kind",
+      "task_subset",
+      "baseline_id",
+      "environment",
+      "counts_as_experiment",
+      "counts_as_baseline_result",
+      "summary",
+      "results",
+      "evidence_boundary"
+    ],
+    "required_summary_fields": [
+      "total",
+      "passed",
+      "failed",
+      "blocked",
+      "warning",
+      "not_run",
+      "metrics"
+    ],
+    "required_result_fields": [
+      "task_id",
+      "status",
+      "metrics",
+      "evidence",
+      "counts_as_mobile_experiment"
+    ],
+    "required_metrics": [
+      "task_success",
+      "verified_success",
+      "trace_completeness",
+      "recovery_rate",
+      "artifact_availability",
+      "human_intervention_count",
+      "steps_to_completion"
+    ],
+    "required_evidence_fields": [
+      "artifact_paths",
+      "trace_paths",
+      "screenshot_paths",
+      "logs",
+      "verifier_outputs",
+      "transcript_paths",
+      "human_intervention_notes"
+    ]
+  },
+  "baseline_ids": [
+    "chat_only_mobile_coding_flow",
+    "desktop_remote_ide_flow",
+    "mobile_harness_flow"
+  ],
+  "task_subset": {
+    "name": "frozen-v2-paper-subset",
+    "path": "docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json",
+    "task_count": 60,
+    "counts_as_final_paper_subset": false
+  },
+  "future_artifacts": [
+    "docs/mobile-harness-benchmark/baselines/<run-id>/baseline-run.json",
+    "docs/mobile-harness-benchmark/baselines/<run-id>/baseline-summary.md",
+    "docs/mobile-harness-benchmark/baselines/<run-id>/baseline-traces.jsonl",
+    "docs/mobile-harness-benchmark/baselines/<run-id>/artifacts/"
+  ],
+  "result_count": 0,
+  "evidence_boundary": "This contract defines future baseline result shape only. It has zero results and must not be reported as a baseline comparison until valid baseline-run artifacts exist for all three flows.",
+  "source_artifacts": [
+    "docs/mobile-harness-benchmark/schema/baseline_run.schema.json",
+    "docs/mobile-harness-benchmark/reports/baseline-protocol-readiness.json",
+    "docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json"
+  ]
+}

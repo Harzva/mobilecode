@@ -1,0 +1,202 @@
+{
+  "report": "verifier-contract-readiness",
+  "generated_at": "2026-06-09T07:03:54Z",
+  "status": "passed",
+  "counts_as_experiment": false,
+  "contract_count": 12,
+  "covered_verifier_count": 12,
+  "task_bank_count": 3,
+  "task_count_checked": 1225,
+  "used_verifiers": [
+    "artifact_exists_verifier",
+    "diff_scope_verifier",
+    "evidence_verifier",
+    "external_file_verifier",
+    "github_delivery_verifier",
+    "html_preview_verifier",
+    "json_verifier",
+    "markdown_preview_verifier",
+    "privacy_verifier",
+    "runtime_verifier",
+    "snapshot_verifier",
+    "trace_verifier"
+  ],
+  "unused_contracts": [],
+  "task_banks": [
+    {
+      "label": "v0-seed-tasks",
+      "path": "docs/mobile-harness-benchmark/tasks/v0-seed-tasks.json",
+      "task_count": 25,
+      "unique_verifier_count": 11,
+      "verifier_counts": {
+        "artifact_exists_verifier": 3,
+        "diff_scope_verifier": 1,
+        "evidence_verifier": 5,
+        "external_file_verifier": 5,
+        "github_delivery_verifier": 5,
+        "html_preview_verifier": 6,
+        "json_verifier": 2,
+        "markdown_preview_verifier": 4,
+        "privacy_verifier": 1,
+        "snapshot_verifier": 2,
+        "trace_verifier": 6
+      },
+      "category_verifier_counts": {
+        "code_edit": {
+          "artifact_exists_verifier": 3,
+          "diff_scope_verifier": 1,
+          "html_preview_verifier": 2,
+          "json_verifier": 1,
+          "markdown_preview_verifier": 1,
+          "trace_verifier": 3
+        },
+        "file_intake": {
+          "evidence_verifier": 1,
+          "external_file_verifier": 5,
+          "html_preview_verifier": 1,
+          "json_verifier": 1,
+          "markdown_preview_verifier": 1
+        },
+        "github_delivery": {
+          "evidence_verifier": 1,
+          "github_delivery_verifier": 5,
+          "html_preview_verifier": 1
+        },
+        "harness_evidence": {
+          "evidence_verifier": 2,
+          "privacy_verifier": 1,
+          "trace_verifier": 3
+        },
+        "preview_verification": {
+          "evidence_verifier": 1,
+          "html_preview_verifier": 2,
+          "markdown_preview_verifier": 2,
+          "snapshot_verifier": 2
+        }
+      }
+    },
+    {
+      "label": "v1-task-bank",
+      "path": "docs/mobile-harness-benchmark/tasks/v1-task-bank.json",
+      "task_count": 200,
+      "unique_verifier_count": 11,
+      "verifier_counts": {
+        "artifact_exists_verifier": 24,
+        "diff_scope_verifier": 8,
+        "evidence_verifier": 64,
+        "external_file_verifier": 40,
+        "github_delivery_verifier": 40,
+        "html_preview_verifier": 48,
+        "json_verifier": 16,
+        "markdown_preview_verifier": 32,
+        "privacy_verifier": 8,
+        "snapshot_verifier": 16,
+        "trace_verifier": 48
+      },
+      "category_verifier_counts": {
+        "code_edit": {
+          "artifact_exists_verifier": 24,
+          "diff_scope_verifier": 8,
+          "html_preview_verifier": 16,
+          "json_verifier": 8,
+          "markdown_preview_verifier": 8,
+          "trace_verifier": 24
+        },
+        "file_intake": {
+          "evidence_verifier": 16,
+          "external_file_verifier": 40,
+          "html_preview_verifier": 8,
+          "json_verifier": 8,
+          "markdown_preview_verifier": 8
+        },
+        "github_delivery": {
+          "evidence_verifier": 8,
+          "github_delivery_verifier": 40,
+          "html_preview_verifier": 8
+        },
+        "harness_evidence": {
+          "evidence_verifier": 16,
+          "privacy_verifier": 8,
+          "trace_verifier": 24
+        },
+        "preview_verification": {
+          "evidence_verifier": 24,
+          "html_preview_verifier": 16,
+          "markdown_preview_verifier": 16,
+          "snapshot_verifier": 16
+        }
+      }
+    },
+    {
+      "label": "v2-task-bank",
+      "path": "docs/mobile-harness-benchmark/tasks/v2-task-bank.json",
+      "task_count": 1000,
+      "unique_verifier_count": 12,
+      "verifier_counts": {
+        "artifact_exists_verifier": 120,
+        "diff_scope_verifier": 7,
+        "evidence_verifier": 334,
+        "external_file_verifier": 167,
+        "github_delivery_verifier": 167,
+        "html_preview_verifier": 280,
+        "json_verifier": 80,
+        "markdown_preview_verifier": 160,
+        "privacy_verifier": 40,
+        "runtime_verifier": 166,
+        "snapshot_verifier": 47,
+        "trace_verifier": 219
+      },
+      "category_verifier_counts": {
+        "code_edit": {
+          "artifact_exists_verifier": 120,
+          "diff_scope_verifier": 7,
+          "html_preview_verifier": 80,
+          "json_verifier": 40,
+          "markdown_preview_verifier": 40,
+          "trace_verifier": 87
+        },
+        "file_intake": {
+          "evidence_verifier": 47,
+          "external_file_verifier": 167,
+          "html_preview_verifier": 40,
+          "json_verifier": 40,
+          "markdown_preview_verifier": 40
+        },
+        "github_delivery": {
+          "evidence_verifier": 40,
+          "github_delivery_verifier": 167,
+          "html_preview_verifier": 40
+        },
+        "harness_evidence": {
+          "evidence_verifier": 80,
+          "privacy_verifier": 40,
+          "trace_verifier": 86
+        },
+        "preview_verification": {
+          "evidence_verifier": 87,
+          "html_preview_verifier": 80,
+          "markdown_preview_verifier": 80,
+          "snapshot_verifier": 47
+        },
+        "runtime_orchestration": {
+          "evidence_verifier": 80,
+          "html_preview_verifier": 40,
+          "runtime_verifier": 166,
+          "trace_verifier": 46
+        }
+      }
+    }
+  ],
+  "evidence_artifacts": [
+    "docs/mobile-harness-benchmark/verifiers/verifier-contracts.json",
+    "docs/mobile-harness-benchmark/tasks/v0-seed-tasks.json",
+    "docs/mobile-harness-benchmark/tasks/v1-task-bank.json",
+    "docs/mobile-harness-benchmark/tasks/v2-task-bank.json"
+  ],
+  "evidence_boundary": "This report checks machine-readable verifier contract coverage for task definitions. It does not claim full verifier implementation coverage or mobile-device execution.",
+  "open_requirements": [
+    "complete_full_seed_task_verifier_implementation",
+    "execute_mobile_tier_verifiers_on_real_or_simulated_devices",
+    "attach_verifier_outputs_to_final_frozen_subset"
+  ]
+}

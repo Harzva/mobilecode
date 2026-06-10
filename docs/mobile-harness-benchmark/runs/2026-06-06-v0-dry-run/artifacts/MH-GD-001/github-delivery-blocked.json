@@ -1,0 +1,8 @@
+{
+  "repo": "example/mobile-harness-bench-target",
+  "branch": "bench",
+  "path": "bench/index.html",
+  "operation": "commit_generated_artifact",
+  "failure_kind": "github_auth_blocked",
+  "recovery_suggestion": "Run this verifier again with an authorized GitHub delivery environment."
+}

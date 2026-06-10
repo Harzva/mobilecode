@@ -1,0 +1,7 @@
+{
+  "task_id": "runtime-long-task",
+  "runtime_provider": "MobileCodeHelper",
+  "requested_action": "stop_task",
+  "final_status": "stopped",
+  "log_tail": ["started task", "received stop request", "task stopped cleanly"]
+}

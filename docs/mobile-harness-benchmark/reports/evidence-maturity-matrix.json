@@ -1,0 +1,146 @@
+{
+  "report": "evidence-maturity-matrix",
+  "generated_at": "2026-06-09T07:03:46Z",
+  "status": "passed_with_open_requirements",
+  "stage_count": 7,
+  "max_stage_level": 6,
+  "current_max_counted_paper_evidence_level": 1,
+  "counted_mobile_stage_ids": [],
+  "counted_baseline_stage_ids": [],
+  "open_requirements": [
+    "M6_counted_mobile_or_baseline_results"
+  ],
+  "evidence_boundary": "Only T0 fixture runs currently count as paper evidence, and they do not count as mobile experiments or baseline results. Mobile-tier and baseline comparison results remain open.",
+  "stages": [
+    {
+      "id": "M0_candidate_supply",
+      "name": "Candidate task supply",
+      "maturity_level": 0,
+      "status": "supported_non_experimental",
+      "counts_as_paper_evidence": false,
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "can_be_reported_as": "candidate task bank only",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/v2-quality-audit.json"
+      ],
+      "next_required_evidence": [
+        "human sampling review",
+        "frozen subset promotion",
+        "verifier/device evidence"
+      ]
+    },
+    {
+      "id": "M1_t0_fixture_runs",
+      "name": "Deterministic T0 fixture evidence",
+      "maturity_level": 1,
+      "status": "supported_t0_only",
+      "counts_as_paper_evidence": true,
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "can_be_reported_as": "offline fixture validation",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/run.json",
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/run.json"
+      ],
+      "next_required_evidence": [
+        "Android/iOS evidence for mobile-required tasks",
+        "GitHub sandbox evidence"
+      ]
+    },
+    {
+      "id": "M2_frozen_subset_planning",
+      "name": "Draft frozen paper subset planning",
+      "maturity_level": 2,
+      "status": "supported_planning_only",
+      "counts_as_paper_evidence": false,
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "can_be_reported_as": "planned paper subset only",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json",
+        "docs/mobile-harness-benchmark/reports/frozen-subset-readiness.json"
+      ],
+      "next_required_evidence": [
+        "T2/T3/T5 evidence attached per task",
+        "final subset freeze"
+      ]
+    },
+    {
+      "id": "M3_mobile_tier_readiness",
+      "name": "Mobile tier readiness probe",
+      "maturity_level": 3,
+      "status": "supported_blocked_non_experimental",
+      "counts_as_paper_evidence": false,
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "can_be_reported_as": "environment readiness or blocker",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/mobile-tier-readiness.json"
+      ],
+      "next_required_evidence": [
+        "adb or Android device evidence",
+        "xcrun/Xcode or iOS simulator evidence"
+      ]
+    },
+    {
+      "id": "M4_baseline_protocol_contract",
+      "name": "Baseline protocol and result contract",
+      "maturity_level": 4,
+      "status": "protocol_defined_no_results",
+      "counts_as_paper_evidence": false,
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "can_be_reported_as": "baseline design and non-result dry run",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/baseline-protocol-readiness.json",
+        "docs/mobile-harness-benchmark/reports/baseline-run-contract.json",
+        "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-dry-run-t0/manifest.json"
+      ],
+      "next_required_evidence": [
+        "filled model lock",
+        "transcripts",
+        "artifacts",
+        "verifier outputs"
+      ]
+    },
+    {
+      "id": "M5_baseline_pilot_ready",
+      "name": "Baseline pilot ready but not counted",
+      "maturity_level": 5,
+      "status": "pilot_ready_no_results",
+      "counts_as_paper_evidence": false,
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "can_be_reported_as": "ready for non-counted baseline pilot",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/manifest.json",
+        "docs/mobile-harness-benchmark/reports/baseline-pilot-readiness.json"
+      ],
+      "next_required_evidence": [
+        "execute pilot",
+        "fill transcripts",
+        "attach verifier outputs",
+        "write baseline_result runs"
+      ]
+    },
+    {
+      "id": "M6_counted_mobile_or_baseline_results",
+      "name": "Counted mobile or baseline results",
+      "maturity_level": 6,
+      "status": "open_requirement",
+      "counts_as_paper_evidence": false,
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "can_be_reported_as": "not yet available",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/paper-claim-evidence-ledger.json"
+      ],
+      "next_required_evidence": [
+        "real Android/iOS mobile-tier runs",
+        "authorized GitHub sandbox runs",
+        "baseline_result artifacts for all baselines"
+      ]
+    }
+  ]
+}

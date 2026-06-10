@@ -1,0 +1,7 @@
+{
+  "provider": "MobileCodeHelper",
+  "health_status": "healthy",
+  "capabilities": ["execute", "stream_logs", "stop_task", "runtime_log"],
+  "selected_provider": "helper",
+  "reason": "Helper is available and supports shell-backed small tasks."
+}

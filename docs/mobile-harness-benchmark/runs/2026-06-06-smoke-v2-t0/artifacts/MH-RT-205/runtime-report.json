@@ -1,0 +1,19 @@
+{
+  "provider": "MobileCodeHelper",
+  "health_status": "healthy",
+  "selected_provider": "helper",
+  "capabilities": [
+    "execute",
+    "stream_logs",
+    "stop_task",
+    "runtime_log"
+  ],
+  "missing_capabilities": [],
+  "result_scope": "t0_offline_fixture_only",
+  "counts_as_mobile_experiment": false,
+  "mobile_profile": "android_low_memory",
+  "os_target": "android_real_device",
+  "input_surface": "MobileCode workspace picker",
+  "requires_real_device": true,
+  "device_evidence": "not_collected_in_t0"
+}

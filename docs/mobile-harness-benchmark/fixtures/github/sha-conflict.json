@@ -1,0 +1,7 @@
+{
+  "owner": "example",
+  "repo": "mobile-harness-bench-target",
+  "branch": "bench",
+  "path": "bench/index.html",
+  "expected_failure": "sha_conflict"
+}

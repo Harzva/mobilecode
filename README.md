@@ -88,6 +88,51 @@ MobileCode 选择从 AI coding 切入同一条趋势：模型可以远程，重�
 - Paper: [PhoneWorld: Scaling Phone-Use Agent Environments](https://arxiv.org/abs/2605.29486)
 - Local PDF: [docs/research/phoneworld-scaling-phone-use-agent-environments-2605.29486.pdf](docs/research/phoneworld-scaling-phone-use-agent-environments-2605.29486.pdf)
 - MobileCode analysis: [PhoneWorld 与 Mobile Harness 时代](docs/mobile-harness/phoneworld-mobile-harness-era.md)
+- Long-term roadmp: [Mobile Harness 长期路线图](docs/mobile-harness-roadmp/roadmp-mobile-harness.md)
+- ICLR draft: [PDF](paper/iclr-mobile-harness/main.pdf) · [TeX](paper/iclr-mobile-harness/main.tex)
+- Anonymous supplement boundary: [include/exclude and redaction gate](paper/iclr-mobile-harness/SUPPLEMENT_BOUNDARY.md)
+- Current anonymous supplement: `paper/iclr-mobile-harness/build/mobile-harness-anonymous-supplement.zip` (staged file count and byte size are emitted by the supplement script)
+- Benchmark seed: [MobileHarnessBench](docs/mobile-harness-benchmark/README.md)
+- v1 task bank: [200 MobileHarnessBench candidate tasks](docs/mobile-harness-benchmark/tasks/v1-task-bank.json)
+- v2 task bank: [1000 MobileHarnessBench candidate tasks](docs/mobile-harness-benchmark/tasks/v2-task-bank.json)
+- v2 quality audit: [machine audit report](docs/mobile-harness-benchmark/reports/v2-quality-audit.md)
+- Verifier contracts: [machine-readable catalog](docs/mobile-harness-benchmark/verifiers/verifier-contracts.json) · [coverage readiness](docs/mobile-harness-benchmark/reports/verifier-contract-readiness.md)
+- Baseline protocol: [comparison readiness](docs/mobile-harness-benchmark/reports/baseline-protocol-readiness.md)
+- Baseline run contract: [result schema readiness](docs/mobile-harness-benchmark/reports/baseline-run-contract.md)
+- Baseline scaffold: [not-run scaffold manifest](docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-scaffold/README.md)
+- Baseline T0 dry run: [not-counted dry-run manifest](docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-dry-run-t0/README.md)
+- Baseline pilot pack: [prompt and evidence templates](docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/README.md)
+- Baseline pilot readiness: [non-counted readiness gate](docs/mobile-harness-benchmark/reports/baseline-pilot-readiness.md)
+- Core claim readiness: [positioning claim boundary](docs/mobile-harness-benchmark/reports/core-claim-readiness.md)
+- Evidence maturity: [claim maturity matrix](docs/mobile-harness-benchmark/reports/evidence-maturity-matrix.md)
+- Evaluation protocol readiness: [E1-E5 machine-checkable protocol](docs/mobile-harness-benchmark/reports/evaluation-protocol-readiness.md)
+- Method presentation readiness: [visuals, algorithms, modules and formulas gate](docs/mobile-harness-benchmark/reports/method-presentation-readiness.md)
+- Bibliography readiness: [verified related-work metadata](docs/mobile-harness-benchmark/reports/bibliography-readiness.md)
+- Threats to validity: [review risk matrix](docs/mobile-harness-benchmark/reports/threats-to-validity.md)
+- Page-limit readiness: [compiled PDF page boundary](docs/mobile-harness-benchmark/reports/page-limit-readiness.md)
+- Reproducibility checklist: [command-to-artifact matrix](docs/mobile-harness-benchmark/reports/reproducibility-checklist.md)
+- Submission readiness: [draft upload gate](docs/mobile-harness-benchmark/reports/submission-readiness.md)
+- Paper claim ledger: [claim-to-evidence map](docs/mobile-harness-benchmark/reports/paper-claim-evidence-ledger.md)
+- Mobile-tier readiness: [Android/iOS readiness probe](docs/mobile-harness-benchmark/reports/mobile-tier-readiness.md)
+- Mobile evidence pack: [T2/T3 capture templates](docs/mobile-harness-benchmark/reports/mobile-evidence-pack-readiness.md) · [execution playbook](docs/mobile-harness-benchmark/mobile-evidence/2026-06-06-mobile-evidence-pack/execution-playbook.md)
+- Draft frozen subset: [planning manifest](docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json) · [readiness report](docs/mobile-harness-benchmark/reports/frozen-subset-readiness.md)
+- Mobile test strategy: [Android/iOS benchmark tiers](docs/mobile-harness-benchmark/mobile-test-strategy.md)
+- Simulator launcher reference: [simutil](https://github.com/dungngminh/simutil)
+- MobileCode Skill Spec: [SKILL.md + WebView script + permission + verifier contract](docs/mobile-harness-benchmark/skill-spec.md)
+- Harness Task Registry: [task metadata for Tools, sheets, routes, skills and benchmark evidence](docs/mobile-harness-benchmark/harness-task-registry.md)
+- v0 dry run evidence: [2026-06-06 representative run](docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/summary.md)
+- smoke-v2 T0 evidence: [2026-06-06 60-task smoke run](docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/summary.md)
+
+## Inspired by On-device AI Gallery Patterns
+
+Recent on-device AI applications are moving from plain chat demos toward task galleries, skill packages, tool bridges, model/runtime management and benchmark views. Google AI Edge Gallery is a useful public example of this product shape: it organizes on-device models around tasks, custom tasks, skills, MCP tooling and benchmark surfaces. MobileCode adopts the pattern but changes the object of evaluation. Instead of becoming a general model gallery, MobileCode turns phone-native AI coding into a harness: incoming files, artifact editing, HTML/Markdown preview, GitHub delivery, runtime routing, verifier contracts and evidence reports.
+
+The practical design consequence is now explicit in the repo:
+
+- Skills use `SKILL.md`, `scripts/index.html`, permission tokens and verifier contracts.
+- Tools, sheets and pages are promoted into a Harness Task Registry instead of remaining one-off buttons.
+- Benchmark Lab is becoming an in-app surface for MobileHarnessBench status, task tiers and evidence boundaries.
+- Claims remain evidence-bound: T0 fixture runs, mobile tiers, GitHub sandbox delivery and baseline comparison are reported separately.
 
 ## Effect Showcase
 
@@ -211,6 +256,39 @@ For release QA, prefer GitHub Actions so the build is reproducible:
 - [Mobile Runtime CI](https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml)
 - [Build Android APK](https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml)
 - [Android App Smoke Test](https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml)
+
+### Run MobileHarnessBench dry runs
+
+```bash
+python scripts/generate_mobile_harness_task_bank.py
+python scripts/run_mobile_harness_bench.py --task-set representative-v0 --run-id 2026-06-06-v0-dry-run
+python scripts/run_mobile_harness_bench.py --task-set smoke-v2 --run-id 2026-06-06-smoke-v2-t0
+python scripts/audit_mobile_harness_task_bank.py
+python scripts/collect_mobile_harness_mobile_tier_evidence.py
+python scripts/generate_mobile_harness_mobile_evidence_pack.py
+python scripts/generate_mobile_harness_frozen_subset.py
+python scripts/generate_mobile_harness_verifier_contract_readiness.py
+python scripts/generate_mobile_harness_baseline_protocol.py
+python scripts/generate_mobile_harness_baseline_run_contract.py
+python scripts/generate_mobile_harness_baseline_scaffold.py
+python scripts/generate_mobile_harness_baseline_dry_run.py
+python scripts/generate_mobile_harness_baseline_pilot_pack.py
+python scripts/generate_mobile_harness_baseline_pilot_readiness.py
+python scripts/generate_mobile_harness_claim_ledger.py
+python scripts/generate_mobile_harness_core_claim_readiness.py
+python scripts/generate_mobile_harness_evidence_maturity_matrix.py
+python scripts/generate_mobile_harness_evaluation_protocol_readiness.py
+python scripts/generate_mobile_harness_method_presentation_readiness.py
+python scripts/generate_mobile_harness_bibliography_readiness.py
+python scripts/generate_mobile_harness_threats_to_validity.py
+python scripts/generate_mobile_harness_page_limit_readiness.py
+python scripts/generate_mobile_harness_reproducibility_checklist.py
+python scripts/generate_mobile_harness_submission_readiness.py
+python scripts/validate_mobile_harness_bench.py
+python scripts/prepare_mobile_harness_supplement.py
+```
+
+The current benchmark data contains 25 v0 seed tasks, a 200-task v1 candidate bank and a 1000-task v2 candidate bank. v2 raises the taxonomy from five categories to six by adding runtime orchestration, plus mobile profiles, test oracles and Android/iOS test tiers. The representative run covers five tasks across file intake, code edit, preview verification, GitHub delivery and harness evidence. The `smoke-v2` T0 run covers 60 tasks, with 50 fixture-level passes and 10 typed GitHub-delivery blocks. These T0 runs do not replace Android/iOS device evidence. The mobile-tier readiness probe records whether the local machine can collect Android/iOS evidence; the current probe is blocked because this environment lacks `adb` and Xcode tools. The mobile evidence pack prepares 48 Android T2 / iOS T3 task templates, device metadata templates, run manifest templates and an execution playbook, but keeps `counts_as_mobile_experiment=false`. The draft frozen subset fixes the planned 60-task paper subset but explicitly sets `counts_as_final_paper_subset=false` until mobile/GitHub sandbox evidence is attached. The machine-readable verifier catalog defines 12 verifier contracts and the readiness report checks all 1225 current task definitions across v0/v1/v2, but it does not claim full implementation or mobile-device verifier coverage. The baseline protocol defines three comparison flows and seven metrics, the baseline run contract defines future `baseline-run.json` evidence shape, the scaffold emits three `scaffold_not_run` baseline runs with 60 `not_run` entries each, the T0 baseline dry-run emits one `dry_run_not_counted` blocked task per baseline, the pilot pack locks prompts plus model/intervention/evidence templates for the first real pilot, and the pilot readiness report says the package is ready for non-counted execution but not ready for counted baseline results; none of these count as baseline results. The paper claim ledger maps draft paper claims to concrete artifacts, the core claim readiness report checks the control-plane positioning without counting it as an experiment, the evidence maturity matrix marks current counted paper evidence at T0 only while keeping mobile and baseline results open, the evaluation protocol readiness report binds E1-E5 to concrete task sets, evidence tiers and a 7-metric formula contract, the method presentation readiness report checks that the draft contains reviewable visuals, algorithms, module interfaces, formulas and evidence-boundary language, the bibliography readiness report verifies current related-work metadata, the threats-to-validity matrix tracks six review risks, the page-limit readiness report records the compiled PDF page boundary, the reproducibility checklist maps 16 draft commands to expected artifacts while keeping full empirical reproduction false, and the submission readiness gate keeps the draft explicitly not upload-ready until venue metadata, real mobile evidence, counted baselines and the final supplement are complete. The v2 quality audit checks machine-readable coverage and uniqueness but does not replace human review or real mobile runs. The supplement script stages a local anonymized reviewer package under `paper/iclr-mobile-harness/build/` and keeps generated files out of git.
 
 ## Runtime Strategy
 

@@ -17,6 +17,7 @@ import '../core/evidence/action_runner.dart';
 import '../core/evidence/evidence_model.dart';
 import 'agent_dashboard_screen.dart';
 import 'api_usage_screen.dart';
+import 'benchmark_lab_screen.dart';
 import 'device_telemetry_screen.dart';
 import 'downloads_shared_folders_screen.dart';
 import 'editor_screen.dart';
@@ -84,6 +85,7 @@ enum _ModuleAction {
   deepDive,
   build,
   githubRepoHub,
+  benchmarkLab,
   larkCli,
   tokenUsage,
   deviceTelemetry,
@@ -2665,6 +2667,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case _ModuleAction.githubRepoHub:
         unawaited(_openGitHubRepoHub());
         break;
+      case _ModuleAction.benchmarkLab:
+        _openManagementScreen('Benchmark Lab', const BenchmarkLabScreen());
+        break;
       case _ModuleAction.larkCli:
         _openLarkCliSheet();
         break;
@@ -3332,6 +3337,13 @@ class _HomeScreenState extends State<HomeScreen> {
         subtitle: '列出仓库、关注名单、本机工作区、Pages 和 Actions 状态。',
         color: _blue,
         action: _ModuleAction.githubRepoHub,
+      ),
+      _CommandShortcut(
+        icon: Icons.science_outlined,
+        title: 'Benchmark Lab',
+        subtitle: '查看 MobileHarnessBench task registry、evidence tiers 和 open gates。',
+        color: _mint,
+        action: _ModuleAction.benchmarkLab,
       ),
       _CommandShortcut(
         icon: Icons.folder_shared_outlined,

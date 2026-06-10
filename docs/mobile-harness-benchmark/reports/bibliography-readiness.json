@@ -1,0 +1,110 @@
+{
+  "report": "bibliography-readiness",
+  "generated_at": "2026-06-09T07:03:46Z",
+  "status": "passed",
+  "entry_count": 9,
+  "cited_key_count": 9,
+  "missing_entries": [],
+  "unexpected_entries": [],
+  "missing_cited_keys": [],
+  "uncited_reference_keys": [],
+  "remaining_draft_entries": [],
+  "open_requirements": [],
+  "source_policy": "Each cited related-work entry has stable metadata, an official source URL, arXiv eprint metadata where available, and no author placeholder.",
+  "evidence_artifacts": [
+    "paper/iclr-mobile-harness/references.bib",
+    "paper/iclr-mobile-harness/main.tex"
+  ],
+  "entries": [
+    {
+      "key": "aitw",
+      "entry_type": "inproceedings",
+      "year": "2023",
+      "eprint": "2307.10088",
+      "url": "https://arxiv.org/abs/2307.10088",
+      "source": "NeurIPS 2023 and arXiv",
+      "source_url": "https://arxiv.org/abs/2307.10088",
+      "status": "verified"
+    },
+    {
+      "key": "androidworld",
+      "entry_type": "inproceedings",
+      "year": "2025",
+      "eprint": "2405.14573",
+      "url": "https://openreview.net/forum?id=il5yUQsrjC",
+      "source": "OpenReview ICLR 2025 and arXiv",
+      "source_url": "https://openreview.net/forum?id=il5yUQsrjC",
+      "status": "verified"
+    },
+    {
+      "key": "appworld",
+      "entry_type": "inproceedings",
+      "year": "2024",
+      "eprint": "2407.18901",
+      "url": "https://aclanthology.org/2024.acl-long.850/",
+      "source": "ACL Anthology and arXiv",
+      "source_url": "https://aclanthology.org/2024.acl-long.850/",
+      "status": "verified"
+    },
+    {
+      "key": "mind2web",
+      "entry_type": "inproceedings",
+      "year": "2023",
+      "eprint": "2306.06070",
+      "url": "https://arxiv.org/abs/2306.06070",
+      "source": "NeurIPS 2023 and arXiv",
+      "source_url": "https://arxiv.org/abs/2306.06070",
+      "status": "verified"
+    },
+    {
+      "key": "mobileagentbench",
+      "entry_type": "article",
+      "year": "2024",
+      "eprint": "2406.08184",
+      "url": "https://arxiv.org/abs/2406.08184",
+      "source": "arXiv",
+      "source_url": "https://arxiv.org/abs/2406.08184",
+      "status": "verified"
+    },
+    {
+      "key": "osworld",
+      "entry_type": "inproceedings",
+      "year": "2024",
+      "eprint": "2404.07972",
+      "url": "https://arxiv.org/abs/2404.07972",
+      "source": "NeurIPS 2024 and arXiv",
+      "source_url": "https://arxiv.org/abs/2404.07972",
+      "status": "verified"
+    },
+    {
+      "key": "phoneworld",
+      "entry_type": "article",
+      "year": "2026",
+      "eprint": "2605.29486",
+      "url": "https://arxiv.org/abs/2605.29486",
+      "source": "arXiv",
+      "source_url": "https://arxiv.org/abs/2605.29486",
+      "status": "verified"
+    },
+    {
+      "key": "swebench",
+      "entry_type": "inproceedings",
+      "year": "2024",
+      "eprint": "2310.06770",
+      "url": "https://openreview.net/forum?id=VTF8yNQM66",
+      "source": "OpenReview ICLR 2024 and arXiv",
+      "source_url": "https://openreview.net/forum?id=VTF8yNQM66",
+      "status": "verified"
+    },
+    {
+      "key": "webarena",
+      "entry_type": "inproceedings",
+      "year": "2024",
+      "eprint": "2307.13854",
+      "url": "https://arxiv.org/abs/2307.13854",
+      "source": "ICLR 2024 and arXiv",
+      "source_url": "https://arxiv.org/abs/2307.13854",
+      "status": "verified"
+    }
+  ]
+}

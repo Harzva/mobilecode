@@ -1,0 +1,7 @@
+{
+  "owner": "example",
+  "repo": "mobile-harness-bench-target",
+  "workflow": "mobile-app-release.yml",
+  "ref": "bench",
+  "expected_artifact": "actions_run_url"
+}

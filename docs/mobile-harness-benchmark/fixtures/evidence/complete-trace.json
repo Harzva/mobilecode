@@ -1,0 +1,5 @@
+{
+  "prompt": "Create an HTML artifact and preview it.",
+  "actions": ["write_file", "read_file", "preview_html", "report_result"],
+  "expected": "complete_trace"
+}

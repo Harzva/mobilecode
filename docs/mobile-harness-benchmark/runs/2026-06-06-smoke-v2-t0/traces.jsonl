@@ -1,0 +1,310 @@
+{"task_id": "MH-CE-201", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/code-edit/html-prompt.txt"}
+{"task_id": "MH-CE-201", "event_index": 1, "kind": "action", "action": "read_prompt", "summary": "read_prompt executed in deterministic dry run"}
+{"task_id": "MH-CE-201", "event_index": 2, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-CE-201", "event_index": 3, "kind": "action", "action": "readback_action", "summary": "readback_action executed in deterministic dry run"}
+{"task_id": "MH-CE-201", "event_index": 4, "kind": "action", "action": "html_preview", "summary": "html_preview executed in deterministic dry run"}
+{"task_id": "MH-CE-201", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-201/index.html"], "preview_urls": ["mobilecode-preview://bench/MH-CE-201/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-201/index.html"]}
+{"task_id": "MH-CE-205", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/code-edit/html-prompt.txt"}
+{"task_id": "MH-CE-205", "event_index": 1, "kind": "action", "action": "read_prompt", "summary": "read_prompt executed in deterministic dry run"}
+{"task_id": "MH-CE-205", "event_index": 2, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-CE-205", "event_index": 3, "kind": "action", "action": "readback_action", "summary": "readback_action executed in deterministic dry run"}
+{"task_id": "MH-CE-205", "event_index": 4, "kind": "action", "action": "html_preview", "summary": "html_preview executed in deterministic dry run"}
+{"task_id": "MH-CE-205", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-205/index.html"], "preview_urls": ["mobilecode-preview://bench/MH-CE-205/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-205/index.html"]}
+{"task_id": "MH-CE-209", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/code-edit/html-prompt.txt"}
+{"task_id": "MH-CE-209", "event_index": 1, "kind": "action", "action": "read_prompt", "summary": "read_prompt executed in deterministic dry run"}
+{"task_id": "MH-CE-209", "event_index": 2, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-CE-209", "event_index": 3, "kind": "action", "action": "readback_action", "summary": "readback_action executed in deterministic dry run"}
+{"task_id": "MH-CE-209", "event_index": 4, "kind": "action", "action": "html_preview", "summary": "html_preview executed in deterministic dry run"}
+{"task_id": "MH-CE-209", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-209/index.html"], "preview_urls": ["mobilecode-preview://bench/MH-CE-209/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-209/index.html"]}
+{"task_id": "MH-CE-213", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/code-edit/html-prompt.txt"}
+{"task_id": "MH-CE-213", "event_index": 1, "kind": "action", "action": "read_prompt", "summary": "read_prompt executed in deterministic dry run"}
+{"task_id": "MH-CE-213", "event_index": 2, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-CE-213", "event_index": 3, "kind": "action", "action": "readback_action", "summary": "readback_action executed in deterministic dry run"}
+{"task_id": "MH-CE-213", "event_index": 4, "kind": "action", "action": "html_preview", "summary": "html_preview executed in deterministic dry run"}
+{"task_id": "MH-CE-213", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-213/index.html"], "preview_urls": ["mobilecode-preview://bench/MH-CE-213/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-213/index.html"]}
+{"task_id": "MH-CE-217", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/code-edit/html-prompt.txt"}
+{"task_id": "MH-CE-217", "event_index": 1, "kind": "action", "action": "read_prompt", "summary": "read_prompt executed in deterministic dry run"}
+{"task_id": "MH-CE-217", "event_index": 2, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-CE-217", "event_index": 3, "kind": "action", "action": "readback_action", "summary": "readback_action executed in deterministic dry run"}
+{"task_id": "MH-CE-217", "event_index": 4, "kind": "action", "action": "html_preview", "summary": "html_preview executed in deterministic dry run"}
+{"task_id": "MH-CE-217", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-217/index.html"], "preview_urls": ["mobilecode-preview://bench/MH-CE-217/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-217/index.html"]}
+{"task_id": "MH-CE-221", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/code-edit/html-prompt.txt"}
+{"task_id": "MH-CE-221", "event_index": 1, "kind": "action", "action": "read_prompt", "summary": "read_prompt executed in deterministic dry run"}
+{"task_id": "MH-CE-221", "event_index": 2, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-CE-221", "event_index": 3, "kind": "action", "action": "readback_action", "summary": "readback_action executed in deterministic dry run"}
+{"task_id": "MH-CE-221", "event_index": 4, "kind": "action", "action": "html_preview", "summary": "html_preview executed in deterministic dry run"}
+{"task_id": "MH-CE-221", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-221/index.html"], "preview_urls": ["mobilecode-preview://bench/MH-CE-221/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-221/index.html"]}
+{"task_id": "MH-CE-225", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/code-edit/html-prompt.txt"}
+{"task_id": "MH-CE-225", "event_index": 1, "kind": "action", "action": "read_prompt", "summary": "read_prompt executed in deterministic dry run"}
+{"task_id": "MH-CE-225", "event_index": 2, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-CE-225", "event_index": 3, "kind": "action", "action": "readback_action", "summary": "readback_action executed in deterministic dry run"}
+{"task_id": "MH-CE-225", "event_index": 4, "kind": "action", "action": "html_preview", "summary": "html_preview executed in deterministic dry run"}
+{"task_id": "MH-CE-225", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-225/index.html"], "preview_urls": ["mobilecode-preview://bench/MH-CE-225/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-225/index.html"]}
+{"task_id": "MH-CE-229", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/code-edit/html-prompt.txt"}
+{"task_id": "MH-CE-229", "event_index": 1, "kind": "action", "action": "read_prompt", "summary": "read_prompt executed in deterministic dry run"}
+{"task_id": "MH-CE-229", "event_index": 2, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-CE-229", "event_index": 3, "kind": "action", "action": "readback_action", "summary": "readback_action executed in deterministic dry run"}
+{"task_id": "MH-CE-229", "event_index": 4, "kind": "action", "action": "html_preview", "summary": "html_preview executed in deterministic dry run"}
+{"task_id": "MH-CE-229", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-229/index.html"], "preview_urls": ["mobilecode-preview://bench/MH-CE-229/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-229/index.html"]}
+{"task_id": "MH-CE-233", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/code-edit/html-prompt.txt"}
+{"task_id": "MH-CE-233", "event_index": 1, "kind": "action", "action": "read_prompt", "summary": "read_prompt executed in deterministic dry run"}
+{"task_id": "MH-CE-233", "event_index": 2, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-CE-233", "event_index": 3, "kind": "action", "action": "readback_action", "summary": "readback_action executed in deterministic dry run"}
+{"task_id": "MH-CE-233", "event_index": 4, "kind": "action", "action": "html_preview", "summary": "html_preview executed in deterministic dry run"}
+{"task_id": "MH-CE-233", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-233/index.html"], "preview_urls": ["mobilecode-preview://bench/MH-CE-233/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-233/index.html"]}
+{"task_id": "MH-CE-237", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/code-edit/html-prompt.txt"}
+{"task_id": "MH-CE-237", "event_index": 1, "kind": "action", "action": "read_prompt", "summary": "read_prompt executed in deterministic dry run"}
+{"task_id": "MH-CE-237", "event_index": 2, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-CE-237", "event_index": 3, "kind": "action", "action": "readback_action", "summary": "readback_action executed in deterministic dry run"}
+{"task_id": "MH-CE-237", "event_index": 4, "kind": "action", "action": "html_preview", "summary": "html_preview executed in deterministic dry run"}
+{"task_id": "MH-CE-237", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-237/index.html"], "preview_urls": ["mobilecode-preview://bench/MH-CE-237/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-237/index.html"]}
+{"task_id": "MH-FI-201", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"}
+{"task_id": "MH-FI-201", "event_index": 1, "kind": "action", "action": "external_file_open", "summary": "external_file_open executed in deterministic dry run"}
+{"task_id": "MH-FI-201", "event_index": 2, "kind": "action", "action": "detect_file_type", "summary": "detect_file_type executed in deterministic dry run"}
+{"task_id": "MH-FI-201", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-FI-201", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-201/detected-file.json"], "preview_urls": ["mobilecode-preview://bench/MH-FI-201/fixtures/file-intake/simple-page.html"]}
+{"task_id": "MH-FI-205", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"}
+{"task_id": "MH-FI-205", "event_index": 1, "kind": "action", "action": "external_file_open", "summary": "external_file_open executed in deterministic dry run"}
+{"task_id": "MH-FI-205", "event_index": 2, "kind": "action", "action": "detect_file_type", "summary": "detect_file_type executed in deterministic dry run"}
+{"task_id": "MH-FI-205", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-FI-205", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-205/detected-file.json"], "preview_urls": ["mobilecode-preview://bench/MH-FI-205/fixtures/file-intake/simple-page.html"]}
+{"task_id": "MH-FI-209", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"}
+{"task_id": "MH-FI-209", "event_index": 1, "kind": "action", "action": "external_file_open", "summary": "external_file_open executed in deterministic dry run"}
+{"task_id": "MH-FI-209", "event_index": 2, "kind": "action", "action": "detect_file_type", "summary": "detect_file_type executed in deterministic dry run"}
+{"task_id": "MH-FI-209", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-FI-209", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-209/detected-file.json"], "preview_urls": ["mobilecode-preview://bench/MH-FI-209/fixtures/file-intake/simple-page.html"]}
+{"task_id": "MH-FI-213", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"}
+{"task_id": "MH-FI-213", "event_index": 1, "kind": "action", "action": "external_file_open", "summary": "external_file_open executed in deterministic dry run"}
+{"task_id": "MH-FI-213", "event_index": 2, "kind": "action", "action": "detect_file_type", "summary": "detect_file_type executed in deterministic dry run"}
+{"task_id": "MH-FI-213", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-FI-213", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-213/detected-file.json"], "preview_urls": ["mobilecode-preview://bench/MH-FI-213/fixtures/file-intake/simple-page.html"]}
+{"task_id": "MH-FI-217", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"}
+{"task_id": "MH-FI-217", "event_index": 1, "kind": "action", "action": "external_file_open", "summary": "external_file_open executed in deterministic dry run"}
+{"task_id": "MH-FI-217", "event_index": 2, "kind": "action", "action": "detect_file_type", "summary": "detect_file_type executed in deterministic dry run"}
+{"task_id": "MH-FI-217", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-FI-217", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-217/detected-file.json"], "preview_urls": ["mobilecode-preview://bench/MH-FI-217/fixtures/file-intake/simple-page.html"]}
+{"task_id": "MH-FI-221", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"}
+{"task_id": "MH-FI-221", "event_index": 1, "kind": "action", "action": "external_file_open", "summary": "external_file_open executed in deterministic dry run"}
+{"task_id": "MH-FI-221", "event_index": 2, "kind": "action", "action": "detect_file_type", "summary": "detect_file_type executed in deterministic dry run"}
+{"task_id": "MH-FI-221", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-FI-221", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-221/detected-file.json"], "preview_urls": ["mobilecode-preview://bench/MH-FI-221/fixtures/file-intake/simple-page.html"]}
+{"task_id": "MH-FI-225", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"}
+{"task_id": "MH-FI-225", "event_index": 1, "kind": "action", "action": "external_file_open", "summary": "external_file_open executed in deterministic dry run"}
+{"task_id": "MH-FI-225", "event_index": 2, "kind": "action", "action": "detect_file_type", "summary": "detect_file_type executed in deterministic dry run"}
+{"task_id": "MH-FI-225", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-FI-225", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-225/detected-file.json"], "preview_urls": ["mobilecode-preview://bench/MH-FI-225/fixtures/file-intake/simple-page.html"]}
+{"task_id": "MH-FI-229", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"}
+{"task_id": "MH-FI-229", "event_index": 1, "kind": "action", "action": "external_file_open", "summary": "external_file_open executed in deterministic dry run"}
+{"task_id": "MH-FI-229", "event_index": 2, "kind": "action", "action": "detect_file_type", "summary": "detect_file_type executed in deterministic dry run"}
+{"task_id": "MH-FI-229", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-FI-229", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-229/detected-file.json"], "preview_urls": ["mobilecode-preview://bench/MH-FI-229/fixtures/file-intake/simple-page.html"]}
+{"task_id": "MH-FI-233", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"}
+{"task_id": "MH-FI-233", "event_index": 1, "kind": "action", "action": "external_file_open", "summary": "external_file_open executed in deterministic dry run"}
+{"task_id": "MH-FI-233", "event_index": 2, "kind": "action", "action": "detect_file_type", "summary": "detect_file_type executed in deterministic dry run"}
+{"task_id": "MH-FI-233", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-FI-233", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-233/detected-file.json"], "preview_urls": ["mobilecode-preview://bench/MH-FI-233/fixtures/file-intake/simple-page.html"]}
+{"task_id": "MH-FI-237", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"}
+{"task_id": "MH-FI-237", "event_index": 1, "kind": "action", "action": "external_file_open", "summary": "external_file_open executed in deterministic dry run"}
+{"task_id": "MH-FI-237", "event_index": 2, "kind": "action", "action": "detect_file_type", "summary": "detect_file_type executed in deterministic dry run"}
+{"task_id": "MH-FI-237", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-FI-237", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-237/detected-file.json"], "preview_urls": ["mobilecode-preview://bench/MH-FI-237/fixtures/file-intake/simple-page.html"]}
+{"task_id": "MH-GD-201", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/github/commit-artifact.json"}
+{"task_id": "MH-GD-201", "event_index": 1, "kind": "action", "action": "load_repo_task", "summary": "load_repo_task executed in deterministic dry run"}
+{"task_id": "MH-GD-201", "event_index": 2, "kind": "action", "action": "record_blocked_result", "summary": "record_blocked_result executed in deterministic dry run"}
+{"task_id": "MH-GD-201", "event_index": 3, "kind": "result", "status": "blocked", "failure_kind": "github_auth_blocked", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-201/github-delivery-blocked.json"], "preview_urls": []}
+{"task_id": "MH-GD-205", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/github/commit-artifact.json"}
+{"task_id": "MH-GD-205", "event_index": 1, "kind": "action", "action": "load_repo_task", "summary": "load_repo_task executed in deterministic dry run"}
+{"task_id": "MH-GD-205", "event_index": 2, "kind": "action", "action": "record_blocked_result", "summary": "record_blocked_result executed in deterministic dry run"}
+{"task_id": "MH-GD-205", "event_index": 3, "kind": "result", "status": "blocked", "failure_kind": "github_auth_blocked", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-205/github-delivery-blocked.json"], "preview_urls": []}
+{"task_id": "MH-GD-209", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/github/commit-artifact.json"}
+{"task_id": "MH-GD-209", "event_index": 1, "kind": "action", "action": "load_repo_task", "summary": "load_repo_task executed in deterministic dry run"}
+{"task_id": "MH-GD-209", "event_index": 2, "kind": "action", "action": "record_blocked_result", "summary": "record_blocked_result executed in deterministic dry run"}
+{"task_id": "MH-GD-209", "event_index": 3, "kind": "result", "status": "blocked", "failure_kind": "github_auth_blocked", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-209/github-delivery-blocked.json"], "preview_urls": []}
+{"task_id": "MH-GD-213", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/github/commit-artifact.json"}
+{"task_id": "MH-GD-213", "event_index": 1, "kind": "action", "action": "load_repo_task", "summary": "load_repo_task executed in deterministic dry run"}
+{"task_id": "MH-GD-213", "event_index": 2, "kind": "action", "action": "record_blocked_result", "summary": "record_blocked_result executed in deterministic dry run"}
+{"task_id": "MH-GD-213", "event_index": 3, "kind": "result", "status": "blocked", "failure_kind": "github_auth_blocked", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-213/github-delivery-blocked.json"], "preview_urls": []}
+{"task_id": "MH-GD-217", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/github/commit-artifact.json"}
+{"task_id": "MH-GD-217", "event_index": 1, "kind": "action", "action": "load_repo_task", "summary": "load_repo_task executed in deterministic dry run"}
+{"task_id": "MH-GD-217", "event_index": 2, "kind": "action", "action": "record_blocked_result", "summary": "record_blocked_result executed in deterministic dry run"}
+{"task_id": "MH-GD-217", "event_index": 3, "kind": "result", "status": "blocked", "failure_kind": "github_auth_blocked", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-217/github-delivery-blocked.json"], "preview_urls": []}
+{"task_id": "MH-GD-221", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/github/commit-artifact.json"}
+{"task_id": "MH-GD-221", "event_index": 1, "kind": "action", "action": "load_repo_task", "summary": "load_repo_task executed in deterministic dry run"}
+{"task_id": "MH-GD-221", "event_index": 2, "kind": "action", "action": "record_blocked_result", "summary": "record_blocked_result executed in deterministic dry run"}
+{"task_id": "MH-GD-221", "event_index": 3, "kind": "result", "status": "blocked", "failure_kind": "github_auth_blocked", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-221/github-delivery-blocked.json"], "preview_urls": []}
+{"task_id": "MH-GD-225", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/github/commit-artifact.json"}
+{"task_id": "MH-GD-225", "event_index": 1, "kind": "action", "action": "load_repo_task", "summary": "load_repo_task executed in deterministic dry run"}
+{"task_id": "MH-GD-225", "event_index": 2, "kind": "action", "action": "record_blocked_result", "summary": "record_blocked_result executed in deterministic dry run"}
+{"task_id": "MH-GD-225", "event_index": 3, "kind": "result", "status": "blocked", "failure_kind": "github_auth_blocked", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-225/github-delivery-blocked.json"], "preview_urls": []}
+{"task_id": "MH-GD-229", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/github/commit-artifact.json"}
+{"task_id": "MH-GD-229", "event_index": 1, "kind": "action", "action": "load_repo_task", "summary": "load_repo_task executed in deterministic dry run"}
+{"task_id": "MH-GD-229", "event_index": 2, "kind": "action", "action": "record_blocked_result", "summary": "record_blocked_result executed in deterministic dry run"}
+{"task_id": "MH-GD-229", "event_index": 3, "kind": "result", "status": "blocked", "failure_kind": "github_auth_blocked", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-229/github-delivery-blocked.json"], "preview_urls": []}
+{"task_id": "MH-GD-233", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/github/commit-artifact.json"}
+{"task_id": "MH-GD-233", "event_index": 1, "kind": "action", "action": "load_repo_task", "summary": "load_repo_task executed in deterministic dry run"}
+{"task_id": "MH-GD-233", "event_index": 2, "kind": "action", "action": "record_blocked_result", "summary": "record_blocked_result executed in deterministic dry run"}
+{"task_id": "MH-GD-233", "event_index": 3, "kind": "result", "status": "blocked", "failure_kind": "github_auth_blocked", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-233/github-delivery-blocked.json"], "preview_urls": []}
+{"task_id": "MH-GD-237", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/github/commit-artifact.json"}
+{"task_id": "MH-GD-237", "event_index": 1, "kind": "action", "action": "load_repo_task", "summary": "load_repo_task executed in deterministic dry run"}
+{"task_id": "MH-GD-237", "event_index": 2, "kind": "action", "action": "record_blocked_result", "summary": "record_blocked_result executed in deterministic dry run"}
+{"task_id": "MH-GD-237", "event_index": 3, "kind": "result", "status": "blocked", "failure_kind": "github_auth_blocked", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-237/github-delivery-blocked.json"], "preview_urls": []}
+{"task_id": "MH-HE-201", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/evidence/complete-trace.json"}
+{"task_id": "MH-HE-201", "event_index": 1, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-HE-201", "event_index": 2, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-HE-201", "event_index": 3, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-HE-201", "event_index": 4, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-HE-201", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-201/trace-report.json"], "preview_urls": []}
+{"task_id": "MH-HE-205", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/evidence/complete-trace.json"}
+{"task_id": "MH-HE-205", "event_index": 1, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-HE-205", "event_index": 2, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-HE-205", "event_index": 3, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-HE-205", "event_index": 4, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-HE-205", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-205/trace-report.json"], "preview_urls": []}
+{"task_id": "MH-HE-209", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/evidence/complete-trace.json"}
+{"task_id": "MH-HE-209", "event_index": 1, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-HE-209", "event_index": 2, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-HE-209", "event_index": 3, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-HE-209", "event_index": 4, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-HE-209", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-209/trace-report.json"], "preview_urls": []}
+{"task_id": "MH-HE-213", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/evidence/complete-trace.json"}
+{"task_id": "MH-HE-213", "event_index": 1, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-HE-213", "event_index": 2, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-HE-213", "event_index": 3, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-HE-213", "event_index": 4, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-HE-213", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-213/trace-report.json"], "preview_urls": []}
+{"task_id": "MH-HE-217", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/evidence/complete-trace.json"}
+{"task_id": "MH-HE-217", "event_index": 1, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-HE-217", "event_index": 2, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-HE-217", "event_index": 3, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-HE-217", "event_index": 4, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-HE-217", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-217/trace-report.json"], "preview_urls": []}
+{"task_id": "MH-HE-221", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/evidence/complete-trace.json"}
+{"task_id": "MH-HE-221", "event_index": 1, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-HE-221", "event_index": 2, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-HE-221", "event_index": 3, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-HE-221", "event_index": 4, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-HE-221", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-221/trace-report.json"], "preview_urls": []}
+{"task_id": "MH-HE-225", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/evidence/complete-trace.json"}
+{"task_id": "MH-HE-225", "event_index": 1, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-HE-225", "event_index": 2, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-HE-225", "event_index": 3, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-HE-225", "event_index": 4, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-HE-225", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-225/trace-report.json"], "preview_urls": []}
+{"task_id": "MH-HE-229", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/evidence/complete-trace.json"}
+{"task_id": "MH-HE-229", "event_index": 1, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-HE-229", "event_index": 2, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-HE-229", "event_index": 3, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-HE-229", "event_index": 4, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-HE-229", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-229/trace-report.json"], "preview_urls": []}
+{"task_id": "MH-HE-233", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/evidence/complete-trace.json"}
+{"task_id": "MH-HE-233", "event_index": 1, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-HE-233", "event_index": 2, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-HE-233", "event_index": 3, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-HE-233", "event_index": 4, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-HE-233", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-233/trace-report.json"], "preview_urls": []}
+{"task_id": "MH-HE-237", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/evidence/complete-trace.json"}
+{"task_id": "MH-HE-237", "event_index": 1, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-HE-237", "event_index": 2, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-HE-237", "event_index": 3, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-HE-237", "event_index": 4, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-HE-237", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-237/trace-report.json"], "preview_urls": []}
+{"task_id": "MH-PV-201", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"}
+{"task_id": "MH-PV-201", "event_index": 1, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-PV-201", "event_index": 2, "kind": "action", "action": "snapshot_summary", "summary": "snapshot_summary executed in deterministic dry run"}
+{"task_id": "MH-PV-201", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-PV-201", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-201/snapshot-summary.json"], "preview_urls": ["mobilecode-preview://bench/MH-PV-201/fixtures/preview/index.html"]}
+{"task_id": "MH-PV-205", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"}
+{"task_id": "MH-PV-205", "event_index": 1, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-PV-205", "event_index": 2, "kind": "action", "action": "snapshot_summary", "summary": "snapshot_summary executed in deterministic dry run"}
+{"task_id": "MH-PV-205", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-PV-205", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-205/snapshot-summary.json"], "preview_urls": ["mobilecode-preview://bench/MH-PV-205/fixtures/preview/index.html"]}
+{"task_id": "MH-PV-209", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"}
+{"task_id": "MH-PV-209", "event_index": 1, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-PV-209", "event_index": 2, "kind": "action", "action": "snapshot_summary", "summary": "snapshot_summary executed in deterministic dry run"}
+{"task_id": "MH-PV-209", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-PV-209", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-209/snapshot-summary.json"], "preview_urls": ["mobilecode-preview://bench/MH-PV-209/fixtures/preview/index.html"]}
+{"task_id": "MH-PV-213", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"}
+{"task_id": "MH-PV-213", "event_index": 1, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-PV-213", "event_index": 2, "kind": "action", "action": "snapshot_summary", "summary": "snapshot_summary executed in deterministic dry run"}
+{"task_id": "MH-PV-213", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-PV-213", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-213/snapshot-summary.json"], "preview_urls": ["mobilecode-preview://bench/MH-PV-213/fixtures/preview/index.html"]}
+{"task_id": "MH-PV-217", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"}
+{"task_id": "MH-PV-217", "event_index": 1, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-PV-217", "event_index": 2, "kind": "action", "action": "snapshot_summary", "summary": "snapshot_summary executed in deterministic dry run"}
+{"task_id": "MH-PV-217", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-PV-217", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-217/snapshot-summary.json"], "preview_urls": ["mobilecode-preview://bench/MH-PV-217/fixtures/preview/index.html"]}
+{"task_id": "MH-PV-221", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"}
+{"task_id": "MH-PV-221", "event_index": 1, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-PV-221", "event_index": 2, "kind": "action", "action": "snapshot_summary", "summary": "snapshot_summary executed in deterministic dry run"}
+{"task_id": "MH-PV-221", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-PV-221", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-221/snapshot-summary.json"], "preview_urls": ["mobilecode-preview://bench/MH-PV-221/fixtures/preview/index.html"]}
+{"task_id": "MH-PV-225", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"}
+{"task_id": "MH-PV-225", "event_index": 1, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-PV-225", "event_index": 2, "kind": "action", "action": "snapshot_summary", "summary": "snapshot_summary executed in deterministic dry run"}
+{"task_id": "MH-PV-225", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-PV-225", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-225/snapshot-summary.json"], "preview_urls": ["mobilecode-preview://bench/MH-PV-225/fixtures/preview/index.html"]}
+{"task_id": "MH-PV-229", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"}
+{"task_id": "MH-PV-229", "event_index": 1, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-PV-229", "event_index": 2, "kind": "action", "action": "snapshot_summary", "summary": "snapshot_summary executed in deterministic dry run"}
+{"task_id": "MH-PV-229", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-PV-229", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-229/snapshot-summary.json"], "preview_urls": ["mobilecode-preview://bench/MH-PV-229/fixtures/preview/index.html"]}
+{"task_id": "MH-PV-233", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"}
+{"task_id": "MH-PV-233", "event_index": 1, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-PV-233", "event_index": 2, "kind": "action", "action": "snapshot_summary", "summary": "snapshot_summary executed in deterministic dry run"}
+{"task_id": "MH-PV-233", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-PV-233", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-233/snapshot-summary.json"], "preview_urls": ["mobilecode-preview://bench/MH-PV-233/fixtures/preview/index.html"]}
+{"task_id": "MH-PV-237", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"}
+{"task_id": "MH-PV-237", "event_index": 1, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-PV-237", "event_index": 2, "kind": "action", "action": "snapshot_summary", "summary": "snapshot_summary executed in deterministic dry run"}
+{"task_id": "MH-PV-237", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-PV-237", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-237/snapshot-summary.json"], "preview_urls": ["mobilecode-preview://bench/MH-PV-237/fixtures/preview/index.html"]}
+{"task_id": "MH-RT-201", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/runtime/helper-health.json"}
+{"task_id": "MH-RT-201", "event_index": 1, "kind": "action", "action": "runtime_health", "summary": "runtime_health executed in deterministic dry run"}
+{"task_id": "MH-RT-201", "event_index": 2, "kind": "action", "action": "capability_check", "summary": "capability_check executed in deterministic dry run"}
+{"task_id": "MH-RT-201", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-RT-201", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-201/runtime-report.json"], "preview_urls": []}
+{"task_id": "MH-RT-205", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/runtime/helper-health.json"}
+{"task_id": "MH-RT-205", "event_index": 1, "kind": "action", "action": "runtime_health", "summary": "runtime_health executed in deterministic dry run"}
+{"task_id": "MH-RT-205", "event_index": 2, "kind": "action", "action": "capability_check", "summary": "capability_check executed in deterministic dry run"}
+{"task_id": "MH-RT-205", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-RT-205", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-205/runtime-report.json"], "preview_urls": []}
+{"task_id": "MH-RT-209", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/runtime/helper-health.json"}
+{"task_id": "MH-RT-209", "event_index": 1, "kind": "action", "action": "runtime_health", "summary": "runtime_health executed in deterministic dry run"}
+{"task_id": "MH-RT-209", "event_index": 2, "kind": "action", "action": "capability_check", "summary": "capability_check executed in deterministic dry run"}
+{"task_id": "MH-RT-209", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-RT-209", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-209/runtime-report.json"], "preview_urls": []}
+{"task_id": "MH-RT-213", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/runtime/helper-health.json"}
+{"task_id": "MH-RT-213", "event_index": 1, "kind": "action", "action": "runtime_health", "summary": "runtime_health executed in deterministic dry run"}
+{"task_id": "MH-RT-213", "event_index": 2, "kind": "action", "action": "capability_check", "summary": "capability_check executed in deterministic dry run"}
+{"task_id": "MH-RT-213", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-RT-213", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-213/runtime-report.json"], "preview_urls": []}
+{"task_id": "MH-RT-217", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/runtime/helper-health.json"}
+{"task_id": "MH-RT-217", "event_index": 1, "kind": "action", "action": "runtime_health", "summary": "runtime_health executed in deterministic dry run"}
+{"task_id": "MH-RT-217", "event_index": 2, "kind": "action", "action": "capability_check", "summary": "capability_check executed in deterministic dry run"}
+{"task_id": "MH-RT-217", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-RT-217", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-217/runtime-report.json"], "preview_urls": []}
+{"task_id": "MH-RT-221", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/runtime/helper-health.json"}
+{"task_id": "MH-RT-221", "event_index": 1, "kind": "action", "action": "runtime_health", "summary": "runtime_health executed in deterministic dry run"}
+{"task_id": "MH-RT-221", "event_index": 2, "kind": "action", "action": "capability_check", "summary": "capability_check executed in deterministic dry run"}
+{"task_id": "MH-RT-221", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-RT-221", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-221/runtime-report.json"], "preview_urls": []}
+{"task_id": "MH-RT-225", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/runtime/helper-health.json"}
+{"task_id": "MH-RT-225", "event_index": 1, "kind": "action", "action": "runtime_health", "summary": "runtime_health executed in deterministic dry run"}
+{"task_id": "MH-RT-225", "event_index": 2, "kind": "action", "action": "capability_check", "summary": "capability_check executed in deterministic dry run"}
+{"task_id": "MH-RT-225", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-RT-225", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-225/runtime-report.json"], "preview_urls": []}
+{"task_id": "MH-RT-229", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/runtime/helper-health.json"}
+{"task_id": "MH-RT-229", "event_index": 1, "kind": "action", "action": "runtime_health", "summary": "runtime_health executed in deterministic dry run"}
+{"task_id": "MH-RT-229", "event_index": 2, "kind": "action", "action": "capability_check", "summary": "capability_check executed in deterministic dry run"}
+{"task_id": "MH-RT-229", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-RT-229", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-229/runtime-report.json"], "preview_urls": []}
+{"task_id": "MH-RT-233", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/runtime/helper-health.json"}
+{"task_id": "MH-RT-233", "event_index": 1, "kind": "action", "action": "runtime_health", "summary": "runtime_health executed in deterministic dry run"}
+{"task_id": "MH-RT-233", "event_index": 2, "kind": "action", "action": "capability_check", "summary": "capability_check executed in deterministic dry run"}
+{"task_id": "MH-RT-233", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-RT-233", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-233/runtime-report.json"], "preview_urls": []}
+{"task_id": "MH-RT-237", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/runtime/helper-health.json"}
+{"task_id": "MH-RT-237", "event_index": 1, "kind": "action", "action": "runtime_health", "summary": "runtime_health executed in deterministic dry run"}
+{"task_id": "MH-RT-237", "event_index": 2, "kind": "action", "action": "capability_check", "summary": "capability_check executed in deterministic dry run"}
+{"task_id": "MH-RT-237", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-RT-237", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-237/runtime-report.json"], "preview_urls": []}

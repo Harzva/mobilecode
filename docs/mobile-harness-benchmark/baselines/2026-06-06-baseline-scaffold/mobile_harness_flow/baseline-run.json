@@ -1,0 +1,1542 @@
+{
+  "benchmark": "MobileHarnessBench",
+  "schema_version": "0.1.0",
+  "run_id": "2026-06-06-baseline-scaffold-mobile_harness_flow",
+  "run_kind": "scaffold_not_run",
+  "task_subset": {
+    "name": "frozen-v2-paper-subset",
+    "path": "docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json",
+    "task_count": 60
+  },
+  "baseline_id": "mobile_harness_flow",
+  "environment": {
+    "mode": "scaffold_not_run",
+    "model_provider": "not_selected",
+    "model_name": "not_selected",
+    "execution_tier": "not_run",
+    "device_profile": "not_collected",
+    "authorization_state": "not_requested"
+  },
+  "counts_as_experiment": false,
+  "counts_as_baseline_result": false,
+  "summary": {
+    "total": 60,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 0,
+    "warning": 0,
+    "not_run": 60,
+    "metrics": {
+      "task_success": null,
+      "verified_success": null,
+      "trace_completeness": null,
+      "recovery_rate": null,
+      "artifact_availability": null,
+      "human_intervention_count": null,
+      "steps_to_completion": null
+    }
+  },
+  "results": [
+    {
+      "task_id": "MH-CE-201",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-CE-205",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-CE-209",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-CE-213",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-CE-217",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-CE-221",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-CE-225",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-CE-229",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-CE-233",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-CE-237",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-FI-201",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-FI-205",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-FI-209",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-FI-213",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-FI-217",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-FI-221",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-FI-225",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-FI-229",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-FI-233",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-FI-237",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-GD-201",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-GD-205",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-GD-209",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-GD-213",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-GD-217",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-GD-221",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-GD-225",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-GD-229",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-GD-233",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-GD-237",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-HE-201",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-HE-205",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-HE-209",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-HE-213",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-HE-217",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-HE-221",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-HE-225",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-HE-229",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-HE-233",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-HE-237",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-PV-201",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-PV-205",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-PV-209",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-PV-213",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-PV-217",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-PV-221",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-PV-225",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-PV-229",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-PV-233",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-PV-237",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-RT-201",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-RT-205",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-RT-209",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-RT-213",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-RT-217",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-RT-221",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-RT-225",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-RT-229",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-RT-233",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    },
+    {
+      "task_id": "MH-RT-237",
+      "status": "not_run",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "not_run_scaffold"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    }
+  ],
+  "evidence_boundary": "This baseline scaffold validates result shape only. It has not run any model, device, or GitHub sandbox flow and must not be reported as a baseline result."
+}

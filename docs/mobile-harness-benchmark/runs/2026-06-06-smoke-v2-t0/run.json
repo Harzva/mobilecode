@@ -1,0 +1,3665 @@
+{
+  "benchmark": "MobileHarnessBench",
+  "version": "0.2.0",
+  "run_id": "2026-06-06-smoke-v2-t0",
+  "task_set": "smoke-v2",
+  "generated_at": "2026-06-06T11:12:25+00:00",
+  "environment": {
+    "mode": "offline_fixture_dry_run",
+    "model_provider": "none",
+    "model_name": "deterministic-stdlib-verifiers",
+    "runtime_backend": "fixture_runner",
+    "app_version": "0.1.30+49"
+  },
+  "summary": {
+    "total": 60,
+    "passed": 50,
+    "blocked": 10,
+    "failed": 0,
+    "warning": 0,
+    "categories": [
+      "code_edit",
+      "file_intake",
+      "github_delivery",
+      "harness_evidence",
+      "preview_verification",
+      "runtime_orchestration"
+    ]
+  },
+  "results": [
+    {
+      "task_id": "MH-CE-201",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt wechat_share happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "prompt_present",
+          "status": "passed",
+          "message": "prompt fixture is non-empty"
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "generated HTML artifact exists"
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "generated HTML has previewable content",
+          "details": {
+            "title": "MH-CE-201 benchmark dashboard",
+            "body_text_length": 216
+          }
+        },
+        {
+          "name": "preview_route",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-CE-201/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-201/index.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-201/index.html"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-CE-201/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-201/index.html"
+        ],
+        "logs": [
+          "read_prompt",
+          "write_file",
+          "readback_action",
+          "html_preview",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run generates and reads back a single-file HTML artifact; no mobile editor UI evidence is collected."
+    },
+    {
+      "task_id": "MH-CE-205",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt system_file_picker happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "prompt_present",
+          "status": "passed",
+          "message": "prompt fixture is non-empty"
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "generated HTML artifact exists"
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "generated HTML has previewable content",
+          "details": {
+            "title": "MH-CE-205 benchmark dashboard",
+            "body_text_length": 216
+          }
+        },
+        {
+          "name": "preview_route",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-CE-205/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-205/index.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-205/index.html"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-CE-205/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-205/index.html"
+        ],
+        "logs": [
+          "read_prompt",
+          "write_file",
+          "readback_action",
+          "html_preview",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run generates and reads back a single-file HTML artifact; no mobile editor UI evidence is collected."
+    },
+    {
+      "task_id": "MH-CE-209",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt workspace_import happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "prompt_present",
+          "status": "passed",
+          "message": "prompt fixture is non-empty"
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "generated HTML artifact exists"
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "generated HTML has previewable content",
+          "details": {
+            "title": "MH-CE-209 benchmark dashboard",
+            "body_text_length": 218
+          }
+        },
+        {
+          "name": "preview_route",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-CE-209/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-209/index.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-209/index.html"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-CE-209/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-209/index.html"
+        ],
+        "logs": [
+          "read_prompt",
+          "write_file",
+          "readback_action",
+          "html_preview",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run generates and reads back a single-file HTML artifact; no mobile editor UI evidence is collected."
+    },
+    {
+      "task_id": "MH-CE-213",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt webview_return happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "prompt_present",
+          "status": "passed",
+          "message": "prompt fixture is non-empty"
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "generated HTML artifact exists"
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "generated HTML has previewable content",
+          "details": {
+            "title": "MH-CE-213 benchmark dashboard",
+            "body_text_length": 218
+          }
+        },
+        {
+          "name": "preview_route",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-CE-213/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-213/index.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-213/index.html"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-CE-213/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-213/index.html"
+        ],
+        "logs": [
+          "read_prompt",
+          "write_file",
+          "readback_action",
+          "html_preview",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run generates and reads back a single-file HTML artifact; no mobile editor UI evidence is collected."
+    },
+    {
+      "task_id": "MH-CE-217",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt offline_mode happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "prompt_present",
+          "status": "passed",
+          "message": "prompt fixture is non-empty"
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "generated HTML artifact exists"
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "generated HTML has previewable content",
+          "details": {
+            "title": "MH-CE-217 benchmark dashboard",
+            "body_text_length": 210
+          }
+        },
+        {
+          "name": "preview_route",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-CE-217/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-217/index.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-217/index.html"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-CE-217/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-217/index.html"
+        ],
+        "logs": [
+          "read_prompt",
+          "write_file",
+          "readback_action",
+          "html_preview",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run generates and reads back a single-file HTML artifact; no mobile editor UI evidence is collected."
+    },
+    {
+      "task_id": "MH-CE-221",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt low_memory happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "prompt_present",
+          "status": "passed",
+          "message": "prompt fixture is non-empty"
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "generated HTML artifact exists"
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "generated HTML has previewable content",
+          "details": {
+            "title": "MH-CE-221 benchmark dashboard",
+            "body_text_length": 212
+          }
+        },
+        {
+          "name": "preview_route",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-CE-221/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-221/index.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-221/index.html"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-CE-221/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-221/index.html"
+        ],
+        "logs": [
+          "read_prompt",
+          "write_file",
+          "readback_action",
+          "html_preview",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run generates and reads back a single-file HTML artifact; no mobile editor UI evidence is collected."
+    },
+    {
+      "task_id": "MH-CE-225",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt narrow_viewport happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "prompt_present",
+          "status": "passed",
+          "message": "prompt fixture is non-empty"
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "generated HTML artifact exists"
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "generated HTML has previewable content",
+          "details": {
+            "title": "MH-CE-225 benchmark dashboard",
+            "body_text_length": 219
+          }
+        },
+        {
+          "name": "preview_route",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-CE-225/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-225/index.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-225/index.html"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-CE-225/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-225/index.html"
+        ],
+        "logs": [
+          "read_prompt",
+          "write_file",
+          "readback_action",
+          "html_preview",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run generates and reads back a single-file HTML artifact; no mobile editor UI evidence is collected."
+    },
+    {
+      "task_id": "MH-CE-229",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt public_report happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "prompt_present",
+          "status": "passed",
+          "message": "prompt fixture is non-empty"
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "generated HTML artifact exists"
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "generated HTML has previewable content",
+          "details": {
+            "title": "MH-CE-229 benchmark dashboard",
+            "body_text_length": 211
+          }
+        },
+        {
+          "name": "preview_route",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-CE-229/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-229/index.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-229/index.html"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-CE-229/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-229/index.html"
+        ],
+        "logs": [
+          "read_prompt",
+          "write_file",
+          "readback_action",
+          "html_preview",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run generates and reads back a single-file HTML artifact; no mobile editor UI evidence is collected."
+    },
+    {
+      "task_id": "MH-CE-233",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt background_resume happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "prompt_present",
+          "status": "passed",
+          "message": "prompt fixture is non-empty"
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "generated HTML artifact exists"
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "generated HTML has previewable content",
+          "details": {
+            "title": "MH-CE-233 benchmark dashboard",
+            "body_text_length": 219
+          }
+        },
+        {
+          "name": "preview_route",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-CE-233/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-233/index.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-233/index.html"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-CE-233/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-233/index.html"
+        ],
+        "logs": [
+          "read_prompt",
+          "write_file",
+          "readback_action",
+          "html_preview",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run generates and reads back a single-file HTML artifact; no mobile editor UI evidence is collected."
+    },
+    {
+      "task_id": "MH-CE-237",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt poor_network happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "prompt_present",
+          "status": "passed",
+          "message": "prompt fixture is non-empty"
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "generated HTML artifact exists"
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "generated HTML has previewable content",
+          "details": {
+            "title": "MH-CE-237 benchmark dashboard",
+            "body_text_length": 216
+          }
+        },
+        {
+          "name": "preview_route",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-CE-237/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-237/index.html"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-237/index.html"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-CE-237/docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-237/index.html"
+        ],
+        "logs": [
+          "read_prompt",
+          "write_file",
+          "readback_action",
+          "html_preview",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run generates and reads back a single-file HTML artifact; no mobile editor UI evidence is collected."
+    },
+    {
+      "task_id": "MH-FI-201",
+      "category": "file_intake",
+      "title": "Intake HTML wechat_share happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "incoming file fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"
+          }
+        },
+        {
+          "name": "detected_type",
+          "status": "passed",
+          "message": "fixture kind is recorded",
+          "details": {
+            "detected_type": "html"
+          }
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "HTML fixture has title and readable body text",
+          "details": {
+            "title": "Mobile Harness Fixture",
+            "body_text_length": 88
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "detected-file report exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-201/detected-file.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-201/detected-file.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-FI-201/fixtures/file-intake/simple-page.html"
+        ],
+        "logs": [
+          "external_file_open",
+          "detect_file_type",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies file-intake metadata and previewability; no real share-sheet evidence is collected."
+    },
+    {
+      "task_id": "MH-FI-205",
+      "category": "file_intake",
+      "title": "Intake HTML system_file_picker happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "incoming file fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"
+          }
+        },
+        {
+          "name": "detected_type",
+          "status": "passed",
+          "message": "fixture kind is recorded",
+          "details": {
+            "detected_type": "html"
+          }
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "HTML fixture has title and readable body text",
+          "details": {
+            "title": "Mobile Harness Fixture",
+            "body_text_length": 88
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "detected-file report exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-205/detected-file.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-205/detected-file.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-FI-205/fixtures/file-intake/simple-page.html"
+        ],
+        "logs": [
+          "external_file_open",
+          "detect_file_type",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies file-intake metadata and previewability; no real share-sheet evidence is collected."
+    },
+    {
+      "task_id": "MH-FI-209",
+      "category": "file_intake",
+      "title": "Intake HTML workspace_import happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "incoming file fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"
+          }
+        },
+        {
+          "name": "detected_type",
+          "status": "passed",
+          "message": "fixture kind is recorded",
+          "details": {
+            "detected_type": "html"
+          }
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "HTML fixture has title and readable body text",
+          "details": {
+            "title": "Mobile Harness Fixture",
+            "body_text_length": 88
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "detected-file report exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-209/detected-file.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-209/detected-file.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-FI-209/fixtures/file-intake/simple-page.html"
+        ],
+        "logs": [
+          "external_file_open",
+          "detect_file_type",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies file-intake metadata and previewability; no real share-sheet evidence is collected."
+    },
+    {
+      "task_id": "MH-FI-213",
+      "category": "file_intake",
+      "title": "Intake HTML webview_return happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "incoming file fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"
+          }
+        },
+        {
+          "name": "detected_type",
+          "status": "passed",
+          "message": "fixture kind is recorded",
+          "details": {
+            "detected_type": "html"
+          }
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "HTML fixture has title and readable body text",
+          "details": {
+            "title": "Mobile Harness Fixture",
+            "body_text_length": 88
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "detected-file report exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-213/detected-file.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-213/detected-file.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-FI-213/fixtures/file-intake/simple-page.html"
+        ],
+        "logs": [
+          "external_file_open",
+          "detect_file_type",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies file-intake metadata and previewability; no real share-sheet evidence is collected."
+    },
+    {
+      "task_id": "MH-FI-217",
+      "category": "file_intake",
+      "title": "Intake HTML offline_mode happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "incoming file fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"
+          }
+        },
+        {
+          "name": "detected_type",
+          "status": "passed",
+          "message": "fixture kind is recorded",
+          "details": {
+            "detected_type": "html"
+          }
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "HTML fixture has title and readable body text",
+          "details": {
+            "title": "Mobile Harness Fixture",
+            "body_text_length": 88
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "detected-file report exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-217/detected-file.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-217/detected-file.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-FI-217/fixtures/file-intake/simple-page.html"
+        ],
+        "logs": [
+          "external_file_open",
+          "detect_file_type",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies file-intake metadata and previewability; no real share-sheet evidence is collected."
+    },
+    {
+      "task_id": "MH-FI-221",
+      "category": "file_intake",
+      "title": "Intake HTML low_memory happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "incoming file fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"
+          }
+        },
+        {
+          "name": "detected_type",
+          "status": "passed",
+          "message": "fixture kind is recorded",
+          "details": {
+            "detected_type": "html"
+          }
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "HTML fixture has title and readable body text",
+          "details": {
+            "title": "Mobile Harness Fixture",
+            "body_text_length": 88
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "detected-file report exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-221/detected-file.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-221/detected-file.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-FI-221/fixtures/file-intake/simple-page.html"
+        ],
+        "logs": [
+          "external_file_open",
+          "detect_file_type",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies file-intake metadata and previewability; no real share-sheet evidence is collected."
+    },
+    {
+      "task_id": "MH-FI-225",
+      "category": "file_intake",
+      "title": "Intake HTML narrow_viewport happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "incoming file fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"
+          }
+        },
+        {
+          "name": "detected_type",
+          "status": "passed",
+          "message": "fixture kind is recorded",
+          "details": {
+            "detected_type": "html"
+          }
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "HTML fixture has title and readable body text",
+          "details": {
+            "title": "Mobile Harness Fixture",
+            "body_text_length": 88
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "detected-file report exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-225/detected-file.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-225/detected-file.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-FI-225/fixtures/file-intake/simple-page.html"
+        ],
+        "logs": [
+          "external_file_open",
+          "detect_file_type",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies file-intake metadata and previewability; no real share-sheet evidence is collected."
+    },
+    {
+      "task_id": "MH-FI-229",
+      "category": "file_intake",
+      "title": "Intake HTML public_report happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "incoming file fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"
+          }
+        },
+        {
+          "name": "detected_type",
+          "status": "passed",
+          "message": "fixture kind is recorded",
+          "details": {
+            "detected_type": "html"
+          }
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "HTML fixture has title and readable body text",
+          "details": {
+            "title": "Mobile Harness Fixture",
+            "body_text_length": 88
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "detected-file report exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-229/detected-file.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-229/detected-file.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-FI-229/fixtures/file-intake/simple-page.html"
+        ],
+        "logs": [
+          "external_file_open",
+          "detect_file_type",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies file-intake metadata and previewability; no real share-sheet evidence is collected."
+    },
+    {
+      "task_id": "MH-FI-233",
+      "category": "file_intake",
+      "title": "Intake HTML background_resume happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "incoming file fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"
+          }
+        },
+        {
+          "name": "detected_type",
+          "status": "passed",
+          "message": "fixture kind is recorded",
+          "details": {
+            "detected_type": "html"
+          }
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "HTML fixture has title and readable body text",
+          "details": {
+            "title": "Mobile Harness Fixture",
+            "body_text_length": 88
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "detected-file report exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-233/detected-file.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-233/detected-file.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-FI-233/fixtures/file-intake/simple-page.html"
+        ],
+        "logs": [
+          "external_file_open",
+          "detect_file_type",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies file-intake metadata and previewability; no real share-sheet evidence is collected."
+    },
+    {
+      "task_id": "MH-FI-237",
+      "category": "file_intake",
+      "title": "Intake HTML poor_network happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "incoming file fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"
+          }
+        },
+        {
+          "name": "detected_type",
+          "status": "passed",
+          "message": "fixture kind is recorded",
+          "details": {
+            "detected_type": "html"
+          }
+        },
+        {
+          "name": "html_preview",
+          "status": "passed",
+          "message": "HTML fixture has title and readable body text",
+          "details": {
+            "title": "Mobile Harness Fixture",
+            "body_text_length": 88
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "detected-file report exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-237/detected-file.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-237/detected-file.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-FI-237/fixtures/file-intake/simple-page.html"
+        ],
+        "logs": [
+          "external_file_open",
+          "detect_file_type",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies file-intake metadata and previewability; no real share-sheet evidence is collected."
+    },
+    {
+      "task_id": "MH-GD-201",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact wechat_share happy_path android_real_phone_share",
+      "status": "blocked",
+      "score": 0,
+      "failure_kind": "github_auth_blocked",
+      "checks": [
+        {
+          "name": "repo_metadata",
+          "status": "passed",
+          "message": "repo delivery metadata is complete",
+          "details": {
+            "missing": []
+          }
+        },
+        {
+          "name": "external_auth",
+          "status": "blocked",
+          "message": "T0 offline run does not perform remote GitHub writes"
+        },
+        {
+          "name": "blocked_report",
+          "status": "passed",
+          "message": "typed blocked report is exported",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-201/github-delivery-blocked.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-201/github-delivery-blocked.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "github_delivery_fixture_loaded",
+          "record_blocked_result"
+        ],
+        "repo": "example/mobile-harness-bench-target",
+        "branch": "bench",
+        "failure_kind": "github_auth_blocked",
+        "recovery_suggestion": "Run this task in a GitHub sandbox tier with explicit authorization.",
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies GitHub metadata but blocks remote delivery because no authorized sandbox is used."
+    },
+    {
+      "task_id": "MH-GD-205",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact system_file_picker happy_path android_low_memory",
+      "status": "blocked",
+      "score": 0,
+      "failure_kind": "github_auth_blocked",
+      "checks": [
+        {
+          "name": "repo_metadata",
+          "status": "passed",
+          "message": "repo delivery metadata is complete",
+          "details": {
+            "missing": []
+          }
+        },
+        {
+          "name": "external_auth",
+          "status": "blocked",
+          "message": "T0 offline run does not perform remote GitHub writes"
+        },
+        {
+          "name": "blocked_report",
+          "status": "passed",
+          "message": "typed blocked report is exported",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-205/github-delivery-blocked.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-205/github-delivery-blocked.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "github_delivery_fixture_loaded",
+          "record_blocked_result"
+        ],
+        "repo": "example/mobile-harness-bench-target",
+        "branch": "bench",
+        "failure_kind": "github_auth_blocked",
+        "recovery_suggestion": "Run this task in a GitHub sandbox tier with explicit authorization.",
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies GitHub metadata but blocks remote delivery because no authorized sandbox is used."
+    },
+    {
+      "task_id": "MH-GD-209",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact workspace_import happy_path ios_simulator_document",
+      "status": "blocked",
+      "score": 0,
+      "failure_kind": "github_auth_blocked",
+      "checks": [
+        {
+          "name": "repo_metadata",
+          "status": "passed",
+          "message": "repo delivery metadata is complete",
+          "details": {
+            "missing": []
+          }
+        },
+        {
+          "name": "external_auth",
+          "status": "blocked",
+          "message": "T0 offline run does not perform remote GitHub writes"
+        },
+        {
+          "name": "blocked_report",
+          "status": "passed",
+          "message": "typed blocked report is exported",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-209/github-delivery-blocked.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-209/github-delivery-blocked.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "github_delivery_fixture_loaded",
+          "record_blocked_result"
+        ],
+        "repo": "example/mobile-harness-bench-target",
+        "branch": "bench",
+        "failure_kind": "github_auth_blocked",
+        "recovery_suggestion": "Run this task in a GitHub sandbox tier with explicit authorization.",
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies GitHub metadata but blocks remote delivery because no authorized sandbox is used."
+    },
+    {
+      "task_id": "MH-GD-213",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact webview_return happy_path android_real_phone_share",
+      "status": "blocked",
+      "score": 0,
+      "failure_kind": "github_auth_blocked",
+      "checks": [
+        {
+          "name": "repo_metadata",
+          "status": "passed",
+          "message": "repo delivery metadata is complete",
+          "details": {
+            "missing": []
+          }
+        },
+        {
+          "name": "external_auth",
+          "status": "blocked",
+          "message": "T0 offline run does not perform remote GitHub writes"
+        },
+        {
+          "name": "blocked_report",
+          "status": "passed",
+          "message": "typed blocked report is exported",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-213/github-delivery-blocked.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-213/github-delivery-blocked.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "github_delivery_fixture_loaded",
+          "record_blocked_result"
+        ],
+        "repo": "example/mobile-harness-bench-target",
+        "branch": "bench",
+        "failure_kind": "github_auth_blocked",
+        "recovery_suggestion": "Run this task in a GitHub sandbox tier with explicit authorization.",
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies GitHub metadata but blocks remote delivery because no authorized sandbox is used."
+    },
+    {
+      "task_id": "MH-GD-217",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact offline_mode happy_path android_low_memory",
+      "status": "blocked",
+      "score": 0,
+      "failure_kind": "github_auth_blocked",
+      "checks": [
+        {
+          "name": "repo_metadata",
+          "status": "passed",
+          "message": "repo delivery metadata is complete",
+          "details": {
+            "missing": []
+          }
+        },
+        {
+          "name": "external_auth",
+          "status": "blocked",
+          "message": "T0 offline run does not perform remote GitHub writes"
+        },
+        {
+          "name": "blocked_report",
+          "status": "passed",
+          "message": "typed blocked report is exported",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-217/github-delivery-blocked.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-217/github-delivery-blocked.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "github_delivery_fixture_loaded",
+          "record_blocked_result"
+        ],
+        "repo": "example/mobile-harness-bench-target",
+        "branch": "bench",
+        "failure_kind": "github_auth_blocked",
+        "recovery_suggestion": "Run this task in a GitHub sandbox tier with explicit authorization.",
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies GitHub metadata but blocks remote delivery because no authorized sandbox is used."
+    },
+    {
+      "task_id": "MH-GD-221",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact low_memory happy_path ios_simulator_document",
+      "status": "blocked",
+      "score": 0,
+      "failure_kind": "github_auth_blocked",
+      "checks": [
+        {
+          "name": "repo_metadata",
+          "status": "passed",
+          "message": "repo delivery metadata is complete",
+          "details": {
+            "missing": []
+          }
+        },
+        {
+          "name": "external_auth",
+          "status": "blocked",
+          "message": "T0 offline run does not perform remote GitHub writes"
+        },
+        {
+          "name": "blocked_report",
+          "status": "passed",
+          "message": "typed blocked report is exported",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-221/github-delivery-blocked.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-221/github-delivery-blocked.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "github_delivery_fixture_loaded",
+          "record_blocked_result"
+        ],
+        "repo": "example/mobile-harness-bench-target",
+        "branch": "bench",
+        "failure_kind": "github_auth_blocked",
+        "recovery_suggestion": "Run this task in a GitHub sandbox tier with explicit authorization.",
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies GitHub metadata but blocks remote delivery because no authorized sandbox is used."
+    },
+    {
+      "task_id": "MH-GD-225",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact narrow_viewport happy_path android_real_phone_share",
+      "status": "blocked",
+      "score": 0,
+      "failure_kind": "github_auth_blocked",
+      "checks": [
+        {
+          "name": "repo_metadata",
+          "status": "passed",
+          "message": "repo delivery metadata is complete",
+          "details": {
+            "missing": []
+          }
+        },
+        {
+          "name": "external_auth",
+          "status": "blocked",
+          "message": "T0 offline run does not perform remote GitHub writes"
+        },
+        {
+          "name": "blocked_report",
+          "status": "passed",
+          "message": "typed blocked report is exported",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-225/github-delivery-blocked.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-225/github-delivery-blocked.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "github_delivery_fixture_loaded",
+          "record_blocked_result"
+        ],
+        "repo": "example/mobile-harness-bench-target",
+        "branch": "bench",
+        "failure_kind": "github_auth_blocked",
+        "recovery_suggestion": "Run this task in a GitHub sandbox tier with explicit authorization.",
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies GitHub metadata but blocks remote delivery because no authorized sandbox is used."
+    },
+    {
+      "task_id": "MH-GD-229",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact public_report happy_path android_low_memory",
+      "status": "blocked",
+      "score": 0,
+      "failure_kind": "github_auth_blocked",
+      "checks": [
+        {
+          "name": "repo_metadata",
+          "status": "passed",
+          "message": "repo delivery metadata is complete",
+          "details": {
+            "missing": []
+          }
+        },
+        {
+          "name": "external_auth",
+          "status": "blocked",
+          "message": "T0 offline run does not perform remote GitHub writes"
+        },
+        {
+          "name": "blocked_report",
+          "status": "passed",
+          "message": "typed blocked report is exported",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-229/github-delivery-blocked.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-229/github-delivery-blocked.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "github_delivery_fixture_loaded",
+          "record_blocked_result"
+        ],
+        "repo": "example/mobile-harness-bench-target",
+        "branch": "bench",
+        "failure_kind": "github_auth_blocked",
+        "recovery_suggestion": "Run this task in a GitHub sandbox tier with explicit authorization.",
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies GitHub metadata but blocks remote delivery because no authorized sandbox is used."
+    },
+    {
+      "task_id": "MH-GD-233",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact background_resume happy_path ios_simulator_document",
+      "status": "blocked",
+      "score": 0,
+      "failure_kind": "github_auth_blocked",
+      "checks": [
+        {
+          "name": "repo_metadata",
+          "status": "passed",
+          "message": "repo delivery metadata is complete",
+          "details": {
+            "missing": []
+          }
+        },
+        {
+          "name": "external_auth",
+          "status": "blocked",
+          "message": "T0 offline run does not perform remote GitHub writes"
+        },
+        {
+          "name": "blocked_report",
+          "status": "passed",
+          "message": "typed blocked report is exported",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-233/github-delivery-blocked.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-233/github-delivery-blocked.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "github_delivery_fixture_loaded",
+          "record_blocked_result"
+        ],
+        "repo": "example/mobile-harness-bench-target",
+        "branch": "bench",
+        "failure_kind": "github_auth_blocked",
+        "recovery_suggestion": "Run this task in a GitHub sandbox tier with explicit authorization.",
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies GitHub metadata but blocks remote delivery because no authorized sandbox is used."
+    },
+    {
+      "task_id": "MH-GD-237",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact poor_network happy_path android_real_phone_share",
+      "status": "blocked",
+      "score": 0,
+      "failure_kind": "github_auth_blocked",
+      "checks": [
+        {
+          "name": "repo_metadata",
+          "status": "passed",
+          "message": "repo delivery metadata is complete",
+          "details": {
+            "missing": []
+          }
+        },
+        {
+          "name": "external_auth",
+          "status": "blocked",
+          "message": "T0 offline run does not perform remote GitHub writes"
+        },
+        {
+          "name": "blocked_report",
+          "status": "passed",
+          "message": "typed blocked report is exported",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-237/github-delivery-blocked.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-237/github-delivery-blocked.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "github_delivery_fixture_loaded",
+          "record_blocked_result"
+        ],
+        "repo": "example/mobile-harness-bench-target",
+        "branch": "bench",
+        "failure_kind": "github_auth_blocked",
+        "recovery_suggestion": "Run this task in a GitHub sandbox tier with explicit authorization.",
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies GitHub metadata but blocks remote delivery because no authorized sandbox is used."
+    },
+    {
+      "task_id": "MH-HE-201",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace wechat_share happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "user_prompt",
+          "status": "passed",
+          "message": "user prompt is recorded"
+        },
+        {
+          "name": "action_sequence",
+          "status": "passed",
+          "message": "required action sequence is complete",
+          "details": {
+            "missing_actions": []
+          }
+        },
+        {
+          "name": "result",
+          "status": "passed",
+          "message": "expected result is recorded"
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "trace report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-201/trace-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-201/trace-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "action_evidence",
+          "report_result",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies trace completeness and exported report metadata."
+    },
+    {
+      "task_id": "MH-HE-205",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace system_file_picker happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "user_prompt",
+          "status": "passed",
+          "message": "user prompt is recorded"
+        },
+        {
+          "name": "action_sequence",
+          "status": "passed",
+          "message": "required action sequence is complete",
+          "details": {
+            "missing_actions": []
+          }
+        },
+        {
+          "name": "result",
+          "status": "passed",
+          "message": "expected result is recorded"
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "trace report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-205/trace-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-205/trace-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "action_evidence",
+          "report_result",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies trace completeness and exported report metadata."
+    },
+    {
+      "task_id": "MH-HE-209",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace workspace_import happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "user_prompt",
+          "status": "passed",
+          "message": "user prompt is recorded"
+        },
+        {
+          "name": "action_sequence",
+          "status": "passed",
+          "message": "required action sequence is complete",
+          "details": {
+            "missing_actions": []
+          }
+        },
+        {
+          "name": "result",
+          "status": "passed",
+          "message": "expected result is recorded"
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "trace report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-209/trace-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-209/trace-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "action_evidence",
+          "report_result",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies trace completeness and exported report metadata."
+    },
+    {
+      "task_id": "MH-HE-213",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace webview_return happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "user_prompt",
+          "status": "passed",
+          "message": "user prompt is recorded"
+        },
+        {
+          "name": "action_sequence",
+          "status": "passed",
+          "message": "required action sequence is complete",
+          "details": {
+            "missing_actions": []
+          }
+        },
+        {
+          "name": "result",
+          "status": "passed",
+          "message": "expected result is recorded"
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "trace report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-213/trace-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-213/trace-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "action_evidence",
+          "report_result",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies trace completeness and exported report metadata."
+    },
+    {
+      "task_id": "MH-HE-217",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace offline_mode happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "user_prompt",
+          "status": "passed",
+          "message": "user prompt is recorded"
+        },
+        {
+          "name": "action_sequence",
+          "status": "passed",
+          "message": "required action sequence is complete",
+          "details": {
+            "missing_actions": []
+          }
+        },
+        {
+          "name": "result",
+          "status": "passed",
+          "message": "expected result is recorded"
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "trace report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-217/trace-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-217/trace-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "action_evidence",
+          "report_result",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies trace completeness and exported report metadata."
+    },
+    {
+      "task_id": "MH-HE-221",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace low_memory happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "user_prompt",
+          "status": "passed",
+          "message": "user prompt is recorded"
+        },
+        {
+          "name": "action_sequence",
+          "status": "passed",
+          "message": "required action sequence is complete",
+          "details": {
+            "missing_actions": []
+          }
+        },
+        {
+          "name": "result",
+          "status": "passed",
+          "message": "expected result is recorded"
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "trace report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-221/trace-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-221/trace-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "action_evidence",
+          "report_result",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies trace completeness and exported report metadata."
+    },
+    {
+      "task_id": "MH-HE-225",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace narrow_viewport happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "user_prompt",
+          "status": "passed",
+          "message": "user prompt is recorded"
+        },
+        {
+          "name": "action_sequence",
+          "status": "passed",
+          "message": "required action sequence is complete",
+          "details": {
+            "missing_actions": []
+          }
+        },
+        {
+          "name": "result",
+          "status": "passed",
+          "message": "expected result is recorded"
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "trace report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-225/trace-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-225/trace-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "action_evidence",
+          "report_result",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies trace completeness and exported report metadata."
+    },
+    {
+      "task_id": "MH-HE-229",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace public_report happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "user_prompt",
+          "status": "passed",
+          "message": "user prompt is recorded"
+        },
+        {
+          "name": "action_sequence",
+          "status": "passed",
+          "message": "required action sequence is complete",
+          "details": {
+            "missing_actions": []
+          }
+        },
+        {
+          "name": "result",
+          "status": "passed",
+          "message": "expected result is recorded"
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "trace report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-229/trace-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-229/trace-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "action_evidence",
+          "report_result",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies trace completeness and exported report metadata."
+    },
+    {
+      "task_id": "MH-HE-233",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace background_resume happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "user_prompt",
+          "status": "passed",
+          "message": "user prompt is recorded"
+        },
+        {
+          "name": "action_sequence",
+          "status": "passed",
+          "message": "required action sequence is complete",
+          "details": {
+            "missing_actions": []
+          }
+        },
+        {
+          "name": "result",
+          "status": "passed",
+          "message": "expected result is recorded"
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "trace report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-233/trace-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-233/trace-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "action_evidence",
+          "report_result",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies trace completeness and exported report metadata."
+    },
+    {
+      "task_id": "MH-HE-237",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace poor_network happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "user_prompt",
+          "status": "passed",
+          "message": "user prompt is recorded"
+        },
+        {
+          "name": "action_sequence",
+          "status": "passed",
+          "message": "required action sequence is complete",
+          "details": {
+            "missing_actions": []
+          }
+        },
+        {
+          "name": "result",
+          "status": "passed",
+          "message": "expected result is recorded"
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "trace report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-237/trace-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-237/trace-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "action_evidence",
+          "report_result",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies trace completeness and exported report metadata."
+    },
+    {
+      "task_id": "MH-PV-201",
+      "category": "preview_verification",
+      "title": "Preview generated HTML wechat_share happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "preview fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "snapshot_text",
+          "status": "passed",
+          "message": "snapshot has readable text",
+          "details": {
+            "dom_text_length": 74
+          }
+        },
+        {
+          "name": "preview_url",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-PV-201/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "snapshot summary exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-201/snapshot-summary.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-201/snapshot-summary.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-PV-201/fixtures/preview/index.html"
+        ],
+        "logs": [
+          "preview_html",
+          "snapshot_summary",
+          "record_t0_fixture_result"
+        ],
+        "snapshot_metadata": {
+          "viewport": "393x873",
+          "title": "Preview Fixture",
+          "dom_text_length": 74,
+          "heading_count": 1,
+          "has_viewport_meta": true,
+          "route": "mobilecode-preview://bench/MH-PV-201/fixtures/preview/index.html",
+          "result_scope": "t0_offline_fixture_only",
+          "counts_as_mobile_experiment": false,
+          "mobile_profile": "android_real_phone_share",
+          "os_target": "android_real_device",
+          "input_surface": "Android Sharesheet",
+          "requires_real_device": true,
+          "device_evidence": "not_collected_in_t0"
+        },
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies preview metadata and snapshot summary; no WebView screenshot is collected."
+    },
+    {
+      "task_id": "MH-PV-205",
+      "category": "preview_verification",
+      "title": "Preview generated HTML system_file_picker happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "preview fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "snapshot_text",
+          "status": "passed",
+          "message": "snapshot has readable text",
+          "details": {
+            "dom_text_length": 74
+          }
+        },
+        {
+          "name": "preview_url",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-PV-205/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "snapshot summary exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-205/snapshot-summary.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-205/snapshot-summary.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-PV-205/fixtures/preview/index.html"
+        ],
+        "logs": [
+          "preview_html",
+          "snapshot_summary",
+          "record_t0_fixture_result"
+        ],
+        "snapshot_metadata": {
+          "viewport": "360x800",
+          "title": "Preview Fixture",
+          "dom_text_length": 74,
+          "heading_count": 1,
+          "has_viewport_meta": true,
+          "route": "mobilecode-preview://bench/MH-PV-205/fixtures/preview/index.html",
+          "result_scope": "t0_offline_fixture_only",
+          "counts_as_mobile_experiment": false,
+          "mobile_profile": "android_low_memory",
+          "os_target": "android_real_device",
+          "input_surface": "MobileCode workspace picker",
+          "requires_real_device": true,
+          "device_evidence": "not_collected_in_t0"
+        },
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies preview metadata and snapshot summary; no WebView screenshot is collected."
+    },
+    {
+      "task_id": "MH-PV-209",
+      "category": "preview_verification",
+      "title": "Preview generated HTML workspace_import happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "preview fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "snapshot_text",
+          "status": "passed",
+          "message": "snapshot has readable text",
+          "details": {
+            "dom_text_length": 74
+          }
+        },
+        {
+          "name": "preview_url",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-PV-209/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "snapshot summary exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-209/snapshot-summary.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-209/snapshot-summary.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-PV-209/fixtures/preview/index.html"
+        ],
+        "logs": [
+          "preview_html",
+          "snapshot_summary",
+          "record_t0_fixture_result"
+        ],
+        "snapshot_metadata": {
+          "viewport": "390x844",
+          "title": "Preview Fixture",
+          "dom_text_length": 74,
+          "heading_count": 1,
+          "has_viewport_meta": true,
+          "route": "mobilecode-preview://bench/MH-PV-209/fixtures/preview/index.html",
+          "result_scope": "t0_offline_fixture_only",
+          "counts_as_mobile_experiment": false,
+          "mobile_profile": "ios_simulator_document",
+          "os_target": "ios_simulator",
+          "input_surface": "iOS document picker",
+          "requires_real_device": false,
+          "device_evidence": "not_collected_in_t0"
+        },
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies preview metadata and snapshot summary; no WebView screenshot is collected."
+    },
+    {
+      "task_id": "MH-PV-213",
+      "category": "preview_verification",
+      "title": "Preview generated HTML webview_return happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "preview fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "snapshot_text",
+          "status": "passed",
+          "message": "snapshot has readable text",
+          "details": {
+            "dom_text_length": 74
+          }
+        },
+        {
+          "name": "preview_url",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-PV-213/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "snapshot summary exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-213/snapshot-summary.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-213/snapshot-summary.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-PV-213/fixtures/preview/index.html"
+        ],
+        "logs": [
+          "preview_html",
+          "snapshot_summary",
+          "record_t0_fixture_result"
+        ],
+        "snapshot_metadata": {
+          "viewport": "393x873",
+          "title": "Preview Fixture",
+          "dom_text_length": 74,
+          "heading_count": 1,
+          "has_viewport_meta": true,
+          "route": "mobilecode-preview://bench/MH-PV-213/fixtures/preview/index.html",
+          "result_scope": "t0_offline_fixture_only",
+          "counts_as_mobile_experiment": false,
+          "mobile_profile": "android_real_phone_share",
+          "os_target": "android_real_device",
+          "input_surface": "Android Sharesheet",
+          "requires_real_device": true,
+          "device_evidence": "not_collected_in_t0"
+        },
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies preview metadata and snapshot summary; no WebView screenshot is collected."
+    },
+    {
+      "task_id": "MH-PV-217",
+      "category": "preview_verification",
+      "title": "Preview generated HTML offline_mode happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "preview fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "snapshot_text",
+          "status": "passed",
+          "message": "snapshot has readable text",
+          "details": {
+            "dom_text_length": 74
+          }
+        },
+        {
+          "name": "preview_url",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-PV-217/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "snapshot summary exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-217/snapshot-summary.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-217/snapshot-summary.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-PV-217/fixtures/preview/index.html"
+        ],
+        "logs": [
+          "preview_html",
+          "snapshot_summary",
+          "record_t0_fixture_result"
+        ],
+        "snapshot_metadata": {
+          "viewport": "360x800",
+          "title": "Preview Fixture",
+          "dom_text_length": 74,
+          "heading_count": 1,
+          "has_viewport_meta": true,
+          "route": "mobilecode-preview://bench/MH-PV-217/fixtures/preview/index.html",
+          "result_scope": "t0_offline_fixture_only",
+          "counts_as_mobile_experiment": false,
+          "mobile_profile": "android_low_memory",
+          "os_target": "android_real_device",
+          "input_surface": "MobileCode workspace picker",
+          "requires_real_device": true,
+          "device_evidence": "not_collected_in_t0"
+        },
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies preview metadata and snapshot summary; no WebView screenshot is collected."
+    },
+    {
+      "task_id": "MH-PV-221",
+      "category": "preview_verification",
+      "title": "Preview generated HTML low_memory happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "preview fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "snapshot_text",
+          "status": "passed",
+          "message": "snapshot has readable text",
+          "details": {
+            "dom_text_length": 74
+          }
+        },
+        {
+          "name": "preview_url",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-PV-221/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "snapshot summary exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-221/snapshot-summary.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-221/snapshot-summary.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-PV-221/fixtures/preview/index.html"
+        ],
+        "logs": [
+          "preview_html",
+          "snapshot_summary",
+          "record_t0_fixture_result"
+        ],
+        "snapshot_metadata": {
+          "viewport": "390x844",
+          "title": "Preview Fixture",
+          "dom_text_length": 74,
+          "heading_count": 1,
+          "has_viewport_meta": true,
+          "route": "mobilecode-preview://bench/MH-PV-221/fixtures/preview/index.html",
+          "result_scope": "t0_offline_fixture_only",
+          "counts_as_mobile_experiment": false,
+          "mobile_profile": "ios_simulator_document",
+          "os_target": "ios_simulator",
+          "input_surface": "iOS document picker",
+          "requires_real_device": false,
+          "device_evidence": "not_collected_in_t0"
+        },
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies preview metadata and snapshot summary; no WebView screenshot is collected."
+    },
+    {
+      "task_id": "MH-PV-225",
+      "category": "preview_verification",
+      "title": "Preview generated HTML narrow_viewport happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "preview fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "snapshot_text",
+          "status": "passed",
+          "message": "snapshot has readable text",
+          "details": {
+            "dom_text_length": 74
+          }
+        },
+        {
+          "name": "preview_url",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-PV-225/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "snapshot summary exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-225/snapshot-summary.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-225/snapshot-summary.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-PV-225/fixtures/preview/index.html"
+        ],
+        "logs": [
+          "preview_html",
+          "snapshot_summary",
+          "record_t0_fixture_result"
+        ],
+        "snapshot_metadata": {
+          "viewport": "393x873",
+          "title": "Preview Fixture",
+          "dom_text_length": 74,
+          "heading_count": 1,
+          "has_viewport_meta": true,
+          "route": "mobilecode-preview://bench/MH-PV-225/fixtures/preview/index.html",
+          "result_scope": "t0_offline_fixture_only",
+          "counts_as_mobile_experiment": false,
+          "mobile_profile": "android_real_phone_share",
+          "os_target": "android_real_device",
+          "input_surface": "Android Sharesheet",
+          "requires_real_device": true,
+          "device_evidence": "not_collected_in_t0"
+        },
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies preview metadata and snapshot summary; no WebView screenshot is collected."
+    },
+    {
+      "task_id": "MH-PV-229",
+      "category": "preview_verification",
+      "title": "Preview generated HTML public_report happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "preview fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "snapshot_text",
+          "status": "passed",
+          "message": "snapshot has readable text",
+          "details": {
+            "dom_text_length": 74
+          }
+        },
+        {
+          "name": "preview_url",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-PV-229/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "snapshot summary exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-229/snapshot-summary.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-229/snapshot-summary.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-PV-229/fixtures/preview/index.html"
+        ],
+        "logs": [
+          "preview_html",
+          "snapshot_summary",
+          "record_t0_fixture_result"
+        ],
+        "snapshot_metadata": {
+          "viewport": "360x800",
+          "title": "Preview Fixture",
+          "dom_text_length": 74,
+          "heading_count": 1,
+          "has_viewport_meta": true,
+          "route": "mobilecode-preview://bench/MH-PV-229/fixtures/preview/index.html",
+          "result_scope": "t0_offline_fixture_only",
+          "counts_as_mobile_experiment": false,
+          "mobile_profile": "android_low_memory",
+          "os_target": "android_real_device",
+          "input_surface": "MobileCode workspace picker",
+          "requires_real_device": true,
+          "device_evidence": "not_collected_in_t0"
+        },
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies preview metadata and snapshot summary; no WebView screenshot is collected."
+    },
+    {
+      "task_id": "MH-PV-233",
+      "category": "preview_verification",
+      "title": "Preview generated HTML background_resume happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "preview fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "snapshot_text",
+          "status": "passed",
+          "message": "snapshot has readable text",
+          "details": {
+            "dom_text_length": 74
+          }
+        },
+        {
+          "name": "preview_url",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-PV-233/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "snapshot summary exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-233/snapshot-summary.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-233/snapshot-summary.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-PV-233/fixtures/preview/index.html"
+        ],
+        "logs": [
+          "preview_html",
+          "snapshot_summary",
+          "record_t0_fixture_result"
+        ],
+        "snapshot_metadata": {
+          "viewport": "390x844",
+          "title": "Preview Fixture",
+          "dom_text_length": 74,
+          "heading_count": 1,
+          "has_viewport_meta": true,
+          "route": "mobilecode-preview://bench/MH-PV-233/fixtures/preview/index.html",
+          "result_scope": "t0_offline_fixture_only",
+          "counts_as_mobile_experiment": false,
+          "mobile_profile": "ios_simulator_document",
+          "os_target": "ios_simulator",
+          "input_surface": "iOS document picker",
+          "requires_real_device": false,
+          "device_evidence": "not_collected_in_t0"
+        },
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies preview metadata and snapshot summary; no WebView screenshot is collected."
+    },
+    {
+      "task_id": "MH-PV-237",
+      "category": "preview_verification",
+      "title": "Preview generated HTML poor_network happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "fixture_exists",
+          "status": "passed",
+          "message": "preview fixture exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "snapshot_text",
+          "status": "passed",
+          "message": "snapshot has readable text",
+          "details": {
+            "dom_text_length": 74
+          }
+        },
+        {
+          "name": "preview_url",
+          "status": "passed",
+          "message": "synthetic preview route is recorded",
+          "details": {
+            "preview_url": "mobilecode-preview://bench/MH-PV-237/fixtures/preview/index.html"
+          }
+        },
+        {
+          "name": "artifact_exists",
+          "status": "passed",
+          "message": "snapshot summary exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-237/snapshot-summary.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-237/snapshot-summary.json"
+        ],
+        "preview_urls": [
+          "mobilecode-preview://bench/MH-PV-237/fixtures/preview/index.html"
+        ],
+        "logs": [
+          "preview_html",
+          "snapshot_summary",
+          "record_t0_fixture_result"
+        ],
+        "snapshot_metadata": {
+          "viewport": "393x873",
+          "title": "Preview Fixture",
+          "dom_text_length": 74,
+          "heading_count": 1,
+          "has_viewport_meta": true,
+          "route": "mobilecode-preview://bench/MH-PV-237/fixtures/preview/index.html",
+          "result_scope": "t0_offline_fixture_only",
+          "counts_as_mobile_experiment": false,
+          "mobile_profile": "android_real_phone_share",
+          "os_target": "android_real_device",
+          "input_surface": "Android Sharesheet",
+          "requires_real_device": true,
+          "device_evidence": "not_collected_in_t0"
+        },
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies preview metadata and snapshot summary; no WebView screenshot is collected."
+    },
+    {
+      "task_id": "MH-RT-201",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health wechat_share happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "runtime_health",
+          "status": "passed",
+          "message": "runtime fixture reports healthy provider",
+          "details": {
+            "health_status": "healthy"
+          }
+        },
+        {
+          "name": "runtime_capabilities",
+          "status": "passed",
+          "message": "required runtime capabilities are present",
+          "details": {
+            "missing_capabilities": []
+          }
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "runtime report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-201/runtime-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-201/runtime-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "runtime_health",
+          "capability_check",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies runtime health metadata; no live helper process or device lifecycle evidence is collected."
+    },
+    {
+      "task_id": "MH-RT-205",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health system_file_picker happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "runtime_health",
+          "status": "passed",
+          "message": "runtime fixture reports healthy provider",
+          "details": {
+            "health_status": "healthy"
+          }
+        },
+        {
+          "name": "runtime_capabilities",
+          "status": "passed",
+          "message": "required runtime capabilities are present",
+          "details": {
+            "missing_capabilities": []
+          }
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "runtime report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-205/runtime-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-205/runtime-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "runtime_health",
+          "capability_check",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies runtime health metadata; no live helper process or device lifecycle evidence is collected."
+    },
+    {
+      "task_id": "MH-RT-209",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health workspace_import happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "runtime_health",
+          "status": "passed",
+          "message": "runtime fixture reports healthy provider",
+          "details": {
+            "health_status": "healthy"
+          }
+        },
+        {
+          "name": "runtime_capabilities",
+          "status": "passed",
+          "message": "required runtime capabilities are present",
+          "details": {
+            "missing_capabilities": []
+          }
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "runtime report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-209/runtime-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-209/runtime-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "runtime_health",
+          "capability_check",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies runtime health metadata; no live helper process or device lifecycle evidence is collected."
+    },
+    {
+      "task_id": "MH-RT-213",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health webview_return happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "runtime_health",
+          "status": "passed",
+          "message": "runtime fixture reports healthy provider",
+          "details": {
+            "health_status": "healthy"
+          }
+        },
+        {
+          "name": "runtime_capabilities",
+          "status": "passed",
+          "message": "required runtime capabilities are present",
+          "details": {
+            "missing_capabilities": []
+          }
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "runtime report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-213/runtime-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-213/runtime-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "runtime_health",
+          "capability_check",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies runtime health metadata; no live helper process or device lifecycle evidence is collected."
+    },
+    {
+      "task_id": "MH-RT-217",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health offline_mode happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "runtime_health",
+          "status": "passed",
+          "message": "runtime fixture reports healthy provider",
+          "details": {
+            "health_status": "healthy"
+          }
+        },
+        {
+          "name": "runtime_capabilities",
+          "status": "passed",
+          "message": "required runtime capabilities are present",
+          "details": {
+            "missing_capabilities": []
+          }
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "runtime report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-217/runtime-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-217/runtime-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "runtime_health",
+          "capability_check",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies runtime health metadata; no live helper process or device lifecycle evidence is collected."
+    },
+    {
+      "task_id": "MH-RT-221",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health low_memory happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "runtime_health",
+          "status": "passed",
+          "message": "runtime fixture reports healthy provider",
+          "details": {
+            "health_status": "healthy"
+          }
+        },
+        {
+          "name": "runtime_capabilities",
+          "status": "passed",
+          "message": "required runtime capabilities are present",
+          "details": {
+            "missing_capabilities": []
+          }
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "runtime report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-221/runtime-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-221/runtime-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "runtime_health",
+          "capability_check",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies runtime health metadata; no live helper process or device lifecycle evidence is collected."
+    },
+    {
+      "task_id": "MH-RT-225",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health narrow_viewport happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "runtime_health",
+          "status": "passed",
+          "message": "runtime fixture reports healthy provider",
+          "details": {
+            "health_status": "healthy"
+          }
+        },
+        {
+          "name": "runtime_capabilities",
+          "status": "passed",
+          "message": "required runtime capabilities are present",
+          "details": {
+            "missing_capabilities": []
+          }
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "runtime report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-225/runtime-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-225/runtime-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "runtime_health",
+          "capability_check",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies runtime health metadata; no live helper process or device lifecycle evidence is collected."
+    },
+    {
+      "task_id": "MH-RT-229",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health public_report happy_path android_low_memory",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "runtime_health",
+          "status": "passed",
+          "message": "runtime fixture reports healthy provider",
+          "details": {
+            "health_status": "healthy"
+          }
+        },
+        {
+          "name": "runtime_capabilities",
+          "status": "passed",
+          "message": "required runtime capabilities are present",
+          "details": {
+            "missing_capabilities": []
+          }
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "runtime report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-229/runtime-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-229/runtime-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "runtime_health",
+          "capability_check",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_low_memory",
+        "os_target": "android_real_device",
+        "input_surface": "MobileCode workspace picker",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies runtime health metadata; no live helper process or device lifecycle evidence is collected."
+    },
+    {
+      "task_id": "MH-RT-233",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health background_resume happy_path ios_simulator_document",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "runtime_health",
+          "status": "passed",
+          "message": "runtime fixture reports healthy provider",
+          "details": {
+            "health_status": "healthy"
+          }
+        },
+        {
+          "name": "runtime_capabilities",
+          "status": "passed",
+          "message": "required runtime capabilities are present",
+          "details": {
+            "missing_capabilities": []
+          }
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "runtime report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-233/runtime-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-233/runtime-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "runtime_health",
+          "capability_check",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "ios_simulator_document",
+        "os_target": "ios_simulator",
+        "input_surface": "iOS document picker",
+        "requires_real_device": false,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies runtime health metadata; no live helper process or device lifecycle evidence is collected."
+    },
+    {
+      "task_id": "MH-RT-237",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health poor_network happy_path android_real_phone_share",
+      "status": "passed",
+      "score": 95,
+      "failure_kind": "none",
+      "checks": [
+        {
+          "name": "runtime_health",
+          "status": "passed",
+          "message": "runtime fixture reports healthy provider",
+          "details": {
+            "health_status": "healthy"
+          }
+        },
+        {
+          "name": "runtime_capabilities",
+          "status": "passed",
+          "message": "required runtime capabilities are present",
+          "details": {
+            "missing_capabilities": []
+          }
+        },
+        {
+          "name": "report_artifact",
+          "status": "passed",
+          "message": "runtime report artifact exists",
+          "details": {
+            "path": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-237/runtime-report.json"
+          }
+        }
+      ],
+      "evidence": {
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-237/runtime-report.json"
+        ],
+        "preview_urls": [],
+        "logs": [
+          "runtime_health",
+          "capability_check",
+          "record_t0_fixture_result"
+        ],
+        "result_scope": "t0_offline_fixture_only",
+        "counts_as_mobile_experiment": false,
+        "mobile_profile": "android_real_phone_share",
+        "os_target": "android_real_device",
+        "input_surface": "Android Sharesheet",
+        "requires_real_device": true,
+        "device_evidence": "not_collected_in_t0"
+      },
+      "notes": "T0 fixture run verifies runtime health metadata; no live helper process or device lifecycle evidence is collected."
+    }
+  ],
+  "privacy_check": {
+    "status": "passed",
+    "findings": []
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "user_prompt": "Create an HTML artifact and preview it.",
+  "actions": [
+    "write_file",
+    "read_file",
+    "preview_html",
+    "report_result"
+  ],
+  "result": "complete_trace",
+  "artifact": "docs/mobile-harness-benchmark/runs/<run-id>/artifacts",
+  "report": "summary.md"
+}

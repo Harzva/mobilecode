@@ -1,0 +1,26 @@
+{"task_id": "MH-FI-001", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html"}
+{"task_id": "MH-FI-001", "event_index": 1, "kind": "action", "action": "external_file_open", "summary": "external_file_open executed in deterministic dry run"}
+{"task_id": "MH-FI-001", "event_index": 2, "kind": "action", "action": "html_preview", "summary": "html_preview executed in deterministic dry run"}
+{"task_id": "MH-FI-001", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-FI-001", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/artifacts/MH-FI-001/detected-file.json"], "preview_urls": ["mobilecode-preview://bench/MH-FI-001/fixtures/file-intake/simple-page.html"]}
+{"task_id": "MH-CE-004", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/code-edit/broken-config.json"}
+{"task_id": "MH-CE-004", "event_index": 1, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-CE-004", "event_index": 2, "kind": "action", "action": "repair_json", "summary": "repair_json executed in deterministic dry run"}
+{"task_id": "MH-CE-004", "event_index": 3, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-CE-004", "event_index": 4, "kind": "action", "action": "validate_json", "summary": "validate_json executed in deterministic dry run"}
+{"task_id": "MH-CE-004", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/artifacts/MH-CE-004/fixed-config.json"], "preview_urls": []}
+{"task_id": "MH-PV-001", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/preview/index.html"}
+{"task_id": "MH-PV-001", "event_index": 1, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-PV-001", "event_index": 2, "kind": "action", "action": "snapshot_summary", "summary": "snapshot_summary executed in deterministic dry run"}
+{"task_id": "MH-PV-001", "event_index": 3, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-PV-001", "event_index": 4, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/artifacts/MH-PV-001/snapshot-summary.json"], "preview_urls": ["mobilecode-preview://bench/MH-PV-001/fixtures/preview/index.html"]}
+{"task_id": "MH-GD-001", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/github/commit-artifact.json"}
+{"task_id": "MH-GD-001", "event_index": 1, "kind": "action", "action": "load_repo_task", "summary": "load_repo_task executed in deterministic dry run"}
+{"task_id": "MH-GD-001", "event_index": 2, "kind": "action", "action": "record_blocked_result", "summary": "record_blocked_result executed in deterministic dry run"}
+{"task_id": "MH-GD-001", "event_index": 3, "kind": "result", "status": "blocked", "failure_kind": "github_auth_blocked", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/artifacts/MH-GD-001/github-delivery-blocked.json"], "preview_urls": []}
+{"task_id": "MH-HE-001", "event_index": 0, "kind": "input", "summary": "fixture loaded", "fixture_path": "docs/mobile-harness-benchmark/fixtures/evidence/complete-trace.json"}
+{"task_id": "MH-HE-001", "event_index": 1, "kind": "action", "action": "write_file", "summary": "write_file executed in deterministic dry run"}
+{"task_id": "MH-HE-001", "event_index": 2, "kind": "action", "action": "read_file", "summary": "read_file executed in deterministic dry run"}
+{"task_id": "MH-HE-001", "event_index": 3, "kind": "action", "action": "preview_html", "summary": "preview_html executed in deterministic dry run"}
+{"task_id": "MH-HE-001", "event_index": 4, "kind": "action", "action": "report_result", "summary": "report_result executed in deterministic dry run"}
+{"task_id": "MH-HE-001", "event_index": 5, "kind": "result", "status": "passed", "failure_kind": "none", "artifact_paths": ["docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/artifacts/MH-HE-001/trace-report.json"], "preview_urls": []}

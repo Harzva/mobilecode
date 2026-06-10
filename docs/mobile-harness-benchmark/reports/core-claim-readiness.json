@@ -1,0 +1,92 @@
+{
+  "report": "core-claim-readiness",
+  "generated_at": "2026-06-09T07:03:46Z",
+  "status": "passed_with_open_requirements",
+  "claim_count": 4,
+  "counts_as_experiment": false,
+  "paper_positioning_checked": true,
+  "open_requirements": [
+    "real_mobile_tier_runs",
+    "counted_baseline_comparison_results",
+    "final_frozen_subset_after_mobile_and_github_evidence"
+  ],
+  "evidence_boundary": "The core positioning claims are present in the paper and linked to evidence-boundary artifacts, but they do not substitute for real mobile-tier or baseline experiments.",
+  "claims": [
+    {
+      "id": "C1_not_full_mobile_ide",
+      "statement": "Phone-native AI coding should be framed as a harness control plane, not as compressing a full IDE onto a phone.",
+      "status": "supported_as_positioning_claim",
+      "counts_as_experiment": false,
+      "paper_terms": [
+        "not as ``putting a full IDE on a phone''",
+        "control plane",
+        "not served well by compressing a desktop IDE into a small screen"
+      ],
+      "evidence_artifacts": [
+        "paper/iclr-mobile-harness/main.tex",
+        "docs/mobile-harness-benchmark/reports/paper-claim-evidence-ledger.json"
+      ],
+      "boundary": "This is a positioning claim, not an empirical performance result."
+    },
+    {
+      "id": "C2_harness_is_research_object",
+      "statement": "The research object is the harness layer that coordinates mobile inputs, artifacts, runtime or delivery routes, and evidence.",
+      "status": "supported_as_positioning_claim",
+      "counts_as_experiment": false,
+      "paper_terms": [
+        "The harness is the research object",
+        "mobile input surfaces",
+        "coding artifacts",
+        "execution or delivery routes",
+        "verifier evidence",
+        "Design invariants",
+        "route explicitness",
+        "evidence monotonicity",
+        "public-report safety"
+      ],
+      "evidence_artifacts": [
+        "paper/iclr-mobile-harness/main.tex",
+        "docs/mobile-harness-benchmark/reports/paper-claim-evidence-ledger.json",
+        "docs/mobile-harness-benchmark/reports/evidence-maturity-matrix.json"
+      ],
+      "boundary": "The current implementation and benchmark support the abstraction, while real mobile performance remains open."
+    },
+    {
+      "id": "C3_not_general_phone_use_benchmark",
+      "statement": "MobileHarnessBench is scoped to phone-native AI coding harnesses rather than general app-control phone-use agents.",
+      "status": "supported_as_positioning_claim",
+      "counts_as_experiment": false,
+      "paper_terms": [
+        "not ask whether an agent can operate arbitrary consumer apps",
+        "phone-native coding harness",
+        "not a completed benchmark release"
+      ],
+      "evidence_artifacts": [
+        "paper/iclr-mobile-harness/main.tex",
+        "docs/mobile-harness-benchmark/reports/threats-to-validity.json"
+      ],
+      "boundary": "The scope is intentionally narrower than general phone-use benchmarks."
+    },
+    {
+      "id": "C4_evidence_first_counting",
+      "statement": "Benchmark claims count evidence, traces, verifiers and mobile-tier artifacts rather than task intention or generated text.",
+      "status": "supported_as_positioning_claim",
+      "counts_as_experiment": false,
+      "paper_terms": [
+        "A mobile benchmark must count evidence, not intention",
+        "A task is counted only when its verifier result, trace, summary, artifacts, and required mobile-tier evidence are present",
+        "counts\\_as\\_experiment=false",
+        "\\section{Conclusion}",
+        "evidence-gated benchmark protocol",
+        "The remaining work is empirical"
+      ],
+      "evidence_artifacts": [
+        "paper/iclr-mobile-harness/main.tex",
+        "docs/mobile-harness-benchmark/reports/paper-claim-evidence-ledger.json",
+        "docs/mobile-harness-benchmark/reports/evidence-maturity-matrix.json",
+        "docs/mobile-harness-benchmark/reports/evaluation-protocol-readiness.json"
+      ],
+      "boundary": "Only T0 fixture evidence is counted in the current draft; mobile and baseline results remain open."
+    }
+  ]
+}

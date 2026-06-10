@@ -1,0 +1,12 @@
+{
+  "run_a": {
+    "task_id": "MH-CE-001",
+    "status": "passed",
+    "steps": 4
+  },
+  "run_b": {
+    "task_id": "MH-CE-001",
+    "status": "warning",
+    "steps": 6
+  }
+}

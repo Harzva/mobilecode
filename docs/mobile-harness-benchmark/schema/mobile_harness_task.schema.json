@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Harzva/mobilecode/docs/mobile-harness-benchmark/schema/mobile_harness_task.schema.json",
+  "title": "MobileHarnessBench Task",
+  "type": "object",
+  "required": [
+    "id",
+    "category",
+    "title",
+    "user_goal",
+    "input_fixture",
+    "required_capabilities",
+    "expected_artifacts",
+    "verifiers",
+    "evidence_requirements",
+    "blocked_conditions"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^MH-[A-Z]{2}-[0-9]{3}$"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "file_intake",
+        "code_edit",
+        "preview_verification",
+        "github_delivery",
+        "harness_evidence",
+        "runtime_orchestration"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 4
+    },
+    "user_goal": {
+      "type": "string",
+      "minLength": 10
+    },
+    "input_fixture": {
+      "type": "object",
+      "required": [
+        "kind",
+        "path",
+        "description"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    },
+    "required_capabilities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "expected_artifacts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "verifiers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "evidence_requirements": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "blocked_conditions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scenario": {
+      "type": "object"
+    },
+    "quality_gates": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sampling_tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "mobile_requirements": {
+      "type": "object",
+      "properties": {
+        "os_target": {
+          "type": "string"
+        },
+        "input_surface": {
+          "type": "string"
+        },
+        "app_state": {
+          "type": "string"
+        },
+        "network_profile": {
+          "type": "string"
+        },
+        "viewport": {
+          "type": "string"
+        },
+        "requires_real_device": {
+          "type": "boolean"
+        },
+        "evidence_capture": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "test_oracle": {
+      "type": "object",
+      "properties": {
+        "must_satisfy": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "failure_policy": {
+          "type": "string"
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  }
+}

@@ -1,0 +1,316 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anonymous.example/mobile-harness/schema/baseline_run.schema.json",
+  "title": "MobileHarnessBench Baseline Run",
+  "type": "object",
+  "required": [
+    "benchmark",
+    "schema_version",
+    "run_id",
+    "run_kind",
+    "task_subset",
+    "baseline_id",
+    "environment",
+    "counts_as_experiment",
+    "counts_as_baseline_result",
+    "summary",
+    "results",
+    "evidence_boundary"
+  ],
+  "properties": {
+    "benchmark": {
+      "type": "string",
+      "const": "MobileHarnessBench"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^0\\.[0-9]+\\.[0-9]+$"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 8
+    },
+    "run_kind": {
+      "type": "string",
+      "enum": [
+        "scaffold_not_run",
+        "dry_run_not_counted",
+        "baseline_result"
+      ]
+    },
+    "task_subset": {
+      "type": "object",
+      "required": [
+        "name",
+        "path",
+        "task_count"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "task_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "baseline_id": {
+      "type": "string",
+      "enum": [
+        "chat_only_mobile_coding_flow",
+        "desktop_remote_ide_flow",
+        "mobile_harness_flow"
+      ]
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "mode",
+        "model_provider",
+        "model_name",
+        "execution_tier",
+        "device_profile",
+        "authorization_state"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string"
+        },
+        "model_provider": {
+          "type": "string"
+        },
+        "model_name": {
+          "type": "string"
+        },
+        "execution_tier": {
+          "type": "string"
+        },
+        "device_profile": {
+          "type": "string"
+        },
+        "authorization_state": {
+          "type": "string"
+        }
+      }
+    },
+    "counts_as_experiment": {
+      "type": "boolean"
+    },
+    "counts_as_baseline_result": {
+      "type": "boolean"
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "total",
+        "passed",
+        "failed",
+        "blocked",
+        "warning",
+        "not_run",
+        "metrics"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "warning": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_run": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "task_id",
+          "status",
+          "metrics",
+          "evidence",
+          "counts_as_mobile_experiment"
+        ],
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "pattern": "^MH-[A-Z]{2}-[0-9]{3}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "warning",
+              "failed",
+              "blocked",
+              "not_run"
+            ]
+          },
+          "metrics": {
+            "$ref": "#/$defs/metrics"
+          },
+          "evidence": {
+            "$ref": "#/$defs/evidence"
+          },
+          "counts_as_mobile_experiment": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "evidence_boundary": {
+      "type": "string",
+      "minLength": 20
+    }
+  },
+  "$defs": {
+    "metrics": {
+      "type": "object",
+      "required": [
+        "task_success",
+        "verified_success",
+        "trace_completeness",
+        "recovery_rate",
+        "artifact_availability",
+        "human_intervention_count",
+        "steps_to_completion"
+      ],
+      "properties": {
+        "task_success": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "verified_success": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "trace_completeness": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "recovery_rate": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "artifact_availability": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "human_intervention_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "steps_to_completion": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "artifact_paths",
+        "trace_paths",
+        "screenshot_paths",
+        "logs",
+        "verifier_outputs",
+        "transcript_paths",
+        "human_intervention_notes"
+      ],
+      "properties": {
+        "artifact_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "trace_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "screenshot_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "logs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verifier_outputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "transcript_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "human_intervention_notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

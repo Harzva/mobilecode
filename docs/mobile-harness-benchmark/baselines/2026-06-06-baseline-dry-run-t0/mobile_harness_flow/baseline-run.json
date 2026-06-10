@@ -1,0 +1,74 @@
+{
+  "benchmark": "MobileHarnessBench",
+  "schema_version": "0.1.0",
+  "run_id": "2026-06-06-baseline-dry-run-t0-mobile_harness_flow",
+  "run_kind": "dry_run_not_counted",
+  "task_subset": {
+    "name": "baseline-single-task-t0",
+    "path": "docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json",
+    "task_count": 1
+  },
+  "baseline_id": "mobile_harness_flow",
+  "environment": {
+    "mode": "dry_run_not_counted",
+    "model_provider": "not_selected",
+    "model_name": "not_selected",
+    "execution_tier": "T0-contract-dry-run",
+    "device_profile": "not_collected",
+    "authorization_state": "not_requested"
+  },
+  "counts_as_experiment": false,
+  "counts_as_baseline_result": false,
+  "summary": {
+    "total": 1,
+    "passed": 0,
+    "failed": 0,
+    "blocked": 1,
+    "warning": 0,
+    "not_run": 0,
+    "metrics": {
+      "task_success": null,
+      "verified_success": null,
+      "trace_completeness": null,
+      "recovery_rate": null,
+      "artifact_availability": null,
+      "human_intervention_count": null,
+      "steps_to_completion": null
+    }
+  },
+  "results": [
+    {
+      "task_id": "MH-CE-209",
+      "status": "blocked",
+      "metrics": {
+        "task_success": null,
+        "verified_success": null,
+        "trace_completeness": null,
+        "recovery_rate": null,
+        "artifact_availability": null,
+        "human_intervention_count": null,
+        "steps_to_completion": null
+      },
+      "evidence": {
+        "artifact_paths": [],
+        "trace_paths": [],
+        "screenshot_paths": [],
+        "logs": [
+          "baseline_dry_run_not_counted",
+          "no_model_provider_selected",
+          "no_device_execution",
+          "no_github_sandbox_execution",
+          "baseline_id=mobile_harness_flow"
+        ],
+        "verifier_outputs": [],
+        "transcript_paths": [],
+        "human_intervention_notes": [
+          "dry_run_not_counted",
+          "blocked_before_execution_to_preserve_evidence_boundary"
+        ]
+      },
+      "counts_as_mobile_experiment": false
+    }
+  ],
+  "evidence_boundary": "This T0 baseline dry run exercises the baseline-run contract for one frozen-subset task only. It did not execute a model, mobile device, simulator, or GitHub sandbox and must not be reported as a baseline comparison or mobile experiment."
+}

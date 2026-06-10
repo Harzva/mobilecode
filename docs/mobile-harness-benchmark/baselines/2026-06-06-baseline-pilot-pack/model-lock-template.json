@@ -1,0 +1,37 @@
+{
+  "report": "baseline-model-lock-template",
+  "status": "template_not_filled",
+  "counts_as_experiment": false,
+  "counts_as_baseline_result": false,
+  "task_id": "MH-CE-209",
+  "baseline_ids": [
+    "chat_only_mobile_coding_flow",
+    "desktop_remote_ide_flow",
+    "mobile_harness_flow"
+  ],
+  "required_fields": [
+    "model_provider",
+    "model_name",
+    "model_version_or_snapshot",
+    "temperature",
+    "max_tokens",
+    "system_prompt_hash",
+    "task_prompt_hash",
+    "operator_label",
+    "run_started_at",
+    "run_environment"
+  ],
+  "placeholders": {
+    "model_provider": "to_be_filled_before_run",
+    "model_name": "to_be_filled_before_run",
+    "model_version_or_snapshot": "to_be_filled_before_run",
+    "temperature": "to_be_filled_before_run",
+    "max_tokens": "to_be_filled_before_run",
+    "system_prompt_hash": "to_be_filled_before_run",
+    "task_prompt_hash": "to_be_filled_before_run",
+    "operator_label": "to_be_filled_before_run",
+    "run_started_at": "to_be_filled_before_run",
+    "run_environment": "to_be_filled_before_run"
+  },
+  "evidence_boundary": "This model lock is a template. It records no model execution and must not be used as a baseline result."
+}

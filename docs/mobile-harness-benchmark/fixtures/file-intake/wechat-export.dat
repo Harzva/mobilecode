@@ -1,0 +1,3 @@
+微信转发导出的非标准后缀文本。
+
+MobileCode 应该把它识别为 text-like payload，并进入安全文本预览 fallback。

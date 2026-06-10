@@ -1,0 +1,174 @@
+{
+  "report": "paper-claim-evidence-ledger",
+  "generated_at": "2026-06-09T07:03:46Z",
+  "status": "passed_with_open_requirements",
+  "claim_count": 6,
+  "supported_claim_count": 5,
+  "open_requirements": [
+    "real_mobile_and_baseline_results"
+  ],
+  "evidence_boundary": "T0 offline fixture results and draft planning manifests are separated from final mobile-tier experiments. Real Android/iOS/GitHub sandbox results remain unclaimed until their run artifacts exist.",
+  "claims": [
+    {
+      "id": "v2_candidate_bank",
+      "paper_claim": "MobileHarnessBench v2 contains 1,000 differentiated candidate tasks across six categories.",
+      "status": "supported_non_experimental",
+      "counts_as_paper_evidence": false,
+      "counts_as_mobile_experiment": false,
+      "validated_values": {
+        "task_count": 1000,
+        "category_count": {
+          "code_edit": 167,
+          "file_intake": 167,
+          "github_delivery": 167,
+          "harness_evidence": 166,
+          "preview_verification": 167,
+          "runtime_orchestration": 166
+        },
+        "audit_status": "passed_with_limits",
+        "failed_gate_count": 0
+      },
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/tasks/v2-task-bank.json",
+        "docs/mobile-harness-benchmark/reports/v2-quality-audit.json"
+      ],
+      "limitation": "Candidate tasks are task supply, not completed experiments."
+    },
+    {
+      "id": "representative_v0_t0_run",
+      "paper_claim": "The five-task representative offline dry run produced four passed tasks and one blocked task.",
+      "status": "supported_t0_only",
+      "counts_as_paper_evidence": true,
+      "counts_as_mobile_experiment": false,
+      "validated_values": {
+        "total": 5,
+        "passed": 4,
+        "blocked": 1,
+        "failed": 0,
+        "warning": 0
+      },
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-v0-dry-run/run.json"
+      ],
+      "limitation": "T0 fixture evidence validates verifier machinery but not phone-device behavior."
+    },
+    {
+      "id": "smoke_v2_t0_run",
+      "paper_claim": "The 60-task smoke-v2 T0 run produced 50 passed tasks and 10 blocked GitHub-delivery tasks.",
+      "status": "supported_t0_only",
+      "counts_as_paper_evidence": true,
+      "counts_as_mobile_experiment": false,
+      "validated_values": {
+        "total": 60,
+        "passed": 50,
+        "blocked": 10,
+        "failed": 0,
+        "warning": 0
+      },
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/run.json"
+      ],
+      "limitation": "T0 fixture evidence is not Android/iOS mobile-tier evidence."
+    },
+    {
+      "id": "draft_frozen_paper_subset",
+      "paper_claim": "The draft frozen paper subset fixes 60 planned tasks but does not count as final paper evidence.",
+      "status": "supported_planning_only",
+      "counts_as_paper_evidence": false,
+      "counts_as_mobile_experiment": false,
+      "validated_values": {
+        "task_count": 60,
+        "category_count": {
+          "code_edit": 10,
+          "file_intake": 10,
+          "github_delivery": 10,
+          "harness_evidence": 10,
+          "preview_verification": 10,
+          "runtime_orchestration": 10
+        },
+        "counts_as_final_paper_subset": false,
+        "t0_result_count": {
+          "blocked": 10,
+          "passed": 50
+        },
+        "required_next_tier_count": {
+          "T2-android-real-device": 15,
+          "T2-or-T3-mobile-tier": 30,
+          "T3-ios-simulator": 5,
+          "T5-github-sandbox": 10
+        }
+      },
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json",
+        "docs/mobile-harness-benchmark/reports/frozen-subset-readiness.json"
+      ],
+      "limitation": "Each task remains non-final until its required T2/T3/T5 evidence is attached."
+    },
+    {
+      "id": "mobile_tier_readiness",
+      "paper_claim": "The current local environment cannot claim Android/iOS mobile-tier results from this run.",
+      "status": "supported_blocked_non_experimental",
+      "counts_as_paper_evidence": false,
+      "counts_as_mobile_experiment": false,
+      "validated_values": {
+        "counts_as_experiment": false,
+        "tool_availability": {
+          "adb": false,
+          "emulator": false,
+          "flutter": false,
+          "xcrun": false,
+          "xcodebuild": false
+        },
+        "readiness_status": {
+          "android": "blocked",
+          "android_blocked_reason": "adb_missing",
+          "ios": "blocked",
+          "ios_blocked_reason": "xcrun_missing"
+        }
+      },
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/mobile-tier-readiness.json"
+      ],
+      "limitation": "This is a readiness probe, not a mobile experiment."
+    },
+    {
+      "id": "real_mobile_and_baseline_results",
+      "paper_claim": "Real Android/iOS mobile-tier experiments and baseline comparisons remain open requirements.",
+      "status": "open_requirement",
+      "counts_as_paper_evidence": false,
+      "counts_as_mobile_experiment": false,
+      "validated_values": {
+        "android_t2_completed": false,
+        "ios_t3_completed": false,
+        "github_t5_completed": false,
+        "baseline_comparison_completed": false,
+        "baseline_protocol_defined": true,
+        "baseline_protocol_status": "protocol_defined_no_results",
+        "baseline_count": 3,
+        "baseline_run_contract_defined": true,
+        "baseline_run_contract_status": "contract_defined_no_results",
+        "baseline_run_contract_result_count": 0,
+        "baseline_dry_run_available": true,
+        "baseline_dry_run_status": "dry_run_not_counted",
+        "baseline_dry_run_task_count_per_baseline": 1,
+        "baseline_dry_run_counts_as_result": false,
+        "baseline_pilot_pack_available": true,
+        "baseline_pilot_pack_status": "pilot_ready_no_results",
+        "baseline_pilot_pack_task_count_per_baseline": 1,
+        "baseline_pilot_pack_counts_as_result": false,
+        "baseline_pilot_readiness_status": "pilot_ready_no_results",
+        "baseline_pilot_ready_for_execution": true,
+        "baseline_pilot_ready_for_counted_result": false
+      },
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/mobile-tier-readiness.json",
+        "docs/mobile-harness-benchmark/reports/baseline-protocol-readiness.json",
+        "docs/mobile-harness-benchmark/reports/baseline-run-contract.json",
+        "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-dry-run-t0/manifest.json",
+        "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/manifest.json",
+        "docs/mobile-harness-benchmark/reports/baseline-pilot-readiness.json"
+      ],
+      "limitation": "The baseline protocol, run contract, one-task T0 dry run, pilot prompt/evidence pack and readiness gate are defined, but no final performance table should report baseline completion until counted run evidence is present."
+    }
+  ]
+}

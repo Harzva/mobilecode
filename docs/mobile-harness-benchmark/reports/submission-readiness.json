@@ -1,0 +1,223 @@
+{
+  "report": "submission-readiness",
+  "generated_at": "2026-06-09T12:15:23Z",
+  "status": "passed_with_open_requirements",
+  "ready_for_submission_upload": false,
+  "ready_for_counted_mobile_experiment": false,
+  "ready_for_counted_baseline_result": false,
+  "manuscript_pdf_bytes": 305141,
+  "gate_count": 16,
+  "open_gate_ids": [
+    "S2_mobile_experiment_boundary",
+    "S4_baseline_result_boundary",
+    "S6_submission_metadata"
+  ],
+  "open_requirements": [
+    "venue_template_author_confirmation",
+    "real_android_or_ios_mobile_tier_evidence",
+    "counted_baseline_comparison_results",
+    "final_anonymous_supplement_after_new_evidence"
+  ],
+  "evidence_boundary": "The draft can be reviewed as a system-and-benchmark proposal with T0 fixture evidence, but it is not upload-ready as a final empirical paper until mobile-tier and baseline evidence are attached.",
+  "gates": [
+    {
+      "id": "S0_manuscript_artifacts",
+      "name": "Manuscript source and compiled PDF exist",
+      "status": "passed",
+      "evidence_artifacts": [
+        "paper/iclr-mobile-harness/main.tex",
+        "paper/iclr-mobile-harness/main.pdf"
+      ],
+      "rationale": "The anonymous ICLR-style draft has LaTeX source and a compiled PDF.",
+      "next_actions": [
+        "Recompile after every text or bibliography change."
+      ]
+    },
+    {
+      "id": "S1_claim_evidence_boundary",
+      "name": "Claims are mapped to evidence boundaries",
+      "status": "passed_with_open_requirements",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/paper-claim-evidence-ledger.json",
+        "docs/mobile-harness-benchmark/reports/evidence-maturity-matrix.json"
+      ],
+      "rationale": "T0 fixture evidence is separated from real mobile and baseline claims.",
+      "next_actions": [
+        "Keep new claims tied to concrete artifacts before adding them to the paper."
+      ]
+    },
+    {
+      "id": "S1a_core_claim_positioning",
+      "name": "Core positioning claim is evidence-bounded",
+      "status": "passed_with_open_requirements",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/core-claim-readiness.json"
+      ],
+      "rationale": "The paper frames mobile AI coding as a harness control plane rather than a full mobile IDE or a general phone-use benchmark.",
+      "next_actions": [
+        "Regenerate the core claim readiness report after changing the abstract, introduction, motivation, scope or related-work positioning."
+      ]
+    },
+    {
+      "id": "S2_mobile_experiment_boundary",
+      "name": "Mobile-tier results are not over-claimed",
+      "status": "open_requirement",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/mobile-tier-readiness.json"
+      ],
+      "rationale": "Android/iOS readiness is recorded, but no T2/T3/T4 result is claimed.",
+      "next_actions": [
+        "Run Android real-device subset.",
+        "Run Mac iOS simulator subset.",
+        "Attach screenshots, logs, traces, and device metadata."
+      ]
+    },
+    {
+      "id": "S3_mobile_evidence_capture_pack",
+      "name": "Mobile-tier evidence capture pack is ready",
+      "status": "passed",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/mobile-evidence-pack-readiness.json"
+      ],
+      "rationale": "Android T2 and iOS T3 task-level evidence templates are generated but not counted as results.",
+      "next_actions": [
+        "Fill the templates only during real Android or Mac iOS simulator collection."
+      ]
+    },
+    {
+      "id": "S3a_verifier_contract_readiness",
+      "name": "Verifier contracts cover current task banks",
+      "status": "passed",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/verifier-contract-readiness.json"
+      ],
+      "rationale": "All verifier ids referenced by the current v0/v1/v2 task banks are covered by machine-readable verifier contracts.",
+      "next_actions": [
+        "Regenerate the verifier contract readiness report after adding task categories, verifier ids, or verifier evidence requirements."
+      ]
+    },
+    {
+      "id": "S4_baseline_result_boundary",
+      "name": "Baseline comparison remains protocol-only",
+      "status": "open_requirement",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/baseline-pilot-readiness.json"
+      ],
+      "rationale": "The baseline pilot pack is ready for execution but not ready for counted results.",
+      "next_actions": [
+        "Execute the pilot with locked model settings.",
+        "Attach transcripts, verifier outputs, artifacts, and human-intervention records."
+      ]
+    },
+    {
+      "id": "S5_anonymous_supplement_boundary",
+      "name": "Anonymous supplement boundary is defined",
+      "status": "passed",
+      "evidence_artifacts": [
+        "paper/iclr-mobile-harness/SUPPLEMENT_BOUNDARY.md"
+      ],
+      "rationale": "The boundary document defines included artifacts, repo-compatible supplement layout, excluded private materials, and scan rules.",
+      "next_actions": [
+        "Regenerate the supplement zip after real mobile runs, baseline runs, citation changes, and this readiness report."
+      ]
+    },
+    {
+      "id": "S5a_reviewer_manifest_gate",
+      "name": "Reviewer manifest evidence labels are machine-gated",
+      "status": "passed",
+      "evidence_artifacts": [
+        "paper/iclr-mobile-harness/SUPPLEMENT_BOUNDARY.md",
+        "scripts/prepare_mobile_harness_supplement.py"
+      ],
+      "rationale": "The supplement staging script fails if README_SUPPLEMENT.md loses its claim map, evidence labels, or mobile-result boundary.",
+      "next_actions": [
+        "Keep reviewer-facing labels synchronized with new evidence states before regenerating the supplement."
+      ]
+    },
+    {
+      "id": "S6_submission_metadata",
+      "name": "Venue, template, and authorship remain draft",
+      "status": "open_requirement",
+      "evidence_artifacts": [
+        "paper/iclr-mobile-harness/SUBMISSION_TODO.md"
+      ],
+      "rationale": "The draft still needs venue/year confirmation, official template confirmation, and author OpenReview checks.",
+      "next_actions": [
+        "Confirm target venue/year and official template.",
+        "Confirm author OpenReview profiles before upload."
+      ]
+    },
+    {
+      "id": "S7_bibliography_metadata",
+      "name": "Related-work bibliography metadata is verified",
+      "status": "passed",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/bibliography-readiness.json"
+      ],
+      "rationale": "The current cited related-work entries have source URLs, eprint metadata where available, and no author placeholders.",
+      "next_actions": [
+        "Regenerate the bibliography readiness report after adding, removing, or replacing citations."
+      ]
+    },
+    {
+      "id": "S8_threats_to_validity",
+      "name": "Threats to validity are tracked",
+      "status": "passed_with_open_requirements",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/threats-to-validity.json"
+      ],
+      "rationale": "Construct, internal, external, baseline, privacy and submission threats are explicit and tied to open requirements.",
+      "next_actions": [
+        "Regenerate the threats matrix after changing claims, evidence levels, baselines, mobile collection or submission metadata."
+      ]
+    },
+    {
+      "id": "S9_evaluation_protocol_readiness",
+      "name": "Evaluation protocol is machine-checkable",
+      "status": "passed_with_open_requirements",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/evaluation-protocol-readiness.json"
+      ],
+      "rationale": "E1-E5 are tied to task sets, current evidence artifacts and non-counted open requirements.",
+      "next_actions": [
+        "Regenerate the evaluation protocol readiness report after changing E1-E5, task subsets, mobile collection or baseline protocols."
+      ]
+    },
+    {
+      "id": "S9a_method_presentation_readiness",
+      "name": "Method presentation is reviewable",
+      "status": "passed",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/method-presentation-readiness.json"
+      ],
+      "rationale": "The draft has machine-checked visuals, algorithms, module interfaces, formulas and evidence-boundary language.",
+      "next_actions": [
+        "Regenerate the method presentation readiness report after changing system, benchmark, verifier, evaluation or limitation sections."
+      ]
+    },
+    {
+      "id": "S10_reproducibility_checklist",
+      "name": "Draft reproducibility checklist is available",
+      "status": "passed_with_open_requirements",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/reproducibility-checklist.json"
+      ],
+      "rationale": "The draft command matrix maps reproducible commands to expected artifacts while keeping full empirical reproduction open.",
+      "next_actions": [
+        "Regenerate the reproducibility checklist after changing scripts, output artifacts, paper compilation, supplement staging, or validation commands."
+      ]
+    },
+    {
+      "id": "S11_page_limit_readiness",
+      "name": "Compiled PDF page boundary is checked",
+      "status": "passed",
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/page-limit-readiness.json"
+      ],
+      "rationale": "The compiled draft records total PDF pages, the ethics page and the References start page, and keeps the main text within the current page limit.",
+      "next_actions": [
+        "Regenerate the page-limit readiness report after paper text, bibliography, style-file or template changes."
+      ]
+    }
+  ]
+}

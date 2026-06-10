@@ -1,0 +1,97 @@
+# ICLR Submission TODO
+
+## Must Finish Before Upload
+
+- [ ] Verify the target ICLR year and replace the template if an official newer template exists.
+- [ ] Confirm the actual OpenReview venue/year: ICLR 2026 full paper deadline was 2025-09-24 AOE, so this may need the next ICLR cycle or another venue.
+- [ ] Confirm all authors have OpenReview profiles before the abstract deadline.
+- [x] Replace draft related-work BibTeX entries with verified metadata.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_bibliography_readiness.py` produced `docs/mobile-harness-benchmark/reports/bibliography-readiness.md`; it reports 9 verified entries, zero draft entries, and matching cited/reference keys.
+- [x] Run T0 `smoke-v2` and add an offline fixture result table.
+  - Evidence: 2026-06-06 `python scripts\run_mobile_harness_bench.py --task-set smoke-v2 --run-id 2026-06-06-smoke-v2-t0` produced 60 results: 50 passed, 10 blocked, 0 failed.
+- [ ] Replace or extend T0 `smoke-v2` evidence with real mobile-tier evidence where required by task definitions.
+- [ ] Run `android-device-v2` on a real Android device and attach device metadata.
+- [ ] Run `ios-simulator-v2` on a Mac iOS simulator and attach simulator logs/screenshots.
+- [ ] Decide whether to include iOS real device evidence in the initial submission or appendix.
+- [x] Create a current-draft anonymous supplementary zip with task banks, fixtures, scripts and run reports, following `SUPPLEMENT_BOUNDARY.md`.
+  - Evidence: 2026-06-06 `python scripts\prepare_mobile_harness_supplement.py` produced `paper/iclr-mobile-harness/build/mobile-harness-anonymous-supplement.zip`, emitted the staged file count and current zip byte size, and passed the local identity/path/token scan.
+- [x] Produce a current-draft anonymized benchmark package where product-facing names, public repo URLs and schema `$id` values are redacted.
+  - Evidence: 2026-06-06 the supplement script staged repo-compatible `docs/mobile-harness-benchmark/`, `paper/iclr-mobile-harness/` and `scripts/` under `paper/iclr-mobile-harness/build/anonymous-supplement/` and reported `Anonymous supplement staging passed`.
+- [x] Produce a v2 machine quality audit for task-bank structure, coverage, uniqueness and public-output safety.
+  - Evidence: 2026-06-06 `python scripts\audit_mobile_harness_task_bank.py` produced `docs/mobile-harness-benchmark/reports/v2-quality-audit.md` and reported `failed_gates=0`.
+- [x] Produce a paper claim-to-evidence ledger so draft claims are traceable to concrete artifacts.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_claim_ledger.py` produced `docs/mobile-harness-benchmark/reports/paper-claim-evidence-ledger.md` with 6 claims, including real mobile and baseline results as open requirements.
+- [x] Generate a core claim readiness report for paper positioning.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_core_claim_readiness.py` produced `docs/mobile-harness-benchmark/reports/core-claim-readiness.md`; it reports 4 positioning claims, `counts_as_experiment=false`, and open mobile/baseline requirements.
+- [x] Define the baseline-comparison protocol without counting it as experimental evidence.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_baseline_protocol.py` produced `docs/mobile-harness-benchmark/reports/baseline-protocol-readiness.md` with 3 baselines, 7 metrics, and `counts_as_experiment=false`.
+- [x] Define the baseline run result contract without counting it as baseline evidence.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_baseline_run_contract.py` produced `docs/mobile-harness-benchmark/reports/baseline-run-contract.md`; `result_count=0` and `counts_as_baseline_result=false`.
+- [x] Generate baseline scaffold files without counting them as baseline evidence.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_baseline_scaffold.py` produced `docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-scaffold/` with 3 scaffold runs, each 60 `not_run` entries, and `counts_as_baseline_result=false`.
+- [x] Generate a one-task T0 baseline dry run without counting it as baseline evidence.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_baseline_dry_run.py` produced `docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-dry-run-t0/` with 3 dry-run entries for `MH-CE-209`; every entry is `blocked`, has null metrics, and sets `counts_as_baseline_result=false`.
+- [x] Generate a baseline pilot prompt/evidence pack without counting it as baseline evidence.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_baseline_pilot_pack.py` produced `docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/` with prompts, `model-lock-template.json`, `human-intervention-sheet.csv` and per-baseline `evidence-template.json`; status is `pilot_ready_no_results`.
+- [x] Generate a baseline pilot readiness report without counting it as baseline evidence.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_baseline_pilot_readiness.py` produced `docs/mobile-harness-benchmark/reports/baseline-pilot-readiness.md`; `ready_for_pilot_execution=true` and `ready_for_counted_baseline_result=false`.
+- [x] Generate an evidence maturity matrix to prevent over-claiming experimental status.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_evidence_maturity_matrix.py` produced `docs/mobile-harness-benchmark/reports/evidence-maturity-matrix.md`; it reports 7 stages, `current_max_counted_paper_evidence_level=1`, and zero counted mobile or baseline result stages.
+- [x] Generate a submission readiness gate without marking the draft as upload-ready.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_submission_readiness.py` produced `docs/mobile-harness-benchmark/reports/submission-readiness.md`; it reports 16 gates, `ready_for_submission_upload=false`, and 3 open gates for mobile evidence, baseline evidence and submission metadata.
+- [x] Generate an evaluation protocol readiness report for E1-E5.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_evaluation_protocol_readiness.py` produced `docs/mobile-harness-benchmark/reports/evaluation-protocol-readiness.md`; it reports 5 protocols and 7 primary metrics, marks only E1 as counted T0 fixture evidence, and keeps E2-E5 as capture-ready or protocol-only.
+- [x] Generate a verifier contract readiness report for current task-bank verifier coverage.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_verifier_contract_readiness.py` produced `docs/mobile-harness-benchmark/reports/verifier-contract-readiness.md`; it reports 12 verifier contracts covering all verifier ids used by 1225 current v0/v1/v2 task definitions, without claiming full verifier implementation or mobile-device execution.
+- [x] Generate a reproducibility checklist for draft command-to-artifact mapping.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_reproducibility_checklist.py` produced `docs/mobile-harness-benchmark/reports/reproducibility-checklist.md`; it reports 16 commands, `ready_for_draft_reproduction=true`, and `ready_for_full_empirical_reproduction=false`.
+- [x] Generate a method presentation readiness report for reviewable visuals, algorithms, modules and formulas.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_method_presentation_readiness.py` produced `docs/mobile-harness-benchmark/reports/method-presentation-readiness.md`; it reports 5 checks and `ready_for_method_review=true`.
+- [x] Generate a page-limit readiness report for the compiled draft.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_page_limit_readiness.py` produced `docs/mobile-harness-benchmark/reports/page-limit-readiness.md`; it reports `pdf_pages=10`, `references_start_page=9`, and `within_main_text_limit=true`.
+- [x] Generate a threats-to-validity matrix for reviewer-facing risk tracking.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_threats_to_validity.py` produced `docs/mobile-harness-benchmark/reports/threats-to-validity.md`; it reports 6 threats and keeps all unresolved empirical risks as open requirements.
+- [x] Produce a mobile-tier readiness report without counting it as experimental evidence.
+  - Evidence: 2026-06-06 `python scripts\collect_mobile_harness_mobile_tier_evidence.py` produced `docs/mobile-harness-benchmark/reports/mobile-tier-readiness.md`; current Android/iOS status is blocked because `adb` and `xcrun` are unavailable in this environment.
+- [x] Generate a mobile-tier evidence capture pack without counting it as experimental evidence.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_mobile_evidence_pack.py` produced `docs/mobile-harness-benchmark/reports/mobile-evidence-pack-readiness.md`; it covers 48 T2/T3 tasks, 53 templates, an execution playbook, `ready_for_capture=true`, and `ready_for_counted_mobile_experiment=false`.
+- [x] Produce a draft frozen paper subset manifest without counting it as final paper evidence.
+  - Evidence: 2026-06-06 `python scripts\generate_mobile_harness_frozen_subset.py` produced `docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json`; `counts_as_final_paper_subset=false`.
+- [ ] Promote the draft frozen subset to a final paper subset only after required T2/T3/T5 evidence is attached.
+- [ ] Regenerate the final anonymous supplementary zip after real mobile runs, baseline results and any later citation changes.
+- [ ] Remove any repo URL, personal handle, organization name, local path or private account reference from the paper and supplement.
+
+## Current Evidence Boundary
+
+- Completed: official ICLR 2026 template downloaded.
+- Completed: anonymous LaTeX draft compiles to `main.pdf` locally.
+- Completed: anonymous supplement boundary rules written in `SUPPLEMENT_BOUNDARY.md`.
+- Completed: current-draft anonymous supplement staging/zip generated and scanned locally.
+- Completed: v0 5-task offline dry run.
+- Completed: T0 `smoke-v2` 60-task offline dry run.
+- Completed: v1 200-task and v2 1,000-task candidate banks.
+- Completed: v2 machine quality audit, with known limits documented.
+- Completed: paper claim-to-evidence ledger, with real mobile and baseline claims kept open.
+- Completed: core claim readiness report, with positioning claims kept non-experimental.
+- Completed: baseline-comparison protocol, without baseline results.
+- Completed: baseline run result contract, without baseline results.
+- Completed: baseline not-run scaffold, without baseline results.
+- Completed: baseline T0 dry-run contract sample, without baseline results.
+- Completed: baseline pilot prompt/evidence pack, without baseline results.
+- Completed: baseline pilot readiness gate, without baseline results.
+- Completed: evidence maturity matrix, with mobile and baseline results kept open.
+- Completed: evaluation protocol readiness report, with E1-E5 evidence boundaries and metric contract machine-checked.
+- Completed: verifier contract readiness report, with current task-bank verifier references covered by machine-readable contracts.
+- Completed: reproducibility checklist, with draft commands mapped to expected artifacts.
+- Completed: page-limit readiness report, with compiled PDF page boundary checked.
+- Completed: related-work bibliography metadata readiness, with zero current draft entries.
+- Completed: threats-to-validity matrix, with open empirical risks preserved.
+- Completed: submission readiness gate, with upload-readiness kept false.
+- Completed: smoke/android-device/ios-simulator task-set manifests.
+- Completed: mobile-tier readiness report, with `counts_as_experiment=false`.
+- Completed: mobile evidence capture pack and execution playbook, with `counts_as_mobile_experiment=false`.
+- Completed: draft frozen subset manifest, with `counts_as_final_paper_subset=false`.
+- Not completed: final anonymous supplement after real mobile and baseline evidence.
+- Not completed: final frozen paper subset with mobile/GitHub sandbox evidence.
+- Not completed: real mobile device experiments.
+- Not completed: baseline comparison.

@@ -1,0 +1,106 @@
+{
+  "report": "threats-to-validity",
+  "generated_at": "2026-06-09T07:03:47Z",
+  "status": "passed_with_open_requirements",
+  "threat_count": 6,
+  "counts_as_experiment": false,
+  "limitations_section_checked": true,
+  "open_requirements": [
+    "authorized_github_sandbox_runs",
+    "counted_baseline_runs_with_locked_settings",
+    "human_review_and_final_frozen_subset",
+    "multi_device_mobile_collection",
+    "real_mobile_tier_runs",
+    "venue_template_author_confirmation"
+  ],
+  "evidence_boundary": "Threats are tracked as review-quality controls, not as empirical results. Open threats remain open until mobile-tier and baseline evidence exists.",
+  "evidence_artifacts": [
+    "paper/iclr-mobile-harness/main.tex",
+    "docs/mobile-harness-benchmark/reports/paper-claim-evidence-ledger.json",
+    "docs/mobile-harness-benchmark/reports/evidence-maturity-matrix.json",
+    "docs/mobile-harness-benchmark/reports/mobile-evidence-pack-readiness.json",
+    "docs/mobile-harness-benchmark/reports/baseline-pilot-readiness.json",
+    "docs/mobile-harness-benchmark/reports/bibliography-readiness.json",
+    "docs/mobile-harness-benchmark/reports/submission-readiness.json"
+  ],
+  "threats": [
+    {
+      "id": "TTV1_construct_candidate_bank",
+      "category": "Construct validity",
+      "risk": "The 1,000-task bank could be mistaken for completed experiments.",
+      "mitigation": "The paper, claim ledger and maturity matrix mark it as task supply only.",
+      "status": "mitigated_with_open_requirement",
+      "counts_as_experiment": false,
+      "evidence_artifacts": [
+        "paper/iclr-mobile-harness/main.tex",
+        "docs/mobile-harness-benchmark/reports/paper-claim-evidence-ledger.json",
+        "docs/mobile-harness-benchmark/reports/evidence-maturity-matrix.json"
+      ],
+      "open_requirement": "human_review_and_final_frozen_subset"
+    },
+    {
+      "id": "TTV2_internal_t0_evidence",
+      "category": "Internal validity",
+      "risk": "Offline T0 results validate fixtures and verifiers but not phone behavior.",
+      "mitigation": "T0 is reported separately and mobile tiers remain open.",
+      "status": "mitigated_with_open_requirement",
+      "counts_as_experiment": false,
+      "evidence_artifacts": [
+        "paper/iclr-mobile-harness/main.tex",
+        "docs/mobile-harness-benchmark/reports/paper-claim-evidence-ledger.json",
+        "docs/mobile-harness-benchmark/reports/evidence-maturity-matrix.json"
+      ],
+      "open_requirement": "real_mobile_tier_runs"
+    },
+    {
+      "id": "TTV3_external_device_diversity",
+      "category": "External validity",
+      "risk": "A single Android/iOS environment would not cover device, OS, vendor and network diversity.",
+      "mitigation": "The mobile evidence pack records device metadata, logs and screenshots before counting results.",
+      "status": "mitigated_with_open_requirement",
+      "counts_as_experiment": false,
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/mobile-evidence-pack-readiness.json"
+      ],
+      "open_requirement": "multi_device_mobile_collection"
+    },
+    {
+      "id": "TTV4_baseline_fairness",
+      "category": "Baseline validity",
+      "risk": "Baseline comparisons can be biased by model settings, prompts and human intervention.",
+      "mitigation": "The baseline pilot pack requires model locks, transcripts, verifier outputs and intervention records.",
+      "status": "mitigated_with_open_requirement",
+      "counts_as_experiment": false,
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/baseline-pilot-readiness.json"
+      ],
+      "open_requirement": "counted_baseline_runs_with_locked_settings"
+    },
+    {
+      "id": "TTV5_privacy_and_delivery",
+      "category": "Privacy and delivery validity",
+      "risk": "GitHub and public reports could leak private repositories, credentials or account identifiers.",
+      "mitigation": "The supplement boundary, public-output safety checks and GitHub sandbox rule constrain public artifacts.",
+      "status": "mitigated_with_open_requirement",
+      "counts_as_experiment": false,
+      "evidence_artifacts": [
+        "paper/iclr-mobile-harness/main.tex",
+        "docs/mobile-harness-benchmark/reports/submission-readiness.json"
+      ],
+      "open_requirement": "authorized_github_sandbox_runs"
+    },
+    {
+      "id": "TTV6_submission_metadata",
+      "category": "Submission validity",
+      "risk": "A strong draft can still be invalid for a specific venue if year, template, author profiles or citations drift.",
+      "mitigation": "Bibliography metadata is verified now, while venue/template/authorship remain open in submission readiness.",
+      "status": "mitigated_with_open_requirement",
+      "counts_as_experiment": false,
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/reports/bibliography-readiness.json",
+        "docs/mobile-harness-benchmark/reports/submission-readiness.json"
+      ],
+      "open_requirement": "venue_template_author_confirmation"
+    }
+  ]
+}

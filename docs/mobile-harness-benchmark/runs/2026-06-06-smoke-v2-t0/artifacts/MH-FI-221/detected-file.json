@@ -1,0 +1,19 @@
+{
+  "incoming_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html",
+  "detected_type": "html",
+  "fixture_bytes": 342,
+  "result_scope": "t0_offline_fixture_only",
+  "counts_as_mobile_experiment": false,
+  "mobile_profile": "ios_simulator_document",
+  "os_target": "ios_simulator",
+  "input_surface": "iOS document picker",
+  "requires_real_device": false,
+  "device_evidence": "not_collected_in_t0",
+  "preview_url": "mobilecode-preview://bench/MH-FI-221/fixtures/file-intake/simple-page.html",
+  "html_summary": {
+    "title": "Mobile Harness Fixture",
+    "body_text_length": 88,
+    "heading_count": 1,
+    "has_viewport_meta": true
+  }
+}

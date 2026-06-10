@@ -1,0 +1,497 @@
+\documentclass{article}
+
+\usepackage{iclr2026_conference,times}
+\input{math_commands.tex}
+
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\setlist{nosep,leftmargin=1.5em}
+
+\title{Mobile Harnesses for AI Coding on Phones}
+
+\author{Anonymous Authors\\
+Paper under double-blind review}
+
+\newcommand{\mhb}{\textsc{MobileHarnessBench}}
+\newcommand{\prototype}{\textsc{MobileHarness}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Large language model agents increasingly rely on execution harnesses: controlled environments that expose tools, preserve traces, validate artifacts, and report failures.
+On desktop and server platforms, such harnesses are often implemented as IDE integrations, browser environments, or remote sandboxes.
+Phones, however, remain an awkward substrate for AI coding: they have constrained screens, fragmented file entry points, restrictive execution environments, and mobile-specific sharing and preview flows.
+This paper argues that phone-native AI coding should be framed not as ``putting a full IDE on a phone'', but as building a mobile harness: a control plane that coordinates model calls, local files, previews, runtime selection, repository delivery, and verifiable evidence under mobile constraints.
+We present \prototype{}, a phone-native AI coding harness prototype, and \mhb{}, a benchmark protocol for evaluating whether a mobile coding agent can close the loop from incoming files and code edits to preview, delivery, runtime orchestration, and evidence reporting.
+\mhb{} contains 25 seed tasks, a 1,000-task candidate bank across six mobile coding categories, mobile-specific test tiers, and a verifier contract.
+We validate the benchmark machinery with deterministic T0 dry runs: a five-task representative run (4 passed, 1 typed GitHub block) and a 60-task \texttt{smoke-v2} run (50 fixture-level passes, 10 typed GitHub blocks).
+The draft is therefore a scoped system-and-benchmark contribution, not a completed Android/iOS performance study: it contributes a harness abstraction, a task/verifier protocol, initial T0 evidence, and a device-tier plan for Android/iOS devices, simulators, and GitHub sandbox delivery.
+\end{abstract}
+
+\section{Introduction}
+
+AI coding agents are often discussed as if progress comes from model intelligence alone.
+In practice, the unit that turns a model into a useful agent is the \emph{harness}: the environment that exposes tools, preserves state, constrains actions, records traces, validates artifacts, and decides whether a task is complete.
+On-device AI apps are moving from chat demos toward task, skill, tool, and benchmark surfaces; we specialize that shift for mobile coding.
+Software-engineering benchmarks such as SWE-bench require repository state and executable tests \citep{swebench}; web and operating-system benchmarks such as Mind2Web, WebArena, and OSWorld require interactive environments and grounded observations \citep{mind2web, webarena, osworld}; mobile benchmarks such as Android in the Wild, AndroidWorld, MobileAgentBench, and PhoneWorld require phone-like interfaces, tasks, and verification signals \citep{aitw, androidworld, mobileagentbench, phoneworld}.
+
+The phone is the missing substrate in this progression for AI coding.
+People increasingly encounter coding-adjacent work on phones: a malformed file arrives through a chat app, a Markdown report needs previewing, a generated HTML artifact needs inspection, a small patch needs review, or a cloud build needs to be triggered while away from a desktop.
+These tasks are not served well by compressing a desktop IDE into a small screen.
+Their failures are mobile failures: share sheets, document pickers, sandboxed files, WebViews, app backgrounding, permission prompts, unstable connectivity, and constrained local execution.
+
+This motivates a sharper formulation: mobile AI coding should be studied not as ``putting a full IDE on a phone'', not as general phone-use control, and not as model-only text generation, but as a phone-resident \emph{control plane}.
+That plane receives messy inputs, invokes models, manages artifacts, selects execution routes, previews outputs, delivers changes to remote infrastructure, and exports evidence.
+We call this layer a \emph{mobile coding harness}: it separates model intelligence from mobile execution and evidence control while making phone-specific phenomena first-class evaluation targets rather than incidental UI details.
+
+We study this problem through \prototype{}, a prototype phone-native AI coding harness.
+The prototype keeps model providers remote when needed, delegates heavyweight builds to external systems such as continuous integration, and keeps the user-facing control loop on the phone.
+The phone-side app coordinates chat state, tool traces, local project files, HTML/Markdown previews, runtime-provider selection, GitHub-oriented delivery, and report cards.
+
+This paper makes three contributions.
+First, it defines the \emph{mobile coding harness}: a phone-native control plane that makes model calls, artifacts, previews, delivery routes, and verifier evidence auditable under mobile OS constraints.
+Second, it introduces \mhb{}, a benchmark protocol and candidate-bank construction method for six phone-native coding categories: file intake, code editing, preview verification, GitHub delivery, harness evidence, and runtime orchestration.
+Third, it specifies an evidence-gated evaluation protocol covering T0 fixture validation, Android emulator and real-device tiers, Mac iOS simulator and iOS real-device tiers, GitHub sandbox delivery, and baseline comparison.
+
+\paragraph{Scope of evidence.}
+We distinguish task supply from task completion.
+The 1,000-task bank is a candidate bank, not a claim of 1,000 completed experiments.
+A task is counted only when verifier results, traces, artifacts, summaries, and required mobile-tier evidence are present; current evidence is T0-only over five representative tasks and a 60-task \texttt{smoke-v2} subset.
+
+\section{Motivation: The Missing Mobile Harness Layer}
+
+Existing agent benchmarks illuminate different parts of the landscape, but none directly captures the phone-native AI coding loop.
+Table~\ref{tab:positioning} summarizes the gap.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{>{\raggedright\arraybackslash}p{0.18\linewidth}>{\raggedright\arraybackslash}p{0.31\linewidth}>{\raggedright\arraybackslash}p{0.37\linewidth}}
+\toprule
+Line of work & Primary question & Missing for mobile coding \\
+\midrule
+SE agents & Can an agent modify a repository and satisfy tests? & Usually assumes desktop/server execution, broad filesystem access, and non-mobile artifact handling. \\
+Web/OS agents & Can an agent operate a browser or desktop environment? & Does not model mobile share flows, document pickers, WebViews, app lifecycle, or phone permissions. \\
+Phone-use agents & Can an agent operate mobile apps through GUI actions? & Focuses on app manipulation rather than coding artifacts, repository delivery, runtime routing, or verifier reports. \\
+Coding worlds & Can an agent write code against controlled APIs and app state? & Provides strong programmatic evaluation, but not phone OS boundaries or phone-native preview/delivery surfaces. \\
+\bottomrule
+\end{tabular}
+\caption{Mobile coding harnesses sit between coding-agent benchmarks, phone-use environments, and practical mobile development workflows.}
+\label{tab:positioning}
+\end{table}
+
+\paragraph{Gap criterion.}
+In shorthand, \(\mathrm{MCH}=\mathrm{PhoneOS}\cap\mathrm{CodingArtifact}\cap\mathrm{RouteControl}\cap\mathrm{VerifierEvidence}\): software-engineering benchmarks usually relax \(\mathrm{PhoneOS}\), phone-use benchmarks usually relax coding-artifact and route-control requirements, and development tools are not evidence-gated benchmark protocols.
+
+\paragraph{Desktop assumptions break on phones.}
+Desktop coding assumes broad filesystem access, stable windows, keyboard-heavy interaction, long-running processes, and direct terminals.
+Phones instead mediate entry through share sheets, document pickers, app sandboxes, permissions, lifecycle events, and network changes; execution may be absent, delegated, or restricted to preview-only routes.
+
+\paragraph{Coding on phones is artifact-centered.}
+The most plausible near-term mobile coding tasks are small but consequential artifact workflows: opening an unknown file from a messaging app, repairing malformed JSON, generating static HTML, previewing Markdown, checking a WebView, preparing a public-safe report, or triggering a remote build.
+They matter because they occur at the edge of ordinary mobile use, where switching to a desktop interrupts the work.
+
+\paragraph{The harness is the research object.}
+For a mobile coding agent, the useful artifact is often not a compiled binary.
+It may be a generated HTML page, a Markdown report, a small configuration repair, a GitHub commit, a Pages URL, an Actions artifact, or a trace explaining why a task was blocked.
+The harness must therefore expose:
+\begin{enumerate}[leftmargin=1.5em]
+    \item file intake and type recovery from mobile entry points;
+    \item local artifact creation and scoped editing;
+    \item WebView/Markdown preview and snapshot summaries;
+    \item runtime-provider selection and fallback;
+    \item repository delivery through authenticated APIs; and
+    \item verifier results and public-safe reports.
+\end{enumerate}
+
+\paragraph{A mobile benchmark must count evidence, not intention.}
+An offline fixture runner is useful for validating schemas and verifiers, but it cannot prove share-sheet behavior, real WebView rendering, background recovery, low-memory resilience, or iOS Open In behavior.
+Accordingly, \mhb{} separates candidate task definitions from counted benchmark results.
+Tasks become paper-counted only after producing verifier outputs, traces, summaries, and evidence from the required mobile test tier.
+
+\paragraph{Definition.}
+A \emph{mobile coding harness} is the phone-resident control layer that binds four elements into one reproducible loop: mobile input surfaces, coding artifacts, execution or delivery routes, and verifier evidence.
+This definition intentionally excludes model weights and heavyweight build infrastructure.
+Those components may be remote; the harness is responsible for making their use observable, recoverable, and reviewable from the phone.
+We formalize the harness as
+\[
+\mathcal{H}=(\mathcal{I},\mathcal{C},\mathcal{P},\mathcal{R},\mathcal{D},\mathcal{E},\mathcal{V}),
+\]
+where \(\mathcal{I}\) is mobile input intake, \(\mathcal{C}\) is artifact construction and editing, \(\mathcal{P}\) is preview, \(\mathcal{R}\) is runtime routing, \(\mathcal{D}\) is delivery, \(\mathcal{E}\) is evidence capture, and \(\mathcal{V}\) is verification.
+A run is a state transition \(x_{k+1}=\mathcal{H}(x_k,u_k,o_k)\), where \(u_k\) is the user or model action and \(o_k\) is the mobile observation.
+The run is reviewable only when it emits an evidence certificate
+\[
+\zeta_t=(a_t,p_t,\tau_t,m_t,v_t),
+\]
+where \(a_t\) is the produced artifact set, \(p_t\) is preview state, \(\tau_t\) is the trace, \(m_t\) is mobile-tier evidence, and \(v_t\) is the verifier result.
+
+\section{System: A Phone-Native Coding Harness}
+
+Our prototype is a phone-native application organized around a harness control plane rather than a local IDE clone.
+Figure~\ref{fig:architecture} summarizes the architecture.
+
+\begin{figure}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.15}
+\fbox{\begin{minipage}{0.89\linewidth}
+\begin{tabular}{@{}ccccc@{}}
+\begin{tabular}{c}\textbf{Mobile input}\\share sheet\\file picker\\chat files\end{tabular}
+& $\rightarrow$ &
+\begin{tabular}{c}\textbf{Harness core}\\action runner\\RuntimeProvider \(r\)\\policy gates\end{tabular}
+& $\rightarrow$ &
+\begin{tabular}{c}\textbf{Artifact surface}\\editor\\HTML/MD preview\\reports\end{tabular}
+\\[3pt]
+&& $\downarrow$ && $\downarrow$\\[-1pt]
+&&
+\begin{tabular}{c}\textbf{Execution / delivery}\\declared caps + auth\\WebView/helper/GitHub\end{tabular}
+& $\rightarrow$ &
+\begin{tabular}{c}\textbf{Evidence}\\artifact channel\\trace/media/verifier\end{tabular}
+\end{tabular}
+\end{minipage}}
+\caption{Module view of a mobile coding harness. The RuntimeProvider boundary makes route capability, authorization, artifact flow, and evidence flow explicit while the phone keeps the control loop.}
+\label{fig:architecture}
+\end{figure}
+
+\paragraph{Formal loop.}
+Operationally, the harness composes six modules:
+\[
+\mathcal{H}=\mathcal{V}\circ\mathcal{L}\circ\Phi\circ\Omega\circ\Pi\circ N_{\mathcal{I}},
+\]
+where \(N_{\mathcal{I}}\) normalizes mobile inputs, \(\Pi\) plans artifact actions, \(\Omega\) selects a runtime or delivery route, \(\Phi\) renders previews, \(\mathcal{L}\) records evidence, and \(\mathcal{V}\) verifies the run.
+The typed interfaces are \(N_{\mathcal{I}}:i\mapsto\hat{i}\), \(\Pi:(\hat{i},g)\mapsto(a,\nu)\), \(\Omega:(t,\mathcal{R}_t)\mapsto r^\star\), \(\Phi:a\mapsto p\), \(\mathcal{L}:(a,p,r^\star)\mapsto\tau\), and \(\mathcal{V}:(t,a,p,\tau,m)\mapsto(s,c)\).
+The route policy balances verifiability, evidence capture, authorization, locality, cost, and risk:
+\[
+r_t^\star =
+\underset{r\in\mathcal{R}_t}{\arg\max}\;
+\lambda_v q_v(r,t)+\lambda_e q_e(r,t)+\lambda_a q_a(r,t)+\lambda_l q_l(r,t)
+-\lambda_c c(r,t)-\lambda_\rho \rho(r,t).
+\]
+The coefficients are policy parameters, not learned claims in this draft; their purpose is to make route choices auditable.
+
+\paragraph{Design invariants.}
+The control plane enforces route explicitness, evidence monotonicity, and public-report safety:
+\[
+\mathcal{I}_{\mathcal{H}}(t)=\mathbf{1}[\mathrm{route}(t)\land(\tau_{k+1}=\tau_k\oplus e_k)\land\mathrm{safe}(\mathrm{report}_t)].
+\]
+Every action records its selected route and fallback reason, evidence is appended rather than overwritten, and exported reports must be redacted or repo-relative.
+
+\begin{center}
+{\setlength{\fboxsep}{4pt}
+\fbox{\begin{minipage}{0.90\linewidth}
+\footnotesize
+\textbf{Algorithm 1: Mobile harness execution loop.}
+\textbf{Input:} mobile request \(t\), current state \(x\), provider set \(\mathcal{R}_t\).
+\textbf{Output:} evidence certificate \(\zeta_t\), status \(s\).
+\begin{enumerate}[leftmargin=1.2em,itemsep=0pt,topsep=1pt]
+    \item Normalize incoming file, share target, or chat artifact through \(N_{\mathcal{I}}\).
+    \item Plan artifacts and verifier ids with \(\Pi\); choose \(r_t^\star\) with \(\Omega\).
+    \item Execute edit, preview, or delivery; emit typed blocks when prerequisites are absent.
+    \item Record trace/media/report evidence with \(\mathcal{L}\), then verify with \(\mathcal{V}\).
+    \item Return \(\zeta_t=(a_t,p_t,\tau_t,m_t,v_t)\) and status \(s\).
+\end{enumerate}
+\end{minipage}}}
+\end{center}
+
+\paragraph{RuntimeProvider boundary.}
+RuntimeProvider is the executable module contract \(r=(\mathrm{cap},\mathrm{auth},\mathrm{exec},\mathrm{artifact},\mathrm{evidence},\mathrm{block})\), admitted only when \(\mathrm{admit}(r,t)=\mathbf{1}[\kappa_t\subseteq\mathrm{cap}(r)\land\mathrm{auth}(r,t)\land\mathrm{safe}(r,t)]\).
+ActionRunner executes only admitted routes; EvidenceLedger appends traces, media pointers, verifier outputs, and safe summaries.
+The prototype instantiates helper, external-terminal, WebView-only, and future cloud-backed routes; unavailable prerequisites produce typed \texttt{blocked} states rather than ad-hoc execution.
+
+\paragraph{Preview-first artifacts.}
+HTML and Markdown are first-class artifacts: they can be generated, read back, previewed in WebView, exported, and delivered through repository-backed static hosting.
+The harness records preview routes, snapshot metadata, and failure kinds instead of relying on visual inspection alone.
+
+\paragraph{GitHub-first delivery.}
+Mobile coding rarely benefits from local heavyweight builds, so repository APIs, Pages hosting, Actions dispatch, and artifact discovery are delivery surfaces.
+Authenticated actions are evaluated separately; unavailable authorization marks a GitHub-delivery task \texttt{blocked}, not failed.
+
+\paragraph{Evidence and reporting.}
+Each action should produce evidence: inputs, tool actions, outputs, artifacts, preview URLs, logs, failure kinds, and recovery suggestions.
+Public reports must use redacted or repo-relative evidence and must not expose private local paths or credentials.
+
+\section{\mhb: A Benchmark for Mobile Coding Harnesses}
+
+\mhb{} is a benchmark protocol for testing whether a phone-native harness can close the loop from user intent to verified artifact under mobile constraints.
+It is not a general phone GUI benchmark and does not ask whether an agent can operate arbitrary consumer apps; it evaluates a phone-native coding harness.
+It focuses on AI coding workflows that naturally occur on phones.
+
+\subsection{Task Categories}
+
+Table~\ref{tab:categories} lists the six categories.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{llp{0.48\linewidth}}
+\toprule
+Category & Count in v2 & What it tests \\
+\midrule
+File intake & 167 & Share/file-picker entry, type detection, fallback preview, unsupported files \\
+Code edit & 167 & Write/read/patch workflows, JSON repair, Markdown report generation, scoped diffs \\
+Preview verification & 167 & HTML/Markdown preview, blank/invalid preview detection, local image handling \\
+GitHub delivery & 167 & Commit metadata, conflict handling, Pages publish, Actions dispatch, artifacts \\
+Harness evidence & 166 & Complete traces, typed failures, redaction, recovery, run comparison \\
+Runtime orchestration & 166 & Runtime health, fallback, WebView-only mode, provider switching, task stop \\
+\bottomrule
+\end{tabular}
+\caption{\mhb{} v2 candidate task bank contains 1,000 candidate tasks across six mobile coding harness categories.}
+\label{tab:categories}
+\end{table}
+
+\subsection{Task Definition}
+
+Each task is a machine-readable tuple
+\[
+t=(id,c,g,i,\kappa,a,\nu,e,b,\mu,o),
+\]
+where \(c\) is category, \(g\) is the user goal, \(i\) is the input fixture, \(\kappa\) are required capabilities, \(a\) are expected artifacts, \(\nu\) are verifier ids, \(e\) are evidence requirements, \(b\) are blocked conditions, \(\mu\) is the mobile profile, and \(o\) is the oracle.
+A run returns
+\[
+y_t=(s,\zeta_t,\delta_t),
+\]
+where \(s\in\{\texttt{passed},\texttt{warning},\texttt{failed},\texttt{blocked}\}\), \(\zeta_t\) is the evidence certificate, and \(\delta_t\) is the typed explanation for non-counted or non-successful results.
+The tuple makes construction auditable: goals and fixtures define supply, verifier and oracle fields define evidence, and mobile profiles plus tier targets define counting gates:
+\[
+\mathcal{B}=\mathrm{Assemble}(C,F,M,Q,O,V,T)
+\]
+with categories \(C\), fixture families \(F\), mobile profiles \(M\), quality axes \(Q\), oracles \(O\), verifier contracts \(V\), and target evidence tiers \(T\).
+\paragraph{Algorithm 3: Differentiated candidate-bank construction.}
+The generator is a constrained sampler: (1) stratify target counts over \(C,F,M,Q,O\); (2) generate \(t_j=G(c_j,f_j,m_j,q_j,o_j)\) with required capabilities, artifacts, verifier ids, blocked conditions, and safety markers; (3) reject same-category near-duplicates when \(\Delta(t_i,t_j)=d_g(g_i,g_j)+d_f(f_i,f_j)+d_m(m_i,m_j)+d_o(o_i,o_j)<\epsilon\); (4) audit balance, unique titles/goals, oracle completeness, mobile-profile coverage, and tier declarations; and (5) freeze only manifest-selected subsets, leaving performance counts to evidence-gated runs.
+The v2 audit checks 1,000 unique titles, 1,000 unique user goals, category balance, quality-axis and mobile-profile coverage, task-set manifests, required oracle fields, and public-output safety markers, while preserving human review and mobile-device execution as open requirements.
+
+\subsection{Quality Axes}
+
+The v2 candidate bank assigns each task a coverage vector
+\[
+q(t)=(q_{\mathrm{happy}},q_{\mathrm{recovery}},q_{\mathrm{safety}},q_{\mathrm{mobile}})\in\{0,1\}^4 .
+\]
+The four coordinates mark happy-path completion, typed failure recovery, public-report safety, and declared mobile constraints such as viewport, app state, and resource limits.
+They are stratification tags for construction and audit, not difficulty estimates or performance claims.
+
+\subsection{Mobile Test Tiers}
+
+Table~\ref{tab:tiers} gives the evaluation tiers.
+The key design principle is that offline tests are necessary but insufficient.
+Each task declares required evidence tiers \(R_t\subseteq\{\mathrm{T0},\ldots,\mathrm{T5}\}\).
+For run \(r\), tier sufficiency is \(\mathrm{tier}(t,r)=\mathbf{1}[R_t\subseteq E_r \land M_r \land L_r \land A_r \land D_r]\), where \(E_r\) is observed tier, \(M_r\) media, \(L_r\) logs/traces, \(A_r\) artifacts, and \(D_r\) device or sandbox metadata.
+This predicate prevents T0 or simulator-only evidence from being counted when a task requires real-device behavior.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lll}
+\toprule
+Tier & Environment & Role \\
+\midrule
+T0 & Offline fixture runner & Schema, fixture, verifier, report safety \\
+T1 & Android emulator & UI/WebView regression and log capture \\
+T2 & Android real device & Share/Open-with, WebView, lifecycle, low-memory evidence \\
+T3 & Mac iOS simulator & iOS WebView, document picker, Xcode-log regression \\
+T4 & iOS real device & Open In, Files app, permissions, lifecycle evidence \\
+T5 & GitHub sandbox & Commit, Pages, Actions, artifact delivery \\
+\bottomrule
+\end{tabular}
+\caption{MobileHarnessBench separates candidate tasks from counted results by requiring evidence from the relevant mobile tier.}
+\label{tab:tiers}
+\end{table}
+
+Figure~\ref{fig:promotion-flow} shows the evidence-promotion rule used by the benchmark artifacts.
+A candidate task can be schema-valid and still remain non-result evidence until the required tier artifacts are attached.
+
+\begin{figure}[t]
+\centering
+\scriptsize
+\setlength{\tabcolsep}{2pt}
+\renewcommand{\arraystretch}{1.12}
+\fbox{\begin{minipage}{0.89\linewidth}
+\begin{tabular}{@{}ccccc@{}}
+\begin{tabular}{c}\textbf{Candidate bank}\\1,000 tasks\\six categories\end{tabular}
+& $\rightarrow$ &
+\begin{tabular}{c}\textbf{Task-set gate}\\frozen subset\\tier target\end{tabular}
+& $\rightarrow$ &
+\begin{tabular}{c}\textbf{Tier execution}\\T0/T2/T3/T4/T5\\fixture or device\end{tabular}
+\\[3pt]
+&&& $\downarrow$ &\\[-1pt]
+\begin{tabular}{c}\textbf{Paper count}\\counted result\\or typed non-result\end{tabular}
+& $\leftarrow$ &
+\begin{tabular}{c}\textbf{Verifier bundle}\\result + trace\\artifacts + media\end{tabular}
+& $\leftarrow$ &
+\begin{tabular}{c}\textbf{Evidence pack}\\screenshots/logs\\device metadata\end{tabular}
+\end{tabular}
+\end{minipage}}
+\caption{Evidence promotion flow. Scale creates coverage; only verifier-complete tier evidence creates counted benchmark results.}
+\label{fig:promotion-flow}
+\end{figure}
+
+\paragraph{Algorithm 4: Mobile-tier promotion audit.}
+Normalize \(E_r,M_r,L_r,A_r,D_r\); reject missing required fields with typed reasons; downgrade emulator-only or simulator-only runs when \(R_t\) marks real-device behavior; run verifier contracts; apply public-report redaction; count only when \(\pi(t,r)=1\).
+
+\paragraph{Simulator/real-device boundary.}
+Android emulators and Mac iOS simulators provide regression evidence for layout, WebView preview, document picker behavior, Xcode logs, and repeatable UI traces, but they cannot stand in for T2/T4 tasks that depend on file sharing, Open with/Open In flows, lifecycle, permissions, memory pressure, external apps, or network behavior.
+
+\section{Verifier Contract}
+
+\mhb{} uses verifiers to turn ``looks done'' into structured evidence.
+A machine-readable verifier catalog defines each verifier id, required inputs, required evidence, pass conditions, failure kinds, category scope, and current T0 support status.
+A verifier result contains:
+\begin{itemize}[leftmargin=1.5em]
+    \item task id, status, score, and failure kind;
+    \item named checks with passed, warning, failed, or blocked status;
+    \item artifact paths, preview URLs, screenshots, and logs;
+    \item recovery suggestions for blocked or failed cases.
+\end{itemize}
+
+Statuses have explicit semantics.
+\texttt{passed} means the user goal and required verifiers succeeded.
+\texttt{warning} means the core goal completed with non-blocking issues.
+\texttt{failed} means a required artifact, verifier, or safety condition failed.
+\texttt{blocked} means an external permission, account, platform, runtime, or device capability prevented execution and should not be counted as model or harness failure.
+Failure kinds are grouped into artifact/preview failures, trace/evidence failures, runtime-provider failures, authorization or delivery blocks, privacy/public-output failures, and missing mobile-tier evidence.
+For example, \texttt{blank\_preview}, \texttt{trace\_missing}, \texttt{runtime\_provider\_missing}, \texttt{github\_auth\_blocked}, and \texttt{public\_path\_leak} identify different recovery paths and should not be collapsed into one generic error.
+
+\paragraph{Evidence-gated verifier module.}
+The verifier can be viewed as a small decision module that maps a task run into a status and a counted-evidence flag.
+Let \(V_t\) denote required verifier checks, \(R_t\) trace completeness, \(A_t\) artifact availability, \(Q_t\) public-output safety, \(D_t\) whether the task requires real-device evidence, and \(M_t\) whether the required mobile-tier evidence is present.
+A task is counted in the paper only if
+\[
+\mathrm{counted}(t)=\mathbf{1}[V_t \land R_t \land A_t \land Q_t \land (\neg D_t \lor M_t)].
+\]
+This rule is intentionally stricter than task generation: candidate tasks increase coverage, while counted tasks require evidence.
+\begin{center}
+{\setlength{\fboxsep}{4pt}
+\fbox{\begin{minipage}{0.90\linewidth}
+\footnotesize
+\textbf{Algorithm 2: Evidence-gated verifier module.}
+\textbf{Input:} task \(t\), trace \(r\), artifacts \(a\), tier evidence \(m\).
+\textbf{Output:} status \(s\), counted flag \(c\).
+\begin{enumerate}[leftmargin=1.2em,itemsep=0pt,topsep=2pt]
+    \item Validate required artifacts, preview state, trace coverage, and public-output safety.
+    \item If an external permission, account, runtime, or device prerequisite is missing, set \(s=\texttt{blocked}\).
+    \item Else if any required verifier check fails, set \(s=\texttt{failed}\); otherwise set \(s\in\{\texttt{passed},\texttt{warning}\}\).
+    \item Set \(c=\mathrm{counted}(t)\) using the evidence gate above and preserve the typed reason when \(c=0\).
+\end{enumerate}
+\end{minipage}}}
+\end{center}
+
+The current offline verifier implementation covers the five-task representative run and the 60-task \texttt{smoke-v2} T0 run.
+It checks external file intake, generated HTML artifacts, preview summaries, deterministic JSON repair, GitHub delivery blocking, trace completeness, runtime metadata, and public-output safety.
+GitHub-delivery tasks are intentionally marked \texttt{blocked} in T0 runs because no remote write is performed.
+
+\section{Preliminary Evidence}
+
+The artifact package uses an evidence-state map \(E(a)\in\{\textsc{supply},\textsc{T0},\textsc{open}\}\).
+\textsc{supply} covers the 25-task seed set and 1,000-task v2 bank; \textsc{T0} covers deterministic fixture checks, quality audits, and offline dry runs; \textsc{open} covers real Android/iOS runs, GitHub sandbox delivery, and counted baseline comparisons.
+This map is part of the benchmark protocol: scale is reported as task supply, while performance claims require verifier-complete evidence.
+The claim-evidence ledger is a readiness module \(\Gamma_j=(\mathrm{claim}_j,A_j,\eta_j)\) with \(\mathrm{ready}(\Gamma_j)=\mathbf{1}[\forall a\in A_j:E(a)\succeq\eta_j\land\mathrm{safe}(a)]\); the evidence maturity matrix prevents T0 fixtures, readiness probes, and baseline scaffolds from being promoted to mobile or baseline results.
+
+Table~\ref{tab:dryrun} summarizes the current T0 offline evidence.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrrrp{0.32\linewidth}}
+\toprule
+Run & Tasks & Passed & Blocked & Failed & Evidence boundary \\
+\midrule
+representative-v0 & 5 & 4 & 1 & 0 & pipeline check across the original five categories \\
+smoke-v2 & 60 & 50 & 10 & 0 & fixture-only T0 evidence; not Android/iOS device evidence \\
+\bottomrule
+\end{tabular}
+\caption{Deterministic offline dry runs. These validate task fixtures, reports, traces, typed blocking, and safety checks, but they are not full mobile-device experiments.}
+\label{tab:dryrun}
+\end{table}
+
+Each run produces a JSON report, a Markdown summary, JSONL traces, and task-specific artifacts.
+The public run output is constrained to repo-relative paths and synthetic preview routes.
+The validator checks that task banks have the expected category distribution, that task-set manifests refer to valid tasks, that run artifacts exist, that traces match result task ids, and that public outputs avoid sensitive markers.
+
+\section{Evaluation Protocol}
+
+The evaluation is artifact-bound across task-bank construction, T0 verifier validation, mobile-device execution, delivery validation, and baselines.
+The unit is a trial record \(\rho_t=(t,w,r,e_t,s_t,c_t)\), where \(w\) is workflow, \(r\) route, \(s_t\) status, \(c_t\) counted flag, and \(e_t=(\zeta_t,\ell_t,d_t,h_t)\) stores certificate, logs/media, device or sandbox metadata, and human-intervention evidence.
+The promotion gate \(\pi(t,r)=\mathbf{1}[\mathrm{schema}(t)\land\mathrm{verifier}(r)\land\mathrm{tier}(t,r)\land\mathrm{safe}(r)]\) admits counted harness results only when schema, verifier, tier, and safety gates pass; for baselines the counted flag also requires \(B_w\).
+All other outputs remain task supply or typed non-results.
+
+\paragraph{E1: T0 smoke over v2.}
+Run the 60-task \texttt{smoke-v2} subset, ten tasks per category, using offline verifiers where possible.
+Report task success, verified success, blocked rate, trace completeness, and report-safety pass rate.
+
+\paragraph{E2: Android real-device subset.}
+Run the 30-task \texttt{android-device-v2} subset on at least one Android real device.
+Record device metadata, screenshots or recordings, logcat excerpts, run JSON, summaries, and traces for file sharing, Open with, WebView, runtime orchestration, and lifecycle evidence.
+
+\paragraph{E3: Mac iOS simulator subset.}
+Run the 18-task \texttt{ios-simulator-v2} subset on a Mac iOS simulator.
+Record simulator screenshots, Xcode logs, viewport metadata, traces, and summaries; this is a regression layer and does not replace a real iPhone study.
+
+\paragraph{E4: GitHub sandbox delivery.}
+Run authorized GitHub-delivery tasks against a public sandbox repository.
+Record commit SHAs, Pages URLs, Actions run URLs, artifact metadata, and typed blocked cases.
+
+\paragraph{E5: Baseline comparison.}
+Compare three workflows: chat-only mobile coding, desktop remote IDE flow, and the phone-native harness flow.
+All baselines use the same frozen task subset, input fixtures, authorization state, time budget, and human-intervention logging.
+For workflow \(w\), a baseline result can be counted only if
+\[
+B_w=L_w\land P_w\land A_w\land V_w\land H_w,
+\]
+where \(L_w\) is a model/provider lock, \(P_w\) prompt transcript completeness, \(A_w\) artifact or typed-block evidence, \(V_w\) verifier output, and \(H_w\) human-intervention annotation.
+The artifact package defines this protocol, schema, pilot prompts, and readiness gate, but \texttt{counts\_as\_experiment=false}; scaffold, dry-run, capture-ready, and pilot-ready files remain preparation, not performance results.
+
+\paragraph{Primary metrics.}
+For a task set \(T\), we report rate metrics with denominator \(|T|\):
+\(\mathrm{TaskSuccess}=|{\{t:g_t=1\}}|/|T|\),
+\(\mathrm{VerifiedSuccess}=|{\{t:g_t=1 \land V_t=1\}}|/|T|\),
+\(\mathrm{TraceCompleteness}=|{\{t:R_t=1\}}|/|T|\),
+\(\mathrm{RecoveryRate}=|{\{t:b_t=1 \land r_t=1\}}|/|\{t:b_t=1\}|\), and
+\(\mathrm{ArtifactAvailability}=|{\{t:A_t=1\}}|/|T|\), where \(g_t\) is goal completion, \(V_t\) verifier success, \(R_t\) trace completeness, \(b_t\) blocked or failed status, \(r_t\) actionable recovery guidance, and \(A_t\) reviewable artifacts.
+For baseline \(w\), the reported vector is
+\[
+\begin{aligned}
+\mathbf{m}_w=(&\mathrm{TaskSuccess},\mathrm{VerifiedSuccess},\mathrm{TraceCompleteness},\\
+&\mathrm{RecoveryRate},\mathrm{ArtifactAvailability},\bar h,\bar n),
+\end{aligned}
+\]
+where \(\bar h\) and \(\bar n\) are mean human interventions and mean steps to completion.
+
+\section{Related Work}
+
+\paragraph{Adjacent evaluation objects.}
+SWE-bench and AppWorld make repository or world-state repair verifier-first \citep{swebench, appworld}; Mind2Web, WebArena, and OSWorld evaluate grounded operation in web or desktop-like environments \citep{mind2web, webarena, osworld}; Android in the Wild, AndroidWorld, MobileAgentBench, and PhoneWorld move grounded operation onto phones \citep{aitw, androidworld, mobileagentbench, phoneworld}.
+Their objects are repository repair, environment control, and phone-app control; \mhb{} instead measures a phone-resident coding harness: mobile intake, coding artifacts, route choice, and verifier evidence under explicit device-evidence boundaries.
+
+\paragraph{Tools as evidence surfaces.}
+Android Studio, Xcode, Flutter tooling, emulators, simulators, device bridges, CI systems, GitHub Actions, and static hosting are useful infrastructure, but not benchmark protocols.
+They provide admissible signals such as logs, screenshots, commits, URLs, artifacts, and build metadata.
+\mhb{} treats these tools as evidence surfaces rather than baselines to imitate: a result counts only when a phone-resident certificate links intake, artifacts, route choice, preview or delivery, verifier output, and public-safe reporting.
+
+\section{Conclusion}
+
+\mhb{} frames phone-native AI coding as a mobile harness problem: the phone hosts control, preview, delivery, and evidence rather than imitating a desktop IDE; it then turns that frame into an evidence-gated benchmark protocol with differentiated task supply, tiered mobile evidence, typed non-results, and reviewer-visible claim boundaries. The remaining work is empirical: attach real Android/iOS evidence, authorized GitHub sandbox delivery, and counted baselines before promoting beyond T0 evidence.
+
+\section{Limitations and Threats to Validity}
+
+The main construct/internal threat is that the 1,000-task v2 candidate bank is not a completed benchmark release or a general phone-use benchmark; T0/offline runs validate fixtures, traces, verifier coverage, route logging, and report safety, not Android/iOS share sheets, WebViews, lifecycle, permissions, or runtime behavior.
+External, baseline, privacy, and submission threats remain open gates: device/OS diversity, GitHub sandbox authorization, locked baseline runs, public-output leakage checks, and venue/template/OpenReview/bibliography drift.
+
+\section{Reproducibility Statement}
+
+The package is reproducible as a draft/T0 artifact: it includes machine-readable task definitions, fixtures/manifests, a machine-readable verifier catalog, a deterministic task-bank generator, an offline verifier runner, a validator, and commands for the claim-evidence ledger, evidence maturity matrix, evaluation-protocol, method-presentation, verifier-contract, submission-readiness, page-limit, and reproducibility readiness reports.
+It is not yet reproducible as a full empirical result: the anonymous supplement is a boundary artifact, not extra results; mobile-tier readiness is non-experimental because Android \texttt{adb} and Mac/Xcode are absent, and the frozen subset remains \texttt{counts\_as\_final\_paper\_subset=false} until mobile and GitHub-sandbox evidence are attached. Future experimental runs will add device metadata before promotion.
+
+\section{Ethics Statement}
+
+The main ethical risks are privacy leakage, credential exposure, and misleading benchmark claims; \mhb{} handles them through public-report safety, typed authorization blocking, private-repo exclusion, mobile-evidence counting gates, no human-subject data, and human responsibility for claims.
+
+\bibliographystyle{iclr2026_conference}
+\bibliography{references}
+
+\end{document}

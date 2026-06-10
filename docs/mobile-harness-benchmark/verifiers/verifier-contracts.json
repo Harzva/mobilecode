@@ -1,0 +1,133 @@
+{
+  "schema_version": "2026-06-06",
+  "name": "MobileHarnessBench verifier contract catalog",
+  "counts_as_experiment": false,
+  "status_semantics": {
+    "passed": "Required checks succeeded.",
+    "warning": "Core goal succeeded with non-blocking issues.",
+    "failed": "A required artifact, verifier check, or safety condition failed.",
+    "blocked": "An external permission, account, platform, runtime, or device prerequisite prevented execution."
+  },
+  "contracts": [
+    {
+      "id": "artifact_exists_verifier",
+      "category_scope": ["code_edit"],
+      "description": "Checks that a requested local artifact exists and is reviewable.",
+      "required_inputs": ["task_id", "artifact_paths", "workspace_root"],
+      "required_evidence": ["artifact_path", "artifact_size_bytes", "readback_action"],
+      "pass_conditions": ["required artifact path exists", "artifact is non-empty unless the task explicitly expects an empty file", "artifact path is repo-relative in public reports"],
+      "failure_kinds": ["artifact_missing", "artifact_empty", "artifact_unreadable", "public_path_leak"],
+      "current_t0_support": "implemented_for_representative_and_v2_smoke"
+    },
+    {
+      "id": "diff_scope_verifier",
+      "category_scope": ["code_edit"],
+      "description": "Checks that an edit stays inside the task's expected scope.",
+      "required_inputs": ["task_id", "before_snapshot", "after_snapshot", "diff_summary"],
+      "required_evidence": ["diff", "changed_sections", "allowed_scope"],
+      "pass_conditions": ["diff is present", "changed sections match the task oracle", "unrelated files are not modified"],
+      "failure_kinds": ["missing_diff", "scope_violation", "unrelated_file_changed"],
+      "current_t0_support": "contract_defined_not_full_coverage"
+    },
+    {
+      "id": "evidence_verifier",
+      "category_scope": ["file_intake", "preview_verification", "github_delivery", "harness_evidence", "runtime_orchestration"],
+      "description": "Checks that task outcome evidence is structured, typed, and recoverable.",
+      "required_inputs": ["task_id", "verifier_result", "run_summary", "action_trace"],
+      "required_evidence": ["failure_kind", "user_message", "recovery_suggestion", "evidence_artifacts"],
+      "pass_conditions": ["result status is typed", "blocked or failed cases have a stable failure kind", "recovery suggestion is present when action is blocked or failed", "public report does not expose private markers"],
+      "failure_kinds": ["missing_failure_kind", "missing_recovery_suggestion", "unsafe_public_report", "unstructured_result"],
+      "current_t0_support": "implemented_for_representative_and_v2_smoke"
+    },
+    {
+      "id": "external_file_verifier",
+      "category_scope": ["file_intake"],
+      "description": "Checks mobile file intake metadata and fallback behavior.",
+      "required_inputs": ["task_id", "incoming_path", "detected_type", "preview_route"],
+      "required_evidence": ["incoming_path", "detected_type", "fallback_reason", "text_preview"],
+      "pass_conditions": ["incoming file path or URI is recorded", "file type is detected", "unsupported types produce a user-readable blocked result", "public output rewrites local paths"],
+      "failure_kinds": ["missing_incoming_file", "type_detection_missing", "fallback_missing", "public_path_leak"],
+      "current_t0_support": "implemented_for_representative_and_v2_smoke"
+    },
+    {
+      "id": "github_delivery_verifier",
+      "category_scope": ["github_delivery"],
+      "description": "Checks repository delivery evidence or typed authorization blocking.",
+      "required_inputs": ["task_id", "repo", "branch", "delivery_action"],
+      "required_evidence": ["repo", "branch", "commit_sha", "pages_url", "actions_run_url", "artifact_metadata", "failure_kind"],
+      "pass_conditions": ["authorized runs record remote delivery evidence", "unauthorized T0 runs are blocked rather than failed", "remote URLs and SHAs are public-safe when reported"],
+      "failure_kinds": ["github_auth_blocked", "repo_permission_missing", "pages_not_enabled", "workflow_dispatch_disabled", "artifact_expired"],
+      "current_t0_support": "implemented_as_typed_block"
+    },
+    {
+      "id": "html_preview_verifier",
+      "category_scope": ["file_intake", "code_edit", "preview_verification", "github_delivery", "runtime_orchestration"],
+      "description": "Checks that HTML artifacts can be previewed through a mobile route.",
+      "required_inputs": ["task_id", "artifact_path", "preview_url", "snapshot_summary"],
+      "required_evidence": ["preview_url", "dom_text_length", "snapshot_metadata", "viewport"],
+      "pass_conditions": ["artifact is HTML or has an HTML content type", "preview route exists", "DOM or text length exceeds the task threshold", "bounded mobile viewport is not blank"],
+      "failure_kinds": ["html_artifact_missing", "preview_route_missing", "blank_preview", "invalid_html"],
+      "current_t0_support": "implemented_for_representative_and_v2_smoke"
+    },
+    {
+      "id": "json_verifier",
+      "category_scope": ["file_intake", "code_edit"],
+      "description": "Checks JSON parsing, repair, and top-level structure.",
+      "required_inputs": ["task_id", "json_before", "json_after"],
+      "required_evidence": ["json_valid", "top_level_keys", "validation_before", "validation_after"],
+      "pass_conditions": ["final JSON parses", "required top-level keys are present", "repair action is recorded when the input was invalid"],
+      "failure_kinds": ["invalid_json_after_repair", "missing_required_key", "missing_validation_evidence"],
+      "current_t0_support": "implemented_for_representative_and_v2_smoke"
+    },
+    {
+      "id": "markdown_preview_verifier",
+      "category_scope": ["file_intake", "code_edit", "preview_verification"],
+      "description": "Checks Markdown parsing and mobile preview readiness.",
+      "required_inputs": ["task_id", "artifact_path", "markdown_text", "preview_summary"],
+      "required_evidence": ["heading_count", "paragraph_count", "image_count", "missing_images"],
+      "pass_conditions": ["artifact is Markdown or text accepted as Markdown", "headings or paragraphs are detected", "local image references are resolvable or clearly reported missing", "first screen is not empty"],
+      "failure_kinds": ["markdown_artifact_missing", "empty_markdown_preview", "image_reference_missing", "markdown_parse_failed"],
+      "current_t0_support": "implemented_for_v2_smoke"
+    },
+    {
+      "id": "privacy_verifier",
+      "category_scope": ["harness_evidence"],
+      "description": "Checks public report redaction and sensitive-marker exclusion.",
+      "required_inputs": ["task_id", "public_report", "redaction_summary"],
+      "required_evidence": ["redaction_summary", "public_report_path", "safety_scan"],
+      "pass_conditions": ["public report contains no raw tokens", "local absolute paths are absent", "account identifiers are absent or explicitly approved for private evidence only"],
+      "failure_kinds": ["token_leak", "absolute_path_leak", "account_identifier_leak", "unsafe_public_output"],
+      "current_t0_support": "implemented_for_v2_smoke"
+    },
+    {
+      "id": "runtime_verifier",
+      "category_scope": ["runtime_orchestration"],
+      "description": "Checks runtime-provider selection, fallback, health, and stop behavior.",
+      "required_inputs": ["task_id", "runtime_provider", "runtime_events", "action_trace"],
+      "required_evidence": ["selected_provider", "runtime_status", "fallback_reason", "stop_action", "boundary_check"],
+      "pass_conditions": ["selected runtime provider is recorded", "runtime health or fallback reason is recorded", "blocked execution remains typed", "RuntimeProvider and ActionRunner boundaries are preserved"],
+      "failure_kinds": ["runtime_provider_missing", "runtime_health_missing", "fallback_unexplained", "action_runner_boundary_violation"],
+      "current_t0_support": "implemented_for_v2_smoke"
+    },
+    {
+      "id": "snapshot_verifier",
+      "category_scope": ["preview_verification"],
+      "description": "Checks preview snapshot metadata and non-blank visual state.",
+      "required_inputs": ["task_id", "preview_url", "snapshot_summary"],
+      "required_evidence": ["snapshot_metadata", "dom_text_length", "viewport", "failure_kind"],
+      "pass_conditions": ["snapshot metadata exists", "snapshot or DOM summary indicates non-blank content when expected", "blank states are reported as failed or blocked with a typed reason"],
+      "failure_kinds": ["snapshot_missing", "blank_snapshot", "viewport_missing", "snapshot_tool_unavailable"],
+      "current_t0_support": "implemented_for_representative_and_v2_smoke"
+    },
+    {
+      "id": "trace_verifier",
+      "category_scope": ["code_edit", "harness_evidence", "runtime_orchestration"],
+      "description": "Checks action-trace completeness and task/result alignment.",
+      "required_inputs": ["task_id", "action_trace", "run_result"],
+      "required_evidence": ["user_prompt", "action", "result", "artifact", "report"],
+      "pass_conditions": ["trace has at least one user input", "trace records at least one action and result", "artifact or blocked reason is linked to the task id", "summary and trace task ids match"],
+      "failure_kinds": ["trace_missing", "trace_task_mismatch", "missing_action", "missing_result"],
+      "current_t0_support": "implemented_for_representative_and_v2_smoke"
+    }
+  ]
+}

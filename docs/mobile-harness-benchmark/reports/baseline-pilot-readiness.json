@@ -1,0 +1,70 @@
+{
+  "report": "baseline-pilot-readiness",
+  "generated_at": "2026-06-06T12:53:59Z",
+  "status": "pilot_ready_no_results",
+  "counts_as_experiment": false,
+  "counts_as_baseline_result": false,
+  "baseline_count": 3,
+  "task_count_per_baseline": 1,
+  "selected_task": {
+    "id": "MH-CE-209",
+    "category": "code_edit",
+    "fixture": "fixtures/code-edit/html-prompt.txt",
+    "required_capabilities": [
+      "write_file",
+      "read_file",
+      "html_preview"
+    ]
+  },
+  "ready_for_pilot_execution": true,
+  "ready_for_counted_baseline_result": false,
+  "readiness_checks": {
+    "protocol_defined": true,
+    "run_contract_defined": true,
+    "prompt_template_count": 3,
+    "evidence_template_count": 3,
+    "model_lock_template_present": true,
+    "human_intervention_sheet_present": true,
+    "baseline_ids": [
+      "chat_only_mobile_coding_flow",
+      "desktop_remote_ide_flow",
+      "mobile_harness_flow"
+    ]
+  },
+  "blocked_before_counting": [
+    "model_lock_not_filled",
+    "no_model_execution",
+    "no_prompt_transcripts",
+    "no_artifacts_or_blocked_outputs",
+    "no_verifier_outputs",
+    "no_baseline_result_runs"
+  ],
+  "required_next_artifacts": [
+    "filled model-lock.json",
+    "prompt transcripts for every baseline",
+    "artifact paths or explicit blocked-output evidence",
+    "verifier outputs for every baseline",
+    "filled human-intervention rows",
+    "baseline_result run files for all baselines"
+  ],
+  "prompt_paths": [
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/chat_only_mobile_coding_flow/prompt.md",
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/desktop_remote_ide_flow/prompt.md",
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/mobile_harness_flow/prompt.md"
+  ],
+  "evidence_template_paths": [
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/chat_only_mobile_coding_flow/evidence-template.json",
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/desktop_remote_ide_flow/evidence-template.json",
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/mobile_harness_flow/evidence-template.json"
+  ],
+  "model_lock_template": "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/model-lock-template.json",
+  "human_intervention_sheet": "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/human-intervention-sheet.csv",
+  "source_artifacts": [
+    "docs/mobile-harness-benchmark/reports/baseline-protocol-readiness.json",
+    "docs/mobile-harness-benchmark/reports/baseline-run-contract.json",
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/manifest.json",
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/model-lock-template.json",
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-pilot-pack/human-intervention-sheet.csv"
+  ],
+  "evidence_boundary": "The pilot package is ready to execute a non-counted pilot, but it still contains no filled model lock, transcript, artifact, verifier output, or baseline_result run. It must not be reported as a baseline comparison."
+}

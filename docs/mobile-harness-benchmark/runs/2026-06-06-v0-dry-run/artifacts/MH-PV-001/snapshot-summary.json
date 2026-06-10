@@ -1,0 +1,10 @@
+{
+  "viewport": {
+    "width": 390,
+    "height": 844
+  },
+  "title": "Preview Fixture",
+  "dom_text_length": 74,
+  "heading_count": 1,
+  "route": "mobilecode-preview://bench/MH-PV-001/fixtures/preview/index.html"
+}

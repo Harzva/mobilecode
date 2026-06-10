@@ -14,6 +14,9 @@ android/key.properties
 *.jks
 *.keystore
 
+# Local-only handoff notes may contain absolute paths or private workspace context.
+docs/local/
+
 # Raw local screen recordings are usually large/private; keep the manifest and rendered promo outputs instead.
 promo/mobilecode-remotion/public/recordings/*.mp4
 promo/mobilecode-remotion/public/recordings/*.mov

@@ -996,6 +996,8 @@ select {
 .developer-callout,
 .layer-card,
 .solved-card,
+.gallery-patterns,
+.gallery-pattern-grid article,
 .developer-split article,
 .release-evidence,
 .developer-roadmap {
@@ -1044,6 +1046,7 @@ select {
 .developer-callout svg,
 .developer-panel-title svg,
 .solved-card svg,
+.gallery-pattern-grid svg,
 .release-links svg,
 .developer-roadmap svg {
   color: var(--mint);
@@ -1070,6 +1073,7 @@ select {
 
 .layer-grid,
 .solved-grid,
+.gallery-pattern-grid,
 .system-flow,
 .roadmap-grid {
   display: grid;
@@ -1116,6 +1120,64 @@ select {
   display: grid;
   align-content: start;
   gap: 8px;
+}
+
+.gallery-patterns {
+  padding: 24px;
+  border-color: rgba(39, 215, 230, 0.25);
+}
+
+.gallery-pattern-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.gallery-pattern-grid article {
+  min-height: 188px;
+  padding: 18px;
+  box-shadow: none;
+  background: rgba(3, 5, 11, 0.38);
+}
+
+.gallery-pattern-grid h3 {
+  margin: 10px 0 8px;
+  color: #ffffff;
+  line-height: 1.22;
+}
+
+.gallery-pattern-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.gallery-pattern-links a {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.gallery-pattern-links span {
+  color: var(--muted);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.gallery-pattern-links strong {
+  color: #ffffff;
+}
+
+.gallery-pattern-links svg {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  color: var(--mint);
 }
 
 .developer-split {
@@ -1304,6 +1366,8 @@ select {
   .layer-grid,
   .solved-grid,
   .developer-split,
+  .gallery-pattern-grid,
+  .gallery-pattern-links,
   .system-flow,
   .release-evidence,
   .roadmap-grid,

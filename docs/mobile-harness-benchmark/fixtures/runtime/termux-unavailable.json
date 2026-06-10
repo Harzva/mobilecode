@@ -1,0 +1,7 @@
+{
+  "provider": "ExternalTermux",
+  "health_status": "unavailable",
+  "fallback_provider": "WebViewOnly",
+  "fallback_reason": "External Termux is not installed or not reachable.",
+  "user_message": "Runtime fallback selected; shell execution is blocked."
+}

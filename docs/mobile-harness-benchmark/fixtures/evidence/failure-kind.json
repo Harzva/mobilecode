@@ -1,0 +1,6 @@
+{
+  "action": "preview_html",
+  "status": "failed",
+  "failure_kind": "invalid_html",
+  "message": "HTML preview failed validation."
+}

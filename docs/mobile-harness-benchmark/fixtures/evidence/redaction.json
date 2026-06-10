@@ -1,0 +1,10 @@
+{
+  "private_report": {
+    "local_path": "D:/private/example",
+    "token": "REDACT_ME"
+  },
+  "expected_public_report": {
+    "local_path": "<repo-relative>",
+    "token": "<redacted>"
+  }
+}

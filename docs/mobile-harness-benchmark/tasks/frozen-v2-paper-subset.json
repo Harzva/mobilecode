@@ -1,0 +1,1534 @@
+{
+  "subset": "frozen-v2-paper-subset",
+  "status": "draft_frozen_candidate",
+  "generated_at": "2026-06-06T12:53:58+00:00",
+  "frozen": false,
+  "counts_as_final_paper_subset": false,
+  "source_task_bank": "docs/mobile-harness-benchmark/tasks/v2-task-bank.json",
+  "source_task_set": "docs/mobile-harness-benchmark/tasks/smoke-v2.json",
+  "source_t0_run": "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/run.json",
+  "mobile_tier_readiness": "docs/mobile-harness-benchmark/reports/mobile-tier-readiness.json",
+  "task_count": 60,
+  "category_count": {
+    "code_edit": 10,
+    "file_intake": 10,
+    "github_delivery": 10,
+    "harness_evidence": 10,
+    "preview_verification": 10,
+    "runtime_orchestration": 10
+  },
+  "t0_result_count": {
+    "blocked": 10,
+    "passed": 50
+  },
+  "required_next_tier_count": {
+    "T2-android-real-device": 15,
+    "T2-or-T3-mobile-tier": 30,
+    "T3-ios-simulator": 5,
+    "T5-github-sandbox": 10
+  },
+  "selection_rule": "Start from smoke-v2: ten tasks per category. Freeze ids for paper planning, but keep all entries non-final until required mobile or GitHub sandbox evidence exists.",
+  "evidence_boundary": "This manifest fixes candidate tasks and T0 evidence. It is not final experimental evidence; no entry counts as a paper result until its required_next_tier evidence is attached.",
+  "tasks": [
+    {
+      "id": "MH-CE-201",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt wechat_share happy_path android_real_phone_share",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-201/index.html"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-CE-205",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt system_file_picker happy_path android_low_memory",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-205/index.html"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-CE-209",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt workspace_import happy_path ios_simulator_document",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-209/index.html"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T3-ios-simulator",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-CE-213",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt webview_return happy_path android_real_phone_share",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-213/index.html"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-CE-217",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt offline_mode happy_path android_low_memory",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-217/index.html"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-CE-221",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt low_memory happy_path ios_simulator_document",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-221/index.html"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-CE-225",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt narrow_viewport happy_path android_real_phone_share",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-225/index.html"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-CE-229",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt public_report happy_path android_low_memory",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-229/index.html"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-CE-233",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt background_resume happy_path ios_simulator_document",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-233/index.html"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-CE-237",
+      "category": "code_edit",
+      "title": "Edit HTML artifact prompt poor_network happy_path android_real_phone_share",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-CE-237/index.html"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-FI-201",
+      "category": "file_intake",
+      "title": "Intake HTML wechat_share happy_path android_real_phone_share",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-201/detected-file.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-FI-205",
+      "category": "file_intake",
+      "title": "Intake HTML system_file_picker happy_path android_low_memory",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-205/detected-file.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-FI-209",
+      "category": "file_intake",
+      "title": "Intake HTML workspace_import happy_path ios_simulator_document",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-209/detected-file.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T3-ios-simulator",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-FI-213",
+      "category": "file_intake",
+      "title": "Intake HTML webview_return happy_path android_real_phone_share",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-213/detected-file.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-FI-217",
+      "category": "file_intake",
+      "title": "Intake HTML offline_mode happy_path android_low_memory",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-217/detected-file.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-FI-221",
+      "category": "file_intake",
+      "title": "Intake HTML low_memory happy_path ios_simulator_document",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-221/detected-file.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-FI-225",
+      "category": "file_intake",
+      "title": "Intake HTML narrow_viewport happy_path android_real_phone_share",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-225/detected-file.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-FI-229",
+      "category": "file_intake",
+      "title": "Intake HTML public_report happy_path android_low_memory",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-229/detected-file.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-FI-233",
+      "category": "file_intake",
+      "title": "Intake HTML background_resume happy_path ios_simulator_document",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-233/detected-file.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-FI-237",
+      "category": "file_intake",
+      "title": "Intake HTML poor_network happy_path android_real_phone_share",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-FI-237/detected-file.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-GD-201",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact wechat_share happy_path android_real_phone_share",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "blocked",
+      "t0_score": 0,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-201/github-delivery-blocked.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T5-github-sandbox",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-GD-205",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact system_file_picker happy_path android_low_memory",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "blocked",
+      "t0_score": 0,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-205/github-delivery-blocked.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T5-github-sandbox",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-GD-209",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact workspace_import happy_path ios_simulator_document",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "blocked",
+      "t0_score": 0,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-209/github-delivery-blocked.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T5-github-sandbox",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-GD-213",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact webview_return happy_path android_real_phone_share",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "blocked",
+      "t0_score": 0,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-213/github-delivery-blocked.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T5-github-sandbox",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-GD-217",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact offline_mode happy_path android_low_memory",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "blocked",
+      "t0_score": 0,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-217/github-delivery-blocked.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T5-github-sandbox",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-GD-221",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact low_memory happy_path ios_simulator_document",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "blocked",
+      "t0_score": 0,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-221/github-delivery-blocked.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T5-github-sandbox",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-GD-225",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact narrow_viewport happy_path android_real_phone_share",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "blocked",
+      "t0_score": 0,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-225/github-delivery-blocked.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T5-github-sandbox",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-GD-229",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact public_report happy_path android_low_memory",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "blocked",
+      "t0_score": 0,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-229/github-delivery-blocked.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T5-github-sandbox",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-GD-233",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact background_resume happy_path ios_simulator_document",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "blocked",
+      "t0_score": 0,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-233/github-delivery-blocked.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T5-github-sandbox",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-GD-237",
+      "category": "github_delivery",
+      "title": "Deliver commit artifact poor_network happy_path android_real_phone_share",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "blocked",
+      "t0_score": 0,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-GD-237/github-delivery-blocked.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T5-github-sandbox",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-HE-201",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace wechat_share happy_path android_real_phone_share",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-201/trace-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-HE-205",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace system_file_picker happy_path android_low_memory",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-205/trace-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-HE-209",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace workspace_import happy_path ios_simulator_document",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-209/trace-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T3-ios-simulator",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-HE-213",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace webview_return happy_path android_real_phone_share",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-213/trace-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-HE-217",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace offline_mode happy_path android_low_memory",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-217/trace-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-HE-221",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace low_memory happy_path ios_simulator_document",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-221/trace-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-HE-225",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace narrow_viewport happy_path android_real_phone_share",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-225/trace-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-HE-229",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace public_report happy_path android_low_memory",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-229/trace-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-HE-233",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace background_resume happy_path ios_simulator_document",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-233/trace-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-HE-237",
+      "category": "harness_evidence",
+      "title": "Evidence complete trace poor_network happy_path android_real_phone_share",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-HE-237/trace-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-PV-201",
+      "category": "preview_verification",
+      "title": "Preview generated HTML wechat_share happy_path android_real_phone_share",
+      "fixture": "fixtures/preview/index.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-201/snapshot-summary.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-PV-205",
+      "category": "preview_verification",
+      "title": "Preview generated HTML system_file_picker happy_path android_low_memory",
+      "fixture": "fixtures/preview/index.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-205/snapshot-summary.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-PV-209",
+      "category": "preview_verification",
+      "title": "Preview generated HTML workspace_import happy_path ios_simulator_document",
+      "fixture": "fixtures/preview/index.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-209/snapshot-summary.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T3-ios-simulator",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-PV-213",
+      "category": "preview_verification",
+      "title": "Preview generated HTML webview_return happy_path android_real_phone_share",
+      "fixture": "fixtures/preview/index.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-213/snapshot-summary.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-PV-217",
+      "category": "preview_verification",
+      "title": "Preview generated HTML offline_mode happy_path android_low_memory",
+      "fixture": "fixtures/preview/index.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-217/snapshot-summary.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-PV-221",
+      "category": "preview_verification",
+      "title": "Preview generated HTML low_memory happy_path ios_simulator_document",
+      "fixture": "fixtures/preview/index.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-221/snapshot-summary.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-PV-225",
+      "category": "preview_verification",
+      "title": "Preview generated HTML narrow_viewport happy_path android_real_phone_share",
+      "fixture": "fixtures/preview/index.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-225/snapshot-summary.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-PV-229",
+      "category": "preview_verification",
+      "title": "Preview generated HTML public_report happy_path android_low_memory",
+      "fixture": "fixtures/preview/index.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-229/snapshot-summary.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-PV-233",
+      "category": "preview_verification",
+      "title": "Preview generated HTML background_resume happy_path ios_simulator_document",
+      "fixture": "fixtures/preview/index.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-233/snapshot-summary.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-PV-237",
+      "category": "preview_verification",
+      "title": "Preview generated HTML poor_network happy_path android_real_phone_share",
+      "fixture": "fixtures/preview/index.html",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-PV-237/snapshot-summary.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-RT-201",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health wechat_share happy_path android_real_phone_share",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-201/runtime-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-RT-205",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health system_file_picker happy_path android_low_memory",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-205/runtime-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-RT-209",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health workspace_import happy_path ios_simulator_document",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-209/runtime-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T3-ios-simulator",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-RT-213",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health webview_return happy_path android_real_phone_share",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-213/runtime-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-android-real-device",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-RT-217",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health offline_mode happy_path android_low_memory",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-217/runtime-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-RT-221",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health low_memory happy_path ios_simulator_document",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-221/runtime-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-RT-225",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health narrow_viewport happy_path android_real_phone_share",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-225/runtime-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-RT-229",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health public_report happy_path android_low_memory",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_low_memory",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-229/runtime-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-RT-233",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health background_resume happy_path ios_simulator_document",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "ios_simulator_document",
+      "requires_real_device": false,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-233/runtime-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    },
+    {
+      "id": "MH-RT-237",
+      "category": "runtime_orchestration",
+      "title": "Runtime Helper health poor_network happy_path android_real_phone_share",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "quality_axis": "happy_path",
+      "mobile_profile": "android_real_phone_share",
+      "requires_real_device": true,
+      "t0_status": "passed",
+      "t0_score": 95,
+      "t0_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/artifacts/MH-RT-237/runtime-report.json"
+      ],
+      "counts_as_final_paper_result": false,
+      "paper_counting_status": "t0_only_not_mobile_counted",
+      "required_next_tier": "T2-or-T3-mobile-tier",
+      "required_next_evidence": [
+        "device-metadata.json",
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "screenshots_or_logs",
+        "task_specific_verifier_result"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,102 @@
+{
+  "report": "method-presentation-readiness",
+  "generated_at": "2026-06-09T12:15:10Z",
+  "status": "passed",
+  "ready_for_method_review": true,
+  "counts_as_experiment": false,
+  "check_count": 5,
+  "method_surface_counts": {
+    "figures": 2,
+    "tables": 4,
+    "algorithm_markers": 4,
+    "display_math_blocks": 12,
+    "equation_symbols": 12
+  },
+  "open_requirements": [
+    "real_android_or_ios_mobile_tier_evidence",
+    "counted_baseline_comparison_results",
+    "venue_template_author_confirmation"
+  ],
+  "evidence_boundary": "This report checks that the paper presents the harness and benchmark as reviewable methods with visuals, algorithms, module interfaces, formulas and evidence boundaries. It does not count as mobile-device or baseline evidence.",
+  "checks": [
+    {
+      "id": "MP1_visual_scaffolding",
+      "name": "Architecture and evidence-flow visuals are present",
+      "status": "passed",
+      "required_terms": [
+        "\\begin{figure}[t]",
+        "\\label{fig:architecture}",
+        "\\label{fig:promotion-flow}",
+        "\\begin{table}[t]",
+        "\\label{tab:positioning}",
+        "\\label{tab:categories}",
+        "\\label{tab:tiers}",
+        "\\label{tab:dryrun}"
+      ],
+      "counts_as_experiment": false
+    },
+    {
+      "id": "MP2_algorithmic_methods",
+      "name": "Core methods are named as algorithms",
+      "status": "passed",
+      "required_terms": [
+        "Algorithm 1: Mobile harness execution loop",
+        "Algorithm 2: Evidence-gated verifier module",
+        "Algorithm 3: Differentiated candidate-bank construction",
+        "Algorithm 4: Mobile-tier promotion audit"
+      ],
+      "counts_as_experiment": false
+    },
+    {
+      "id": "MP3_module_interfaces",
+      "name": "Harness modules have typed interfaces and contracts",
+      "status": "passed",
+      "required_terms": [
+        "\\mathcal{H}=\\mathcal{V}\\circ\\mathcal{L}\\circ\\Phi\\circ\\Omega\\circ\\Pi\\circ N_{\\mathcal{I}}",
+        "The typed interfaces are",
+        "\\Omega:(t,\\mathcal{R}_t)\\mapsto r^\\star",
+        "RuntimeProvider is the executable module contract",
+        "\\mathrm{admit}(r,t)",
+        "EvidenceLedger appends traces"
+      ],
+      "counts_as_experiment": false
+    },
+    {
+      "id": "MP4_formula_contracts",
+      "name": "Benchmark and verifier claims are formula-bound",
+      "status": "passed",
+      "required_terms": [
+        "\\mathrm{MCH}=\\mathrm{PhoneOS}",
+        "\\mathcal{H}=(\\mathcal{I},\\mathcal{C},\\mathcal{P},\\mathcal{R},\\mathcal{D},\\mathcal{E},\\mathcal{V})",
+        "r_t^\\star",
+        "\\mathcal{I}_{\\mathcal{H}}(t)",
+        "t=(id,c,g,i,\\kappa,a,\\nu,e,b,\\mu,o)",
+        "\\mathcal{B}=\\mathrm{Assemble}",
+        "\\Delta(t_i,t_j)",
+        "\\mathrm{tier}(t,r)",
+        "\\mathrm{counted}(t)",
+        "\\pi(t,r)",
+        "\\mathbf{m}_w",
+        "\\Gamma_j=(\\mathrm{claim}_j,A_j,\\eta_j)"
+      ],
+      "counts_as_experiment": false
+    },
+    {
+      "id": "MP5_evidence_boundaries",
+      "name": "Method presentation does not over-claim evidence",
+      "status": "passed",
+      "required_terms": [
+        "candidate bank, not a claim of 1,000 completed experiments",
+        "fixture-only T0 evidence",
+        "not Android/iOS device evidence",
+        "\\texttt{counts\\_as\\_experiment=false}",
+        "not yet reproducible as a full empirical result",
+        "Future experimental runs will add device metadata before promotion"
+      ],
+      "counts_as_experiment": false
+    }
+  ],
+  "evidence_artifacts": [
+    "paper/iclr-mobile-harness/main.tex"
+  ]
+}

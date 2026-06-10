@@ -1,0 +1,7 @@
+{
+  "owner": "example",
+  "repo": "mobile-harness-bench-target",
+  "branch": "gh-pages",
+  "path": "index.html",
+  "expected_artifact": "pages_url"
+}

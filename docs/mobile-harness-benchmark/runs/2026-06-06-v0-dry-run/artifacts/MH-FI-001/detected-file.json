@@ -1,0 +1,11 @@
+{
+  "incoming_path": "docs/mobile-harness-benchmark/fixtures/file-intake/simple-page.html",
+  "detected_type": "html",
+  "preview_url": "mobilecode-preview://bench/MH-FI-001/fixtures/file-intake/simple-page.html",
+  "html_summary": {
+    "title": "Mobile Harness Fixture",
+    "body_text_length": 88,
+    "heading_count": 1,
+    "has_viewport_meta": true
+  }
+}

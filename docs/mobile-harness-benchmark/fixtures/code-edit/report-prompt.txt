@@ -1,0 +1,1 @@
+Write a Markdown report that explains the Mobile Harness task result with a summary, checklist and evidence section.

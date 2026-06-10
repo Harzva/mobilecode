@@ -1,0 +1,58 @@
+{
+  "report": "mobile-evidence-pack-readiness",
+  "generated_at": "2026-06-06T15:06:41Z",
+  "status": "capture_ready_no_results",
+  "counts_as_experiment": false,
+  "counts_as_mobile_experiment": false,
+  "ready_for_capture": true,
+  "ready_for_counted_mobile_experiment": false,
+  "pack_root": "docs/mobile-harness-benchmark/mobile-evidence/2026-06-06-mobile-evidence-pack",
+  "task_set_count": 2,
+  "task_count": 48,
+  "template_count": 53,
+  "task_sets": [
+    {
+      "task_set": "android-device-v2",
+      "test_tier": "T2-android-real-device",
+      "task_count": 30,
+      "categories": {
+        "code_edit": 5,
+        "file_intake": 5,
+        "github_delivery": 5,
+        "harness_evidence": 5,
+        "preview_verification": 5,
+        "runtime_orchestration": 5
+      },
+      "requires_real_device_count": 30,
+      "template_dir": "docs/mobile-harness-benchmark/mobile-evidence/2026-06-06-mobile-evidence-pack/android-device-v2"
+    },
+    {
+      "task_set": "ios-simulator-v2",
+      "test_tier": "T3-ios-simulator",
+      "task_count": 18,
+      "categories": {
+        "code_edit": 3,
+        "file_intake": 3,
+        "github_delivery": 3,
+        "harness_evidence": 3,
+        "preview_verification": 3,
+        "runtime_orchestration": 3
+      },
+      "requires_real_device_count": 0,
+      "template_dir": "docs/mobile-harness-benchmark/mobile-evidence/2026-06-06-mobile-evidence-pack/ios-simulator-v2"
+    }
+  ],
+  "open_requirements": [
+    "execute_android_t2_real_device_run",
+    "execute_ios_t3_simulator_run",
+    "fill_device_metadata_and_task_evidence",
+    "attach_verifier_outputs_traces_screenshots_and_logs",
+    "pass_public_output_safety_scan"
+  ],
+  "evidence_boundary": "This is a capture kit, not a mobile experiment. It prepares the files required to collect Android T2 and iOS T3 evidence without counting any result.",
+  "evidence_artifacts": [
+    "docs/mobile-harness-benchmark/mobile-evidence/2026-06-06-mobile-evidence-pack/manifest.json",
+    "docs/mobile-harness-benchmark/mobile-evidence/2026-06-06-mobile-evidence-pack/README.md",
+    "docs/mobile-harness-benchmark/mobile-evidence/2026-06-06-mobile-evidence-pack/execution-playbook.md"
+  ]
+}

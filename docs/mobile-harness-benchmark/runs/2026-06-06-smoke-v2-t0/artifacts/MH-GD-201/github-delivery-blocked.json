@@ -1,0 +1,15 @@
+{
+  "repo": "example/mobile-harness-bench-target",
+  "branch": "bench",
+  "path": "bench/index.html",
+  "operation": "commit_generated_artifact",
+  "failure_kind": "github_auth_blocked",
+  "recovery_suggestion": "Run this task in a GitHub sandbox tier with explicit authorization.",
+  "result_scope": "t0_offline_fixture_only",
+  "counts_as_mobile_experiment": false,
+  "mobile_profile": "android_real_phone_share",
+  "os_target": "android_real_device",
+  "input_surface": "Android Sharesheet",
+  "requires_real_device": true,
+  "device_evidence": "not_collected_in_t0"
+}

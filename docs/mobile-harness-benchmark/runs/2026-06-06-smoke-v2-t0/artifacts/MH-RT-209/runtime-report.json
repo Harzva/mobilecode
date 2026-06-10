@@ -1,0 +1,19 @@
+{
+  "provider": "MobileCodeHelper",
+  "health_status": "healthy",
+  "selected_provider": "helper",
+  "capabilities": [
+    "execute",
+    "stream_logs",
+    "stop_task",
+    "runtime_log"
+  ],
+  "missing_capabilities": [],
+  "result_scope": "t0_offline_fixture_only",
+  "counts_as_mobile_experiment": false,
+  "mobile_profile": "ios_simulator_document",
+  "os_target": "ios_simulator",
+  "input_surface": "iOS document picker",
+  "requires_real_device": false,
+  "device_evidence": "not_collected_in_t0"
+}

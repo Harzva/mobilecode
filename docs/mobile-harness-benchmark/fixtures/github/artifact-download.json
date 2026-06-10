@@ -1,0 +1,6 @@
+{
+  "owner": "example",
+  "repo": "mobile-harness-bench-target",
+  "workflow": "mobile-app-release.yml",
+  "artifact_patterns": ["*.apk", "*.ipa"]
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "mobile_harness_device_metadata_template/v0",
+  "task_set": "android-device-v2",
+  "test_tier": "T2-android-real-device",
+  "platform": "android",
+  "environment": "real_device",
+  "counts_as_mobile_experiment": false,
+  "device": {
+    "model": null,
+    "manufacturer": null,
+    "os_version": null,
+    "sdk_or_runtime": null,
+    "serial_or_udid_hash": null
+  },
+  "app": {
+    "app_version": null,
+    "build_type": null,
+    "install_source": null
+  },
+  "session": {
+    "viewport": null,
+    "network_profile": null,
+    "input_surface": null,
+    "evidence_capture_method": null,
+    "log_capture_method": null
+  }
+}

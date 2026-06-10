@@ -1,0 +1,239 @@
+{
+  "report": "evaluation-protocol-readiness",
+  "generated_at": "2026-06-09T07:03:46Z",
+  "status": "passed_with_open_requirements",
+  "protocol_count": 5,
+  "evaluation_section_checked": true,
+  "metric_contract_checked": true,
+  "metric_count": 7,
+  "counts_as_complete_evaluation": false,
+  "ready_for_counted_mobile_experiment": false,
+  "ready_for_counted_baseline_result": false,
+  "counted_protocol_ids": [
+    "E1_t0_smoke_v2"
+  ],
+  "non_counted_protocol_ids": [
+    "E2_android_real_device_subset",
+    "E3_ios_simulator_subset",
+    "E4_github_sandbox_delivery",
+    "E5_baseline_comparison"
+  ],
+  "primary_metrics": [
+    "task_success",
+    "verified_success",
+    "trace_completeness",
+    "recovery_rate",
+    "artifact_availability",
+    "human_intervention_count",
+    "steps_to_completion"
+  ],
+  "open_requirements": [
+    "attach_device_metadata_screenshots_logs_traces_and_verifier_outputs",
+    "attach_public_safe_remote_evidence",
+    "attach_simulator_screenshots_logs_traces_and_verifier_outputs",
+    "attach_transcripts_artifacts_verifiers_and_human_intervention_records",
+    "execute_android_t2_real_device_run",
+    "execute_counted_baseline_runs_with_locked_settings",
+    "execute_ios_t3_simulator_run_on_mac",
+    "replace_or_extend_with_mobile_tier_evidence_for_tasks_that_require_devices",
+    "run_authorized_github_sandbox_delivery_tasks"
+  ],
+  "evidence_boundary": "The E1-E5 protocol is executable and artifact-bound, but only E1 has T0 fixture evidence. E2-E5 remain capture-ready or protocol-only and must not be reported as completed mobile or baseline experiments.",
+  "protocols": [
+    {
+      "id": "E1_t0_smoke_v2",
+      "name": "T0 smoke over v2",
+      "status": "counted_t0_fixture_evidence_available",
+      "evidence_tier": "T0-offline-fixture",
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/tasks/smoke-v2.json",
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/run.json",
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/summary.md",
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/traces.jsonl"
+      ],
+      "summary": {
+        "task_set": {
+          "path": "docs/mobile-harness-benchmark/tasks/smoke-v2.json",
+          "task_count": 60,
+          "categories": {
+            "code_edit": 10,
+            "file_intake": 10,
+            "github_delivery": 10,
+            "harness_evidence": 10,
+            "preview_verification": 10,
+            "runtime_orchestration": 10
+          }
+        },
+        "run": {
+          "run_id": "2026-06-06-smoke-v2-t0",
+          "summary": {
+            "total": 60,
+            "passed": 50,
+            "blocked": 10,
+            "failed": 0,
+            "warning": 0,
+            "categories": [
+              "code_edit",
+              "file_intake",
+              "github_delivery",
+              "harness_evidence",
+              "preview_verification",
+              "runtime_orchestration"
+            ]
+          },
+          "github_delivery_blocked": 10,
+          "evidence_artifacts": [
+            "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/run.json",
+            "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/summary.md",
+            "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/traces.jsonl"
+          ]
+        }
+      },
+      "open_requirements": [
+        "replace_or_extend_with_mobile_tier_evidence_for_tasks_that_require_devices"
+      ]
+    },
+    {
+      "id": "E2_android_real_device_subset",
+      "name": "Android real-device subset",
+      "status": "capture_ready_no_results",
+      "evidence_tier": "T2-android-real-device",
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/tasks/android-device-v2.json",
+        "docs/mobile-harness-benchmark/reports/mobile-tier-readiness.json",
+        "docs/mobile-harness-benchmark/reports/mobile-evidence-pack-readiness.json"
+      ],
+      "summary": {
+        "task_set": {
+          "path": "docs/mobile-harness-benchmark/tasks/android-device-v2.json",
+          "task_count": 30,
+          "categories": {
+            "code_edit": 5,
+            "file_intake": 5,
+            "github_delivery": 5,
+            "harness_evidence": 5,
+            "preview_verification": 5,
+            "runtime_orchestration": 5
+          }
+        },
+        "tool_status": {
+          "status": "blocked",
+          "blocked_reason": "adb_missing",
+          "tools": {
+            "adb": false
+          },
+          "devices": [],
+          "evidence_collected": []
+        },
+        "capture_pack_status": "capture_ready_no_results"
+      },
+      "open_requirements": [
+        "execute_android_t2_real_device_run",
+        "attach_device_metadata_screenshots_logs_traces_and_verifier_outputs"
+      ]
+    },
+    {
+      "id": "E3_ios_simulator_subset",
+      "name": "Mac iOS simulator subset",
+      "status": "capture_ready_no_results",
+      "evidence_tier": "T3-ios-simulator",
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/tasks/ios-simulator-v2.json",
+        "docs/mobile-harness-benchmark/reports/mobile-tier-readiness.json",
+        "docs/mobile-harness-benchmark/reports/mobile-evidence-pack-readiness.json"
+      ],
+      "summary": {
+        "task_set": {
+          "path": "docs/mobile-harness-benchmark/tasks/ios-simulator-v2.json",
+          "task_count": 18,
+          "categories": {
+            "code_edit": 3,
+            "file_intake": 3,
+            "github_delivery": 3,
+            "harness_evidence": 3,
+            "preview_verification": 3,
+            "runtime_orchestration": 3
+          }
+        },
+        "tool_status": {
+          "status": "blocked",
+          "blocked_reason": "xcrun_missing",
+          "tools": {
+            "xcrun": false,
+            "xcodebuild": false
+          },
+          "booted_simulators": [],
+          "evidence_collected": []
+        },
+        "capture_pack_status": "capture_ready_no_results"
+      },
+      "open_requirements": [
+        "execute_ios_t3_simulator_run_on_mac",
+        "attach_simulator_screenshots_logs_traces_and_verifier_outputs"
+      ]
+    },
+    {
+      "id": "E4_github_sandbox_delivery",
+      "name": "GitHub sandbox delivery",
+      "status": "protocol_defined_t0_blocked_no_remote_write",
+      "evidence_tier": "T5-authorized-github-sandbox",
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/run.json",
+        "docs/mobile-harness-benchmark/reports/baseline-protocol-readiness.json"
+      ],
+      "summary": {
+        "t0_github_delivery_blocked": 10,
+        "required_future_evidence": [
+          "commit SHAs",
+          "Pages URLs",
+          "Actions run URLs",
+          "artifact metadata",
+          "typed blocked cases"
+        ]
+      },
+      "open_requirements": [
+        "run_authorized_github_sandbox_delivery_tasks",
+        "attach_public_safe_remote_evidence"
+      ]
+    },
+    {
+      "id": "E5_baseline_comparison",
+      "name": "Baseline comparison",
+      "status": "protocol_defined_pilot_ready_no_results",
+      "evidence_tier": "T6-baseline-comparison",
+      "counts_as_mobile_experiment": false,
+      "counts_as_baseline_result": false,
+      "evidence_artifacts": [
+        "docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json",
+        "docs/mobile-harness-benchmark/reports/baseline-protocol-readiness.json",
+        "docs/mobile-harness-benchmark/reports/baseline-run-contract.json",
+        "docs/mobile-harness-benchmark/reports/baseline-pilot-readiness.json"
+      ],
+      "summary": {
+        "baseline_count": 3,
+        "metrics": [
+          "task_success",
+          "verified_success",
+          "trace_completeness",
+          "recovery_rate",
+          "artifact_availability",
+          "human_intervention_count",
+          "steps_to_completion"
+        ],
+        "pilot_status": "pilot_ready_no_results"
+      },
+      "open_requirements": [
+        "execute_counted_baseline_runs_with_locked_settings",
+        "attach_transcripts_artifacts_verifiers_and_human_intervention_records"
+      ]
+    }
+  ]
+}

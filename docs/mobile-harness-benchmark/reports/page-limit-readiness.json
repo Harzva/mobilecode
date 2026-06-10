@@ -1,0 +1,25 @@
+{
+  "report": "page-limit-readiness",
+  "generated_at": "2026-06-09T12:15:10Z",
+  "status": "passed",
+  "main_text_page_limit": 9,
+  "pdf_pages": 10,
+  "pdf_file_bytes": 305141,
+  "actual_pdf_file_bytes": 305141,
+  "ethics_statement_page": 9,
+  "references_start_page": 9,
+  "main_text_with_ethics_pages_upper_bound": 9,
+  "within_main_text_limit": true,
+  "references_are_unlimited": true,
+  "counts_as_experiment": false,
+  "checked_main_tex_terms": [
+    "\\section{Reproducibility Statement}",
+    "\\section{Ethics Statement}",
+    "\\bibliography{references}"
+  ],
+  "evidence_artifacts": [
+    "paper/iclr-mobile-harness/main.tex",
+    "paper/iclr-mobile-harness/main.pdf"
+  ],
+  "caveat": "This report verifies the compiled draft page boundary, not venue upload readiness. It must be regenerated after paper text, bibliography, style-file or template changes."
+}

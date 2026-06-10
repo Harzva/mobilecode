@@ -1,0 +1,37 @@
+{
+  "schema": "mobile_harness_mobile_run_manifest_template/v0",
+  "task_set": "ios-simulator-v2",
+  "test_tier": "T3-ios-simulator",
+  "task_ids": [
+    "MH-CE-203",
+    "MH-CE-209",
+    "MH-CE-215",
+    "MH-FI-203",
+    "MH-FI-209",
+    "MH-FI-215",
+    "MH-GD-203",
+    "MH-GD-209",
+    "MH-GD-215",
+    "MH-HE-203",
+    "MH-HE-209",
+    "MH-HE-215",
+    "MH-PV-203",
+    "MH-PV-209",
+    "MH-PV-215",
+    "MH-RT-203",
+    "MH-RT-209",
+    "MH-RT-215"
+  ],
+  "task_count": 18,
+  "status": "template_not_run",
+  "counts_as_mobile_experiment": false,
+  "required_run_files": [
+    "run.json",
+    "summary.md",
+    "traces.jsonl",
+    "device-metadata.json",
+    "screenshots/",
+    "logs/"
+  ],
+  "promotion_rule": "A task can become paper-counted only after the run manifest is filled, task evidence templates are completed, verifier outputs exist, and public-output safety passes."
+}

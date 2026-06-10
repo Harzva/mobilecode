@@ -1,0 +1,7 @@
+{
+  "previous_provider": "WebViewOnly",
+  "requested_provider": "MobileCodeHelper",
+  "selected_provider": "MobileCodeHelper",
+  "decision_reason": "The task requires file write and runtime log evidence.",
+  "action_runner_boundary": "All runtime actions must pass through RuntimeProvider."
+}

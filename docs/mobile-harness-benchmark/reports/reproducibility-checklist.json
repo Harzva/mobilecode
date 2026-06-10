@@ -1,0 +1,218 @@
+{
+  "report": "reproducibility-checklist",
+  "generated_at": "2026-06-09T12:15:10Z",
+  "status": "passed_with_open_requirements",
+  "command_count": 16,
+  "counts_as_experiment": false,
+  "ready_for_draft_reproduction": true,
+  "ready_for_full_empirical_reproduction": false,
+  "main_tex_reproducibility_terms": [
+    "\\section{Reproducibility Statement}",
+    "machine-readable task definitions",
+    "deterministic task-bank generator",
+    "Algorithm 3: Differentiated candidate-bank construction",
+    "\\mathcal{B}=\\mathrm{Assemble}",
+    "\\Delta(t_i,t_j)",
+    "offline verifier runner",
+    "machine-readable verifier catalog",
+    "validator",
+    "claim-evidence ledger",
+    "evidence maturity matrix",
+    "evaluation-protocol",
+    "method-presentation",
+    "verifier-contract",
+    "submission-readiness",
+    "page-limit",
+    "reproducibility readiness reports",
+    "counts\\_as\\_final\\_paper\\_subset=false",
+    "Future experimental runs will add device metadata"
+  ],
+  "open_requirements": [
+    "real_android_or_ios_mobile_tier_evidence",
+    "authorized_github_sandbox_delivery_evidence",
+    "counted_baseline_comparison_results",
+    "final_anonymous_supplement_after_new_evidence"
+  ],
+  "evidence_boundary": "The checklist makes the current draft package reproducible as a T0/system-and-benchmark artifact. It does not claim full empirical reproduction because real mobile-tier, GitHub sandbox and counted baseline results remain open.",
+  "commands": [
+    {
+      "id": "R0_generate_task_bank",
+      "command": "python scripts/generate_mobile_harness_task_bank.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/tasks/v1-task-bank.json",
+        "docs/mobile-harness-benchmark/tasks/v2-task-bank.json"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Regenerates candidate task supply; does not count tasks as completed experiments."
+    },
+    {
+      "id": "R1_audit_task_bank",
+      "command": "python scripts/audit_mobile_harness_task_bank.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/reports/v2-quality-audit.json",
+        "docs/mobile-harness-benchmark/reports/v2-quality-audit.md"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Checks structure, coverage, uniqueness and public-output safety; does not replace human review."
+    },
+    {
+      "id": "R2_run_offline_smoke",
+      "command": "python scripts/run_mobile_harness_bench.py --task-set smoke-v2 --run-id 2026-06-06-smoke-v2-t0",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/run.json",
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/summary.md",
+        "docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/traces.jsonl"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Counts as T0 fixture evidence only; does not count as Android/iOS mobile-tier evidence."
+    },
+    {
+      "id": "R3_generate_mobile_readiness",
+      "command": "python scripts/collect_mobile_harness_mobile_tier_evidence.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/reports/mobile-tier-readiness.json",
+        "docs/mobile-harness-benchmark/reports/mobile-tier-readiness.md"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Records local Android/iOS tooling availability; does not count as a mobile experiment."
+    },
+    {
+      "id": "R4_generate_mobile_capture_pack",
+      "command": "python scripts/generate_mobile_harness_mobile_evidence_pack.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/reports/mobile-evidence-pack-readiness.json",
+        "docs/mobile-harness-benchmark/reports/mobile-evidence-pack-readiness.md"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Creates T2/T3 capture templates; does not count as mobile experiment results."
+    },
+    {
+      "id": "R5_generate_verifier_contract_readiness",
+      "command": "python scripts/generate_mobile_harness_verifier_contract_readiness.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/reports/verifier-contract-readiness.json",
+        "docs/mobile-harness-benchmark/reports/verifier-contract-readiness.md"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Checks machine-readable verifier contracts against all current task-bank verifier references."
+    },
+    {
+      "id": "R6_generate_baseline_readiness",
+      "command": "python scripts/generate_mobile_harness_baseline_protocol.py && python scripts/generate_mobile_harness_baseline_pilot_readiness.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/reports/baseline-protocol-readiness.json",
+        "docs/mobile-harness-benchmark/reports/baseline-run-contract.json",
+        "docs/mobile-harness-benchmark/reports/baseline-pilot-readiness.json"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Defines baseline comparison protocol and pilot readiness; no baseline performance result is claimed."
+    },
+    {
+      "id": "R7_generate_claim_reports",
+      "command": "python scripts/generate_mobile_harness_claim_ledger.py && python scripts/generate_mobile_harness_core_claim_readiness.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/reports/paper-claim-evidence-ledger.json",
+        "docs/mobile-harness-benchmark/reports/core-claim-readiness.json"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Maps paper-facing claims to evidence and positioning boundaries."
+    },
+    {
+      "id": "R8_generate_evidence_protocol_reports",
+      "command": "python scripts/generate_mobile_harness_evidence_maturity_matrix.py && python scripts/generate_mobile_harness_evaluation_protocol_readiness.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/reports/evidence-maturity-matrix.json",
+        "docs/mobile-harness-benchmark/reports/evaluation-protocol-readiness.json"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Separates T0 evidence from open mobile, GitHub sandbox and baseline requirements."
+    },
+    {
+      "id": "R9_generate_bibliography_and_threats",
+      "command": "python scripts/generate_mobile_harness_bibliography_readiness.py && python scripts/generate_mobile_harness_threats_to_validity.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/reports/bibliography-readiness.json",
+        "docs/mobile-harness-benchmark/reports/threats-to-validity.json"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Checks current citation metadata and review-risk boundaries."
+    },
+    {
+      "id": "R10_generate_method_presentation_readiness",
+      "command": "python scripts/generate_mobile_harness_method_presentation_readiness.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/reports/method-presentation-readiness.json",
+        "docs/mobile-harness-benchmark/reports/method-presentation-readiness.md"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Checks that the paper has reviewable visuals, algorithms, module interfaces, formulas and evidence boundaries."
+    },
+    {
+      "id": "R11_compile_paper",
+      "command": "latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex",
+      "status": "ready",
+      "expected_outputs": [
+        "paper/iclr-mobile-harness/main.tex",
+        "paper/iclr-mobile-harness/main.pdf"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Compiles the anonymous paper draft; local TeX availability is required."
+    },
+    {
+      "id": "R12_generate_page_limit_readiness",
+      "command": "python scripts/generate_mobile_harness_page_limit_readiness.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/reports/page-limit-readiness.json",
+        "docs/mobile-harness-benchmark/reports/page-limit-readiness.md"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Checks current compiled PDF page boundary and records where references begin."
+    },
+    {
+      "id": "R13_generate_submission_readiness",
+      "command": "python scripts/generate_mobile_harness_submission_readiness.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/reports/submission-readiness.json",
+        "docs/mobile-harness-benchmark/reports/submission-readiness.md"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Checks draft upload gates while keeping upload readiness false."
+    },
+    {
+      "id": "R14_stage_anonymous_supplement",
+      "command": "python scripts/prepare_mobile_harness_supplement.py",
+      "status": "ready",
+      "expected_outputs": [
+        "paper/iclr-mobile-harness/SUPPLEMENT_BOUNDARY.md",
+        "paper/iclr-mobile-harness/build/mobile-harness-anonymous-supplement.zip"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Builds a locally anonymized reviewer package and scans it for identity/path/token markers."
+    },
+    {
+      "id": "R15_validate_benchmark",
+      "command": "python scripts/validate_mobile_harness_bench.py",
+      "status": "ready",
+      "expected_outputs": [
+        "docs/mobile-harness-benchmark/tasks/v0-seed-tasks.json",
+        "docs/mobile-harness-benchmark/tasks/v2-task-bank.json",
+        "docs/mobile-harness-benchmark/reports/submission-readiness.json"
+      ],
+      "counts_as_experiment": false,
+      "boundary": "Validates task banks, task sets, runs, reports, and evidence-boundary invariants."
+    }
+  ]
+}

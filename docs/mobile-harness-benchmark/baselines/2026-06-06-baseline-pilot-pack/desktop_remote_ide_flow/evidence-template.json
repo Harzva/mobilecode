@@ -1,0 +1,35 @@
+{
+  "report": "baseline-pilot-evidence-template",
+  "status": "template_not_filled",
+  "baseline_id": "desktop_remote_ide_flow",
+  "task_id": "MH-CE-209",
+  "counts_as_experiment": false,
+  "counts_as_baseline_result": false,
+  "required_before_counting": [
+    "filled model-lock.json",
+    "full prompt transcript",
+    "baseline-run.json with run_kind=baseline_result",
+    "baseline-summary.md",
+    "baseline-traces.jsonl",
+    "artifact paths or explicit blocked output",
+    "verifier outputs",
+    "human-intervention annotations"
+  ],
+  "expected_artifacts": [
+    "index.html",
+    "preview_route"
+  ],
+  "verifiers": [
+    "artifact_exists_verifier",
+    "html_preview_verifier"
+  ],
+  "evidence_requirements": [
+    "write_action",
+    "readback_action",
+    "artifact_path"
+  ],
+  "blocked_conditions": [
+    "workspace unavailable"
+  ],
+  "evidence_boundary": "This file is an evidence template only. It does not contain a pilot result or baseline comparison."
+}

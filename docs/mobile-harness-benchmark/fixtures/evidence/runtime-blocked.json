@@ -1,0 +1,6 @@
+{
+  "runtime_backend": "helper",
+  "status": "blocked",
+  "failure_kind": "runtime_unavailable",
+  "recovery_suggestion": "Switch to WebViewOnly or configure Helper."
+}

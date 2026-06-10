@@ -1,0 +1,15 @@
+{
+  "viewport": "360x800",
+  "title": "Preview Fixture",
+  "dom_text_length": 74,
+  "heading_count": 1,
+  "has_viewport_meta": true,
+  "route": "mobilecode-preview://bench/MH-PV-217/fixtures/preview/index.html",
+  "result_scope": "t0_offline_fixture_only",
+  "counts_as_mobile_experiment": false,
+  "mobile_profile": "android_low_memory",
+  "os_target": "android_real_device",
+  "input_surface": "MobileCode workspace picker",
+  "requires_real_device": true,
+  "device_evidence": "not_collected_in_t0"
+}

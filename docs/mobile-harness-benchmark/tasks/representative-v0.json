@@ -1,0 +1,38 @@
+{
+  "task_set": "representative-v0",
+  "description": "Five representative MobileHarnessBench v0 tasks, one per category, used for the first offline dry run.",
+  "selection_rule": "one_task_per_category",
+  "run_id": "2026-06-06-v0-dry-run",
+  "tasks": [
+    {
+      "id": "MH-FI-001",
+      "category": "file_intake",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "offline_verifiers": ["external_file_verifier", "html_preview_verifier"]
+    },
+    {
+      "id": "MH-CE-004",
+      "category": "code_edit",
+      "fixture": "fixtures/code-edit/broken-config.json",
+      "offline_verifiers": ["json_verifier", "trace_verifier"]
+    },
+    {
+      "id": "MH-PV-001",
+      "category": "preview_verification",
+      "fixture": "fixtures/preview/index.html",
+      "offline_verifiers": ["html_preview_verifier", "snapshot_verifier"]
+    },
+    {
+      "id": "MH-GD-001",
+      "category": "github_delivery",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "offline_verifiers": ["github_delivery_verifier"]
+    },
+    {
+      "id": "MH-HE-001",
+      "category": "harness_evidence",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "offline_verifiers": ["trace_verifier"]
+    }
+  ]
+}

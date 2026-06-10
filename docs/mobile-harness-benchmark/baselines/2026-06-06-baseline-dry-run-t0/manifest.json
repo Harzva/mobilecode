@@ -1,0 +1,25 @@
+{
+  "report": "baseline-dry-run-t0-manifest",
+  "generated_at": "2026-06-06T12:53:59Z",
+  "status": "dry_run_not_counted",
+  "counts_as_experiment": false,
+  "counts_as_baseline_result": false,
+  "baseline_count": 3,
+  "task_count_per_baseline": 1,
+  "selected_task": {
+    "id": "MH-CE-209",
+    "category": "code_edit",
+    "required_next_tier": "T3-ios-simulator"
+  },
+  "baseline_dirs": [
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-dry-run-t0/chat_only_mobile_coding_flow",
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-dry-run-t0/desktop_remote_ide_flow",
+    "docs/mobile-harness-benchmark/baselines/2026-06-06-baseline-dry-run-t0/mobile_harness_flow"
+  ],
+  "evidence_boundary": "Generated T0 dry-run files exercise baseline result shape for one task only. They are blocked before execution and are not baseline performance results.",
+  "source_artifacts": [
+    "docs/mobile-harness-benchmark/reports/baseline-protocol-readiness.json",
+    "docs/mobile-harness-benchmark/reports/baseline-run-contract.json",
+    "docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json"
+  ]
+}

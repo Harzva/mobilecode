@@ -14,6 +14,8 @@ import {
   TriangleAlert,
   Workflow,
   Wrench,
+  Cpu,
+  GalleryHorizontalEnd,
 } from 'lucide-react';
 
 const architectureLayers = [
@@ -102,6 +104,29 @@ const methods = [
   'GitHub-first builds：本地 Flutter 不可用时，不反复卡死；用 GitHub Actions 作为权威构建环境。',
   'Navigation contract：侧边栏、主功能区、临时面板、独立页面四层分工固定，减少移动端迷路。',
   'Release honesty：未实现就是 planned，metadata 就是 metadata，unsigned archive 不包装成 signed IPA。',
+];
+
+const galleryPatterns = [
+  {
+    title: 'Task Gallery',
+    text: '把功能入口升级为带 category、surface、runtime、permission 和 verifier 的 task metadata。',
+    icon: GalleryHorizontalEnd,
+  },
+  {
+    title: 'Skill Package',
+    text: '用 SKILL.md、scripts/index.html、permission tokens 和 verifier contract 描述可审阅能力。',
+    icon: Code2,
+  },
+  {
+    title: 'Tool Bridge',
+    text: 'MCP/Runtime/GitHub/WebView 统一进入 typed tool bridge，每次调用都能产出 evidence。',
+    icon: Workflow,
+  },
+  {
+    title: 'Benchmark Surface',
+    text: 'MobileHarnessBench 从文档进入 App 内 Benchmark Lab，但真实 mobile evidence 仍单独计数。',
+    icon: Cpu,
+  },
 ];
 
 const releaseAssets = [
@@ -224,6 +249,39 @@ export default function Developer() {
               ))}
             </ul>
           </article>
+        </section>
+
+        <section className="developer-section gallery-patterns">
+          <div className="section-heading compact">
+            <p className="eyebrow">Inspired by On-device AI Gallery Patterns</p>
+            <h2>从模型展示走向 Harness 产品面</h2>
+            <p>
+              On-device AI 应用正在从单一聊天演示，走向 task gallery、skill package、tool bridge、runtime management
+              和 benchmark surface。MobileCode 吸收这个产品形态，但把目标换成手机端 AI coding harness：文件入口、代码 artifact、
+              HTML/Markdown 预览、GitHub 交付、运行时路由和 verifier evidence。
+            </p>
+          </div>
+          <div className="gallery-pattern-grid">
+            {galleryPatterns.map(({ title, text, icon: Icon }) => (
+              <article key={title}>
+                <Icon size={22} />
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </article>
+            ))}
+          </div>
+          <div className="gallery-pattern-links">
+            <a href="https://github.com/google-ai-edge/gallery" target="_blank" rel="noreferrer">
+              <span>Reference pattern</span>
+              <strong>google-ai-edge/gallery</strong>
+              <ArrowRight size={16} />
+            </a>
+            <a href="https://harzva.github.io/mobilecode/#/developer" target="_blank" rel="noreferrer">
+              <span>MobileCode direction</span>
+              <strong>Skill spec + task registry + Benchmark Lab</strong>
+              <ArrowRight size={16} />
+            </a>
+          </div>
         </section>
 
         <section className="developer-section">

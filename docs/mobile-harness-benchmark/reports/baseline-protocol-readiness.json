@@ -1,0 +1,108 @@
+{
+  "report": "baseline-protocol-readiness",
+  "generated_at": "2026-06-06T12:53:58Z",
+  "status": "protocol_defined_no_results",
+  "counts_as_experiment": false,
+  "counts_as_baseline_result": false,
+  "task_subset": {
+    "name": "frozen-v2-paper-subset",
+    "path": "docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json",
+    "task_count": 60,
+    "counts_as_final_paper_subset": false
+  },
+  "baselines": [
+    {
+      "id": "chat_only_mobile_coding_flow",
+      "name": "Chat-only mobile coding flow",
+      "unit_under_test": "A mobile chat assistant without a harness evidence layer.",
+      "allowed_tools": [
+        "model chat",
+        "manual copy/paste",
+        "mobile browser or viewer"
+      ],
+      "evidence_requirements": [
+        "prompt transcript",
+        "generated artifact or explicit blocked output",
+        "manual verification notes",
+        "human intervention count"
+      ],
+      "expected_limit": "May produce plausible artifacts but lacks structured harness traces and verifier outputs."
+    },
+    {
+      "id": "desktop_remote_ide_flow",
+      "name": "Desktop remote IDE flow",
+      "unit_under_test": "A conventional desktop or remote IDE workflow used from outside the phone.",
+      "allowed_tools": [
+        "desktop IDE or remote editor",
+        "terminal or CI logs",
+        "repository commit tools"
+      ],
+      "evidence_requirements": [
+        "diff or commit record",
+        "test or preview output",
+        "run logs",
+        "human intervention count"
+      ],
+      "expected_limit": "Strong execution access, but not a phone-native control-plane baseline."
+    },
+    {
+      "id": "mobile_harness_flow",
+      "name": "Phone-native mobile harness flow",
+      "unit_under_test": "The proposed phone-native harness control loop.",
+      "allowed_tools": [
+        "harness action runner",
+        "artifact store",
+        "preview service",
+        "runtime provider",
+        "GitHub sandbox when authorized"
+      ],
+      "evidence_requirements": [
+        "run.json",
+        "summary.md",
+        "traces.jsonl",
+        "verifier outputs",
+        "preview or delivery artifacts",
+        "mobile-tier screenshots or logs when required"
+      ],
+      "expected_limit": "Cannot count as final mobile evidence until T2/T3/T5 artifacts are attached."
+    }
+  ],
+  "metrics": [
+    "task_success",
+    "verified_success",
+    "trace_completeness",
+    "recovery_rate",
+    "artifact_availability",
+    "human_intervention_count",
+    "steps_to_completion"
+  ],
+  "fairness_controls": [
+    "Use the same frozen task subset for every baseline.",
+    "Use the same input fixtures and task prompts.",
+    "Record the exact model provider and model version for every run.",
+    "Use the same authorization state for GitHub-delivery tasks; unavailable authorization is typed as blocked.",
+    "Apply the same time budget and human-intervention logging.",
+    "Do not compare T0 fixture evidence against T2/T3/T5 mobile-device evidence as if they were the same tier."
+  ],
+  "blocked_conditions": [
+    "No Android T2 run evidence is attached yet.",
+    "No iOS T3/T4 run evidence is attached yet.",
+    "No authorized GitHub T5 sandbox run evidence is attached yet.",
+    "No model/provider lock file has been recorded for baseline runs yet.",
+    "No human-intervention annotation sheet has been completed yet."
+  ],
+  "required_result_artifacts": [
+    "baseline-run.json",
+    "baseline-summary.md",
+    "baseline-traces.jsonl or equivalent transcript",
+    "per-task artifact paths",
+    "per-task verifier outputs",
+    "mobile-tier screenshots/logs for tasks requiring mobile evidence",
+    "human-intervention annotations"
+  ],
+  "evidence_boundary": "This report defines the comparison protocol only. It contains no baseline result and must not be used as a performance table until run artifacts exist for all baselines.",
+  "source_artifacts": [
+    "docs/mobile-harness-benchmark/tasks/frozen-v2-paper-subset.json",
+    "docs/mobile-harness-benchmark/reports/mobile-tier-readiness.json"
+  ]
+}

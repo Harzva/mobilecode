@@ -1,0 +1,556 @@
+{
+  "task_set": "smoke-v2",
+  "description": "Sixty v2 smoke tasks, ten per category, for the first T0 offline verifier expansion.",
+  "source_task_bank": "tasks/v2-task-bank.json",
+  "task_count": 60,
+  "categories": {
+    "code_edit": 10,
+    "file_intake": 10,
+    "github_delivery": 10,
+    "harness_evidence": 10,
+    "preview_verification": 10,
+    "runtime_orchestration": 10
+  },
+  "tasks": [
+    {
+      "id": "MH-CE-201",
+      "category": "code_edit",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-CE-205",
+      "category": "code_edit",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-CE-209",
+      "category": "code_edit",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-CE-213",
+      "category": "code_edit",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-CE-217",
+      "category": "code_edit",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-CE-221",
+      "category": "code_edit",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-CE-225",
+      "category": "code_edit",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-CE-229",
+      "category": "code_edit",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-CE-233",
+      "category": "code_edit",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-CE-237",
+      "category": "code_edit",
+      "fixture": "fixtures/code-edit/html-prompt.txt",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-FI-201",
+      "category": "file_intake",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-FI-205",
+      "category": "file_intake",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-FI-209",
+      "category": "file_intake",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-FI-213",
+      "category": "file_intake",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-FI-217",
+      "category": "file_intake",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-FI-221",
+      "category": "file_intake",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-FI-225",
+      "category": "file_intake",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-FI-229",
+      "category": "file_intake",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-FI-233",
+      "category": "file_intake",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-FI-237",
+      "category": "file_intake",
+      "fixture": "fixtures/file-intake/simple-page.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-GD-201",
+      "category": "github_delivery",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-GD-205",
+      "category": "github_delivery",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-GD-209",
+      "category": "github_delivery",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-GD-213",
+      "category": "github_delivery",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-GD-217",
+      "category": "github_delivery",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-GD-221",
+      "category": "github_delivery",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-GD-225",
+      "category": "github_delivery",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-GD-229",
+      "category": "github_delivery",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-GD-233",
+      "category": "github_delivery",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-GD-237",
+      "category": "github_delivery",
+      "fixture": "fixtures/github/commit-artifact.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-HE-201",
+      "category": "harness_evidence",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-HE-205",
+      "category": "harness_evidence",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-HE-209",
+      "category": "harness_evidence",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-HE-213",
+      "category": "harness_evidence",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-HE-217",
+      "category": "harness_evidence",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-HE-221",
+      "category": "harness_evidence",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-HE-225",
+      "category": "harness_evidence",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-HE-229",
+      "category": "harness_evidence",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-HE-233",
+      "category": "harness_evidence",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-HE-237",
+      "category": "harness_evidence",
+      "fixture": "fixtures/evidence/complete-trace.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-PV-201",
+      "category": "preview_verification",
+      "fixture": "fixtures/preview/index.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-PV-205",
+      "category": "preview_verification",
+      "fixture": "fixtures/preview/index.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-PV-209",
+      "category": "preview_verification",
+      "fixture": "fixtures/preview/index.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-PV-213",
+      "category": "preview_verification",
+      "fixture": "fixtures/preview/index.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-PV-217",
+      "category": "preview_verification",
+      "fixture": "fixtures/preview/index.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-PV-221",
+      "category": "preview_verification",
+      "fixture": "fixtures/preview/index.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-PV-225",
+      "category": "preview_verification",
+      "fixture": "fixtures/preview/index.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-PV-229",
+      "category": "preview_verification",
+      "fixture": "fixtures/preview/index.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-PV-233",
+      "category": "preview_verification",
+      "fixture": "fixtures/preview/index.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-PV-237",
+      "category": "preview_verification",
+      "fixture": "fixtures/preview/index.html",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-RT-201",
+      "category": "runtime_orchestration",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-RT-205",
+      "category": "runtime_orchestration",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-RT-209",
+      "category": "runtime_orchestration",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-RT-213",
+      "category": "runtime_orchestration",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-RT-217",
+      "category": "runtime_orchestration",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-RT-221",
+      "category": "runtime_orchestration",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-RT-225",
+      "category": "runtime_orchestration",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-RT-229",
+      "category": "runtime_orchestration",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_low_memory",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    },
+    {
+      "id": "MH-RT-233",
+      "category": "runtime_orchestration",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "ios_simulator_document",
+      "quality_axis": "happy_path",
+      "requires_real_device": false
+    },
+    {
+      "id": "MH-RT-237",
+      "category": "runtime_orchestration",
+      "fixture": "fixtures/runtime/helper-health.json",
+      "test_tier": "T0-offline-fixture",
+      "mobile_profile": "android_real_phone_share",
+      "quality_axis": "happy_path",
+      "requires_real_device": true
+    }
+  ]
+}

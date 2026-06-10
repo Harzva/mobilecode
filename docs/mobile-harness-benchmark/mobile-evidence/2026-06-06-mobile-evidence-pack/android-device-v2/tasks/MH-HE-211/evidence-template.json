@@ -1,0 +1,41 @@
+{
+  "schema": "mobile_harness_mobile_evidence_template/v0",
+  "task_id": "MH-HE-211",
+  "task_set": "android-device-v2",
+  "category": "harness_evidence",
+  "test_tier": "T2-android-real-device",
+  "fixture": "fixtures/evidence/complete-trace.json",
+  "mobile_profile": "android_low_memory",
+  "quality_axis": "public_report_safety",
+  "requires_real_device": true,
+  "status": "template_not_run",
+  "counts_as_mobile_experiment": false,
+  "required_before_counting": [
+    "run.json with verifier result for this task",
+    "summary.md for the run",
+    "traces.jsonl with task events",
+    "device-metadata.json with anonymized device fields",
+    "at least one screenshot or screen recording marker",
+    "platform log excerpt when available",
+    "public-output safety scan result"
+  ],
+  "evidence_to_fill": {
+    "run_id": null,
+    "operator_label": null,
+    "started_at": null,
+    "completed_at": null,
+    "device_metadata_path": null,
+    "run_json_path": null,
+    "summary_md_path": null,
+    "traces_jsonl_path": null,
+    "screenshot_paths": [],
+    "screen_recording_paths": [],
+    "log_paths": [],
+    "artifact_paths": [],
+    "verifier_output_paths": [],
+    "failure_kind": null,
+    "blocked_reason": null,
+    "human_intervention_count": null,
+    "public_safety_scan_passed": null
+  }
+}

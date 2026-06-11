@@ -132,23 +132,23 @@ const galleryPatterns = [
 const releaseAssets = [
   {
     label: 'Android APK',
-    href: 'https://github.com/Harzva/mobilecode/releases/download/v0.1.68-last/mobilecode-v0.1.68-last.apk',
+    href: 'https://github.com/Harzva/mobilecode/releases/download/v0.1.68-mobile-harness-d2dd9a7/mobilecode-v0.1.68-mobile-harness-d2dd9a7.apk',
   },
   {
     label: 'iOS simulator app',
-    href: 'https://github.com/Harzva/mobilecode/releases/download/v0.1.68-last/mobilecode-ios-simulator-v0.1.68-last.zip',
+    href: 'https://github.com/Harzva/mobilecode/releases/download/v0.1.68-mobile-harness-d2dd9a7/mobilecode-ios-simulator-v0.1.68-mobile-harness-d2dd9a7.zip',
   },
   {
     label: 'iOS unsigned archive',
-    href: 'https://github.com/Harzva/mobilecode/releases/download/v0.1.68-last/mobilecode-ios-archive-v0.1.68-last.xcarchive.zip',
+    href: 'https://github.com/Harzva/mobilecode/releases/download/v0.1.68-mobile-harness-d2dd9a7/mobilecode-ios-archive-v0.1.68-mobile-harness-d2dd9a7.xcarchive.zip',
   },
   {
     label: 'Build Mobile Apps run',
-    href: 'https://github.com/Harzva/mobilecode/actions/runs/26446492011',
+    href: 'https://github.com/Harzva/mobilecode/actions/runs/27287231941',
   },
   {
     label: 'Source branch',
-    href: 'https://github.com/Harzva/mobilecode/tree/last-recover-from-v039',
+    href: 'https://github.com/Harzva/mobilecode/tree/main',
   },
 ];
 
@@ -167,11 +167,11 @@ export default function Developer() {
           </div>
           <div className="developer-proof">
             <span>Current release</span>
-            <strong>v0.1.68-last</strong>
+            <strong>v0.1.68-mobile-harness</strong>
             <span>Verified build</span>
             <strong>APK + iOS artifacts</strong>
-            <span>Main workline</span>
-            <strong>last-recover-from-v039</strong>
+            <span>Default branch</span>
+            <strong>main</strong>
             <span>Public surface</span>
             <strong>GitHub Pages</strong>
           </div>
@@ -312,7 +312,7 @@ export default function Developer() {
             <p className="eyebrow">Release Evidence</p>
             <h2>双端产物与公开证据</h2>
             <p>
-              v0.1.68-last 已由 GitHub Actions 验证产出 Android APK、iOS simulator app zip 和 unsigned iOS archive。
+              v0.1.68-mobile-harness-d2dd9a7 已由 GitHub Actions 验证产出 Android APK、iOS simulator app zip 和 unsigned iOS archive。
               iOS archive 未签名，signed IPA 需要 Apple signing secrets 与 provisioning profile。
             </p>
           </div>

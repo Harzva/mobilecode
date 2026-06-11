@@ -11,10 +11,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml"><img alt="Mobile Runtime CI" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml/badge.svg?branch=last-recover-from-v039"></a>
+  <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml"><img alt="Mobile Runtime CI" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-runtime-ci.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml"><img alt="Mobile App Release" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml/badge.svg"></a>
-  <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=last-recover-from-v039"></a>
-  <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=last-recover-from-v039"></a>
+  <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=main"></a>
   <img alt="Version" src="https://img.shields.io/badge/version-v0.1.68--mobile--harness-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Flutter-0B9B7E">
 </p>
@@ -61,20 +61,20 @@
   <sub>15-second Remotion teaser with voiceover. Full explainer covers demand, pain, RuntimeProvider, and GitHub-first shipping.</sub>
 </p>
 
-## Visual Proof From `last`
+## Product Preview
 
-The `last` branch had stronger first-glance product proof: a mobile visual board and a short walkthrough stored as repo-owned assets. This branch keeps that visual layer while adding the Mobile Harness research, paper, benchmark, verifier and release evidence system from `last-recover-from-v039`.
+MobileCode is packaged as a phone-native coding harness: a small mobile companion for writing, previewing, running agent tasks, and shipping artifacts from the same handheld workspace.
 
 <p align="center">
-  <img src="app/public/showcase/mobilecode-last-mobile-preview.png" alt="MobileCode last branch mobile visual identity board" width="960">
+  <img src="app/public/showcase/mobilecode-product-preview.png" alt="MobileCode product preview and mobile coding identity board" width="960">
 </p>
 
 <p align="center">
-  <video src="app/public/showcase/mobilecode-last-walkthrough.mp4" width="360" controls muted playsinline>
-    <a href="app/public/showcase/mobilecode-last-walkthrough.mp4">Watch MobileCode last branch walkthrough MP4</a>
+  <video src="app/public/showcase/mobilecode-product-walkthrough.mp4" width="360" controls muted playsinline>
+    <a href="app/public/showcase/mobilecode-product-walkthrough.mp4">Watch MobileCode product walkthrough MP4</a>
   </video>
   <br>
-  <sub>If your Markdown viewer does not embed video, open <a href="app/public/showcase/mobilecode-last-walkthrough.mp4">mobilecode-last-walkthrough.mp4</a>.</sub>
+  <sub>If your Markdown viewer does not embed video, open <a href="app/public/showcase/mobilecode-product-walkthrough.mp4">mobilecode-product-walkthrough.mp4</a>.</sub>
 </p>
 
 | Runs on the phone | Remote by choice | GitHub-first shipping |

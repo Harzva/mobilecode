@@ -8874,6 +8874,7 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
   final _sheetRange = TextEditingController(text: 'Sheet1!A1:D4');
   final _bitableAppToken = TextEditingController();
   final _bitableTableId = TextEditingController();
+  final _relayEvidenceJson = TextEditingController();
 
   LarkTokenMode _tokenMode = LarkTokenMode.userAccessToken;
   LarkApiActionKind _selectedAction = LarkApiActionKind.readiness;
@@ -8883,11 +8884,15 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
   bool _calling = false;
   bool _checkingCli = false;
   bool _checkingCapability = false;
+  bool _syncingRelayEvidence = false;
   bool _showSecret = false;
   final Map<LarkApiActionKind, _LarkCapabilityState> _capabilityState = {};
   final Map<LarkApiActionKind, String> _capabilityDetail = {};
+  final List<LarkRelayEvidenceSample> _syncedRelayEvidence = [];
   _LarkCapabilityState _agentChatReadinessState = _LarkCapabilityState.unknown;
   String _agentChatReadinessDetail = 'Not checked yet.';
+  String _relayEvidenceSyncDetail =
+      'No synced relay evidence yet. Use managed relay sync or paste sanitized JSON.';
   final List<String> _lines = [
     'Lark API Lab is native-first. CLI and MCP are Mac/CI development probes, not embedded app runtimes.',
   ];
@@ -8915,6 +8920,7 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
     _sheetRange.dispose();
     _bitableAppToken.dispose();
     _bitableTableId.dispose();
+    _relayEvidenceJson.dispose();
     super.dispose();
   }
 
@@ -9577,6 +9583,11 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
           ),
           const SizedBox(height: 4),
           Text(
+            'chain_stage=${sample.chainStage}',
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 4),
+          Text(
             'event_id=${sample.eventId} · request_id=${sample.requestId}',
             style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
           ),
@@ -9590,6 +9601,13 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
             'failure_kind=${sample.failureKind} · reply_message_id=${sample.replyMessageId}',
             style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
           ),
+          if (sample.docxStatus != 'N/A' || sample.docxUrl != 'N/A') ...[
+            const SizedBox(height: 4),
+            Text(
+              'docx_status=${sample.docxStatus} · docx=${sample.docxUrl}',
+              style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+            ),
+          ],
           const SizedBox(height: 4),
           Text(
             'next_action=${sample.nextAction}',
@@ -9608,6 +9626,92 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
         ],
       ),
     );
+  }
+
+  Future<void> _syncRelayEvidence() async {
+    setState(() {
+      _syncingRelayEvidence = true;
+      _relayEvidenceSyncDetail = 'Syncing sanitized relay evidence feed...';
+    });
+    final result = await _service.syncRelayEvidenceFeed(
+      connection: _connectionFromFields(),
+      limit: 20,
+    );
+    if (!mounted) return;
+    setState(() {
+      _syncingRelayEvidence = false;
+      if (result.success) {
+        _syncedRelayEvidence
+          ..clear()
+          ..addAll(result.samples);
+      }
+      _relayEvidenceSyncDetail = [
+        result.message,
+        if (result.endpoint.isNotEmpty) 'endpoint=${result.endpoint}',
+        'status=${result.statusCode}',
+        if (result.rawPreview.isNotEmpty)
+          'rawPreview=${_compact(result.rawPreview, limit: 320)}',
+      ].join('\n');
+      _lines
+        ..clear()
+        ..add(_relayEvidenceSyncDetail);
+    });
+    widget.onLog(
+      result.success ? 'Lark relay evidence synced' : 'Lark relay sync failed',
+      _compact(result.message, limit: 120),
+      result.success ? Icons.sync_alt_outlined : Icons.error_outline,
+      result.success ? _mint : _amber,
+    );
+  }
+
+  Future<void> _importRelayEvidenceJson() async {
+    final raw = _relayEvidenceJson.text.trim();
+    if (raw.isEmpty) {
+      setState(() {
+        _relayEvidenceSyncDetail =
+            'Paste sanitized relay evidence JSON before importing.';
+      });
+      return;
+    }
+    try {
+      final samples = LarkApiService.parseRelayEvidenceFeed(raw);
+      setState(() {
+        _syncedRelayEvidence
+          ..clear()
+          ..addAll(samples);
+        _relayEvidenceSyncDetail =
+            'Imported ${samples.length} sanitized relay evidence item(s) from pasted JSON.';
+        _lines
+          ..clear()
+          ..add(_relayEvidenceSyncDetail);
+      });
+      widget.onLog(
+        'Lark relay evidence imported',
+        '${samples.length} sanitized item(s)',
+        Icons.upload_file_outlined,
+        _mint,
+      );
+    } on Object catch (error) {
+      setState(() {
+        _relayEvidenceSyncDetail =
+            'Import failed: ${_compact(error.toString(), limit: 360)}';
+        _lines
+          ..clear()
+          ..add(_relayEvidenceSyncDetail);
+      });
+    }
+  }
+
+  void _clearSyncedRelayEvidence() {
+    setState(() {
+      _syncedRelayEvidence.clear();
+      _relayEvidenceJson.clear();
+      _relayEvidenceSyncDetail =
+          'Synced relay evidence cleared. Built-in sanitized samples remain visible.';
+      _lines
+        ..clear()
+        ..add(_relayEvidenceSyncDetail);
+    });
   }
 
   bool get _needsDirectSecret => _tokenMode.isSecretBearing;
@@ -9734,6 +9838,10 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
   @override
   Widget build(BuildContext context) {
     final preview = _preview;
+    final relayEvidenceSamples = [
+      ..._syncedRelayEvidence,
+      ...LarkApiService.relayEvidenceSamples(),
+    ];
     return _SheetScaffold(
       icon: Icons.account_tree_outlined,
       title: 'Lark API Lab',
@@ -9792,11 +9900,57 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
                         TextStyle(color: _text, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 8),
                 const Text(
-                  'Minimal sample surface for relay event / reply / evidence chain. Uses sanitized placeholders only.',
+                  'Sync sanitized evidence from a managed relay endpoint, or paste a public-safe evidence feed. Ignored local raw evidence is never auto-read by the public app.',
                   style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
                 ),
                 const SizedBox(height: 10),
-                for (final sample in LarkApiService.relayEvidenceSamples())
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _RuntimeActionButton(
+                      icon: Icons.sync_alt_outlined,
+                      label: _syncingRelayEvidence
+                          ? 'Syncing evidence'
+                          : 'Sync evidence',
+                      disabled: _syncingRelayEvidence,
+                      onTap: () => unawaited(_syncRelayEvidence()),
+                    ),
+                    _RuntimeActionButton(
+                      icon: Icons.upload_file_outlined,
+                      label: 'Import JSON',
+                      disabled: false,
+                      onTap: () => unawaited(_importRelayEvidenceJson()),
+                    ),
+                    _RuntimeActionButton(
+                      icon: Icons.clear_outlined,
+                      label: 'Clear synced',
+                      disabled: _syncedRelayEvidence.isEmpty &&
+                          _relayEvidenceJson.text.isEmpty,
+                      onTap: _clearSyncedRelayEvidence,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _relayEvidenceJson,
+                  minLines: 2,
+                  maxLines: 5,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'Paste sanitized evidence feed JSON',
+                    alignLabelWithHint: true,
+                    prefixIcon: Icon(Icons.data_object_outlined),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _relayEvidenceSyncDetail,
+                  style: const TextStyle(
+                      color: _muted, fontSize: 11, height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                for (final sample in relayEvidenceSamples)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: _relayEvidenceSampleCard(sample),

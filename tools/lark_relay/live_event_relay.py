@@ -26,6 +26,7 @@ from mock_relay_runner import (
 
 EVENT_KEY = "im.message.receive_v1"
 DEFAULT_TOOL = "lark_relay.live_event_consume"
+AGENT_META_PREFIX = "MOBILECODE_RELAY_META_JSON="
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -259,6 +260,24 @@ def _run_agent(
     return _run_command_agent(args.agent_command, message_text)
 
 
+def _extract_agent_meta(agent_stderr: str) -> tuple[dict[str, Any], str]:
+    meta: dict[str, Any] = {}
+    visible_lines: list[str] = []
+    for line in agent_stderr.splitlines():
+        if line.startswith(AGENT_META_PREFIX):
+            raw = line[len(AGENT_META_PREFIX) :].strip()
+            try:
+                decoded = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                meta["meta_parse_error"] = str(exc)
+                continue
+            if isinstance(decoded, dict):
+                meta.update(decoded)
+            continue
+        visible_lines.append(line)
+    return meta, "\n".join(visible_lines).strip()
+
+
 def _write_evidence(output_dir: Path, evidence: dict[str, Any]) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     output = output_dir / f"{evidence['dry_run_id']}.json"
@@ -357,6 +376,7 @@ def _build_evidence(
     agent_returncode: Optional[int],
     agent_stdout: str,
     agent_stderr: str,
+    agent_meta: dict[str, Any],
     reply_command: Optional[list[str]],
     reply_returncode: Optional[int],
     reply_stdout: str,
@@ -369,7 +389,7 @@ def _build_evidence(
     skip_reason: str,
 ) -> dict[str, Any]:
     dry_run_id = _new_dry_run_id()
-    return {
+    evidence = {
         "tool": args.tool,
         "event_key": EVENT_KEY,
         "send_mode": args.send_mode,
@@ -403,8 +423,16 @@ def _build_evidence(
             "returncode": agent_returncode,
             "stdout": agent_stdout,
             "stderr": agent_stderr,
+            "meta": agent_meta,
         },
     }
+    if agent_meta:
+        evidence["agent_meta"] = agent_meta
+    if isinstance(agent_meta.get("chain_stage"), str):
+        evidence["chain_stage"] = agent_meta["chain_stage"]
+    if isinstance(agent_meta.get("lark_docx"), dict):
+        evidence["lark_docx"] = agent_meta["lark_docx"]
+    return evidence
 
 
 def run_live_relay(args: argparse.Namespace) -> int:
@@ -481,6 +509,7 @@ def run_live_relay(args: argparse.Namespace) -> int:
         agent_returncode = None
         agent_stdout = ""
         agent_stderr = ""
+        agent_meta: dict[str, Any] = {}
         failure_kind = "none"
         next_action = "reply_dry_run_written" if args.send_mode == "dry-run" else "reply_sent"
 
@@ -494,6 +523,7 @@ def run_live_relay(args: argparse.Namespace) -> int:
             next_action = "wait_for_matching_event"
         else:
             agent_failure, agent_reply, agent_returncode, agent_stdout, agent_stderr = _run_agent(args, agent_input)
+            agent_meta, agent_stderr = _extract_agent_meta(agent_stderr)
             if agent_failure != "none":
                 failure_kind = agent_failure
                 if args.agent_mode == "mock":
@@ -518,6 +548,8 @@ def run_live_relay(args: argparse.Namespace) -> int:
                 if reply_returncode != 0:
                     failure_kind = "im_reply_failed"
                     next_action = "inspect_reply_error_scope_or_membership"
+                elif isinstance(agent_meta.get("next_action"), str):
+                    next_action = agent_meta["next_action"]
 
         evidence = _build_evidence(
             args=args,
@@ -530,6 +562,7 @@ def run_live_relay(args: argparse.Namespace) -> int:
             agent_returncode=agent_returncode,
             agent_stdout=agent_stdout,
             agent_stderr=agent_stderr,
+            agent_meta=agent_meta,
             reply_command=reply_command,
             reply_returncode=reply_returncode,
             reply_stdout=reply_stdout,

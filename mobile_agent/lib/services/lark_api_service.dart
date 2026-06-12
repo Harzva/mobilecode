@@ -224,6 +224,9 @@ class LarkRelayEvidenceSample {
     this.consumerReady = 'N/A',
     this.agentMode = 'N/A',
     this.evidenceSource = 'sanitized_sample',
+    this.chainStage = 'event_to_reply',
+    this.docxStatus = 'N/A',
+    this.docxUrl = 'N/A',
   });
 
   final String sendMode;
@@ -239,6 +242,9 @@ class LarkRelayEvidenceSample {
   final String consumerReady;
   final String agentMode;
   final String evidenceSource;
+  final String chainStage;
+  final String docxStatus;
+  final String docxUrl;
 
   bool get isSample => rawJsonPreviewAvailable;
 
@@ -255,8 +261,32 @@ class LarkRelayEvidenceSample {
       'consumer_ready': consumerReady,
       'agent_mode': agentMode,
       'evidence_source': evidenceSource,
+      'chain_stage': chainStage,
+      'docx_status': docxStatus,
+      'docx_url': docxUrl,
     };
   }
+}
+
+@immutable
+class LarkRelayEvidenceSyncResult {
+  const LarkRelayEvidenceSyncResult({
+    required this.success,
+    required this.endpoint,
+    required this.statusCode,
+    required this.samples,
+    required this.message,
+    required this.syncedAt,
+    this.rawPreview = '',
+  });
+
+  final bool success;
+  final String endpoint;
+  final int statusCode;
+  final List<LarkRelayEvidenceSample> samples;
+  final String message;
+  final DateTime syncedAt;
+  final String rawPreview;
 }
 
 @immutable
@@ -709,11 +739,80 @@ class LarkApiService {
   "raw_json_preview_status": "Sanitized live relay evidence loaded; chat IDs, open IDs, message IDs, and content are redacted."
 }''';
 
+  static const String _relayDevLogDocxChainSampleJson = '''
+{
+  "tool": "lark_relay.live_event_consume",
+  "event_key": "im.message.receive_v1",
+  "chain_stage": "event_to_docx_to_reply",
+  "send_mode": "live",
+  "event": {
+    "event_id": "evt_dev_log_docx_sanitized",
+    "request_id": "req_dev_log_docx_sanitized",
+    "chat_id": "<redacted_chat_id>",
+    "sender_id": "<redacted_open_id>",
+    "message_text": "/mc 写开发日志",
+    "received_at": "2026-06-12T13:30:00Z"
+  },
+  "event_id": "evt_dev_log_docx_sanitized",
+  "request_id": "req_dev_log_docx_sanitized",
+  "dry_run_id": "dry-run-dev-log-docx-sanitized",
+  "failure_kind": "none",
+  "next_action": "reply_sent_with_docx_link",
+  "message_text": "/mc 写开发日志",
+  "reply_text": "Development log Docx created: <redacted_docx_url>",
+  "lark_docx": {
+    "status": "created",
+    "title": "MobileCode 开发日志",
+    "document_url": "<redacted_docx_url>",
+    "token_mode": "user_access_token",
+    "failure_kind": "none"
+  },
+  "reply": {
+    "returncode": 0,
+    "json": {
+      "code": 0,
+      "msg": "success",
+      "data": {
+        "message_id": "<redacted_reply_message_id>"
+      }
+    }
+  },
+  "agent": {
+    "mode": "command",
+    "command": "python3 tools/lark_relay/agent_command_dev_log_docx.py",
+    "returncode": 0,
+    "stdout": "Development log Docx created: <redacted_docx_url>",
+    "stderr": ""
+  },
+  "raw_json_preview_status": "Sanitized dev-log Docx chain; document URL, chat IDs, open IDs, and message IDs are redacted."
+}''';
+
   static List<LarkRelayEvidenceSample> relayEvidenceSamples() {
     return [
       parseRelayEvidenceSample(_relayEvidenceSampleJson),
       parseRelayEvidenceSample(_relayLiveReplySuccessSampleJson),
+      parseRelayEvidenceSample(_relayDevLogDocxChainSampleJson),
     ];
+  }
+
+  static List<LarkRelayEvidenceSample> parseRelayEvidenceFeed(String rawJson) {
+    final decoded = jsonDecode(rawJson);
+    final items = <Object?>[];
+    if (decoded is List) {
+      items.addAll(decoded);
+    } else if (decoded is Map) {
+      final map = decoded.map((key, value) => MapEntry(key.toString(), value));
+      final rawItems = map['items'] ?? map['evidence'] ?? map['records'];
+      if (rawItems is List) {
+        items.addAll(rawItems);
+      } else {
+        items.add(map);
+      }
+    }
+    return items
+        .whereType<Map<String, Object?>>()
+        .map((item) => parseRelayEvidenceSample(jsonEncode(item)))
+        .toList(growable: false);
   }
 
   static LarkRelayEvidenceSample parseRelayEvidenceSample(String rawJson) {
@@ -724,6 +823,8 @@ class LarkApiService {
     final evidence = _safeRelayMap(safeEnvelope['evidence']);
     final consumer = _safeRelayMap(safeEnvelope['consumer']);
     final agent = _safeRelayMap(safeEnvelope['agent']);
+    final docx =
+        _safeRelayMap(safeEnvelope['lark_docx'] ?? safeEnvelope['docx']);
     final sendMode = _safeRelayValue(
       event['send_mode'] ??
           event['sendMode'] ??
@@ -822,6 +923,29 @@ class LarkApiService {
             safeEnvelope['raw_json_path'],
         fallback: 'sanitized_sample',
       ),
+      chainStage: _safeRelayValue(
+        safeEnvelope['chain_stage'] ??
+            safeEnvelope['chainStage'] ??
+            docx['chain_stage'] ??
+            docx['chainStage'],
+        fallback: 'event_to_reply',
+      ),
+      docxStatus: _safeRelayValue(
+        docx['status'] ??
+            docx['failure_kind'] ??
+            docx['failureKind'] ??
+            safeEnvelope['docx_status'] ??
+            safeEnvelope['docxStatus'],
+        fallback: 'N/A',
+      ),
+      docxUrl: _safeRelayResourceLink(
+        docx['document_url'] ??
+            docx['documentUrl'] ??
+            docx['url'] ??
+            safeEnvelope['document_url'] ??
+            safeEnvelope['documentUrl'],
+        fallback: 'N/A',
+      ),
     );
   }
 
@@ -879,6 +1003,27 @@ class LarkApiService {
       return normalized;
     if (normalized.length > 64) return '<redacted>';
     return normalized;
+  }
+
+  static String _safeRelayResourceLink(
+    Object? value, {
+    required String fallback,
+  }) {
+    if (value == null) return fallback;
+    final normalized = value.toString().trim();
+    if (normalized.isEmpty) return fallback;
+    if (normalized.startsWith('<') && normalized.endsWith('>')) {
+      return normalized;
+    }
+    final lower = normalized.toLowerCase();
+    if (lower.contains('access_token') ||
+        lower.contains('tenant_access_token') ||
+        lower.contains('authorization') ||
+        lower.contains('cookie') ||
+        lower.contains('secret')) {
+      return '<redacted_secret>';
+    }
+    return compact(normalized, limit: 180);
   }
 
   LarkApiService({
@@ -1104,6 +1249,70 @@ class LarkApiService {
       uri: spec.uri(connection.baseUrl),
       bearerToken: connection.accessToken.trim(),
     );
+  }
+
+  Future<LarkRelayEvidenceSyncResult> syncRelayEvidenceFeed({
+    required LarkApiConnection connection,
+    int limit = 20,
+  }) async {
+    final relayUrl = connection.relayUrl.trim();
+    if (relayUrl.isEmpty) {
+      return LarkRelayEvidenceSyncResult(
+        success: false,
+        endpoint: '',
+        statusCode: 0,
+        samples: const [],
+        message: 'Managed relay URL is not configured.',
+        syncedAt: DateTime.now(),
+      );
+    }
+
+    final endpoint = relayUrl.endsWith('/')
+        ? '${relayUrl}lark/evidence?limit=$limit'
+        : '$relayUrl/lark/evidence?limit=$limit';
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await client
+          .getUrl(Uri.parse(endpoint))
+          .timeout(const Duration(seconds: 8));
+      if (connection.relayToken.trim().isNotEmpty) {
+        request.headers.set(
+          HttpHeaders.authorizationHeader,
+          'Bearer ${connection.relayToken.trim()}',
+        );
+      }
+      request.headers
+          .set(HttpHeaders.userAgentHeader, 'MobileCode/0.1 LarkEvidenceSync');
+      final response =
+          await request.close().timeout(const Duration(seconds: 20));
+      final body = await utf8.decodeStream(response);
+      final samples = response.statusCode >= 200 && response.statusCode < 300
+          ? parseRelayEvidenceFeed(body)
+          : const <LarkRelayEvidenceSample>[];
+      return LarkRelayEvidenceSyncResult(
+        success: response.statusCode >= 200 && response.statusCode < 300,
+        endpoint: endpoint,
+        statusCode: response.statusCode,
+        samples: samples,
+        message: response.statusCode >= 200 && response.statusCode < 300
+            ? 'Synced ${samples.length} sanitized relay evidence item(s).'
+            : 'Relay evidence sync failed with HTTP ${response.statusCode}.',
+        syncedAt: DateTime.now(),
+        rawPreview: redactBody(compact(body, limit: 1600)),
+      );
+    } on Object catch (error) {
+      return LarkRelayEvidenceSyncResult(
+        success: false,
+        endpoint: endpoint,
+        statusCode: 0,
+        samples: const [],
+        message:
+            'Relay evidence sync failed: ${compact(error.toString(), limit: 420)}',
+        syncedAt: DateTime.now(),
+      );
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<LarkApiCallResult> _executeHttp({

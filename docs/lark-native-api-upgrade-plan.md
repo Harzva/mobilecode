@@ -249,7 +249,8 @@ Recommended token modes:
 
 - [x] Render a mobile evidence preview before writing to Lark.
 - [ ] Save the generated Lark payload locally as redacted JSON.
-- [ ] Link resulting Docx, Drive file, Sheet row, or Bitable record back into the MobileCode run.
+- [x] Link resulting Docx relay evidence back into the MobileCode run through a sanitized relay evidence feed.
+- [ ] Link resulting Drive file, Sheet row, or Bitable record back into the MobileCode run.
 - [ ] Make verifier outputs exportable to Lark Docs and Bitable.
 
 ### Live Relay Evidence Ingestion (MVP)
@@ -259,9 +260,11 @@ Recommended token modes:
   - `reply`: `send_mode`, `status`, `text`, optional reply `message_id`
   - `evidence`: `failure_kind`, `next_action`, `request_id`, `event_id`, `log_id`, `token_mode`, `tool`, `error_code`, `raw_json_path`
 - [x] Lark API Lab renders sanitized items as Event -> Reply -> Evidence timeline blocks, including live success and consumer-not-running samples.
-- [ ] Include read-only raw JSON preview block for each entry.
-- [ ] `tools/lark_relay/evidence/*.json` may contain `chat_id`、`message_id`、`open_id`; keep these fields out of public UI unless sanitized.
-- [ ] Add a mobile-safe import path for user-selected sanitized evidence files; do not auto-read ignored local evidence paths from the public app.
+- [x] Include read-only raw JSON preview status and source marker for each entry.
+- [x] `tools/lark_relay/evidence/*.json` may contain `chat_id`、`message_id`、`open_id`; keep these fields out of public UI unless sanitized.
+- [x] Add a mobile-safe sync/import path for managed relay feeds or pasted sanitized evidence JSON; do not auto-read ignored local evidence paths from the public app.
+- [x] Add the first Docx write-chain sample: `/mc 写开发日志` -> relay event -> command agent -> Docx create -> bot reply link -> App evidence timeline.
+- [x] Add `tools/lark_relay/evidence_feed_server.py` as the local/managed endpoint adapter for sanitized relay evidence.
 
 ### H5 Companion Surface
 
@@ -343,17 +346,18 @@ Acceptance:
 - [ ] Add local preview cards for selected Lark targets.
 - [ ] Add H5 target-picking bridge for docs/files/chats when available.
 - [ ] Add evidence preview before any write.
-- [ ] Add relay evidence reader for user-selected sanitized evidence JSON and show event/reply/evidence timeline in Lark API Lab.
+- [x] Add relay evidence reader for managed sanitized feeds and pasted sanitized evidence JSON, then show event/reply/evidence timeline in Lark API Lab.
 
 Acceptance:
 
 - MobileCode can inspect a Lark target and show what will be written.
 - Failed access is represented as `needs_permission`, `not_found`, `rate_limited`, or `unsupported`.
-- Relay evidence view presents `send_mode`, `failure_kind`, `next_action`, `event_id/request_id`, reply `message_id`, and raw JSON preview.
+- Relay evidence view presents `send_mode`, `failure_kind`, `next_action`, `event_id/request_id`, reply `message_id`, chain stage, Docx status/link when present, and raw JSON preview status.
 
 ### P5: Confirmed Writes
 
 - [ ] Create Docx report documents.
+- [x] Add a guarded command-agent adapter for `/mc 写开发日志` Docx creation experiments; default is dry-run and live mode requires explicit environment opt-in.
 - [ ] Append Docx blocks from MobileCode evidence and Markdown summaries.
 - [ ] Upload artifact files to Drive.
 - [ ] Append benchmark rows to Sheets.

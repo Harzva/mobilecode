@@ -158,6 +158,103 @@ Public-safe samples live under `tools/lark_relay/samples/`. For example,
 Lark API Lab to render an event -> reply -> evidence timeline without exposing
 chat IDs, open IDs, message IDs, or private message content.
 
+## Sanitized evidence feed
+
+MobileCode Lark API Lab can now sync a sanitized relay evidence feed instead of
+only rendering built-in samples. The feed reads ignored local relay evidence,
+redacts chat IDs, open IDs, message IDs, tokens, and message content, then serves
+only the public-safe projection:
+
+```bash
+python3 tools/lark_relay/evidence_feed_server.py --print-once
+```
+
+Run a local managed endpoint for the App:
+
+```bash
+python3 tools/lark_relay/evidence_feed_server.py \
+  --host 127.0.0.1 \
+  --port 8787
+```
+
+Use `http://127.0.0.1:8787` as the relay URL for iOS simulator or local desktop
+testing. Android emulator usually reaches the Mac host with
+`http://10.0.2.2:8787`.
+
+For a managed relay, set an optional bearer token through the environment. Put
+the same value in the App's relay token field; do not commit or print it:
+
+```bash
+export MOBILECODE_LARK_EVIDENCE_FEED_TOKEN=<relay_token>
+python3 tools/lark_relay/evidence_feed_server.py --host 127.0.0.1 --port 8787
+```
+
+Endpoint contract:
+
+- `GET /health` returns service readiness.
+- `GET /lark/evidence?limit=20` returns `mobilecode.lark_relay.evidence_feed.v1`.
+- If `MOBILECODE_LARK_EVIDENCE_FEED_TOKEN` is set, `/lark/evidence` requires
+  `Authorization: Bearer <relay_token>`.
+- The App may also paste/import the same sanitized JSON feed manually.
+- Raw `tools/lark_relay/evidence/*.json` remains ignored and should not be
+  committed.
+
+## Dev-log Docx chain
+
+The first end-to-end product chain is:
+
+`/mc 写开发日志` -> relay event -> command agent -> Lark Docx create -> bot reply
+with link -> sanitized evidence feed -> MobileCode Lark API Lab.
+
+Dry-run the command agent without any Lark write:
+
+```bash
+printf '/mc 写开发日志\n' | \
+  python3 tools/lark_relay/agent_command_dev_log_docx.py
+```
+
+Wire it into the live relay in dry-run reply mode:
+
+```bash
+python3 tools/lark_relay/live_event_relay.py \
+  --daemon \
+  --max-events 1 \
+  --timeout 2m \
+  --send-mode dry-run \
+  --trigger-prefix "/mc " \
+  --strip-trigger-prefix \
+  --agent-mode command \
+  --agent-command "python3 tools/lark_relay/agent_command_dev_log_docx.py"
+```
+
+Live Docx creation is a real write. Confirm the target folder and scopes first,
+then opt in explicitly:
+
+```bash
+export MOBILECODE_LARK_DEVLOG_MODE=live
+export MOBILECODE_LARK_DEVLOG_ALLOW_LIVE=1
+export MOBILECODE_LARK_DEVLOG_FOLDER_TOKEN=<target_folder_token>
+
+python3 tools/lark_relay/live_event_relay.py \
+  --daemon \
+  --max-events 1 \
+  --timeout 2m \
+  --send-mode live \
+  --allow-live \
+  --trigger-prefix "/mc " \
+  --strip-trigger-prefix \
+  --agent-mode command \
+  --agent-command "python3 tools/lark_relay/agent_command_dev_log_docx.py"
+```
+
+The sanitized sample `samples/dev_log_docx_chain.sanitized.json` mirrors this
+chain for public UI testing without exposing a real document URL.
+
+Command agents may emit structured evidence metadata on stderr with the prefix
+`MOBILECODE_RELAY_META_JSON=`. The relay keeps stdout as the bot reply, removes
+the marker from visible stderr, and copies supported metadata such as
+`chain_stage` and `lark_docx` into the evidence file.
+
 ## Expected event payload example
 
 ```json

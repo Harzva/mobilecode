@@ -1,0 +1,46 @@
+{
+  "tool": "lark_relay.live_event_consume",
+  "event_key": "im.message.receive_v1",
+  "chain_stage": "event_to_docx_to_reply",
+  "send_mode": "live",
+  "event": {
+    "event_id": "evt_dev_log_docx_sanitized",
+    "request_id": "req_dev_log_docx_sanitized",
+    "chat_id": "<redacted_chat_id>",
+    "sender_id": "<redacted_open_id>",
+    "message_text": "/mc 写开发日志",
+    "received_at": "2026-06-12T13:30:00Z"
+  },
+  "event_id": "evt_dev_log_docx_sanitized",
+  "request_id": "req_dev_log_docx_sanitized",
+  "dry_run_id": "dry-run-dev-log-docx-sanitized",
+  "failure_kind": "none",
+  "next_action": "reply_sent_with_docx_link",
+  "message_text": "/mc 写开发日志",
+  "reply_text": "Development log Docx created: <redacted_docx_url>",
+  "lark_docx": {
+    "status": "created",
+    "title": "MobileCode 开发日志",
+    "document_url": "<redacted_docx_url>",
+    "token_mode": "user_access_token",
+    "failure_kind": "none"
+  },
+  "reply": {
+    "returncode": 0,
+    "json": {
+      "code": 0,
+      "msg": "success",
+      "data": {
+        "message_id": "<redacted_reply_message_id>"
+      }
+    }
+  },
+  "agent": {
+    "mode": "command",
+    "command": "python3 tools/lark_relay/agent_command_dev_log_docx.py",
+    "returncode": 0,
+    "stdout": "Development log Docx created: <redacted_docx_url>",
+    "stderr": ""
+  },
+  "raw_json_preview_status": "Sanitized dev-log Docx chain; document URL, chat IDs, open IDs, and message IDs are redacted."
+}

@@ -9561,6 +9561,45 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
     );
   }
 
+  Widget _relayEvidenceSampleCard(LarkRelayEvidenceSample sample) {
+    return _Panel(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('event -> reply -> evidence',
+              style: TextStyle(
+                  color: _text, fontSize: 12, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(
+            'tool=${sample.eventTool} · send_mode=${sample.sendMode}',
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'event_id=${sample.eventId} · request_id=${sample.requestId}',
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'failure_kind=${sample.failureKind} · reply message id=${sample.replyMessageId}',
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'next_action=${sample.nextAction}',
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'raw JSON preview: ${sample.rawJsonPreviewStatus}',
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+
   bool get _needsDirectSecret => _tokenMode.isSecretBearing;
   bool get _needsRelay => _tokenMode == LarkTokenMode.managedRelay;
 
@@ -9728,6 +9767,29 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: _taxonomySampleCard(sample),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Relay evidence sample',
+                    style:
+                        TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                const Text(
+                  'Minimal sample surface for relay event / reply / evidence chain. Uses sanitized placeholders only.',
+                  style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                for (final sample in LarkApiService.relayEvidenceSamples())
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _relayEvidenceSampleCard(sample),
                   ),
               ],
             ),

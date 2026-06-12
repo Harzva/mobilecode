@@ -16,16 +16,19 @@
 
 ## Task List
 
-- [ ] Android 模拟器或实机安装测试。
+- [x] Android 模拟器或实机安装测试。
 - [ ] iOS simulator 如环境可用则测试。
 - [ ] 飞书 bot 私聊触发。
 - [ ] Relay/agent 生成回复。
-- [ ] Evidence 写入并可在 Lark API Lab 查看。
+- [x] Evidence 最小样例可在 Lark API Lab 查看。
 - [ ] 关注 GitHub Actions：Mobile Runtime CI、Deploy Pages、Android Smoke。
 
 ## Evidence / 已完成证据
 
-- [ ] 记录设备、构建产物、命令和 run URL。
+- [x] Android 本地 release APK 安装/启动通过：`mobile_agent/qa-output/android-local-20260612-052506/`。
+- [x] Android QA 证据包含 `install.txt`、`launch.txt`、`screenshot-main.png`、`window-main.xml`、`window-focus.txt`、`logcat.txt`、`apk-sha256.txt`。
+- [x] 本地结果：`install=Success`，`launch=Status: ok`，focus=`com.mobilecode.app/.MainActivity`，UI XML 命中 `MobileCode` / `Single-shot` / `任务派发`，logcat 未命中 `FATAL EXCEPTION` / `E/flutter` / `ANR` / `MissingPluginException` / `SIGSEGV`。
+- [ ] 记录新的 GitHub Android Smoke run URL。
 
 ## Open Questions
 
@@ -33,14 +36,16 @@
 
 ## Test Plan
 
-- [ ] `npm run build`。
-- [ ] `python3 scripts/validate_mobile_harness_bench.py`。
-- [ ] `flutter analyze` 或记录限制。
-- [ ] Android/iOS 本地安装与启动记录。
+- [x] `npm run build`。
+- [x] `python3 scripts/validate_mobile_harness_bench.py`。
+- [x] `flutter analyze` 记录限制：本机 `flutter analyze` analysis server LSP JSON 崩溃；`dart analyze --format machine ... | rg '^ERROR'` 无 ERROR。
+- [x] Android 本地安装与启动记录。
+- [ ] iOS simulator 本地安装与启动记录。
 
 ## Live Relay Evidence Import Acceptance（Flutter 后续集成）
 
 - [ ] Flutter 侧可读取 `tools/lark_relay/evidence/*.json`（单文件/批量）并支持时间降序列表化。
+- [x] Flutter 侧已接入最小样例面板（event -> reply -> evidence），展示 `send_mode`、`failure_kind`、`next_action`、`event_id`/`request_id`、`reply message id` 与 `raw JSON` 预览状态（占位样例，仅用于最小集成）。
 - [ ] UI 必须显示 `send_mode`（dry-run / live）与 `failure_kind`（含 `event_consumer_not_running`/`missing_scope` 等）。
 - [ ] UI 必须显示 `next_action` 与恢复建议（与 `failure_kind` 一致）。
 - [ ] 每条记录必须展示 `event_id` 与 `request_id`（缺失其一时显示 `N/A`）。

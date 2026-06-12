@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
+from pathlib import Path
 from typing import Any
 from urllib import error, request
 
@@ -14,12 +16,67 @@ DEFAULT_API_URL = "https://api.deepseek.com/chat/completions"
 DEFAULT_MODEL = "deepseek-chat"
 
 
-def _env_required(name: str) -> str:
-    value = os.environ.get(name, "").strip()
+def _normalize_api_key(raw_value: str, *, allow_generic_candidate: bool = False) -> str:
+    value = raw_value.strip()
     if not value:
-        print(f"error: missing required env var {name}", file=sys.stderr)
+        return ""
+
+    bearer_match = re.fullmatch(r"Bearer\s+(.+)", value, flags=re.IGNORECASE)
+    if bearer_match:
+        value = bearer_match.group(1).strip()
+
+    if _is_header_safe_token(value):
+        return value
+
+    prefixed = re.findall(r"sk-[A-Za-z0-9][A-Za-z0-9._~-]{8,}", value)
+    if len(prefixed) == 1:
+        return prefixed[0]
+    if len(prefixed) > 1:
+        print("error: multiple sk-style API key candidates found", file=sys.stderr)
         raise SystemExit(2)
-    return value
+
+    if not allow_generic_candidate:
+        return ""
+
+    candidates = re.findall(r"(?<![A-Za-z0-9._~+/=-])[A-Za-z0-9][A-Za-z0-9._~+/=-]{31,}(?![A-Za-z0-9._~+/=-])", value)
+    candidates = [candidate for candidate in candidates if _is_header_safe_token(candidate)]
+    unique_candidates = sorted(set(candidates))
+    if len(unique_candidates) == 1:
+        return unique_candidates[0]
+    if len(unique_candidates) > 1:
+        print("error: multiple API key candidates found", file=sys.stderr)
+        raise SystemExit(2)
+
+    return ""
+
+
+def _is_header_safe_token(value: str) -> bool:
+    return bool(value) and value.isascii() and not any(ch.isspace() for ch in value)
+
+
+def _read_api_key() -> str:
+    raw_value = os.environ.get("MOBILECODE_AGENT_API_KEY", "")
+    key_file = os.environ.get("MOBILECODE_AGENT_API_KEY_FILE", "").strip()
+    allow_generic_candidate = os.environ.get(
+        "MOBILECODE_AGENT_ALLOW_GENERIC_API_KEY", ""
+    ).strip().lower() in {"1", "true", "yes"}
+
+    if not raw_value and key_file:
+        try:
+            raw_value = Path(key_file).read_text(encoding="utf-8", errors="ignore")
+        except OSError as exc:
+            print(f"error: cannot read MOBILECODE_AGENT_API_KEY_FILE: {exc}", file=sys.stderr)
+            raise SystemExit(2)
+
+    api_key = _normalize_api_key(
+        raw_value,
+        allow_generic_candidate=allow_generic_candidate,
+    )
+    if not api_key:
+        source = "MOBILECODE_AGENT_API_KEY_FILE" if key_file else "MOBILECODE_AGENT_API_KEY"
+        print(f"error: missing or invalid API key in {source}", file=sys.stderr)
+        raise SystemExit(2)
+    return api_key
 
 
 def _read_stdin() -> str:
@@ -30,11 +87,14 @@ def _read_stdin() -> str:
     return text.strip()
 
 
-def _json_error_body(body: bytes) -> str:
+def _json_error_body(body: bytes, api_key: str) -> str:
     try:
-        return body.decode("utf-8").strip()
+        text = body.decode("utf-8").strip()
     except UnicodeDecodeError:
         return "<non-text response body>"
+    if api_key:
+        text = text.replace(api_key, "<redacted>")
+    return text
 
 
 def _extract_reply(response: dict[str, Any]) -> str:
@@ -69,7 +129,7 @@ def _build_messages(message_text: str, system_prompt: str) -> list[dict[str, str
 
 def main() -> int:
     api_url = os.getenv("MOBILECODE_AGENT_API_URL", DEFAULT_API_URL).strip() or DEFAULT_API_URL
-    api_key = _env_required("MOBILECODE_AGENT_API_KEY")
+    api_key = _read_api_key()
     model = os.getenv("MOBILECODE_AGENT_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL
     system_prompt = os.getenv("MOBILECODE_AGENT_SYSTEM_PROMPT", "")
     user_message = _read_stdin()
@@ -95,12 +155,15 @@ def main() -> int:
         with request.urlopen(req, timeout=30) as response:
             raw = response.read().decode("utf-8")
     except error.HTTPError as exc:
-        body = _json_error_body(exc.read())
+        body = _json_error_body(exc.read(), api_key)
         status = exc.code
         print(f"error: API request failed with status {status}: {body}", file=sys.stderr)
         return 4
     except error.URLError as exc:
         print(f"error: API request failed: {exc}", file=sys.stderr)
+        return 4
+    except UnicodeEncodeError:
+        print("error: API key contains characters that cannot be sent in an HTTP header", file=sys.stderr)
         return 4
     except TimeoutError as exc:
         print(f"error: API request timeout: {exc}", file=sys.stderr)

@@ -12,14 +12,17 @@ import 'termux_service.dart';
 
 class RuntimeManager {
   final List<RuntimeProvider> _providers;
-  final StreamController<String> _logController = StreamController<String>.broadcast();
+  final StreamController<String> _logController =
+      StreamController<String>.broadcast();
   final List<StreamSubscription<String>> _logSubscriptions = [];
 
   RuntimeProvider? _activeProvider;
   RuntimeHealth? _activeHealth;
   bool _initialized = false;
+  Future<void>? _initializing;
 
-  RuntimeManager({required List<RuntimeProvider> providers}) : _providers = providers;
+  RuntimeManager({required List<RuntimeProvider> providers})
+      : _providers = providers;
 
   factory RuntimeManager.withExternalTermux(
     TermuxService termux, {
@@ -44,12 +47,27 @@ class RuntimeManager {
 
   Future<void> initialize() async {
     if (_initialized) return;
+    final pending = _initializing;
+    if (pending != null) {
+      await pending;
+      return;
+    }
 
+    _initializing = _initializeProviders();
+    try {
+      await _initializing;
+    } finally {
+      _initializing = null;
+    }
+  }
+
+  Future<void> _initializeProviders() async {
     for (final provider in _providers) {
       try {
         await provider.initialize();
       } catch (e) {
-        _logController.add('[runtime] ${provider.name} initialization failed: $e');
+        _logController
+            .add('[runtime] ${provider.name} initialization failed: $e');
       }
       _logSubscriptions.add(provider.logStream.listen(_logController.add));
     }
@@ -130,7 +148,8 @@ class RuntimeManager {
     required String targetPath,
   }) async {
     await _ensureReady();
-    return _activeProvider!.syncWorkspace(sourcePath: sourcePath, targetPath: targetPath);
+    return _activeProvider!
+        .syncWorkspace(sourcePath: sourcePath, targetPath: targetPath);
   }
 
   Future<BuildResult> buildWeb(String projectPath) async {
@@ -138,7 +157,8 @@ class RuntimeManager {
     return _activeProvider!.buildWeb(projectPath);
   }
 
-  Future<BuildResult> buildApk(String projectPath, {BuildMode mode = BuildMode.debug}) async {
+  Future<BuildResult> buildApk(String projectPath,
+      {BuildMode mode = BuildMode.debug}) async {
     await _ensureReady();
     return _activeProvider!.buildApk(projectPath, mode: mode);
   }
@@ -212,9 +232,11 @@ class RuntimeManager {
     await _ensureReady();
     final provider = _activeProvider;
     if (provider == null || provider is! RuntimeTypedTaskRunner) {
-      throw StateError('Active runtime provider does not expose a typed Termux task endpoint.');
+      throw StateError(
+          'Active runtime provider does not expose a typed Termux task endpoint.');
     }
-    return (provider as RuntimeTypedTaskRunner).runTermuxTask(taskKind: taskKind, payload: payload);
+    return (provider as RuntimeTypedTaskRunner)
+        .runTermuxTask(taskKind: taskKind, payload: payload);
   }
 
   Future<RuntimeProjectProfile> preflightProject(
@@ -227,8 +249,10 @@ class RuntimeManager {
     if (!caps.shell) {
       return runtimeProjectPreflightFailure(
         projectPath: projectPath,
-        summary: 'Active runtime cannot inspect project files because shell execution is unavailable.',
-        recoveryHint: 'Start MobileCode Helper, External Termux, or Cloud Runtime before running project actions.',
+        summary:
+            'Active runtime cannot inspect project files because shell execution is unavailable.',
+        recoveryHint:
+            'Start MobileCode Helper, External Termux, or Cloud Runtime before running project actions.',
       );
     }
 
@@ -248,7 +272,8 @@ class RuntimeManager {
       if (!probe.success) {
         return runtimeProjectPreflightFailure(
           projectPath: projectPath,
-          summary: 'Project preflight failed: ${probe.stderr.trim().isEmpty ? probe.stdout.trim() : probe.stderr.trim()}',
+          summary:
+              'Project preflight failed: ${probe.stderr.trim().isEmpty ? probe.stdout.trim() : probe.stderr.trim()}',
           recoveryHint: runtimeActionRecoveryHint(
             action: RuntimeActionType.installDependencies,
             capabilities: caps,
@@ -281,7 +306,8 @@ class RuntimeManager {
         normalizeRuntimePackageManager(request.packageManager) == null) {
       profile = await preflightProject(request.projectPath);
       if (!profile.recognized) {
-        const skippedReason = 'Project preflight could not identify a supported project.';
+        const skippedReason =
+            'Project preflight could not identify a supported project.';
         return RuntimeActionResult(
           action: request.type,
           success: false,
@@ -292,7 +318,8 @@ class RuntimeManager {
         );
       }
       if (!runtimeProjectToolchainAvailable(profile, caps)) {
-        const skippedReason = 'Project toolchain is not available in the active runtime.';
+        const skippedReason =
+            'Project toolchain is not available in the active runtime.';
         return RuntimeActionResult(
           action: request.type,
           success: false,
@@ -317,7 +344,8 @@ class RuntimeManager {
       return RuntimeActionResult(
         action: effectiveRequest.type,
         success: false,
-        summary: 'Runtime cannot plan ${effectiveRequest.type.name} with current capabilities.',
+        summary:
+            'Runtime cannot plan ${effectiveRequest.type.name} with current capabilities.',
         results: const [],
         skippedReason: skippedReason,
         recoveryHint: runtimeActionRecoveryHint(
@@ -354,7 +382,8 @@ class RuntimeManager {
     return RuntimeActionResult(
       action: effectiveRequest.type,
       success: true,
-      summary: profile == null ? plan.summary : '${plan.summary} ${profile.summary}',
+      summary:
+          profile == null ? plan.summary : '${plan.summary} ${profile.summary}',
       results: List.unmodifiable(results),
     );
   }
@@ -366,7 +395,8 @@ class RuntimeManager {
   }) async {
     await _ensureReady();
     final caps = await _activeProvider!.capabilities();
-    final profile = await preflightProject(projectPath, packageManager: packageManager);
+    final profile =
+        await preflightProject(projectPath, packageManager: packageManager);
     if (!profile.recognized) {
       return RuntimeActionPipelineResult(
         success: false,
@@ -425,7 +455,8 @@ class RuntimeManager {
 
     return RuntimeActionPipelineResult(
       success: true,
-      summary: 'Runtime validation completed: ${steps.map((step) => step.action.name).join(' -> ')}.',
+      summary:
+          'Runtime validation completed: ${steps.map((step) => step.action.name).join(' -> ')}.',
       steps: List.unmodifiable(steps),
     );
   }

@@ -209,6 +209,45 @@ class LarkApiDiagnosis {
 }
 
 @immutable
+class LarkRelayEvidenceSample {
+  const LarkRelayEvidenceSample({
+    required this.sendMode,
+    required this.failureKind,
+    required this.nextAction,
+    required this.eventId,
+    required this.requestId,
+    required this.replyMessageId,
+    required this.rawJsonPreviewStatus,
+    this.rawJsonPreviewAvailable = false,
+    this.eventTool = 'event consume im.message.receive_v1',
+  });
+
+  final String sendMode;
+  final String failureKind;
+  final String nextAction;
+  final String eventId;
+  final String requestId;
+  final String replyMessageId;
+  final String rawJsonPreviewStatus;
+  final bool rawJsonPreviewAvailable;
+  final String eventTool;
+
+  bool get isSample => rawJsonPreviewAvailable;
+
+  Map<String, Object?> toDisplayMap() {
+    return {
+      'send_mode': sendMode,
+      'failure_kind': failureKind,
+      'next_action': nextAction,
+      'event_id': eventId,
+      'request_id': requestId,
+      'reply_message_id': replyMessageId,
+      'raw_json_preview_status': rawJsonPreviewStatus,
+    };
+  }
+}
+
+@immutable
 class LarkApiConnection {
   const LarkApiConnection({
     this.baseUrl = LarkApiService.defaultBaseUrl,
@@ -548,6 +587,129 @@ class LarkApiService {
             'Run a Mac/CI/relay event consumer or configure a Feishu callback URL; creating the bot alone does not start an agent reply loop.',
       },
     ];
+  }
+
+  static const String _relayEvidenceSampleJson = '''
+{
+  "event": {
+    "event_id": "<event_id>",
+    "tool": "event consume im.message.receive_v1",
+    "text": "<user_message_text>",
+    "send_mode": "dry-run",
+    "request_id": "<request_id>"
+  },
+  "reply": {
+    "message_id": "<reply_message_id>",
+    "status": "not_sent",
+    "send_mode": "dry-run"
+  },
+  "evidence": {
+    "failure_kind": "event_consumer_not_running",
+    "next_action":
+      "Start a Mac/CI/relay event consumer or configure a Feishu callback URL, then retry the same bot-private channel flow.",
+    "token_mode": "tenant_access_token",
+    "request_id": "<request_id>",
+    "log_id": "<log_id>"
+  }
+}''';
+
+  static List<LarkRelayEvidenceSample> relayEvidenceSamples() {
+    return [
+      parseRelayEvidenceSample(_relayEvidenceSampleJson),
+    ];
+  }
+
+  static LarkRelayEvidenceSample parseRelayEvidenceSample(String rawJson) {
+    final envelope = _tryDecodeMap(rawJson);
+    final safeEnvelope = _sanitizeEnvelopeKeys(envelope);
+    final event = safeEnvelope['event'] is Map<String, Object?>
+        ? safeEnvelope['event'] as Map<String, Object?>
+        : const <String, Object?>{};
+    final reply = safeEnvelope['reply'] is Map<String, Object?>
+        ? safeEnvelope['reply'] as Map<String, Object?>
+        : const <String, Object?>{};
+    final evidence = safeEnvelope['evidence'] is Map<String, Object?>
+        ? safeEnvelope['evidence'] as Map<String, Object?>
+        : const <String, Object?>{};
+    final sendMode = _safeRelayValue(
+      event['send_mode'] ?? event['sendMode'],
+      fallback: 'N/A',
+    );
+    final failureKind = _safeRelayValue(
+      evidence['failure_kind'] ?? evidence['failureKind'],
+      fallback: 'N/A',
+    );
+    final nextAction = _safeRelayValue(
+      evidence['next_action'] ?? evidence['nextAction'],
+      fallback: 'Inspect evidence and retry with active consumer.',
+    );
+    final eventId = _safeRelayValue(
+      event['event_id'] ?? event['eventId'],
+      fallback: 'N/A',
+    );
+    final requestId = _safeRelayValue(
+      evidence['request_id'] ??
+          evidence['requestId'] ??
+          event['request_id'] ??
+          event['requestId'],
+      fallback: 'N/A',
+    );
+    final replyMessageId = _safeRelayValue(
+      reply['message_id'] ?? reply['messageId'],
+      fallback: 'N/A',
+    );
+    return LarkRelayEvidenceSample(
+      sendMode: sendMode,
+      failureKind: failureKind,
+      nextAction: nextAction,
+      eventId: eventId,
+      requestId: requestId,
+      replyMessageId: replyMessageId,
+      rawJsonPreviewAvailable: true,
+      rawJsonPreviewStatus: _safeRelayValue(
+            safeEnvelope['raw_json_preview_status'] ??
+                safeEnvelope['rawJsonPreviewStatus'],
+            fallback: 'Sample raw JSON loaded.',
+          ) +
+          (safeEnvelope.containsKey('raw_json_preview_status')
+              ? ''
+              : ' (sample)'),
+      eventTool: _safeRelayValue(
+        event['tool'] ?? safeEnvelope['tool'],
+        fallback: 'event consume im.message.receive_v1',
+      ),
+    );
+  }
+
+  static Map<String, Object?> _sanitizeEnvelopeKeys(
+    Map<String, Object?> envelope,
+  ) {
+    return envelope.map((key, value) {
+      if (value is Map) {
+        return MapEntry(
+          key,
+          value.map((innerKey, innerValue) => MapEntry(
+                innerKey.toString(),
+                innerValue,
+              )),
+        );
+      }
+      return MapEntry(key, value);
+    });
+  }
+
+  static String _safeRelayValue(
+    Object? value, {
+    required String fallback,
+  }) {
+    if (value == null) return fallback;
+    if (value is! String) return value.toString().trim();
+    final normalized = value.trim();
+    if (normalized.isEmpty) return fallback;
+    if (normalized.startsWith('<') && normalized.endsWith('>'))
+      return normalized;
+    if (normalized.length > 64) return '<redacted>';
+    return normalized;
   }
 
   LarkApiService({

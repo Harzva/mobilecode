@@ -31,7 +31,8 @@
 - [x] 将事件消费 CLI 采样写入 failure taxonomy sample（含 `tool`、`tokenMode`、`errorCode`、`requestId`、`logId`、`dryRunTrace`）。
 - [x] 将移动端运行结果写入统一 evidence 结构（`failureKind`/`missingScopes`/`nextAction`/`logId`）。
 - [x] 添加建议文案：先启动 relay/event consumer 或回调服务，再补 IM event scopes 与配置。
-- [ ] 为 live relay evidence 增加 import 与显示映射：`event -> reply -> evidence`，字段白名单包含 `send_mode`、`failure_kind`、`next_action`、`event_id/request_id`、`reply message id`。
+- [x] 为 live relay evidence 增加最小 `event -> reply -> evidence` 样例展示（纯占位字段），字段包含 `send_mode`、`failure_kind`、`next_action`、`event_id/request_id`、`reply message id`、`raw JSON` 预览状态。真实本地 evidence 文件 import 仍待后续实现。
+- [ ] 为 live relay evidence 增加真实 `tools/lark_relay/evidence/*.json` import 与时间降序展示（后续迭代）。
 
 ## Evidence / 已完成证据
 

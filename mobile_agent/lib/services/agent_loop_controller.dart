@@ -5,6 +5,24 @@ import '../core/evidence/action_runner.dart';
 import '../core/evidence/evidence_model.dart';
 import 'tool_call_adapter.dart';
 
+const List<String> _larkReadOnlyTools = [
+  'lark_readiness',
+  'lark_wiki_list_spaces',
+  'lark_drive_upload_preview',
+];
+
+const List<String> _larkWriteTools = [
+  'lark_docx_create',
+  'lark_docx_append_blocks',
+  'lark_sheets_append',
+  'lark_bitable_create_records',
+];
+
+const List<String> _larkAgentTools = [
+  ..._larkReadOnlyTools,
+  ..._larkWriteTools,
+];
+
 enum AgentExecutionMode {
   singleShot,
   agentLoop,
@@ -142,6 +160,7 @@ extension AgentPresetConfig on AgentPreset {
             'agent_close',
             'web_search',
             'fetch_url',
+            ..._larkAgentTools,
             'write_file',
             'read_file',
             'copy_file',
@@ -168,6 +187,7 @@ extension AgentPresetConfig on AgentPreset {
             'detect_project_type',
             'change_history',
             'virtual_status',
+            ..._larkAgentTools,
             'write_file',
             'read_file',
             'copy_file',
@@ -198,6 +218,7 @@ extension AgentPresetConfig on AgentPreset {
             'agent_close',
             'web_search',
             'fetch_url',
+            ..._larkAgentTools,
             'write_file',
             'read_file',
             'copy_file',
@@ -222,6 +243,7 @@ extension AgentPresetConfig on AgentPreset {
             'detect_project_type',
             'change_history',
             'virtual_status',
+            ..._larkReadOnlyTools,
             'read_file',
             'write_file',
             'copy_file',
@@ -251,6 +273,7 @@ extension AgentPresetConfig on AgentPreset {
             'agent_open',
             'agent_eval',
             'agent_close',
+            ..._larkReadOnlyTools,
             'read_file',
             'save_snapshot',
             'virtual_diff',
@@ -265,11 +288,11 @@ extension AgentPresetConfig on AgentPreset {
 
   String get systemInstruction => switch (this) {
         AgentPreset.autoAgent =>
-          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may summarize/list/find/grep/read/detect project type/status/history first, open read-only Sub-Agent Lite explorer/reviewer sessions when useful, then write/patch/preview/validate/restore only when the user intent and observations justify it. Use termux_task_start only when exposed as a typed helper route, never raw shell. Do not follow a fixed sequence; call only useful tools, and stop with report_result when done or blocked.',
+          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may summarize/list/find/grep/read/detect project type/status/history first, open read-only Sub-Agent Lite explorer/reviewer sessions when useful, then write/patch/preview/validate/restore or use typed Lark tools only when the user intent and observations justify it. Preview Lark writes before sending and set confirm=true only after explicit user approval. Use termux_task_start only when exposed as a typed helper route, never raw shell. Do not follow a fixed sequence; call only useful tools, and stop with report_result when done or blocked.',
         AgentPreset.builder =>
-          'Agent preset Builder: inspect with project_summary/detect_project_type/find_files/grep_files/read_file/virtual_status when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, preview and validate HTML/JSON/Markdown when relevant, then report concise evidence. Use termux_task_start only when the typed helper route is exposed. If apply_patch is blocked, do not repeat the same malformed patch; read the target and retry a valid unified diff or use complete write_file for a small generated artifact.',
+          'Agent preset Builder: inspect with project_summary/detect_project_type/find_files/grep_files/read_file/virtual_status when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, use typed Lark publish tools only after preview and explicit confirm=true, preview and validate HTML/JSON/Markdown when relevant, then report concise evidence. Use termux_task_start only when the typed helper route is exposed. If apply_patch is blocked, do not repeat the same malformed patch; read the target and retry a valid unified diff or use complete write_file for a small generated artifact.',
         AgentPreset.researchBuilder =>
-          'Agent preset Research Builder: use public reference tools when they are useful, inspect/summarize local files, optionally open read-only background explorer/reviewer Sub-Agent Lite sessions, build or patch one local artifact, preview and validate it when relevant, capture preview evidence when needed, then report refIds and evidenceIds.',
+          'Agent preset Research Builder: use public reference tools when they are useful, inspect/summarize local files, optionally open read-only background explorer/reviewer Sub-Agent Lite sessions, build or patch one local artifact, preview typed Lark evidence writes before confirm=true, preview and validate local artifacts when relevant, capture preview evidence when needed, then report refIds and evidenceIds.',
         AgentPreset.repair =>
           'Agent preset Repair: summarize, find, grep, read the existing artifact or evidence, inspect virtual_status/change_history, save a snapshot when useful, apply a focused patch or complete write_file replacement for small artifacts, restore a confirmed snapshot only when the user asks for rollback, preview/validate again, then report what changed. If apply_patch is blocked, switch strategy: read_file the exact target, send a valid unified diff, or use complete write_file for a small HTML artifact.',
         AgentPreset.reviewer =>
@@ -283,7 +306,8 @@ extension AgentPresetConfig on AgentPreset {
       allowedToolNames.contains('copy_file') ||
       allowedToolNames.contains('mkdir') ||
       allowedToolNames.contains('delete_file') ||
-      allowedToolNames.contains('restore_snapshot');
+      allowedToolNames.contains('restore_snapshot') ||
+      _larkWriteTools.any(allowedToolNames.contains);
 }
 
 class AgentLoopController {
@@ -304,10 +328,12 @@ class AgentLoopController {
   List<String> get allowedToolNames {
     final base = _allowedToolNames ?? preset.allowedToolNames;
     final filtered = base.where((name) {
-      if (actionRunner.webToolInvoker == null && (name == 'web_search' || name == 'fetch_url')) {
+      if (actionRunner.webToolInvoker == null &&
+          (name == 'web_search' || name == 'fetch_url')) {
         return false;
       }
-      if (actionRunner.termuxTaskInvoker == null && name == 'termux_task_start') {
+      if (actionRunner.termuxTaskInvoker == null &&
+          name == 'termux_task_start') {
         return false;
       }
       return true;
@@ -321,7 +347,9 @@ class AgentLoopController {
     void Function(AgentLoopEvent event)? onEvent,
     bool Function()? isCancelled,
   }) async {
-    final messages = initialMessages.map((message) => Map<String, dynamic>.from(message)).toList();
+    final messages = initialMessages
+        .map((message) => Map<String, dynamic>.from(message))
+        .toList();
     final observations = <String>[];
     final toolSummaries = <_AgentLoopToolSummary>[];
     String? generatedPath;
@@ -333,7 +361,8 @@ class AgentLoopController {
 
     onEvent?.call(AgentLoopEvent(
       type: AgentLoopEventType.started,
-      message: '${preset.label} started with role flow Planner -> Builder -> Reviewer -> Repair and tools ${allowedToolNames.join(', ')}.',
+      message:
+          '${preset.label} started with role flow Planner -> Builder -> Reviewer -> Repair and tools ${allowedToolNames.join(', ')}.',
       roleName: 'Planner',
     ));
 
@@ -346,25 +375,31 @@ class AgentLoopController {
         roleName: _roleForModelRequest(round),
       ));
 
-      final parsed = await requestModel(List<Map<String, dynamic>>.unmodifiable(messages), round: round);
+      final parsed = await requestModel(
+          List<Map<String, dynamic>>.unmodifiable(messages),
+          round: round);
       _throwIfCancelled(isCancelled);
 
       if (!parsed.hasToolCalls) {
         final answer = parsed.content.trim();
         onEvent?.call(AgentLoopEvent(
           type: AgentLoopEventType.completed,
-          message: answer.isEmpty ? 'Agent loop completed from observations.' : 'Provider returned final answer.',
+          message: answer.isEmpty
+              ? 'Agent loop completed from observations.'
+              : 'Provider returned final answer.',
           round: round,
           roleName: 'Reviewer',
           success: true,
         ));
         return AgentLoopResult(
-          answer: answer.isNotEmpty ? answer : _finalAnswer(
-            summary: 'Agent loop completed from observations.',
-            generatedPath: generatedPath,
-            toolSummaries: toolSummaries,
-            observations: observations,
-          ),
+          answer: answer.isNotEmpty
+              ? answer
+              : _finalAnswer(
+                  summary: 'Agent loop completed from observations.',
+                  generatedPath: generatedPath,
+                  toolSummaries: toolSummaries,
+                  observations: observations,
+                ),
           usedNativeToolCalls: usedNativeToolCalls,
           rounds: round,
           toolCallCount: toolCallCount,
@@ -423,9 +458,14 @@ class AgentLoopController {
           onEvent: onEvent,
         );
         final evidence = result.evidence;
-        final isBlocked = evidence.failureKind == ActionFailureKind.commandBlocked;
-        final blockedSignature = _blockedSignature(call: call, evidence: evidence);
-        final blockedCount = isBlocked ? (blockedCounts[blockedSignature] = (blockedCounts[blockedSignature] ?? 0) + 1) : 0;
+        final isBlocked =
+            evidence.failureKind == ActionFailureKind.commandBlocked;
+        final blockedSignature =
+            _blockedSignature(call: call, evidence: evidence);
+        final blockedCount = isBlocked
+            ? (blockedCounts[blockedSignature] =
+                (blockedCounts[blockedSignature] ?? 0) + 1)
+            : 0;
         final repeatedFailure = blockedCount > 1;
         final blockedObservation = isBlocked
             ? _blockedActionMessage(
@@ -441,8 +481,10 @@ class AgentLoopController {
           observationHint: blockedObservation,
         ));
         final status = _statusForResult(result);
-        observations.add('${call.name}: $status · evidence ${evidence.evidenceId}');
-        toolSummaries.add(_AgentLoopToolSummary.from(call: call, result: result));
+        observations
+            .add('${call.name}: $status · evidence ${evidence.evidenceId}');
+        toolSummaries
+            .add(_AgentLoopToolSummary.from(call: call, result: result));
         if (result.path != null &&
             result.path!.trim().isNotEmpty &&
             call.name != 'preview_snapshot' &&
@@ -471,16 +513,19 @@ class AgentLoopController {
             call.name == 'validate_html' ||
             call.name == 'validate_json' ||
             call.name == 'validate_markdown' ||
-            call.name == 'termux_task_start') {
+            call.name == 'termux_task_start' ||
+            _larkReadOnlyTools.contains(call.name)) {
           writeNeedsVerification = false;
         }
 
         onEvent?.call(AgentLoopEvent(
           type: _eventTypeForResult(result),
-          message: blockedObservation ?? '${call.name}: $status · ${_compact(evidence.logs.join(' '), 180)}',
+          message: blockedObservation ??
+              '${call.name}: $status · ${_compact(evidence.logs.join(' '), 180)}',
           round: round,
           toolName: call.name,
-          roleName: result.success ? _observationRoleForTool(call.name) : 'Repair',
+          roleName:
+              result.success ? _observationRoleForTool(call.name) : 'Repair',
           evidenceId: evidence.evidenceId,
           success: result.success,
         ));
@@ -533,7 +578,9 @@ class AgentLoopController {
       return _blockedProviderToolResult(
         call,
         'Tool ${call.name} is not allowed for ${preset.label}.',
-        ['Switch agent preset or use an allowed tool: ${currentAllowedToolNames.join(', ')}.'],
+        [
+          'Switch agent preset or use an allowed tool: ${currentAllowedToolNames.join(', ')}.'
+        ],
       );
     }
 
@@ -548,8 +595,10 @@ class AgentLoopController {
     if (_isMutationTool(call.name) && writeNeedsVerification) {
       return _blockedProviderToolResult(
         call,
-        'A workspace file was already changed successfully. Use read_file, grep_files, virtual_status, validate_html, validate_json, validate_markdown, preview_html, preview_snapshot, termux_task_start, or report_result before another mutation.',
-        const ['Read, grep, validate, preview, or inspect virtual status for the changed artifact before another mutating tool call.'],
+        'A workspace file or external Lark target was already changed successfully. Use read_file, grep_files, virtual_status, validate_html, validate_json, validate_markdown, preview_html, preview_snapshot, lark_readiness, lark_wiki_list_spaces, lark_drive_upload_preview, termux_task_start, or report_result before another mutation.',
+        const [
+          'Read, grep, validate, preview, inspect virtual status, or run a read-only Lark check before another mutating tool call.'
+        ],
       );
     }
 
@@ -580,15 +629,18 @@ class AgentLoopController {
     required bool repeatedFailure,
     required int blockedCount,
   }) {
-    final whatFailed = evidence.logs.isNotEmpty ? evidence.logs.join(' ') : 'tool call blocked';
+    final whatFailed = evidence.logs.isNotEmpty
+        ? evidence.logs.join(' ')
+        : 'tool call blocked';
     final baseRecovery = evidence.recoveryActions.isNotEmpty
         ? evidence.recoveryActions.join(' ')
         : 'Pick a different safe recovery action and retry.';
     final toolSpecificRecovery = _toolSpecificRecovery(call.name);
-    final recovery = toolSpecificRecovery.isEmpty ? baseRecovery : '$baseRecovery $toolSpecificRecovery';
-    final safeNextAction = repeatedFailure
-        ? _escalateRecovery(call.name, recovery)
-        : recovery;
+    final recovery = toolSpecificRecovery.isEmpty
+        ? baseRecovery
+        : '$baseRecovery $toolSpecificRecovery';
+    final safeNextAction =
+        repeatedFailure ? _escalateRecovery(call.name, recovery) : recovery;
     final recoveryContract = _recoveryContract(
       call.name,
       repeatedFailure: repeatedFailure,
@@ -602,12 +654,16 @@ class AgentLoopController {
     required ActionEvidence evidence,
   }) {
     final argsSnapshot = _compact(jsonEncode(call.arguments), 220);
-    final whatFailed = evidence.logs.isNotEmpty ? evidence.logs.join(' ') : 'tool call blocked';
+    final whatFailed = evidence.logs.isNotEmpty
+        ? evidence.logs.join(' ')
+        : 'tool call blocked';
     return '${call.name}|${evidence.failureKind}|$argsSnapshot|${_compact(whatFailed, 100)}';
   }
 
   String _escalateRecovery(String toolName, String fallback) {
-    final previousRecovery = fallback.trim().isEmpty ? '' : ' Previous recovery: ${_compact(fallback, 160)}';
+    final previousRecovery = fallback.trim().isEmpty
+        ? ''
+        : ' Previous recovery: ${_compact(fallback, 160)}';
     if (toolName == 'apply_patch') {
       return 'Switch strategy: do not resend the same apply_patch. Call read_file for the exact target first, then send a valid @@-based unified diff, or use complete write_file for a small artifact.$previousRecovery';
     }
@@ -623,6 +679,9 @@ class AgentLoopController {
     }
     if (toolName == 'write_file') {
       return 'write_file requires path and content. If uncertain, call read_file on the target first and then use write_file with full file content (overwrite=true) or apply_patch for a tight unified diff.';
+    }
+    if (toolName.startsWith('lark_')) {
+      return 'Lark write tools require a configured native Lark connection, a dry_run preview first, target IDs, and confirm=true only after explicit user approval. If blocked, call lark_readiness or lark_wiki_list_spaces, then report the missing token/scope/target rather than repeating the same write.';
     }
     return '';
   }
@@ -647,6 +706,9 @@ class AgentLoopController {
     if (toolName == 'delete_file') {
       return 'Only delete a confirmed workspace file. If unsure, call find_files or list_files first, then report_result instead of guessing.';
     }
+    if (toolName.startsWith('lark_')) {
+      return 'Use only typed Lark tools. First call a dry_run preview or read-only Lark check. For writes, required args include target IDs, dry_run, and confirm; confirm=true is valid only after explicit user approval. Never invent tokens, app_secret, arbitrary endpoints, or shell commands.';
+    }
     return repeatedFailure
         ? 'Do not repeat the same blocked call. Inspect with a read-only tool or report_result with the blocker.'
         : 'Choose the smallest safe read-only or typed action that resolves the blocker.';
@@ -659,19 +721,27 @@ class AgentLoopController {
     required List<String> observations,
   }) {
     final files = <String>{
-      if (generatedPath != null && generatedPath.trim().isNotEmpty) generatedPath.trim(),
+      if (generatedPath != null && generatedPath.trim().isNotEmpty)
+        generatedPath.trim(),
       for (final item in toolSummaries) ...item.artifactPaths.take(4),
     }.where((path) => path.trim().isNotEmpty).take(8).toList();
     final previews = <String>{
       for (final item in toolSummaries) ...item.urls.take(3),
     }.where((url) => url.trim().isNotEmpty).take(4).toList();
-    final evidenceIds = toolSummaries.map((item) => item.evidenceId).where((id) => id.trim().isNotEmpty).take(10).toList();
+    final evidenceIds = toolSummaries
+        .map((item) => item.evidenceId)
+        .where((id) => id.trim().isNotEmpty)
+        .take(10)
+        .toList();
     final blockers = toolSummaries
         .where((item) => item.status != 'ok')
-        .map((item) => '${item.toolName}: ${item.status}${item.message.isEmpty ? '' : ' - ${_compact(item.message, 120)}'}')
+        .map((item) =>
+            '${item.toolName}: ${item.status}${item.message.isEmpty ? '' : ' - ${_compact(item.message, 120)}'}')
         .take(6)
         .toList();
-    final recentTools = toolSummaries.length > 12 ? toolSummaries.sublist(toolSummaries.length - 12) : toolSummaries;
+    final recentTools = toolSummaries.length > 12
+        ? toolSummaries.sublist(toolSummaries.length - 12)
+        : toolSummaries;
     return [
       'SUMMARY',
       summary,
@@ -680,18 +750,27 @@ class AgentLoopController {
       files.isEmpty ? '- none' : files.map((path) => '- $path').join('\n'),
       '',
       'EVIDENCE',
-      evidenceIds.isEmpty ? '- none' : evidenceIds.map((id) => '- $id').join('\n'),
+      evidenceIds.isEmpty
+          ? '- none'
+          : evidenceIds.map((id) => '- $id').join('\n'),
       '',
       'PREVIEW',
-      previews.isEmpty ? '- not prepared' : previews.map((url) => '- $url').join('\n'),
+      previews.isEmpty
+          ? '- not prepared'
+          : previews.map((url) => '- $url').join('\n'),
       '',
       'TOOLS',
       recentTools.isEmpty
           ? '- no provider-native tool calls'
-          : recentTools.map((item) => '- ${item.toolName}: ${item.status} (${item.evidenceId})').join('\n'),
+          : recentTools
+              .map((item) =>
+                  '- ${item.toolName}: ${item.status} (${item.evidenceId})')
+              .join('\n'),
       '',
       'BLOCKERS',
-      blockers.isEmpty ? '- none' : blockers.map((blocker) => '- $blocker').join('\n'),
+      blockers.isEmpty
+          ? '- none'
+          : blockers.map((blocker) => '- $blocker').join('\n'),
       '',
       'NEXT',
       blockers.isEmpty
@@ -719,11 +798,14 @@ bool _isMutationTool(String toolName) {
       toolName == 'copy_file' ||
       toolName == 'mkdir' ||
       toolName == 'delete_file' ||
-      toolName == 'restore_snapshot';
+      toolName == 'restore_snapshot' ||
+      _larkWriteTools.contains(toolName);
 }
 
 bool _isSubAgentTool(String toolName) {
-  return toolName == 'agent_open' || toolName == 'agent_eval' || toolName == 'agent_close';
+  return toolName == 'agent_open' ||
+      toolName == 'agent_eval' ||
+      toolName == 'agent_close';
 }
 
 class _SubAgentLiteManager {
@@ -748,7 +830,8 @@ class _SubAgentLiteManager {
       case 'agent_close':
         return _close(call, round: round, onEvent: onEvent);
       default:
-        return _failed(call, 'Unsupported Sub-Agent Lite tool ${call.name}.', const ['Use agent_open, agent_eval, or agent_close.']);
+        return _failed(call, 'Unsupported Sub-Agent Lite tool ${call.name}.',
+            const ['Use agent_open, agent_eval, or agent_close.']);
     }
   }
 
@@ -762,24 +845,33 @@ class _SubAgentLiteManager {
       return _failed(
         call,
         'Sub-Agent Lite only supports read-only explorer or reviewer roles. Requested role: ${role.isEmpty ? "(empty)" : role}.',
-        const ['Open role=explorer for code search or role=reviewer for read-only validation. Shell, implementer, writer, and verifier roles are blocked in this mobile-safe phase.'],
+        const [
+          'Open role=explorer for code search or role=reviewer for read-only validation. Shell, implementer, writer, and verifier roles are blocked in this mobile-safe phase.'
+        ],
       );
     }
 
     final task = _stringArg(call.arguments, 'task').trim();
     if (task.isEmpty) {
-      return _failed(call, 'agent_open requires a non-empty task.', const ['Provide a compact read-only task for the explorer or reviewer session.']);
+      return _failed(call, 'agent_open requires a non-empty task.', const [
+        'Provide a compact read-only task for the explorer or reviewer session.'
+      ]);
     }
     _reapExpiredSessions();
-    final runningCount = _sessions.values.where((session) => session.isRunning).length;
+    final runningCount =
+        _sessions.values.where((session) => session.isRunning).length;
     if (runningCount >= _maxConcurrent) {
       return _failed(
         call,
         'Sub-Agent Lite v2 allows at most $_maxConcurrent concurrent read-only workers.',
-        const ['Call agent_eval/agent_close on an existing worker, or wait for one to complete before opening another.'],
+        const [
+          'Call agent_eval/agent_close on an existing worker, or wait for one to complete before opening another.'
+        ],
       );
     }
-    final path = _stringArg(call.arguments, 'path').trim().isEmpty ? '.' : _stringArg(call.arguments, 'path').trim();
+    final path = _stringArg(call.arguments, 'path').trim().isEmpty
+        ? '.'
+        : _stringArg(call.arguments, 'path').trim();
     final focus = _stringArg(call.arguments, 'focus').trim();
     final timeoutMs = _boundedIntArgAny(
       call.arguments,
@@ -805,8 +897,10 @@ class _SubAgentLiteManager {
       tokenBudget: tokenBudget,
     );
     _sessions[session.id] = session;
-    session.add('Started', '$role background worker opened for read-only task: ${_compact(task, 140)}');
-    _emit(onEvent, round, call.name, role, 'Mailbox Started: ${session.id} ${session.mailbox.last.message}');
+    session.add('Started',
+        '$role background worker opened for read-only task: ${_compact(task, 140)}');
+    _emit(onEvent, round, call.name, role,
+        'Mailbox Started: ${session.id} ${session.mailbox.last.message}');
     unawaited(_runReadOnlyWorker(
       session: session,
       parentCall: call,
@@ -814,7 +908,8 @@ class _SubAgentLiteManager {
       onEvent: onEvent,
     ));
 
-    return _succeeded(call, 'agent_open ${session.id}', _sessionPayload(session));
+    return _succeeded(
+        call, 'agent_open ${session.id}', _sessionPayload(session));
   }
 
   Future<void> _runReadOnlyWorker({
@@ -825,7 +920,8 @@ class _SubAgentLiteManager {
   }) async {
     await Future<void>.delayed(Duration.zero);
     try {
-      if (_shouldStop(session, round: round, toolName: parentCall.name, onEvent: onEvent)) return;
+      if (_shouldStop(session,
+          round: round, toolName: parentCall.name, onEvent: onEvent)) return;
       await _runReadOnlyAction(
         session,
         parentCall,
@@ -840,7 +936,8 @@ class _SubAgentLiteManager {
           'maxEntries': 40,
         },
       );
-      if (_shouldStop(session, round: round, toolName: parentCall.name, onEvent: onEvent)) return;
+      if (_shouldStop(session,
+          round: round, toolName: parentCall.name, onEvent: onEvent)) return;
 
       if (session.focus.isNotEmpty) {
         await _runReadOnlyAction(
@@ -859,20 +956,26 @@ class _SubAgentLiteManager {
             'maxBytes': 96 * 1024,
           },
         );
-        if (_shouldStop(session, round: round, toolName: parentCall.name, onEvent: onEvent)) return;
+        if (_shouldStop(session,
+            round: round, toolName: parentCall.name, onEvent: onEvent)) return;
       }
 
       if (!session.isRunning) return;
       session.status = 'completed';
       session.finishedAt = DateTime.now();
-      session.add('Completed', '${session.role} returned SUMMARY / CHANGES / EVIDENCE / RISKS / BLOCKERS.');
-      _emit(onEvent, round, parentCall.name, session.role, 'Mailbox Completed: ${session.id} ready for agent_eval.');
+      session.add('Completed',
+          '${session.role} returned SUMMARY / CHANGES / EVIDENCE / RISKS / BLOCKERS.');
+      _emit(onEvent, round, parentCall.name, session.role,
+          'Mailbox Completed: ${session.id} ready for agent_eval.');
     } catch (error) {
       if (!session.isRunning) return;
       session.status = 'failed';
       session.finishedAt = DateTime.now();
-      session.add('Failed', 'Sub-Agent Lite worker failed: ${_compact(error.toString(), 180)}');
-      _emit(onEvent, round, parentCall.name, session.role, 'Mailbox Failed: ${session.id} ${session.mailbox.last.message}', success: false);
+      session.add('Failed',
+          'Sub-Agent Lite worker failed: ${_compact(error.toString(), 180)}');
+      _emit(onEvent, round, parentCall.name, session.role,
+          'Mailbox Failed: ${session.id} ${session.mailbox.last.message}',
+          success: false);
     }
   }
 
@@ -886,9 +989,11 @@ class _SubAgentLiteManager {
     required String toolName,
     required Map<String, dynamic> params,
   }) async {
-    if (_shouldStop(session, round: round, toolName: parentCall.name, onEvent: onEvent)) return;
+    if (_shouldStop(session,
+        round: round, toolName: parentCall.name, onEvent: onEvent)) return;
     session.add('ToolCallStarted', '$toolName started inside ${session.id}.');
-    _emit(onEvent, round, parentCall.name, session.role, 'Mailbox ToolCallStarted: ${session.mailbox.last.message}');
+    _emit(onEvent, round, parentCall.name, session.role,
+        'Mailbox ToolCallStarted: ${session.mailbox.last.message}');
     final result = await actionRunner.run(ActionSchema(
       actionName: actionName,
       requestId: requestId,
@@ -897,14 +1002,18 @@ class _SubAgentLiteManager {
     ));
     session.evidenceIds.add(result.evidence.evidenceId);
     final preview = _compact(
-      [result.text, result.evidence.logs.join(' ')].whereType<String>().join(' '),
+      [result.text, result.evidence.logs.join(' ')]
+          .whereType<String>()
+          .join(' '),
       240,
     );
     session.add(
       result.success ? 'ToolCallCompleted' : 'ToolCallFailed',
       '$toolName on ${session.path}: ${result.success ? "ok" : "failed"} · evidence ${result.evidence.evidenceId}${preview.isEmpty ? "" : " · $preview"}',
     );
-    _emit(onEvent, round, parentCall.name, session.role, 'Mailbox ${session.mailbox.last.type}: ${session.mailbox.last.message}', success: result.success);
+    _emit(onEvent, round, parentCall.name, session.role,
+        'Mailbox ${session.mailbox.last.type}: ${session.mailbox.last.message}',
+        success: result.success);
     if (!result.success && session.isRunning) {
       session.status = 'failed';
       session.finishedAt = DateTime.now();
@@ -917,15 +1026,25 @@ class _SubAgentLiteManager {
     void Function(AgentLoopEvent event)? onEvent,
   }) {
     _reapExpiredSessions();
-    final agentId = _stringArgAny(call.arguments, const ['agent_id', 'agentId', 'id']).trim();
+    final agentId =
+        _stringArgAny(call.arguments, const ['agent_id', 'agentId', 'id'])
+            .trim();
     final session = _sessions[agentId];
     if (session == null) {
-      return _failed(call, 'Unknown Sub-Agent Lite session: ${agentId.isEmpty ? "(empty)" : agentId}.', const ['Call agent_open first, then pass the returned agent_id to agent_eval.']);
+      return _failed(
+          call,
+          'Unknown Sub-Agent Lite session: ${agentId.isEmpty ? "(empty)" : agentId}.',
+          const [
+            'Call agent_open first, then pass the returned agent_id to agent_eval.'
+          ]);
     }
     _shouldStop(session, round: round, toolName: call.name, onEvent: onEvent);
-    session.add('Progress', 'agent_eval read mailbox with ${session.mailbox.length} entries.');
-    _emit(onEvent, round, call.name, session.role, 'Mailbox Eval: ${session.id} ${session.status}.');
-    return _succeeded(call, 'agent_eval ${session.id}', _sessionPayload(session));
+    session.add('Progress',
+        'agent_eval read mailbox with ${session.mailbox.length} entries.');
+    _emit(onEvent, round, call.name, session.role,
+        'Mailbox Eval: ${session.id} ${session.status}.');
+    return _succeeded(
+        call, 'agent_eval ${session.id}', _sessionPayload(session));
   }
 
   ActionRunnerResult _close(
@@ -933,24 +1052,36 @@ class _SubAgentLiteManager {
     required int round,
     void Function(AgentLoopEvent event)? onEvent,
   }) {
-    final agentId = _stringArgAny(call.arguments, const ['agent_id', 'agentId', 'id']).trim();
+    final agentId =
+        _stringArgAny(call.arguments, const ['agent_id', 'agentId', 'id'])
+            .trim();
     final session = _sessions[agentId];
     if (session == null) {
-      return _failed(call, 'Unknown Sub-Agent Lite session: ${agentId.isEmpty ? "(empty)" : agentId}.', const ['Call agent_close only with a currently open Sub-Agent Lite session id.']);
+      return _failed(
+          call,
+          'Unknown Sub-Agent Lite session: ${agentId.isEmpty ? "(empty)" : agentId}.',
+          const [
+            'Call agent_close only with a currently open Sub-Agent Lite session id.'
+          ]);
     }
     final reason = _stringArg(call.arguments, 'reason').trim();
     if (session.isRunning) {
       session.cancelRequested = true;
       session.status = 'cancelled';
       session.finishedAt = DateTime.now();
-      session.add('Cancelled', reason.isEmpty ? 'Cancelled by parent AgentLoop.' : reason);
-      _emit(onEvent, round, call.name, session.role, 'Mailbox Cancelled: ${session.id}.');
+      session.add('Cancelled',
+          reason.isEmpty ? 'Cancelled by parent AgentLoop.' : reason);
+      _emit(onEvent, round, call.name, session.role,
+          'Mailbox Cancelled: ${session.id}.');
     } else {
       session.status = 'closed';
-      session.add('Closed', reason.isEmpty ? 'Closed by parent AgentLoop.' : reason);
-      _emit(onEvent, round, call.name, session.role, 'Mailbox Closed: ${session.id}.');
+      session.add(
+          'Closed', reason.isEmpty ? 'Closed by parent AgentLoop.' : reason);
+      _emit(onEvent, round, call.name, session.role,
+          'Mailbox Closed: ${session.id}.');
     }
-    return _succeeded(call, 'agent_close ${session.id}', _sessionPayload(session));
+    return _succeeded(
+        call, 'agent_close ${session.id}', _sessionPayload(session));
   }
 
   Map<String, dynamic> _sessionPayload(_SubAgentLiteSession session) {
@@ -968,20 +1099,31 @@ class _SubAgentLiteManager {
       'token_used': session.estimatedTokens,
       'started_at': session.startedAt.toIso8601String(),
       'deadline': session.deadline.toIso8601String(),
-      if (session.finishedAt != null) 'finished_at': session.finishedAt!.toIso8601String(),
+      if (session.finishedAt != null)
+        'finished_at': session.finishedAt!.toIso8601String(),
       'can_cancel': session.isRunning,
       'allowed_tools': session.allowedTools,
-      'output_contract': const ['SUMMARY', 'CHANGES', 'EVIDENCE', 'RISKS', 'BLOCKERS'],
+      'output_contract': const [
+        'SUMMARY',
+        'CHANGES',
+        'EVIDENCE',
+        'RISKS',
+        'BLOCKERS'
+      ],
       'mailbox': session.mailbox.map((entry) => entry.toJson()).toList(),
       'evidence_ids': session.evidenceIds,
-      'summary': '${session.role} ${session.status} while inspecting ${session.path} with read-only MobileCode tools.',
+      'summary':
+          '${session.role} ${session.status} while inspecting ${session.path} with read-only MobileCode tools.',
       'changes': const [],
-      'risks': const ['Sub-Agent Lite v2 is read-only; write proposals must return to the main AgentLoop before ActionRunner mutates files.'],
+      'risks': const [
+        'Sub-Agent Lite v2 is read-only; write proposals must return to the main AgentLoop before ActionRunner mutates files.'
+      ],
       'blockers': const [],
     };
   }
 
-  ActionRunnerResult _succeeded(ProviderToolCall call, String paramsSummary, Map<String, dynamic> payload) {
+  ActionRunnerResult _succeeded(ProviderToolCall call, String paramsSummary,
+      Map<String, dynamic> payload) {
     final startedAt = DateTime.now();
     final evidence = ActionEvidence.succeeded(
       actionName: MobileCodeAction.traceCallProvider,
@@ -994,7 +1136,8 @@ class _SubAgentLiteManager {
     return ActionRunnerResult(evidence: evidence, text: jsonEncode(payload));
   }
 
-  ActionRunnerResult _failed(ProviderToolCall call, String message, List<String> recoveryActions) {
+  ActionRunnerResult _failed(
+      ProviderToolCall call, String message, List<String> recoveryActions) {
     final evidence = ActionEvidence.failed(
       actionName: MobileCodeAction.traceCallProvider,
       startedAt: DateTime.now(),
@@ -1017,7 +1160,8 @@ class _SubAgentLiteManager {
     bool success = true,
   }) {
     onEvent?.call(AgentLoopEvent(
-      type: success ? AgentLoopEventType.observation : AgentLoopEventType.failed,
+      type:
+          success ? AgentLoopEventType.observation : AgentLoopEventType.failed,
       message: message,
       round: round,
       toolName: toolName,
@@ -1034,15 +1178,30 @@ class _SubAgentLiteManager {
   }) {
     if (!session.isRunning) return true;
     if (session.cancelRequested) {
-      _stopSession(session, 'cancelled', 'Cancelled', 'Cancelled by parent AgentLoop.', round, toolName, onEvent);
+      _stopSession(session, 'cancelled', 'Cancelled',
+          'Cancelled by parent AgentLoop.', round, toolName, onEvent);
       return true;
     }
     if (DateTime.now().isAfter(session.deadline)) {
-      _stopSession(session, 'timed_out', 'TimedOut', 'Worker timed out after ${session.timeoutMs}ms.', round, toolName, onEvent);
+      _stopSession(
+          session,
+          'timed_out',
+          'TimedOut',
+          'Worker timed out after ${session.timeoutMs}ms.',
+          round,
+          toolName,
+          onEvent);
       return true;
     }
     if (session.estimatedTokens >= session.tokenBudget) {
-      _stopSession(session, 'token_budget_exhausted', 'TokenBudgetExceeded', 'Worker stopped at token budget ${session.tokenBudget}.', round, toolName, onEvent);
+      _stopSession(
+          session,
+          'token_budget_exhausted',
+          'TokenBudgetExceeded',
+          'Worker stopped at token budget ${session.tokenBudget}.',
+          round,
+          toolName,
+          onEvent);
       return true;
     }
     return false;
@@ -1061,7 +1220,9 @@ class _SubAgentLiteManager {
     session.status = status;
     session.finishedAt = DateTime.now();
     session.add(mailboxType, message);
-    _emit(onEvent, round, toolName, session.role, 'Mailbox $mailboxType: ${session.id} $message', success: status == 'cancelled');
+    _emit(onEvent, round, toolName, session.role,
+        'Mailbox $mailboxType: ${session.id} $message',
+        success: status == 'cancelled');
   }
 
   void _reapExpiredSessions() {
@@ -1069,7 +1230,8 @@ class _SubAgentLiteManager {
       if (session.isRunning && DateTime.now().isAfter(session.deadline)) {
         session.status = 'timed_out';
         session.finishedAt = DateTime.now();
-        session.add('TimedOut', 'Worker timed out after ${session.timeoutMs}ms.');
+        session.add(
+            'TimedOut', 'Worker timed out after ${session.timeoutMs}ms.');
       }
     }
   }
@@ -1107,7 +1269,13 @@ class _SubAgentLiteSession {
 
   List<String> get allowedTools => role == 'explorer'
       ? const ['list_files', 'find_files', 'grep_files', 'read_file']
-      : const ['list_files', 'find_files', 'grep_files', 'read_file', 'preview_snapshot'];
+      : const [
+          'list_files',
+          'find_files',
+          'grep_files',
+          'read_file',
+          'preview_snapshot'
+        ];
 
   void add(String type, String message) {
     mailbox.add(_SubAgentLiteMailboxEntry(type: type, message: message));
@@ -1146,7 +1314,8 @@ AgentLoopEventType _eventTypeForResult(ActionRunnerResult result) {
 
 String _statusForResult(ActionRunnerResult result) {
   if (result.success) return 'ok';
-  if (result.evidence.failureKind == ActionFailureKind.commandBlocked) return 'blocked';
+  if (result.evidence.failureKind == ActionFailureKind.commandBlocked)
+    return 'blocked';
   return 'failed';
 }
 
@@ -1162,7 +1331,8 @@ String _roleForTool(String toolName) {
       toolName == 'detect_project_type' ||
       toolName == 'change_history' ||
       toolName == 'virtual_status' ||
-      toolName == 'read_file') {
+      toolName == 'read_file' ||
+      toolName == 'lark_readiness') {
     return 'Planner';
   }
   if (toolName == 'write_file' ||
@@ -1171,7 +1341,8 @@ String _roleForTool(String toolName) {
       toolName == 'delete_file' ||
       toolName == 'restore_snapshot' ||
       toolName == 'move_file' ||
-      toolName == 'apply_patch') {
+      toolName == 'apply_patch' ||
+      _larkWriteTools.contains(toolName)) {
     return 'Builder';
   }
   if (toolName == 'save_snapshot' ||
@@ -1181,10 +1352,13 @@ String _roleForTool(String toolName) {
       toolName == 'validate_markdown' ||
       toolName == 'preview_html' ||
       toolName == 'preview_snapshot' ||
+      toolName == 'lark_drive_upload_preview' ||
       toolName == 'report_result') {
     return 'Reviewer';
   }
-  if (toolName == 'web_search' || toolName == 'fetch_url') {
+  if (toolName == 'web_search' ||
+      toolName == 'fetch_url' ||
+      toolName == 'lark_wiki_list_spaces') {
     return 'Research';
   }
   if (toolName == 'termux_task_start') {
@@ -1200,7 +1374,8 @@ String _observationRoleForTool(String toolName) {
       toolName == 'delete_file' ||
       toolName == 'restore_snapshot' ||
       toolName == 'move_file' ||
-      toolName == 'apply_patch') {
+      toolName == 'apply_patch' ||
+      _larkWriteTools.contains(toolName)) {
     return 'Reviewer';
   }
   if (toolName == 'save_snapshot' ||
@@ -1210,10 +1385,13 @@ String _observationRoleForTool(String toolName) {
       toolName == 'validate_markdown' ||
       toolName == 'preview_html' ||
       toolName == 'preview_snapshot' ||
+      toolName == 'lark_drive_upload_preview' ||
       toolName == 'report_result') {
     return 'Reviewer';
   }
-  if (toolName == 'web_search' || toolName == 'fetch_url') {
+  if (toolName == 'web_search' ||
+      toolName == 'fetch_url' ||
+      toolName == 'lark_wiki_list_spaces') {
     return 'Research';
   }
   if (toolName == 'termux_task_start') {

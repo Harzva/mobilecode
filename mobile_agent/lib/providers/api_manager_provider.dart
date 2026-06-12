@@ -149,7 +149,8 @@ class ApiManagerNotifier extends StateNotifier<ApiManagerState> {
   Future<bool> connectChatGPT({String? sessionToken}) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final result = await _service.connectChatGPTOfficial(sessionToken: sessionToken);
+      final result =
+          await _service.connectChatGPTOfficial(sessionToken: sessionToken);
       state = state.copyWith(isLoading: false);
       return result;
     } catch (e) {
@@ -266,7 +267,8 @@ class ApiManagerNotifier extends StateNotifier<ApiManagerState> {
   }
 
   /// Execute with failover.
-  Future<T> withFailover<T>(TaskType task, Future<T> Function(ApiProvider) operation) async {
+  Future<T> withFailover<T>(
+      TaskType task, Future<T> Function(ApiProvider) operation) async {
     return _service.withFailover(task, operation);
   }
 
@@ -370,8 +372,8 @@ class FeatureFlagsState {
     for (final entry in FeatureFlagsService.allFeatures.entries) {
       final currentValue = isEnabled(entry.key);
       result.putIfAbsent(entry.value.category, () => []).add(
-        entry.value.copyWith(currentValue: currentValue),
-      );
+            entry.value.copyWith(currentValue: currentValue),
+          );
     }
     // Sort by category order
     final sortedEntries = result.entries.toList()
@@ -522,8 +524,13 @@ final isGitHubPagesDeployEnabledProvider = Provider<bool>((ref) {
   return ref.watch(featureEnabledProvider('github_pages_deploy'));
 });
 
-/// Provider that checks if Lark CLI connector is enabled.
-final isLarkCliEnabledProvider = Provider<bool>((ref) {
+/// Provider that checks if the native Lark API lab is enabled.
+final isLarkNativeApiEnabledProvider = Provider<bool>((ref) {
+  return ref.watch(featureEnabledProvider('lark_native_api'));
+});
+
+/// Provider that checks if the Lark CLI development probe is enabled.
+final isLarkCliDevProbeEnabledProvider = Provider<bool>((ref) {
   return ref.watch(featureEnabledProvider('lark_cli'));
 });
 
@@ -554,11 +561,13 @@ Future<void> initializeAppServices(ProviderContainer container) async {
   await storage.initialize();
 
   // Initialize API manager
-  final apiManagerNotifier = container.read(apiManagerNotifierProvider.notifier);
+  final apiManagerNotifier =
+      container.read(apiManagerNotifierProvider.notifier);
   await apiManagerNotifier.initialize();
 
   // Initialize feature flags
-  final featureFlagsNotifier = container.read(featureFlagsNotifierProvider.notifier);
+  final featureFlagsNotifier =
+      container.read(featureFlagsNotifierProvider.notifier);
   await featureFlagsNotifier.initialize();
 
   debugPrint('[AppServices] All services initialized');

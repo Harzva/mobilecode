@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:path/path.dart' as p;
 
+import '../../services/lark_api_service.dart';
 import 'action_evidence_store.dart';
 import 'evidence_model.dart';
 
@@ -63,15 +64,18 @@ class ActionRunner {
     ActionEvidenceStore? evidenceStore,
     ActionRunnerWebToolInvoker? webToolInvoker,
     ActionRunnerTermuxTaskInvoker? termuxTaskInvoker,
+    LarkApiService? larkApiService,
   })  : workspaceRootPath = p.normalize(p.absolute(workspaceRootPath)),
         evidenceStore = evidenceStore ?? ActionEvidenceStore.shared,
         webToolInvoker = webToolInvoker,
-        termuxTaskInvoker = termuxTaskInvoker;
+        termuxTaskInvoker = termuxTaskInvoker,
+        larkApiService = larkApiService ?? LarkApiService();
 
   final String workspaceRootPath;
   final ActionEvidenceStore evidenceStore;
   final ActionRunnerWebToolInvoker? webToolInvoker;
   final ActionRunnerTermuxTaskInvoker? termuxTaskInvoker;
+  final LarkApiService larkApiService;
 
   Future<ActionRunnerResult> run(ActionSchema schema) async {
     final startedAt = DateTime.now();
@@ -91,25 +95,35 @@ class ActionRunner {
         MobileCodeAction.writeFile => await _writeFile(schema, startedAt),
         MobileCodeAction.readFile => await _readFile(schema, startedAt),
         MobileCodeAction.copyFile => await _copyFile(schema, startedAt),
-        MobileCodeAction.makeDirectory => await _makeDirectory(schema, startedAt),
+        MobileCodeAction.makeDirectory =>
+          await _makeDirectory(schema, startedAt),
         MobileCodeAction.deleteFile => await _deleteFile(schema, startedAt),
         MobileCodeAction.moveFile => await _moveFile(schema, startedAt),
         MobileCodeAction.saveSnapshot => await _saveSnapshot(schema, startedAt),
         MobileCodeAction.virtualDiff => await _virtualDiff(schema, startedAt),
-        MobileCodeAction.restoreSnapshot => await _restoreSnapshot(schema, startedAt),
-        MobileCodeAction.changeHistory => await _changeHistory(schema, startedAt),
-        MobileCodeAction.virtualStatus => await _virtualStatus(schema, startedAt),
-        MobileCodeAction.projectSummary => await _projectSummary(schema, startedAt),
-        MobileCodeAction.detectProjectType => await _detectProjectType(schema, startedAt),
+        MobileCodeAction.restoreSnapshot =>
+          await _restoreSnapshot(schema, startedAt),
+        MobileCodeAction.changeHistory =>
+          await _changeHistory(schema, startedAt),
+        MobileCodeAction.virtualStatus =>
+          await _virtualStatus(schema, startedAt),
+        MobileCodeAction.projectSummary =>
+          await _projectSummary(schema, startedAt),
+        MobileCodeAction.detectProjectType =>
+          await _detectProjectType(schema, startedAt),
         MobileCodeAction.validateHtml => await _validateHtml(schema, startedAt),
         MobileCodeAction.validateJson => await _validateJson(schema, startedAt),
-        MobileCodeAction.validateMarkdown => await _validateMarkdown(schema, startedAt),
+        MobileCodeAction.validateMarkdown =>
+          await _validateMarkdown(schema, startedAt),
         MobileCodeAction.applyPatch => await _applyPatch(schema, startedAt),
-        MobileCodeAction.termuxTaskStart => await _termuxTaskStart(schema, startedAt),
+        MobileCodeAction.termuxTaskStart =>
+          await _termuxTaskStart(schema, startedAt),
         MobileCodeAction.previewHtml => await _previewHtml(schema, startedAt),
         MobileCodeAction.webSearch => await _webSearch(schema, startedAt),
         MobileCodeAction.fetchUrl => await _fetchUrl(schema, startedAt),
-        MobileCodeAction.previewSnapshot => await _previewSnapshot(schema, startedAt),
+        MobileCodeAction.previewSnapshot =>
+          await _previewSnapshot(schema, startedAt),
+        MobileCodeAction.larkApi => await _larkApi(schema, startedAt),
         _ => _unsupported(schema, startedAt),
       };
     } on _ActionRunnerFailure catch (error) {
@@ -126,22 +140,30 @@ class ActionRunner {
         startedAt,
         error.toString(),
         failureKind: ActionFailureKind.unknown,
-        recoveryActions: const ['Open action details and inspect the captured error.'],
+        recoveryActions: const [
+          'Open action details and inspect the captured error.'
+        ],
       );
     }
   }
 
-  Future<ActionRunnerResult> _listFiles(ActionSchema schema, DateTime startedAt) async {
-    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+  Future<ActionRunnerResult> _listFiles(
+      ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty
+        ? '.'
+        : _stringParam(schema, 'path');
     final target = _resolveWorkspacePath(rawPath);
     final recursive = schema.params['recursive'] == true;
-    final maxEntries = _boundedIntParam(schema, 'maxEntries', defaultValue: 80, min: 1, max: 200);
+    final maxEntries = _boundedIntParam(schema, 'maxEntries',
+        defaultValue: 80, min: 1, max: 200);
     final targetType = await FileSystemEntity.type(target, followLinks: false);
     if (targetType == FileSystemEntityType.notFound) {
       throw _ActionRunnerFailure(
         'Path does not exist: ${_relative(target)}',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['List "." first or create the folder before listing it.'],
+        recoveryActions: const [
+          'List "." first or create the folder before listing it.'
+        ],
       );
     }
 
@@ -151,28 +173,39 @@ class ActionRunner {
       final stat = await file.stat();
       entries.add(_fileListEntry(target, stat, 'file'));
     } else if (targetType == FileSystemEntityType.directory) {
-      await for (final entity in Directory(target).list(recursive: recursive, followLinks: false)) {
+      await for (final entity
+          in Directory(target).list(recursive: recursive, followLinks: false)) {
         if (entries.length >= maxEntries) break;
-        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        final type =
+            await FileSystemEntity.type(entity.path, followLinks: false);
         final stat = await entity.stat();
-        entries.add(_fileListEntry(entity.path, stat, type == FileSystemEntityType.directory ? 'directory' : 'file'));
+        entries.add(_fileListEntry(entity.path, stat,
+            type == FileSystemEntityType.directory ? 'directory' : 'file'));
       }
     } else {
       throw _ActionRunnerFailure(
         'Unsupported file system entity: ${_relative(target)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+        recoveryActions: const [
+          'Choose a regular file or directory inside the workspace.'
+        ],
       );
     }
 
-    entries.sort((a, b) => _stringValue(a['path']).compareTo(_stringValue(b['path'])));
+    entries.sort(
+        (a, b) => _stringValue(a['path']).compareTo(_stringValue(b['path'])));
     final lines = entries.isEmpty
         ? ['${_relative(target)} is empty.']
-        : entries.map((entry) => '${entry['type']}\t${entry['path']}\t${entry['sizeBytes']} bytes').toList();
+        : entries
+            .map((entry) =>
+                '${entry['type']}\t${entry['path']}\t${entry['sizeBytes']} bytes')
+            .toList();
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.listFiles,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'list ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'list ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -188,20 +221,27 @@ class ActionRunner {
       },
     );
     evidenceStore.add(evidence);
-    return ActionRunnerResult(evidence: evidence, text: lines.join('\n'), path: target);
+    return ActionRunnerResult(
+        evidence: evidence, text: lines.join('\n'), path: target);
   }
 
-  Future<ActionRunnerResult> _findFiles(ActionSchema schema, DateTime startedAt) async {
-    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+  Future<ActionRunnerResult> _findFiles(
+      ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty
+        ? '.'
+        : _stringParam(schema, 'path');
     final pattern = _requiredString(schema, 'pattern');
     final target = _resolveWorkspacePath(rawPath);
-    final maxResults = _boundedIntParam(schema, 'maxResults', defaultValue: 80, min: 1, max: 200);
+    final maxResults = _boundedIntParam(schema, 'maxResults',
+        defaultValue: 80, min: 1, max: 200);
     final targetType = await FileSystemEntity.type(target, followLinks: false);
     if (targetType == FileSystemEntityType.notFound) {
       throw _ActionRunnerFailure(
         'Path does not exist: ${_relative(target)}',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['List "." first or choose an existing workspace folder.'],
+        recoveryActions: const [
+          'List "." first or choose an existing workspace folder.'
+        ],
       );
     }
 
@@ -213,15 +253,18 @@ class ActionRunner {
       if (type == FileSystemEntityType.notFound) return;
       final relativePath = _relative(entity.path);
       final name = p.basename(entity.path);
-      if (!matcher.hasMatch(name) && !matcher.hasMatch(relativePath.replaceAll('\\', '/'))) return;
+      if (!matcher.hasMatch(name) &&
+          !matcher.hasMatch(relativePath.replaceAll('\\', '/'))) return;
       final stat = await entity.stat();
-      results.add(_fileListEntry(entity.path, stat, type == FileSystemEntityType.directory ? 'directory' : 'file'));
+      results.add(_fileListEntry(entity.path, stat,
+          type == FileSystemEntityType.directory ? 'directory' : 'file'));
     }
 
     if (targetType == FileSystemEntityType.file) {
       await addEntity(File(target));
     } else if (targetType == FileSystemEntityType.directory) {
-      await for (final entity in Directory(target).list(recursive: true, followLinks: false)) {
+      await for (final entity
+          in Directory(target).list(recursive: true, followLinks: false)) {
         await addEntity(entity);
         if (results.length >= maxResults) break;
       }
@@ -229,23 +272,33 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'Unsupported file system entity: ${_relative(target)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+        recoveryActions: const [
+          'Choose a regular file or directory inside the workspace.'
+        ],
       );
     }
 
-    results.sort((a, b) => _stringValue(a['path']).compareTo(_stringValue(b['path'])));
+    results.sort(
+        (a, b) => _stringValue(a['path']).compareTo(_stringValue(b['path'])));
     final text = results.isEmpty
         ? 'No files matched "$pattern" under ${_relative(target)}.'
-        : results.map((entry) => '${entry['type']}\t${entry['path']}\t${entry['sizeBytes']} bytes').join('\n');
+        : results
+            .map((entry) =>
+                '${entry['type']}\t${entry['path']}\t${entry['sizeBytes']} bytes')
+            .join('\n');
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.findFiles,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'find "$pattern" under ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'find "$pattern" under ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
       artifactPaths: [target],
-      logs: ['Found ${results.length} item(s) matching "$pattern" under ${_relative(target)}.'],
+      logs: [
+        'Found ${results.length} item(s) matching "$pattern" under ${_relative(target)}.'
+      ],
       metadata: {
         'pattern': pattern,
         'relativePath': _relative(target),
@@ -257,19 +310,28 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _grepFiles(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _grepFiles(
+      ActionSchema schema, DateTime startedAt) async {
     final query = _requiredString(schema, 'query');
-    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
-    final includeGlob = _stringParam(schema, 'includeGlob').isEmpty ? '*' : _stringParam(schema, 'includeGlob');
+    final rawPath = _stringParam(schema, 'path').isEmpty
+        ? '.'
+        : _stringParam(schema, 'path');
+    final includeGlob = _stringParam(schema, 'includeGlob').isEmpty
+        ? '*'
+        : _stringParam(schema, 'includeGlob');
     final target = _resolveWorkspacePath(rawPath);
-    final maxResults = _boundedIntParam(schema, 'maxResults', defaultValue: 40, min: 1, max: 120);
-    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 256 * 1024, min: 1024, max: 512 * 1024);
+    final maxResults = _boundedIntParam(schema, 'maxResults',
+        defaultValue: 40, min: 1, max: 120);
+    final maxBytes = _boundedIntParam(schema, 'maxBytes',
+        defaultValue: 256 * 1024, min: 1024, max: 512 * 1024);
     final targetType = await FileSystemEntity.type(target, followLinks: false);
     if (targetType == FileSystemEntityType.notFound) {
       throw _ActionRunnerFailure(
         'Path does not exist: ${_relative(target)}',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['List "." first or choose an existing workspace folder.'],
+        recoveryActions: const [
+          'List "." first or choose an existing workspace folder.'
+        ],
       );
     }
 
@@ -278,7 +340,8 @@ class ActionRunner {
     Future<void> searchFile(File file) async {
       if (results.length >= maxResults) return;
       final relativePath = _relative(file.path);
-      if (!includeMatcher.hasMatch(p.basename(file.path)) && !includeMatcher.hasMatch(relativePath.replaceAll('\\', '/'))) {
+      if (!includeMatcher.hasMatch(p.basename(file.path)) &&
+          !includeMatcher.hasMatch(relativePath.replaceAll('\\', '/'))) {
         return;
       }
       final stat = await file.stat();
@@ -302,31 +365,43 @@ class ActionRunner {
     if (targetType == FileSystemEntityType.file) {
       await searchFile(File(target));
     } else if (targetType == FileSystemEntityType.directory) {
-      await for (final entity in Directory(target).list(recursive: true, followLinks: false)) {
+      await for (final entity
+          in Directory(target).list(recursive: true, followLinks: false)) {
         if (results.length >= maxResults) break;
-        final type = await FileSystemEntity.type(entity.path, followLinks: false);
-        if (type == FileSystemEntityType.file) await searchFile(File(entity.path));
+        final type =
+            await FileSystemEntity.type(entity.path, followLinks: false);
+        if (type == FileSystemEntityType.file)
+          await searchFile(File(entity.path));
       }
     } else {
       throw _ActionRunnerFailure(
         'Unsupported file system entity: ${_relative(target)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Choose a text file or directory inside the workspace.'],
+        recoveryActions: const [
+          'Choose a text file or directory inside the workspace.'
+        ],
       );
     }
 
     final text = results.isEmpty
         ? 'No matches for "$query" under ${_relative(target)}.'
-        : results.map((item) => '${item['path']}:${item['lineNumber']}: ${item['preview']}').join('\n');
+        : results
+            .map((item) =>
+                '${item['path']}:${item['lineNumber']}: ${item['preview']}')
+            .join('\n');
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.grepFiles,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'grep "$query" under ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'grep "$query" under ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
       artifactPaths: [target],
-      logs: ['Found ${results.length} text match(es) for "$query" under ${_relative(target)}.'],
+      logs: [
+        'Found ${results.length} text match(es) for "$query" under ${_relative(target)}.'
+      ],
       metadata: {
         'query': query,
         'relativePath': _relative(target),
@@ -340,7 +415,8 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _writeFile(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _writeFile(
+      ActionSchema schema, DateTime startedAt) async {
     if (_stringParam(schema, 'path').isEmpty) {
       throw _ActionRunnerFailure(
         'Missing required string param: path for write_file.',
@@ -360,7 +436,9 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'File already exists and overwrite=false: ${_relative(target)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Enable overwrite or choose a different file path.'],
+        recoveryActions: const [
+          'Enable overwrite or choose a different file path.'
+        ],
       );
     }
     await file.parent.create(recursive: true);
@@ -369,14 +447,17 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.writeFile,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'write ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'write ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
       artifactPaths: [target],
       logs: [
         'Wrote ${utf8.encode(content).length} bytes to ${_relative(target)}.',
-        if (adapterRepair.isNotEmpty) 'Adapter repaired tool arguments: $adapterRepair.',
+        if (adapterRepair.isNotEmpty)
+          'Adapter repaired tool arguments: $adapterRepair.',
       ],
       metadata: {
         'relativePath': _relative(target),
@@ -388,27 +469,33 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, path: target);
   }
 
-  Future<ActionRunnerResult> _readFile(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _readFile(
+      ActionSchema schema, DateTime startedAt) async {
     final target = _resolveWorkspacePath(_requiredString(schema, 'path'));
     final file = File(target);
     if (!await file.exists()) {
       throw _ActionRunnerFailure(
         'File does not exist: ${_relative(target)}',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Check the path or create the file before reading it.'],
+        recoveryActions: const [
+          'Check the path or create the file before reading it.'
+        ],
       );
     }
 
     final maxBytes = _intParam(schema, 'maxBytes', defaultValue: 200 * 1024);
     final bytes = await file.readAsBytes();
     final readLength = math.min(bytes.length, maxBytes).toInt();
-    final text = utf8.decode(bytes.take(readLength).toList(), allowMalformed: true);
+    final text =
+        utf8.decode(bytes.take(readLength).toList(), allowMalformed: true);
     final truncated = bytes.length > readLength;
 
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.readFile,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'read ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'read ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -427,16 +514,20 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _copyFile(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _copyFile(
+      ActionSchema schema, DateTime startedAt) async {
     final source = _resolveWorkspacePath(_requiredString(schema, 'sourcePath'));
-    final destination = _resolveWorkspacePath(_requiredString(schema, 'destinationPath'));
+    final destination =
+        _resolveWorkspacePath(_requiredString(schema, 'destinationPath'));
     final overwrite = schema.params['overwrite'] as bool? ?? false;
     final sourceType = await FileSystemEntity.type(source, followLinks: false);
     if (sourceType == FileSystemEntityType.notFound) {
       throw _ActionRunnerFailure(
         'Source file does not exist: ${_relative(source)}',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Call list_files or provide an existing source path before copying.'],
+        recoveryActions: const [
+          'Call list_files or provide an existing source path before copying.'
+        ],
       );
     }
     if (sourceType != FileSystemEntityType.file) {
@@ -446,12 +537,15 @@ class ActionRunner {
         recoveryActions: const ['Copy a regular file, not a directory.'],
       );
     }
-    final destinationType = await FileSystemEntity.type(destination, followLinks: false);
+    final destinationType =
+        await FileSystemEntity.type(destination, followLinks: false);
     if (destinationType == FileSystemEntityType.directory) {
       throw _ActionRunnerFailure(
         'Destination is a directory; provide the full destination file path: ${_relative(destination)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Include the target filename in destination_path.'],
+        recoveryActions: const [
+          'Include the target filename in destination_path.'
+        ],
       );
     }
     if (destinationType != FileSystemEntityType.notFound) {
@@ -459,7 +553,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'Destination already exists and overwrite=false: ${_relative(destination)}',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: const ['Set overwrite=true or choose a different destination path.'],
+          recoveryActions: const [
+            'Set overwrite=true or choose a different destination path.'
+          ],
         );
       }
       await File(destination).delete();
@@ -470,7 +566,9 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.copyFile,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'copy ${_relative(source)} to ${_relative(destination)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'copy ${_relative(source)} to ${_relative(destination)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -486,7 +584,8 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, path: destination);
   }
 
-  Future<ActionRunnerResult> _makeDirectory(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _makeDirectory(
+      ActionSchema schema, DateTime startedAt) async {
     final target = _resolveWorkspacePath(_requiredString(schema, 'path'));
     final recursive = schema.params['recursive'] as bool? ?? true;
     final targetType = await FileSystemEntity.type(target, followLinks: false);
@@ -494,19 +593,25 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'Cannot create directory over an existing file: ${_relative(target)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Choose a directory path that does not point at an existing file.'],
+        recoveryActions: const [
+          'Choose a directory path that does not point at an existing file.'
+        ],
       );
     }
     await Directory(target).create(recursive: recursive);
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.makeDirectory,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'mkdir ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'mkdir ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
       artifactPaths: [target],
-      logs: ['Created directory ${_relative(target)}${recursive ? ' recursively' : ''}.'],
+      logs: [
+        'Created directory ${_relative(target)}${recursive ? ' recursively' : ''}.'
+      ],
       metadata: {
         'relativePath': _relative(target),
         'recursive': recursive,
@@ -516,14 +621,17 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, path: target);
   }
 
-  Future<ActionRunnerResult> _deleteFile(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _deleteFile(
+      ActionSchema schema, DateTime startedAt) async {
     final target = _resolveWorkspacePath(_requiredString(schema, 'path'));
     final confirm = schema.params['confirm'] == true;
     if (!confirm) {
       throw const _ActionRunnerFailure(
         'delete_file requires confirm=true because deletion is destructive.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: ['Set confirm=true only when the user explicitly asked to delete a workspace file.'],
+        recoveryActions: [
+          'Set confirm=true only when the user explicitly asked to delete a workspace file.'
+        ],
       );
     }
     final relativePath = _relative(target);
@@ -539,7 +647,9 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'File does not exist: $relativePath',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Call list_files or find_files before deleting.'],
+        recoveryActions: const [
+          'Call list_files or find_files before deleting.'
+        ],
       );
     }
     if (targetType != FileSystemEntityType.file) {
@@ -562,7 +672,9 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.deleteFile,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'delete $relativePath' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'delete $relativePath'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -581,16 +693,20 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, path: snapshotPath);
   }
 
-  Future<ActionRunnerResult> _moveFile(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _moveFile(
+      ActionSchema schema, DateTime startedAt) async {
     final source = _resolveWorkspacePath(_requiredString(schema, 'sourcePath'));
-    final destination = _resolveWorkspacePath(_requiredString(schema, 'destinationPath'));
+    final destination =
+        _resolveWorkspacePath(_requiredString(schema, 'destinationPath'));
     final overwrite = schema.params['overwrite'] as bool? ?? false;
     final sourceType = await FileSystemEntity.type(source, followLinks: false);
     if (sourceType == FileSystemEntityType.notFound) {
       throw _ActionRunnerFailure(
         'Source file does not exist: ${_relative(source)}',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Call list_files or provide an existing source path before moving.'],
+        recoveryActions: const [
+          'Call list_files or provide an existing source path before moving.'
+        ],
       );
     }
     if (sourceType != FileSystemEntityType.file) {
@@ -607,12 +723,15 @@ class ActionRunner {
         recoveryActions: const ['Choose a different destination path.'],
       );
     }
-    final destinationType = await FileSystemEntity.type(destination, followLinks: false);
+    final destinationType =
+        await FileSystemEntity.type(destination, followLinks: false);
     if (destinationType == FileSystemEntityType.directory) {
       throw _ActionRunnerFailure(
         'Destination is a directory; provide the full destination file path: ${_relative(destination)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Include the target filename in destination_path.'],
+        recoveryActions: const [
+          'Include the target filename in destination_path.'
+        ],
       );
     }
     if (destinationType != FileSystemEntityType.notFound) {
@@ -620,7 +739,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'Destination already exists and overwrite=false: ${_relative(destination)}',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: const ['Set overwrite=true or choose a different destination path.'],
+          recoveryActions: const [
+            'Set overwrite=true or choose a different destination path.'
+          ],
         );
       }
       await File(destination).delete();
@@ -631,7 +752,9 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.moveFile,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'move ${_relative(source)} to ${_relative(destination)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'move ${_relative(source)} to ${_relative(destination)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -647,12 +770,17 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, path: destination);
   }
 
-  Future<ActionRunnerResult> _saveSnapshot(ActionSchema schema, DateTime startedAt) async {
-    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+  Future<ActionRunnerResult> _saveSnapshot(
+      ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty
+        ? '.'
+        : _stringParam(schema, 'path');
     final target = _resolveWorkspacePath(rawPath);
     final label = _stringParam(schema, 'label');
-    final maxFiles = _boundedIntParam(schema, 'maxFiles', defaultValue: 80, min: 1, max: 200);
-    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 1024 * 1024, min: 1024, max: 5 * 1024 * 1024);
+    final maxFiles = _boundedIntParam(schema, 'maxFiles',
+        defaultValue: 80, min: 1, max: 200);
+    final maxBytes = _boundedIntParam(schema, 'maxBytes',
+        defaultValue: 1024 * 1024, min: 1024, max: 5 * 1024 * 1024);
     final targetType = await FileSystemEntity.type(target, followLinks: false);
     if (targetType == FileSystemEntityType.notFound) {
       throw _ActionRunnerFailure(
@@ -662,14 +790,17 @@ class ActionRunner {
       );
     }
     final snapshotId = 'snapshot_${DateTime.now().millisecondsSinceEpoch}';
-    final snapshotRoot = _resolveWorkspacePath('.mobilecode_snapshots/$snapshotId');
+    final snapshotRoot =
+        _resolveWorkspacePath('.mobilecode_snapshots/$snapshotId');
     final copiedFiles = <Map<String, dynamic>>[];
     var totalBytes = 0;
 
     Future<void> copyFile(File file) async {
       if (copiedFiles.length >= maxFiles) return;
       final relativePath = _relative(file.path);
-      if (relativePath.startsWith('.mobilecode_snapshots${Platform.pathSeparator}') || relativePath == '.mobilecode_snapshots') {
+      if (relativePath
+              .startsWith('.mobilecode_snapshots${Platform.pathSeparator}') ||
+          relativePath == '.mobilecode_snapshots') {
         return;
       }
       if (relativePath.startsWith('.mobilecode_')) return;
@@ -688,16 +819,21 @@ class ActionRunner {
     if (targetType == FileSystemEntityType.file) {
       await copyFile(File(target));
     } else if (targetType == FileSystemEntityType.directory) {
-      await for (final entity in Directory(target).list(recursive: true, followLinks: false)) {
+      await for (final entity
+          in Directory(target).list(recursive: true, followLinks: false)) {
         if (copiedFiles.length >= maxFiles || totalBytes >= maxBytes) break;
-        final type = await FileSystemEntity.type(entity.path, followLinks: false);
-        if (type == FileSystemEntityType.file) await copyFile(File(entity.path));
+        final type =
+            await FileSystemEntity.type(entity.path, followLinks: false);
+        if (type == FileSystemEntityType.file)
+          await copyFile(File(entity.path));
       }
     } else {
       throw _ActionRunnerFailure(
         'Unsupported snapshot source: ${_relative(target)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+        recoveryActions: const [
+          'Choose a regular file or directory inside the workspace.'
+        ],
       );
     }
 
@@ -713,12 +849,16 @@ class ActionRunner {
     final manifestPath = p.join(snapshotRoot, 'manifest.json');
     final manifestFile = File(manifestPath);
     await manifestFile.parent.create(recursive: true);
-    await manifestFile.writeAsString(const JsonEncoder.withIndent('  ').convert(manifest), flush: true);
+    await manifestFile.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(manifest),
+        flush: true);
 
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.saveSnapshot,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'save snapshot of ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'save snapshot of ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -729,37 +869,49 @@ class ActionRunner {
       metadata: manifest,
     );
     evidenceStore.add(evidence);
-    return ActionRunnerResult(evidence: evidence, text: jsonEncode(manifest), path: snapshotRoot);
+    return ActionRunnerResult(
+        evidence: evidence, text: jsonEncode(manifest), path: snapshotRoot);
   }
 
-  Future<ActionRunnerResult> _virtualDiff(ActionSchema schema, DateTime startedAt) async {
-    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+  Future<ActionRunnerResult> _virtualDiff(
+      ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty
+        ? '.'
+        : _stringParam(schema, 'path');
     final snapshotId = _stringParam(schema, 'snapshotId');
     final snapshotPathParam = _stringParam(schema, 'snapshotPath');
     if (snapshotId.isEmpty && snapshotPathParam.isEmpty) {
       throw const _ActionRunnerFailure(
         'virtual_diff requires snapshot_id or snapshot_path.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: ['Call save_snapshot first, then pass the returned snapshot_id to virtual_diff.'],
+        recoveryActions: [
+          'Call save_snapshot first, then pass the returned snapshot_id to virtual_diff.'
+        ],
       );
     }
-    if (snapshotId.isNotEmpty && !RegExp(r'^snapshot_\d+$').hasMatch(snapshotId)) {
+    if (snapshotId.isNotEmpty &&
+        !RegExp(r'^snapshot_\d+$').hasMatch(snapshotId)) {
       throw const _ActionRunnerFailure(
         'Invalid snapshot_id format for virtual_diff.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: ['Use the snapshot_id returned by save_snapshot, for example snapshot_1234567890.'],
+        recoveryActions: [
+          'Use the snapshot_id returned by save_snapshot, for example snapshot_1234567890.'
+        ],
       );
     }
     final target = _resolveWorkspacePath(rawPath);
     final snapshotRoot = snapshotPathParam.isNotEmpty
         ? _resolveWorkspacePath(snapshotPathParam)
         : _resolveWorkspacePath('.mobilecode_snapshots/$snapshotId');
-    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
+    final maxBytes = _boundedIntParam(schema, 'maxBytes',
+        defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
     if (!await Directory(snapshotRoot).exists()) {
       throw _ActionRunnerFailure(
         'Snapshot root does not exist: ${_relative(snapshotRoot)}',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Call save_snapshot and use the returned snapshot_id.'],
+        recoveryActions: const [
+          'Call save_snapshot and use the returned snapshot_id.'
+        ],
       );
     }
 
@@ -776,8 +928,10 @@ class ActionRunner {
       final currentExists = await currentFile.exists();
       final snapshotExists = await snapshotFile.exists();
       if (!currentExists && !snapshotExists) return;
-      final currentBytes = currentExists ? await currentFile.readAsBytes() : <int>[];
-      final snapshotBytes = snapshotExists ? await snapshotFile.readAsBytes() : <int>[];
+      final currentBytes =
+          currentExists ? await currentFile.readAsBytes() : <int>[];
+      final snapshotBytes =
+          snapshotExists ? await snapshotFile.readAsBytes() : <int>[];
       if (_looksBinary(currentBytes) || _looksBinary(snapshotBytes)) return;
       inspectedBytes += currentBytes.length + snapshotBytes.length;
       if (currentBytes.length + snapshotBytes.length > maxBytes) return;
@@ -785,28 +939,37 @@ class ActionRunner {
       final snapshotText = utf8.decode(snapshotBytes, allowMalformed: true);
       if (currentText == snapshotText) return;
       changedFiles.add(relativePath);
-      diffLines.addAll(_lineDiff(relativePath, snapshotText, currentText, maxLines: 120));
+      diffLines.addAll(
+          _lineDiff(relativePath, snapshotText, currentText, maxLines: 120));
     }
 
-    if (targetType == FileSystemEntityType.file || targetType == FileSystemEntityType.notFound) {
+    if (targetType == FileSystemEntityType.file ||
+        targetType == FileSystemEntityType.notFound) {
       await diffFile(target);
     } else if (targetType == FileSystemEntityType.directory) {
       final paths = <String>{};
-      await for (final entity in Directory(target).list(recursive: true, followLinks: false)) {
+      await for (final entity
+          in Directory(target).list(recursive: true, followLinks: false)) {
         if (paths.length >= 80) break;
-        final type = await FileSystemEntity.type(entity.path, followLinks: false);
-        if (type == FileSystemEntityType.file && !_relative(entity.path).startsWith('.mobilecode_')) {
+        final type =
+            await FileSystemEntity.type(entity.path, followLinks: false);
+        if (type == FileSystemEntityType.file &&
+            !_relative(entity.path).startsWith('.mobilecode_')) {
           paths.add(entity.path);
         }
       }
       final snapshotTarget = Directory(p.join(snapshotRoot, _relative(target)));
       if (await snapshotTarget.exists()) {
-        await for (final entity in snapshotTarget.list(recursive: true, followLinks: false)) {
+        await for (final entity
+            in snapshotTarget.list(recursive: true, followLinks: false)) {
           if (paths.length >= 120) break;
-          final type = await FileSystemEntity.type(entity.path, followLinks: false);
+          final type =
+              await FileSystemEntity.type(entity.path, followLinks: false);
           if (type == FileSystemEntityType.file) {
-            final relativeToSnapshot = p.relative(entity.path, from: snapshotRoot);
-            if (relativeToSnapshot == 'manifest.json' || relativeToSnapshot.startsWith('.mobilecode_')) {
+            final relativeToSnapshot =
+                p.relative(entity.path, from: snapshotRoot);
+            if (relativeToSnapshot == 'manifest.json' ||
+                relativeToSnapshot.startsWith('.mobilecode_')) {
               continue;
             }
             paths.add(_resolveWorkspacePath(relativeToSnapshot));
@@ -821,7 +984,9 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'Unsupported diff target: ${_relative(target)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+        recoveryActions: const [
+          'Choose a regular file or directory inside the workspace.'
+        ],
       );
     }
 
@@ -831,12 +996,16 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.virtualDiff,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'virtual diff ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'virtual diff ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
       artifactPaths: [snapshotRoot, target],
-      logs: ['Virtual diff found ${changedFiles.length} changed file(s) for ${_relative(target)}.'],
+      logs: [
+        'Virtual diff found ${changedFiles.length} changed file(s) for ${_relative(target)}.'
+      ],
       metadata: {
         if (snapshotId.isNotEmpty) 'snapshotId': snapshotId,
         'snapshotRoot': _relative(snapshotRoot),
@@ -849,16 +1018,21 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _restoreSnapshot(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _restoreSnapshot(
+      ActionSchema schema, DateTime startedAt) async {
     final confirm = schema.params['confirm'] == true;
     if (!confirm) {
       throw const _ActionRunnerFailure(
         'restore_snapshot requires confirm=true because it overwrites workspace files.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: ['Set confirm=true only after the user asks to restore a MobileCode snapshot.'],
+        recoveryActions: [
+          'Set confirm=true only after the user asks to restore a MobileCode snapshot.'
+        ],
       );
     }
-    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+    final rawPath = _stringParam(schema, 'path').isEmpty
+        ? '.'
+        : _stringParam(schema, 'path');
     final target = _resolveWorkspacePath(rawPath);
     final snapshotId = _stringParam(schema, 'snapshotId');
     final snapshotPathParam = _stringParam(schema, 'snapshotPath');
@@ -866,14 +1040,19 @@ class ActionRunner {
       throw const _ActionRunnerFailure(
         'restore_snapshot requires snapshot_id or snapshot_path.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: ['Call save_snapshot first, then pass the returned snapshot_id to restore_snapshot.'],
+        recoveryActions: [
+          'Call save_snapshot first, then pass the returned snapshot_id to restore_snapshot.'
+        ],
       );
     }
-    if (snapshotId.isNotEmpty && !RegExp(r'^snapshot_\d+$').hasMatch(snapshotId)) {
+    if (snapshotId.isNotEmpty &&
+        !RegExp(r'^snapshot_\d+$').hasMatch(snapshotId)) {
       throw const _ActionRunnerFailure(
         'Invalid snapshot_id format for restore_snapshot.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: ['Use the snapshot_id returned by save_snapshot, for example snapshot_1234567890.'],
+        recoveryActions: [
+          'Use the snapshot_id returned by save_snapshot, for example snapshot_1234567890.'
+        ],
       );
     }
     final snapshotRoot = snapshotPathParam.isNotEmpty
@@ -883,19 +1062,27 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'Snapshot root does not exist: ${_relative(snapshotRoot)}',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Call save_snapshot and use the returned snapshot_id.'],
+        recoveryActions: const [
+          'Call save_snapshot and use the returned snapshot_id.'
+        ],
       );
     }
-    final maxFiles = _boundedIntParam(schema, 'maxFiles', defaultValue: 40, min: 1, max: 120);
-    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 1024 * 1024, min: 1024, max: 5 * 1024 * 1024);
+    final maxFiles = _boundedIntParam(schema, 'maxFiles',
+        defaultValue: 40, min: 1, max: 120);
+    final maxBytes = _boundedIntParam(schema, 'maxBytes',
+        defaultValue: 1024 * 1024, min: 1024, max: 5 * 1024 * 1024);
     final targetRelative = _relative(target);
-    final source = targetRelative == '.' ? snapshotRoot : p.join(snapshotRoot, targetRelative);
+    final source = targetRelative == '.'
+        ? snapshotRoot
+        : p.join(snapshotRoot, targetRelative);
     final sourceType = await FileSystemEntity.type(source, followLinks: false);
     if (sourceType == FileSystemEntityType.notFound) {
       throw _ActionRunnerFailure(
         'Snapshot does not contain ${targetRelative == '.' ? 'workspace root' : targetRelative}.',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Run virtual_diff or project_summary against the snapshot before restoring.'],
+        recoveryActions: const [
+          'Run virtual_diff or project_summary against the snapshot before restoring.'
+        ],
       );
     }
 
@@ -908,65 +1095,85 @@ class ActionRunner {
 
     Future<void> restoreFile(File snapshotFile) async {
       if (restoredFiles.length >= maxFiles) return;
-      final relativeToSnapshot = p.relative(snapshotFile.path, from: snapshotRoot);
-      if (relativeToSnapshot == 'manifest.json' || relativeToSnapshot.startsWith('.mobilecode_')) {
+      final relativeToSnapshot =
+          p.relative(snapshotFile.path, from: snapshotRoot);
+      if (relativeToSnapshot == 'manifest.json' ||
+          relativeToSnapshot.startsWith('.mobilecode_')) {
         return;
       }
       final stat = await snapshotFile.stat();
       if (totalBytes + stat.size > maxBytes) return;
       final destination = _resolveWorkspacePath(relativeToSnapshot);
-      final existingType = await FileSystemEntity.type(destination, followLinks: false);
+      final existingType =
+          await FileSystemEntity.type(destination, followLinks: false);
       if (existingType == FileSystemEntityType.directory) {
         throw _ActionRunnerFailure(
           'Cannot restore file over existing directory: ${_relative(destination)}',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: const ['Choose a file path restore target, not a directory with the same name.'],
+          recoveryActions: const [
+            'Choose a file path restore target, not a directory with the same name.'
+          ],
         );
       }
       if (existingType == FileSystemEntityType.file) {
         final backupPath = p.join(backupRoot, relativeToSnapshot);
         await File(backupPath).parent.create(recursive: true);
         await File(destination).copy(backupPath);
-        backupFiles.add({'path': _relative(backupPath), 'sizeBytes': await File(backupPath).length()});
+        backupFiles.add({
+          'path': _relative(backupPath),
+          'sizeBytes': await File(backupPath).length()
+        });
       }
       await File(destination).parent.create(recursive: true);
       await snapshotFile.copy(destination);
       totalBytes += stat.size;
-      restoredFiles.add({'path': _relative(destination), 'sizeBytes': stat.size});
+      restoredFiles
+          .add({'path': _relative(destination), 'sizeBytes': stat.size});
     }
 
     if (sourceType == FileSystemEntityType.file) {
       await restoreFile(File(source));
     } else if (sourceType == FileSystemEntityType.directory) {
-      await for (final entity in Directory(source).list(recursive: true, followLinks: false)) {
+      await for (final entity
+          in Directory(source).list(recursive: true, followLinks: false)) {
         if (restoredFiles.length >= maxFiles || totalBytes >= maxBytes) break;
-        final type = await FileSystemEntity.type(entity.path, followLinks: false);
-        if (type == FileSystemEntityType.file) await restoreFile(File(entity.path));
+        final type =
+            await FileSystemEntity.type(entity.path, followLinks: false);
+        if (type == FileSystemEntityType.file)
+          await restoreFile(File(entity.path));
       }
     } else {
       throw _ActionRunnerFailure(
         'Unsupported snapshot restore source: ${_relative(source)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Restore regular files or directories saved by save_snapshot.'],
+        recoveryActions: const [
+          'Restore regular files or directories saved by save_snapshot.'
+        ],
       );
     }
     if (restoredFiles.isEmpty) {
       throw _ActionRunnerFailure(
         'No files were restored from ${_relative(snapshotRoot)} within the current limits.',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Increase max_files/max_bytes or choose a narrower snapshot path.'],
+        recoveryActions: const [
+          'Increase max_files/max_bytes or choose a narrower snapshot path.'
+        ],
       );
     }
 
     final text = [
       'Restored ${restoredFiles.length} file(s) from ${snapshotId.isEmpty ? _relative(snapshotRoot) : snapshotId}:',
-      ...restoredFiles.map((file) => '- ${file['path']} (${file['sizeBytes']} bytes)'),
-      if (backupFiles.isNotEmpty) 'Previous versions backed up under ${_relative(backupRoot)}.',
+      ...restoredFiles
+          .map((file) => '- ${file['path']} (${file['sizeBytes']} bytes)'),
+      if (backupFiles.isNotEmpty)
+        'Previous versions backed up under ${_relative(backupRoot)}.',
     ].join('\n');
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.restoreSnapshot,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'restore snapshot to $targetRelative' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'restore snapshot to $targetRelative'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -977,7 +1184,8 @@ class ActionRunner {
       ],
       logs: [
         'Restored ${restoredFiles.length} file(s) from ${_relative(snapshotRoot)} to workspace path $targetRelative.',
-        if (backupFiles.isNotEmpty) 'Backed up ${backupFiles.length} previous file(s) under ${_relative(backupRoot)}.',
+        if (backupFiles.isNotEmpty)
+          'Backed up ${backupFiles.length} previous file(s) under ${_relative(backupRoot)}.',
       ],
       metadata: {
         if (snapshotId.isNotEmpty) 'snapshotId': snapshotId,
@@ -993,11 +1201,14 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _changeHistory(ActionSchema schema, DateTime startedAt) async {
-    final count = _boundedIntParam(schema, 'count', defaultValue: 20, min: 1, max: 80);
+  Future<ActionRunnerResult> _changeHistory(
+      ActionSchema schema, DateTime startedAt) async {
+    final count =
+        _boundedIntParam(schema, 'count', defaultValue: 20, min: 1, max: 80);
     final includeReadOnly = schema.params['includeReadOnly'] == true;
     final actionFilter = _stringParam(schema, 'actionFilter');
-    final records = evidenceStore.recent(count: math.min(count * 4, 240).toInt());
+    final records =
+        evidenceStore.recent(count: math.min(count * 4, 240).toInt());
     final interestingActions = <MobileCodeAction>{
       MobileCodeAction.writeFile,
       MobileCodeAction.copyFile,
@@ -1011,14 +1222,19 @@ class ActionRunner {
       MobileCodeAction.previewHtml,
       MobileCodeAction.previewSnapshot,
       MobileCodeAction.termuxTaskStart,
+      MobileCodeAction.larkApi,
     };
-    final filtered = records.where((record) {
-      if (record.actionName == MobileCodeAction.changeHistory) return false;
-      if (actionFilter.isNotEmpty && record.actionName.name != actionFilter) return false;
-      if (!record.success) return true;
-      if (includeReadOnly) return true;
-      return interestingActions.contains(record.actionName);
-    }).take(count).toList();
+    final filtered = records
+        .where((record) {
+          if (record.actionName == MobileCodeAction.changeHistory) return false;
+          if (actionFilter.isNotEmpty && record.actionName.name != actionFilter)
+            return false;
+          if (!record.success) return true;
+          if (includeReadOnly) return true;
+          return interestingActions.contains(record.actionName);
+        })
+        .take(count)
+        .toList();
 
     final entries = filtered.map((record) {
       final artifacts = record.artifactPaths.map(_relative).take(4).toList();
@@ -1032,7 +1248,11 @@ class ActionRunner {
         'durationMs': record.durationMs,
         'artifactPaths': artifacts,
         'urls': urls,
-        'summary': _compact(record.paramsSummary.isEmpty ? record.logs.join(' ') : record.paramsSummary, 180),
+        'summary': _compact(
+            record.paramsSummary.isEmpty
+                ? record.logs.join(' ')
+                : record.paramsSummary,
+            180),
       };
     }).toList();
     final text = entries.isEmpty
@@ -1041,15 +1261,21 @@ class ActionRunner {
             'Recent MobileCode action history (${entries.length}):',
             ...entries.map((entry) {
               final status = entry['success'] == true ? 'ok' : 'failed';
-              final artifacts = (entry['artifactPaths'] as List).isEmpty ? '' : ' paths=${(entry['artifactPaths'] as List).join(', ')}';
-              final failure = entry['failureKind'] == null ? '' : ' failure=${entry['failureKind']}';
+              final artifacts = (entry['artifactPaths'] as List).isEmpty
+                  ? ''
+                  : ' paths=${(entry['artifactPaths'] as List).join(', ')}';
+              final failure = entry['failureKind'] == null
+                  ? ''
+                  : ' failure=${entry['failureKind']}';
               return '- ${entry['startedAt']} ${entry['actionName']} $status${failure} evidence=${entry['evidenceId']}$artifacts';
             }),
           ].join('\n');
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.changeHistory,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'change history count=$count' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'change history count=$count'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -1065,17 +1291,24 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text);
   }
 
-  Future<ActionRunnerResult> _virtualStatus(ActionSchema schema, DateTime startedAt) async {
-    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+  Future<ActionRunnerResult> _virtualStatus(
+      ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty
+        ? '.'
+        : _stringParam(schema, 'path');
     final target = _resolveWorkspacePath(rawPath);
-    final maxFiles = _boundedIntParam(schema, 'maxFiles', defaultValue: 80, min: 10, max: 240);
-    final maxRecent = _boundedIntParam(schema, 'maxRecent', defaultValue: 12, min: 1, max: 40);
+    final maxFiles = _boundedIntParam(schema, 'maxFiles',
+        defaultValue: 80, min: 10, max: 240);
+    final maxRecent = _boundedIntParam(schema, 'maxRecent',
+        defaultValue: 12, min: 1, max: 40);
     final targetType = await FileSystemEntity.type(target, followLinks: false);
     if (targetType == FileSystemEntityType.notFound) {
       throw _ActionRunnerFailure(
         'virtual_status path does not exist: ${_relative(target)}',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Call list_files first or choose an existing workspace path.'],
+        recoveryActions: const [
+          'Call list_files first or choose an existing workspace path.'
+        ],
       );
     }
 
@@ -1101,7 +1334,8 @@ class ActionRunner {
       if (shouldSkip(relativePath)) return;
       final stat = await file.stat();
       final ext = p.extension(file.path).toLowerCase();
-      extensionCounts[ext.isEmpty ? '(none)' : ext] = (extensionCounts[ext.isEmpty ? '(none)' : ext] ?? 0) + 1;
+      extensionCounts[ext.isEmpty ? '(none)' : ext] =
+          (extensionCounts[ext.isEmpty ? '(none)' : ext] ?? 0) + 1;
       totalBytes += stat.size;
       files.add({
         'path': relativePath,
@@ -1113,14 +1347,16 @@ class ActionRunner {
     if (targetType == FileSystemEntityType.file) {
       await addFile(File(target));
     } else if (targetType == FileSystemEntityType.directory) {
-      await for (final entity in Directory(target).list(recursive: true, followLinks: false)) {
+      await for (final entity
+          in Directory(target).list(recursive: true, followLinks: false)) {
         if (files.length >= maxFiles) {
           truncated = true;
           break;
         }
         final relativePath = _relative(entity.path);
         if (shouldSkip(relativePath)) continue;
-        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        final type =
+            await FileSystemEntity.type(entity.path, followLinks: false);
         if (type == FileSystemEntityType.directory) {
           directoryCount++;
         } else if (type == FileSystemEntityType.file) {
@@ -1131,7 +1367,9 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'Unsupported virtual_status target: ${_relative(target)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+        recoveryActions: const [
+          'Choose a regular file or directory inside the workspace.'
+        ],
       );
     }
 
@@ -1156,6 +1394,7 @@ class ActionRunner {
             record.actionName == MobileCodeAction.deleteFile ||
             record.actionName == MobileCodeAction.moveFile ||
             record.actionName == MobileCodeAction.restoreSnapshot ||
+            record.actionName == MobileCodeAction.larkApi ||
             !record.success)
         .map((record) => {
               'evidenceId': record.evidenceId,
@@ -1163,7 +1402,8 @@ class ActionRunner {
               'success': record.success,
               if (record.failureKind != null) 'failureKind': record.failureKind,
               'startedAt': record.startedAt.toIso8601String(),
-              'artifactPaths': record.artifactPaths.map(_relative).take(4).toList(),
+              'artifactPaths':
+                  record.artifactPaths.map(_relative).take(4).toList(),
             })
         .take(maxRecent)
         .toList();
@@ -1173,22 +1413,29 @@ class ActionRunner {
     final text = [
       'Virtual status for ${_relative(target)}',
       'Files: ${files.length}${truncated ? '+' : ''}, directories: $directoryCount, bytes: $totalBytes',
-      if (extensionSummary.isNotEmpty) 'Extensions: ${extensionSummary.take(8).map((entry) => '${entry.key}:${entry.value}').join(', ')}',
-      if (snapshots.isNotEmpty) 'Restore points: ${snapshots.map((entry) => entry['snapshotId']).join(', ')}',
+      if (extensionSummary.isNotEmpty)
+        'Extensions: ${extensionSummary.take(8).map((entry) => '${entry.key}:${entry.value}').join(', ')}',
+      if (snapshots.isNotEmpty)
+        'Restore points: ${snapshots.map((entry) => entry['snapshotId']).join(', ')}',
       if (recentChanges.isNotEmpty)
         'Recent changes:\n${recentChanges.map((entry) => '- ${entry['actionName']} ${entry['success'] == true ? 'ok' : 'failed'} evidence=${entry['evidenceId']}').join('\n')}',
-      if (files.isNotEmpty) 'Files:\n${files.take(20).map((file) => '- ${file['path']} (${file['sizeBytes']} bytes)').join('\n')}',
+      if (files.isNotEmpty)
+        'Files:\n${files.take(20).map((file) => '- ${file['path']} (${file['sizeBytes']} bytes)').join('\n')}',
       if (truncated) 'Status truncated by max_files limit.',
     ].join('\n');
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.virtualStatus,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'virtual status ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'virtual status ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
       artifactPaths: [target],
-      logs: ['Computed virtual status for ${_relative(target)} with ${files.length} file(s).'],
+      logs: [
+        'Computed virtual status for ${_relative(target)} with ${files.length} file(s).'
+      ],
       metadata: {
         'relativePath': _relative(target),
         'fileCount': files.length,
@@ -1205,17 +1452,24 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _projectSummary(ActionSchema schema, DateTime startedAt) async {
-    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+  Future<ActionRunnerResult> _projectSummary(
+      ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty
+        ? '.'
+        : _stringParam(schema, 'path');
     final target = _resolveWorkspacePath(rawPath);
-    final maxDepth = _boundedIntParam(schema, 'maxDepth', defaultValue: 3, min: 1, max: 6);
-    final maxFiles = _boundedIntParam(schema, 'maxFiles', defaultValue: 80, min: 10, max: 240);
+    final maxDepth =
+        _boundedIntParam(schema, 'maxDepth', defaultValue: 3, min: 1, max: 6);
+    final maxFiles = _boundedIntParam(schema, 'maxFiles',
+        defaultValue: 80, min: 10, max: 240);
     final targetType = await FileSystemEntity.type(target, followLinks: false);
     if (targetType == FileSystemEntityType.notFound) {
       throw _ActionRunnerFailure(
         'Project summary path does not exist: ${_relative(target)}',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Call list_files first or choose an existing workspace path.'],
+        recoveryActions: const [
+          'Call list_files first or choose an existing workspace path.'
+        ],
       );
     }
 
@@ -1242,7 +1496,8 @@ class ActionRunner {
       if (shouldSkip(relativePath)) return;
       final stat = await file.stat();
       final ext = p.extension(file.path).toLowerCase();
-      extensionCounts[ext.isEmpty ? '(none)' : ext] = (extensionCounts[ext.isEmpty ? '(none)' : ext] ?? 0) + 1;
+      extensionCounts[ext.isEmpty ? '(none)' : ext] =
+          (extensionCounts[ext.isEmpty ? '(none)' : ext] ?? 0) + 1;
       totalBytes += stat.size;
       final basename = p.basename(file.path).toLowerCase();
       if (basename == 'index.html' ||
@@ -1264,14 +1519,16 @@ class ActionRunner {
         truncated = true;
         return;
       }
-      await for (final entity in directory.list(recursive: false, followLinks: false)) {
+      await for (final entity
+          in directory.list(recursive: false, followLinks: false)) {
         if (files.length >= maxFiles) {
           truncated = true;
           break;
         }
         final relativePath = _relative(entity.path);
         if (shouldSkip(relativePath)) continue;
-        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        final type =
+            await FileSystemEntity.type(entity.path, followLinks: false);
         if (type == FileSystemEntityType.directory) {
           directories.add(relativePath);
           await walkDirectory(Directory(entity.path), depth + 1);
@@ -1289,7 +1546,9 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'Unsupported project summary target: ${_relative(target)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+        recoveryActions: const [
+          'Choose a regular file or directory inside the workspace.'
+        ],
       );
     }
 
@@ -1298,21 +1557,29 @@ class ActionRunner {
     final text = [
       'Project summary for ${_relative(target)}',
       'Files: ${files.length}${truncated ? '+' : ''}, directories: ${directories.length}, bytes: $totalBytes',
-      if (entrypoints.isNotEmpty) 'Likely entrypoints: ${entrypoints.take(8).join(', ')}',
-      if (sortedExtensions.isNotEmpty) 'Extensions: ${sortedExtensions.take(8).map((entry) => '${entry.key}:${entry.value}').join(', ')}',
-      if (directories.isNotEmpty) 'Directories: ${directories.take(12).join(', ')}',
-      if (files.isNotEmpty) 'Files:\n${files.take(30).map((file) => '- ${file['path']} (${file['sizeBytes']} bytes)').join('\n')}',
+      if (entrypoints.isNotEmpty)
+        'Likely entrypoints: ${entrypoints.take(8).join(', ')}',
+      if (sortedExtensions.isNotEmpty)
+        'Extensions: ${sortedExtensions.take(8).map((entry) => '${entry.key}:${entry.value}').join(', ')}',
+      if (directories.isNotEmpty)
+        'Directories: ${directories.take(12).join(', ')}',
+      if (files.isNotEmpty)
+        'Files:\n${files.take(30).map((file) => '- ${file['path']} (${file['sizeBytes']} bytes)').join('\n')}',
       if (truncated) 'Summary truncated by max_files/max_depth limits.',
     ].join('\n');
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.projectSummary,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'project summary ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'project summary ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
       artifactPaths: [target],
-      logs: ['Summarized ${files.length} file(s) and ${directories.length} directorie(s) under ${_relative(target)}.'],
+      logs: [
+        'Summarized ${files.length} file(s) and ${directories.length} directorie(s) under ${_relative(target)}.'
+      ],
       metadata: {
         'relativePath': _relative(target),
         'maxDepth': maxDepth,
@@ -1329,17 +1596,24 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _detectProjectType(ActionSchema schema, DateTime startedAt) async {
-    final rawPath = _stringParam(schema, 'path').isEmpty ? '.' : _stringParam(schema, 'path');
+  Future<ActionRunnerResult> _detectProjectType(
+      ActionSchema schema, DateTime startedAt) async {
+    final rawPath = _stringParam(schema, 'path').isEmpty
+        ? '.'
+        : _stringParam(schema, 'path');
     final target = _resolveWorkspacePath(rawPath);
-    final maxDepth = _boundedIntParam(schema, 'maxDepth', defaultValue: 4, min: 1, max: 8);
-    final maxFiles = _boundedIntParam(schema, 'maxFiles', defaultValue: 120, min: 10, max: 300);
+    final maxDepth =
+        _boundedIntParam(schema, 'maxDepth', defaultValue: 4, min: 1, max: 8);
+    final maxFiles = _boundedIntParam(schema, 'maxFiles',
+        defaultValue: 120, min: 10, max: 300);
     final targetType = await FileSystemEntity.type(target, followLinks: false);
     if (targetType == FileSystemEntityType.notFound) {
       throw _ActionRunnerFailure(
         'detect_project_type path does not exist: ${_relative(target)}',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Call list_files first or choose an existing workspace path.'],
+        recoveryActions: const [
+          'Call list_files first or choose an existing workspace path.'
+        ],
       );
     }
 
@@ -1349,7 +1623,8 @@ class ActionRunner {
 
     bool shouldSkip(String relativePath) {
       final normalized = relativePath.replaceAll('\\', '/');
-      return normalized.startsWith('.mobilecode_') || normalized.contains('/.mobilecode_');
+      return normalized.startsWith('.mobilecode_') ||
+          normalized.contains('/.mobilecode_');
     }
 
     Future<void> addFile(File file) async {
@@ -1368,14 +1643,16 @@ class ActionRunner {
         truncated = true;
         return;
       }
-      await for (final entity in directory.list(recursive: false, followLinks: false)) {
+      await for (final entity
+          in directory.list(recursive: false, followLinks: false)) {
         if (files.length >= maxFiles) {
           truncated = true;
           break;
         }
         final relativePath = _relative(entity.path);
         if (shouldSkip(relativePath)) continue;
-        final type = await FileSystemEntity.type(entity.path, followLinks: false);
+        final type =
+            await FileSystemEntity.type(entity.path, followLinks: false);
         if (type == FileSystemEntityType.file) {
           await addFile(File(entity.path));
         } else if (type == FileSystemEntityType.directory) {
@@ -1392,7 +1669,9 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'Unsupported detect_project_type target: ${_relative(target)}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Choose a regular file or directory inside the workspace.'],
+        recoveryActions: const [
+          'Choose a regular file or directory inside the workspace.'
+        ],
       );
     }
 
@@ -1403,25 +1682,33 @@ class ActionRunner {
       signals.add(signal);
     }
 
-    if (basenames.contains('pubspec.yaml') || files.any((file) => file.replaceAll('\\', '/') == 'lib/main.dart')) {
+    if (basenames.contains('pubspec.yaml') ||
+        files.any((file) => file.replaceAll('\\', '/') == 'lib/main.dart')) {
       addType('flutter', 'pubspec.yaml or lib/main.dart');
     }
-    if (basenames.contains('build.gradle') || basenames.contains('settings.gradle') || basenames.contains('gradlew')) {
+    if (basenames.contains('build.gradle') ||
+        basenames.contains('settings.gradle') ||
+        basenames.contains('gradlew')) {
       addType('android_gradle', 'Gradle build files');
     }
     if (basenames.contains('package.json')) {
       addType('node_or_web', 'package.json');
     }
-    if (basenames.contains('vite.config.ts') || basenames.contains('vite.config.js')) {
+    if (basenames.contains('vite.config.ts') ||
+        basenames.contains('vite.config.js')) {
       addType('vite', 'vite config');
     }
-    if (basenames.contains('next.config.js') || basenames.contains('next.config.mjs') || basenames.contains('next.config.ts')) {
+    if (basenames.contains('next.config.js') ||
+        basenames.contains('next.config.mjs') ||
+        basenames.contains('next.config.ts')) {
       addType('nextjs', 'next config');
     }
     if (basenames.contains('index.html')) {
       addType('static_web', 'index.html');
     }
-    if (basenames.contains('manifest.json') && (basenames.contains('service-worker.js') || basenames.contains('sw.js'))) {
+    if (basenames.contains('manifest.json') &&
+        (basenames.contains('service-worker.js') ||
+            basenames.contains('sw.js'))) {
       addType('pwa', 'manifest + service worker');
     }
     if (basenames.contains('readme.md')) {
@@ -1429,15 +1716,18 @@ class ActionRunner {
     }
     if (projectTypes.isEmpty) projectTypes.add('unknown');
 
-    final entrypoints = files.where((file) {
-      final base = p.basename(file).toLowerCase();
-      return base == 'index.html' ||
-          base == 'main.dart' ||
-          base == 'package.json' ||
-          base == 'pubspec.yaml' ||
-          base == 'manifest.json' ||
-          base == 'readme.md';
-    }).take(20).toList();
+    final entrypoints = files
+        .where((file) {
+          final base = p.basename(file).toLowerCase();
+          return base == 'index.html' ||
+              base == 'main.dart' ||
+              base == 'package.json' ||
+              base == 'pubspec.yaml' ||
+              base == 'manifest.json' ||
+              base == 'readme.md';
+        })
+        .take(20)
+        .toList();
     final text = [
       'Detected project type(s): ${projectTypes.join(', ')}',
       if (signals.isNotEmpty) 'Signals: ${signals.take(12).join('; ')}',
@@ -1448,12 +1738,16 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.detectProjectType,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'detect project type ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'detect project type ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
       artifactPaths: [target],
-      logs: ['Detected ${projectTypes.join(', ')} from ${files.length} file(s).'],
+      logs: [
+        'Detected ${projectTypes.join(', ')} from ${files.length} file(s).'
+      ],
       metadata: {
         'relativePath': _relative(target),
         'projectTypes': projectTypes,
@@ -1467,10 +1761,12 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _validateHtml(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _validateHtml(
+      ActionSchema schema, DateTime startedAt) async {
     final pathParam = _stringParam(schema, 'path');
     final htmlParam = _stringParam(schema, 'html');
-    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
+    final maxBytes = _boundedIntParam(schema, 'maxBytes',
+        defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
     String html;
     String? target;
     if (pathParam.isNotEmpty) {
@@ -1480,7 +1776,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'HTML file does not exist: ${_relative(target)}',
           failureKind: ActionFailureKind.processFailed,
-          recoveryActions: const ['Create or find the HTML file before validating it.'],
+          recoveryActions: const [
+            'Create or find the HTML file before validating it.'
+          ],
         );
       }
       final bytes = await file.readAsBytes();
@@ -1488,7 +1786,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'HTML file is too large to validate on mobile (${bytes.length} bytes).',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: const ['Validate a smaller file or increase max_bytes within the supported cap.'],
+          recoveryActions: const [
+            'Validate a smaller file or increase max_bytes within the supported cap.'
+          ],
         );
       }
       if (_looksBinary(bytes)) {
@@ -1505,14 +1805,18 @@ class ActionRunner {
         throw const _ActionRunnerFailure(
           'Inline HTML is too large to validate on mobile.',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: ['Validate a smaller HTML payload or write it to a file first.'],
+          recoveryActions: [
+            'Validate a smaller HTML payload or write it to a file first.'
+          ],
         );
       }
     } else {
       throw const _ActionRunnerFailure(
         'validate_html requires path or html.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: ['Pass a workspace HTML file path or inline HTML content.'],
+        recoveryActions: [
+          'Pass a workspace HTML file path or inline HTML content.'
+        ],
       );
     }
 
@@ -1524,38 +1828,65 @@ class ActionRunner {
     }
 
     final lower = html.toLowerCase();
-    if (!lower.contains('<!doctype html')) addIssue('warning', 'missing_doctype', 'Missing <!DOCTYPE html>.');
-    if (!RegExp(r'<html[\s>]', caseSensitive: false).hasMatch(html)) addIssue('warning', 'missing_html_tag', 'Missing <html> tag.');
-    if (!RegExp(r'<body[\s>]', caseSensitive: false).hasMatch(html)) addIssue('warning', 'missing_body_tag', 'Missing <body> tag.');
-    if (_extractHtmlTitle(html).isEmpty) addIssue('warning', 'missing_title', 'Missing non-empty <title>.');
-    if (!RegExp('<meta[^>]+name=["\\\']viewport["\\\']', caseSensitive: false).hasMatch(html)) {
-      addIssue('warning', 'missing_viewport', 'Missing mobile viewport meta tag.');
+    if (!lower.contains('<!doctype html'))
+      addIssue('warning', 'missing_doctype', 'Missing <!DOCTYPE html>.');
+    if (!RegExp(r'<html[\s>]', caseSensitive: false).hasMatch(html))
+      addIssue('warning', 'missing_html_tag', 'Missing <html> tag.');
+    if (!RegExp(r'<body[\s>]', caseSensitive: false).hasMatch(html))
+      addIssue('warning', 'missing_body_tag', 'Missing <body> tag.');
+    if (_extractHtmlTitle(html).isEmpty)
+      addIssue('warning', 'missing_title', 'Missing non-empty <title>.');
+    if (!RegExp('<meta[^>]+name=["\\\']viewport["\\\']', caseSensitive: false)
+        .hasMatch(html)) {
+      addIssue(
+          'warning', 'missing_viewport', 'Missing mobile viewport meta tag.');
     } else if (!lower.contains('width=device-width')) {
-      addIssue('warning', 'viewport_not_mobile_width', 'Viewport exists but does not include width=device-width.');
+      addIssue('warning', 'viewport_not_mobile_width',
+          'Viewport exists but does not include width=device-width.');
     }
     if (RegExp(r'(http://|https://)', caseSensitive: false).hasMatch(html)) {
-      addIssue('info', 'external_asset_reference', 'HTML references external network URLs; prefer inline assets for offline WebView demos.');
+      addIssue('info', 'external_asset_reference',
+          'HTML references external network URLs; prefer inline assets for offline WebView demos.');
     }
-    final voidTags = <String>{'area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr'};
+    final voidTags = <String>{
+      'area',
+      'base',
+      'br',
+      'col',
+      'embed',
+      'hr',
+      'img',
+      'input',
+      'link',
+      'meta',
+      'param',
+      'source',
+      'track',
+      'wbr'
+    };
     final stack = <String>[];
-    final tagExp = RegExp(r'<\s*(/)?\s*([a-zA-Z][a-zA-Z0-9-]*)\b([^>]*)>', caseSensitive: false);
+    final tagExp = RegExp(r'<\s*(/)?\s*([a-zA-Z][a-zA-Z0-9-]*)\b([^>]*)>',
+        caseSensitive: false);
     for (final match in tagExp.allMatches(html).take(400)) {
       final closing = match.group(1) == '/';
       final tag = (match.group(2) ?? '').toLowerCase();
       final tail = match.group(3) ?? '';
-      if (tag.isEmpty || voidTags.contains(tag) || tail.trim().endsWith('/')) continue;
+      if (tag.isEmpty || voidTags.contains(tag) || tail.trim().endsWith('/'))
+        continue;
       if (!closing) {
         stack.add(tag);
       } else if (stack.isNotEmpty && stack.last == tag) {
         stack.removeLast();
       } else if (stack.contains(tag)) {
         while (stack.isNotEmpty && stack.last != tag) {
-          addIssue('warning', 'tag_order_mismatch', 'Tag <${stack.removeLast()}> was not closed before </$tag>.');
+          addIssue('warning', 'tag_order_mismatch',
+              'Tag <${stack.removeLast()}> was not closed before </$tag>.');
           if (issues.length >= 20) break;
         }
         if (stack.isNotEmpty && stack.last == tag) stack.removeLast();
       } else {
-        addIssue('warning', 'unexpected_closing_tag', 'Unexpected closing tag </$tag>.');
+        addIssue('warning', 'unexpected_closing_tag',
+            'Unexpected closing tag </$tag>.');
       }
       if (issues.length >= 24) break;
     }
@@ -1567,7 +1898,8 @@ class ActionRunner {
         ? 'HTML validation passed${target == null ? '' : ' for ${_relative(target)}'}: no obvious structural issues.'
         : [
             'HTML validation found ${issues.length} issue(s)${target == null ? '' : ' in ${_relative(target)}'}:',
-            ...issues.take(20).map((issue) => '- ${issue['severity']} ${issue['code']}: ${issue['message']}'),
+            ...issues.take(20).map((issue) =>
+                '- ${issue['severity']} ${issue['code']}: ${issue['message']}'),
           ].join('\n');
     final topIssueSummary = issues.take(4).map((issue) {
       final code = issue['code'];
@@ -1577,7 +1909,9 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.validateHtml,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'validate html${target == null ? '' : ' ${_relative(target)}'}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'validate html${target == null ? '' : ' ${_relative(target)}'}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -1602,10 +1936,12 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _validateJson(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _validateJson(
+      ActionSchema schema, DateTime startedAt) async {
     final pathParam = _stringParam(schema, 'path');
     final jsonParam = _stringParam(schema, 'json');
-    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
+    final maxBytes = _boundedIntParam(schema, 'maxBytes',
+        defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
     String content;
     String? target;
     if (pathParam.isNotEmpty) {
@@ -1615,7 +1951,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'JSON file does not exist: ${_relative(target)}',
           failureKind: ActionFailureKind.processFailed,
-          recoveryActions: const ['Create or find the JSON file before validating it.'],
+          recoveryActions: const [
+            'Create or find the JSON file before validating it.'
+          ],
         );
       }
       final bytes = await file.readAsBytes();
@@ -1623,7 +1961,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'JSON file is too large to validate on mobile (${bytes.length} bytes).',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: const ['Validate a smaller file or increase max_bytes within the supported cap.'],
+          recoveryActions: const [
+            'Validate a smaller file or increase max_bytes within the supported cap.'
+          ],
         );
       }
       if (_looksBinary(bytes)) {
@@ -1640,14 +1980,18 @@ class ActionRunner {
         throw const _ActionRunnerFailure(
           'Inline JSON is too large to validate on mobile.',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: ['Validate a smaller JSON payload or write it to a file first.'],
+          recoveryActions: [
+            'Validate a smaller JSON payload or write it to a file first.'
+          ],
         );
       }
     } else {
       throw const _ActionRunnerFailure(
         'validate_json requires path or json.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: ['Pass a workspace JSON file path or inline JSON content.'],
+        recoveryActions: [
+          'Pass a workspace JSON file path or inline JSON content.'
+        ],
       );
     }
 
@@ -1677,7 +2021,9 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.validateJson,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'validate json${target == null ? '' : ' ${_relative(target)}'}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'validate json${target == null ? '' : ' ${_relative(target)}'}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -1696,10 +2042,12 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _validateMarkdown(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _validateMarkdown(
+      ActionSchema schema, DateTime startedAt) async {
     final pathParam = _stringParam(schema, 'path');
     final markdownParam = _stringParam(schema, 'markdown');
-    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
+    final maxBytes = _boundedIntParam(schema, 'maxBytes',
+        defaultValue: 256 * 1024, min: 1024, max: 1024 * 1024);
     String content;
     String? target;
     if (pathParam.isNotEmpty) {
@@ -1709,7 +2057,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'Markdown file does not exist: ${_relative(target)}',
           failureKind: ActionFailureKind.processFailed,
-          recoveryActions: const ['Create or find the Markdown file before validating it.'],
+          recoveryActions: const [
+            'Create or find the Markdown file before validating it.'
+          ],
         );
       }
       final bytes = await file.readAsBytes();
@@ -1717,7 +2067,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'Markdown file is too large to validate on mobile (${bytes.length} bytes).',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: const ['Validate a smaller file or increase max_bytes within the supported cap.'],
+          recoveryActions: const [
+            'Validate a smaller file or increase max_bytes within the supported cap.'
+          ],
         );
       }
       if (_looksBinary(bytes)) {
@@ -1734,23 +2086,33 @@ class ActionRunner {
         throw const _ActionRunnerFailure(
           'Inline Markdown is too large to validate on mobile.',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: ['Validate a smaller Markdown payload or write it to a file first.'],
+          recoveryActions: [
+            'Validate a smaller Markdown payload or write it to a file first.'
+          ],
         );
       }
     } else {
       throw const _ActionRunnerFailure(
         'validate_markdown requires path or markdown.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: ['Pass a workspace Markdown file path or inline Markdown content.'],
+        recoveryActions: [
+          'Pass a workspace Markdown file path or inline Markdown content.'
+        ],
       );
     }
 
     final issues = <Map<String, dynamic>>[];
     void addIssue(String severity, String code, String message, int line) {
-      issues.add({'severity': severity, 'code': code, 'message': message, 'line': line});
+      issues.add({
+        'severity': severity,
+        'code': code,
+        'message': message,
+        'line': line
+      });
     }
 
-    final lines = content.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+    final lines =
+        content.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
     var hasH1 = false;
     var lastHeadingLevel = 0;
     for (var i = 0; i < lines.length; i++) {
@@ -1761,15 +2123,25 @@ class ActionRunner {
         final level = heading.group(1)!.length;
         if (level == 1) hasH1 = true;
         if (lastHeadingLevel > 0 && level > lastHeadingLevel + 1) {
-          addIssue('warning', 'heading_jump', 'Heading jumps from H$lastHeadingLevel to H$level.', lineNo);
+          addIssue('warning', 'heading_jump',
+              'Heading jumps from H$lastHeadingLevel to H$level.', lineNo);
         }
         lastHeadingLevel = level;
       }
       if (line.length > 160) {
-        addIssue('info', 'long_line', 'Line is longer than 160 characters; consider wrapping for mobile readability.', lineNo);
+        addIssue(
+            'info',
+            'long_line',
+            'Line is longer than 160 characters; consider wrapping for mobile readability.',
+            lineNo);
       }
-      if (RegExp(r'https?://\S+').hasMatch(line) && !RegExp(r'\[[^\]]+\]\(https?://').hasMatch(line)) {
-        addIssue('info', 'bare_url', 'Bare URL found; consider Markdown link text for readability.', lineNo);
+      if (RegExp(r'https?://\S+').hasMatch(line) &&
+          !RegExp(r'\[[^\]]+\]\(https?://').hasMatch(line)) {
+        addIssue(
+            'info',
+            'bare_url',
+            'Bare URL found; consider Markdown link text for readability.',
+            lineNo);
       }
       if (line.endsWith(' ') || line.endsWith('\t')) {
         addIssue('info', 'trailing_whitespace', 'Trailing whitespace.', lineNo);
@@ -1784,12 +2156,15 @@ class ActionRunner {
         ? 'Markdown validation passed${target == null ? '' : ' for ${_relative(target)}'}: no basic structure issues.'
         : [
             'Markdown validation found ${issues.length} issue(s)${target == null ? '' : ' in ${_relative(target)}'}:',
-            ...issues.take(20).map((issue) => '- line ${issue['line']} ${issue['severity']} ${issue['code']}: ${issue['message']}'),
+            ...issues.take(20).map((issue) =>
+                '- line ${issue['line']} ${issue['severity']} ${issue['code']}: ${issue['message']}'),
           ].join('\n');
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.validateMarkdown,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'validate markdown${target == null ? '' : ' ${_relative(target)}'}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'validate markdown${target == null ? '' : ' ${_relative(target)}'}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -1807,7 +2182,8 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _applyPatch(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _applyPatch(
+      ActionSchema schema, DateTime startedAt) async {
     final patch = _requiredString(schema, 'patch');
     final reason = _stringParam(schema, 'reason');
     final patchBytes = utf8.encode(patch).length;
@@ -1815,7 +2191,9 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'Patch is too large for mobile auto-apply (${patchBytes} bytes).',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Split the patch into smaller file-scoped patches.'],
+        recoveryActions: const [
+          'Split the patch into smaller file-scoped patches.'
+        ],
       );
     }
     if (patch.contains('\u0000') || patch.contains('GIT binary patch')) {
@@ -1831,7 +2209,9 @@ class ActionRunner {
       throw const _ActionRunnerFailure(
         'apply_patch requires a unified diff with ---/+++ file headers and @@ hunks.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: ['Ask the model to return a valid unified diff patch.'],
+        recoveryActions: [
+          'Ask the model to return a valid unified diff patch.'
+        ],
       );
     }
     if (files.length > 5) {
@@ -1843,13 +2223,24 @@ class ActionRunner {
     }
     final changedLineCount = files.fold<int>(
       0,
-      (sum, file) => sum + file.hunks.fold<int>(0, (hunkSum, hunk) => hunkSum + hunk.lines.where((line) => line.startsWith('+') || line.startsWith('-')).length),
+      (sum, file) =>
+          sum +
+          file.hunks.fold<int>(
+              0,
+              (hunkSum, hunk) =>
+                  hunkSum +
+                  hunk.lines
+                      .where((line) =>
+                          line.startsWith('+') || line.startsWith('-'))
+                      .length),
     );
     if (changedLineCount > 800) {
       throw _ActionRunnerFailure(
         'Patch changes too many lines ($changedLineCount); mobile auto-apply is limited to 800 changed lines.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Split the patch or ask for a smaller targeted change.'],
+        recoveryActions: const [
+          'Split the patch or ask for a smaller targeted change.'
+        ],
       );
     }
 
@@ -1863,7 +2254,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'Patch deletes ${filePatch.displayPath}; deletion is blocked in Agent Loop auto-apply.',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: const ['Use a non-deleting patch or ask the user for explicit deletion approval.'],
+          recoveryActions: const [
+            'Use a non-deleting patch or ask the user for explicit deletion approval.'
+          ],
         );
       }
       final target = _resolveWorkspacePath(filePatch.targetPath);
@@ -1875,7 +2268,8 @@ class ActionRunner {
         await existing.copy(snapshotPath);
         snapshots.add(snapshotPath);
       }
-      final originalText = await existing.exists() ? await existing.readAsString() : '';
+      final originalText =
+          await existing.exists() ? await existing.readAsString() : '';
       final nextText = _applyFilePatch(filePatch, originalText);
       await existing.parent.create(recursive: true);
       await existing.writeAsString(nextText, flush: true);
@@ -1891,7 +2285,9 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.applyPatch,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'apply patch${reason.isEmpty ? '' : ': $reason'}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'apply patch${reason.isEmpty ? '' : ': $reason'}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -1902,7 +2298,8 @@ class ActionRunner {
       ],
       logs: [
         'Applied patch to ${relativeChanged.length} file(s): ${relativeChanged.join(', ')}.',
-        if (snapshots.isNotEmpty) 'Saved ${snapshots.length} pre-patch snapshot(s) under ${_relative(snapshotRoot)}.',
+        if (snapshots.isNotEmpty)
+          'Saved ${snapshots.length} pre-patch snapshot(s) under ${_relative(snapshotRoot)}.',
         'Patch record: ${_relative(patchRecordPath)}.',
       ],
       metadata: {
@@ -1921,13 +2318,16 @@ class ActionRunner {
     );
   }
 
-  Future<ActionRunnerResult> _termuxTaskStart(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _termuxTaskStart(
+      ActionSchema schema, DateTime startedAt) async {
     final taskKind = _requiredString(schema, 'taskKind');
     final pathParam = _stringParam(schema, 'path');
     final reason = _stringParam(schema, 'reason');
     final argsJson = _stringParam(schema, 'argsJson');
-    final timeoutMs = _boundedIntParam(schema, 'timeoutMs', defaultValue: 30000, min: 1000, max: 120000);
-    final maxOutputBytes = _boundedIntParam(schema, 'maxOutputBytes', defaultValue: 32 * 1024, min: 1024, max: 128 * 1024);
+    final timeoutMs = _boundedIntParam(schema, 'timeoutMs',
+        defaultValue: 30000, min: 1000, max: 120000);
+    final maxOutputBytes = _boundedIntParam(schema, 'maxOutputBytes',
+        defaultValue: 32 * 1024, min: 1024, max: 128 * 1024);
     const allowedKinds = {
       'project_check',
       'validate',
@@ -1940,7 +2340,9 @@ class ActionRunner {
       throw _ActionRunnerFailure(
         'termux_task_start only accepts typed task kinds, not raw shell: $taskKind',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Choose one of project_check, validate, build_preview, flutter_analyze, flutter_test, or npm_build.'],
+        recoveryActions: const [
+          'Choose one of project_check, validate, build_preview, flutter_analyze, flutter_test, or npm_build.'
+        ],
       );
     }
     Map<String, dynamic> args = const {};
@@ -1956,7 +2358,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'Invalid args_json for termux_task_start: $error',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: const ['Pass a small JSON object string, for example {"entry":"index.html"}, or "{}".'],
+          recoveryActions: const [
+            'Pass a small JSON object string, for example {"entry":"index.html"}, or "{}".'
+          ],
         );
       }
     }
@@ -1979,12 +2383,16 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'termux_task_start argsJson values must be simple scalars only.',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: const ['Flatten argsJson to simple key/value fields; avoid nested objects or arrays.'],
+          recoveryActions: const [
+            'Flatten argsJson to simple key/value fields; avoid nested objects or arrays.'
+          ],
         );
       }
       cleanArgs[entry.key] = value;
     }
-    final target = pathParam.isEmpty ? workspaceRootPath : _resolveWorkspacePath(pathParam);
+    final target = pathParam.isEmpty
+        ? workspaceRootPath
+        : _resolveWorkspacePath(pathParam);
     final generatedTaskId = 'termux_${DateTime.now().millisecondsSinceEpoch}';
     final payload = <String, dynamic>{
       'taskId': generatedTaskId,
@@ -2004,7 +2412,9 @@ class ActionRunner {
       final evidence = ActionEvidence(
         evidenceId: schema.requestId ?? generateEvidenceId(),
         actionName: MobileCodeAction.termuxTaskStart,
-        paramsSummary: schema.paramsSummary.isEmpty ? 'termux task $taskKind' : schema.paramsSummary,
+        paramsSummary: schema.paramsSummary.isEmpty
+            ? 'termux task $taskKind'
+            : schema.paramsSummary,
         startedAt: startedAt,
         endedAt: DateTime.now(),
         success: false,
@@ -2032,7 +2442,9 @@ class ActionRunner {
 
     final raw = await invoker(taskKind, payload);
     final rawStatus = raw['status']?.toString();
-    final status = rawStatus != null && rawStatus.trim().isNotEmpty ? rawStatus.toLowerCase() : null;
+    final status = rawStatus != null && rawStatus.trim().isNotEmpty
+        ? rawStatus.toLowerCase()
+        : null;
     final normalizedStatus = status?.replaceAll(RegExp(r'[^a-z]'), '');
     final rawStdout = _compact(_stringValue(raw['stdout']), maxOutputBytes);
     final rawStderr = _compact(_stringValue(raw['stderr']), maxOutputBytes);
@@ -2042,8 +2454,11 @@ class ActionRunner {
         normalizedStatus == 'completed' ||
         normalizedStatus == 'success' ||
         (status == null && (raw['success'] == true || exitCode == 0));
-    final returnedTaskId = _stringValue(raw['taskId']).isEmpty ? generatedTaskId : _stringValue(raw['taskId']);
-    final resolvedStatus = status == null ? (success ? 'completed' : 'failed') : status;
+    final returnedTaskId = _stringValue(raw['taskId']).isEmpty
+        ? generatedTaskId
+        : _stringValue(raw['taskId']);
+    final resolvedStatus =
+        status == null ? (success ? 'completed' : 'failed') : status;
     final String? failureKind;
     if (success) {
       failureKind = null;
@@ -2051,7 +2466,8 @@ class ActionRunner {
       failureKind = ActionFailureKind.dependencyMissing;
     } else if (normalizedStatus == 'commandblocked') {
       failureKind = ActionFailureKind.commandBlocked;
-    } else if (normalizedStatus == 'timeout' || normalizedStatus == 'timedout') {
+    } else if (normalizedStatus == 'timeout' ||
+        normalizedStatus == 'timedout') {
       failureKind = ActionFailureKind.timeout;
     } else if (normalizedStatus == 'cancelled') {
       failureKind = ActionFailureKind.cancelled;
@@ -2066,7 +2482,9 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.termuxTaskStart,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'termux task $taskKind' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'termux task $taskKind'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: success,
@@ -2080,7 +2498,9 @@ class ActionRunner {
       failureKind: failureKind,
       recoveryActions: success
           ? const []
-          : const ['Inspect stdout/stderr and rerun a narrower typed task, or fall back to GitHub Actions.'],
+          : const [
+              'Inspect stdout/stderr and rerun a narrower typed task, or fall back to GitHub Actions.'
+            ],
       metadata: {
         ...payload,
         ...raw,
@@ -2095,7 +2515,8 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
-  Future<ActionRunnerResult> _previewHtml(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _previewHtml(
+      ActionSchema schema, DateTime startedAt) async {
     final path = schema.params['path'];
     final html = schema.params['html'];
     late final String target;
@@ -2106,7 +2527,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'HTML file does not exist: ${_relative(target)}',
           failureKind: ActionFailureKind.processFailed,
-          recoveryActions: const ['Create the HTML file before opening preview.'],
+          recoveryActions: const [
+            'Create the HTML file before opening preview.'
+          ],
         );
       }
     } else if (html is String && html.trim().isNotEmpty) {
@@ -2126,7 +2549,9 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.previewHtml,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'preview ${_relative(target)}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'preview ${_relative(target)}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -2142,34 +2567,47 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, path: target, url: url);
   }
 
-  Future<ActionRunnerResult> _webSearch(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _webSearch(
+      ActionSchema schema, DateTime startedAt) async {
     final invoker = webToolInvoker;
     if (invoker == null) {
       throw const _ActionRunnerFailure(
         'webSearch requires the managed relay web tool endpoint.',
         failureKind: ActionFailureKind.dependencyMissing,
-        recoveryActions: ['Configure MOBILECODE_MANAGED_RELAY_URL before exposing web_search.'],
+        recoveryActions: [
+          'Configure MOBILECODE_MANAGED_RELAY_URL before exposing web_search.'
+        ],
       );
     }
     final query = _requiredString(schema, 'query');
-    final count = _boundedIntParam(schema, 'count', defaultValue: 5, min: 1, max: 5);
+    final count =
+        _boundedIntParam(schema, 'count', defaultValue: 5, min: 1, max: 5);
     final payload = await invoker('web_search', {
       'query': query,
       'count': count,
     });
     final results = _compactSearchResults(payload['results'], count);
-    final source = _stringValue(payload['source']).isEmpty ? 'relay' : _stringValue(payload['source']);
+    final source = _stringValue(payload['source']).isEmpty
+        ? 'relay'
+        : _stringValue(payload['source']);
     final text = _searchResultsText(query, results);
 
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.webSearch,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'web search "$query"' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'web search "$query"'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
-      urls: results.map((item) => _stringValue(item['url'])).where((url) => url.isNotEmpty).toList(),
-      logs: ['Searched web for "$query" via $source and received ${results.length} result(s).'],
+      urls: results
+          .map((item) => _stringValue(item['url']))
+          .where((url) => url.isNotEmpty)
+          .toList(),
+      logs: [
+        'Searched web for "$query" via $source and received ${results.length} result(s).'
+      ],
       metadata: {
         'query': query,
         'source': source,
@@ -2180,23 +2618,29 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text);
   }
 
-  Future<ActionRunnerResult> _fetchUrl(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _fetchUrl(
+      ActionSchema schema, DateTime startedAt) async {
     final invoker = webToolInvoker;
     if (invoker == null) {
       throw const _ActionRunnerFailure(
         'fetchUrl requires the managed relay web tool endpoint.',
         failureKind: ActionFailureKind.dependencyMissing,
-        recoveryActions: ['Configure MOBILECODE_MANAGED_RELAY_URL before exposing fetch_url.'],
+        recoveryActions: [
+          'Configure MOBILECODE_MANAGED_RELAY_URL before exposing fetch_url.'
+        ],
       );
     }
     final uri = _safeHttpsUri(_requiredString(schema, 'url'));
-    final maxBytes = _boundedIntParam(schema, 'maxBytes', defaultValue: 80 * 1024, min: 1024, max: 120 * 1024);
+    final maxBytes = _boundedIntParam(schema, 'maxBytes',
+        defaultValue: 80 * 1024, min: 1024, max: 120 * 1024);
     final payload = await invoker('fetch_url', {
       'url': uri.toString(),
       'maxBytes': maxBytes,
     });
     final title = _stringValue(payload['title']);
-    final finalUrl = _stringValue(payload['finalUrl']).isEmpty ? uri.toString() : _stringValue(payload['finalUrl']);
+    final finalUrl = _stringValue(payload['finalUrl']).isEmpty
+        ? uri.toString()
+        : _stringValue(payload['finalUrl']);
     final contentType = _stringValue(payload['contentType']);
     final text = _compact(_stringValue(payload['text']), 6000);
     final truncated = payload['truncated'] == true;
@@ -2204,7 +2648,9 @@ class ActionRunner {
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.fetchUrl,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'fetch ${uri.host}' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'fetch ${uri.host}'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -2225,12 +2671,145 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, url: finalUrl);
   }
 
-  Future<ActionRunnerResult> _previewSnapshot(ActionSchema schema, DateTime startedAt) async {
+  Future<ActionRunnerResult> _larkApi(
+      ActionSchema schema, DateTime startedAt) async {
+    final kind = _larkActionKind(_requiredString(schema, 'kind'));
+    final dryRun = schema.params['dryRun'] == true;
+    final confirm = schema.params['confirm'] == true;
+    final draft = LarkApiPayloadDraft(
+      title: _stringParam(schema, 'title').isEmpty
+          ? 'MobileCode evidence report'
+          : _stringParam(schema, 'title'),
+      content: _stringParam(schema, 'content').isEmpty
+          ? 'Generated from MobileCode. Review before publishing.'
+          : _stringParam(schema, 'content'),
+      folderToken: _stringParam(schema, 'folderToken'),
+      documentId: _stringParam(schema, 'documentId'),
+      blockId: _stringParam(schema, 'blockId'),
+      driveParentNode: _stringParam(schema, 'driveParentNode'),
+      driveFileName: _stringParam(schema, 'driveFileName').isEmpty
+          ? 'mobilecode-evidence.json'
+          : _stringParam(schema, 'driveFileName'),
+      spreadsheetToken: _stringParam(schema, 'spreadsheetToken'),
+      sheetRange: _stringParam(schema, 'sheetRange').isEmpty
+          ? 'Sheet1!A1:D4'
+          : _stringParam(schema, 'sheetRange'),
+      bitableAppToken: _stringParam(schema, 'bitableAppToken'),
+      bitableTableId: _stringParam(schema, 'bitableTableId'),
+    );
+    final connection = await larkApiService.loadConnection();
+    final spec = larkApiService.buildSpec(kind: kind, draft: draft);
+    final missing = _missingLarkRequiredParams(kind, draft);
+    if (!dryRun && missing.isNotEmpty) {
+      throw _ActionRunnerFailure(
+        'Lark ${kind.name} is missing required target fields: ${missing.join(', ')}.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: [
+          'Run the matching Lark preview first, fill ${missing.join(', ')}, then retry.',
+        ],
+      );
+    }
+    if (spec.isWriteAction && !dryRun && !confirm) {
+      throw _ActionRunnerFailure(
+        'Lark ${kind.name} is a write action and requires confirm=true.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const [
+          'Preview the Lark payload first.',
+          'Set confirm=true only when the user explicitly approved publishing to Lark.',
+        ],
+      );
+    }
+
+    final previewJson = spec.toPreviewJson(connection);
+    if (dryRun) {
+      final text = const JsonEncoder.withIndent('  ').convert(previewJson);
+      final evidence = ActionEvidence(
+        evidenceId: schema.requestId ?? generateEvidenceId(),
+        actionName: MobileCodeAction.larkApi,
+        paramsSummary: schema.paramsSummary.isEmpty
+            ? 'lark ${kind.name} dry-run preview'
+            : schema.paramsSummary,
+        startedAt: startedAt,
+        endedAt: DateTime.now(),
+        success: true,
+        logs: [
+          'Prepared Lark ${kind.name} OpenAPI payload preview. No network write was executed.',
+        ],
+        metadata: {
+          'kind': kind.name,
+          'dryRun': true,
+          'connection': connection.toRedactedJson(),
+          'cliReference': LarkApiService.cliParityFor(kind),
+          'preview': previewJson,
+        },
+      );
+      evidenceStore.add(evidence);
+      return ActionRunnerResult(evidence: evidence, text: text);
+    }
+
+    final result = await larkApiService.execute(
+      connection: connection,
+      spec: spec,
+    );
+    final resultJson = result.toEvidenceJson();
+    final text = result.toPrettyText();
+    final requestInfo = {
+      'tokenMode': result.tokenMode,
+      'tool': kind.name,
+      'httpStatus': result.statusCode,
+      'requestId': result.requestId ?? '',
+      'errorCode': result.larkCode,
+      'dryRun': false,
+      'confirmed': confirm,
+      'connection': connection.toRedactedJson(),
+      'requiredScopes': spec.requiredScopes,
+      'cliReference': LarkApiService.cliParityFor(kind),
+      'result': resultJson,
+    };
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.larkApi,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'lark ${kind.name}'
+          : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: result.success,
+      logs: [
+        'Lark ${kind.name} ${result.success ? "succeeded" : "failed"} via ${connection.tokenMode.evidenceName}.',
+        'Endpoint ${result.endpoint} returned HTTP ${result.statusCode}${result.larkCode == null ? "" : " / Lark ${result.larkCode}"}.',
+        if (result.error.isNotEmpty) 'Error: ${_compact(result.error, 360)}',
+      ],
+      failureKind: result.success ? null : _larkFailureKind(result),
+      recoveryActions: result.success
+          ? const []
+          : const [
+              'Check Lark token mode, scopes, target IDs, and relay configuration.',
+              'Run lark_readiness or lark_wiki_list_spaces before retrying a write action.',
+            ],
+      metadata: {
+        'kind': kind.name,
+        'dryRun': false,
+        'confirmed': confirm,
+        'connection': connection.toRedactedJson(),
+        'requestAttribution': requestInfo,
+        'preview': previewJson,
+        'result': resultJson,
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text);
+  }
+
+  Future<ActionRunnerResult> _previewSnapshot(
+      ActionSchema schema, DateTime startedAt) async {
     final path = schema.params['path'];
     final urlParam = schema.params['url'];
     final htmlParam = schema.params['html'];
-    final viewportWidth = _boundedIntParam(schema, 'viewportWidth', defaultValue: 390, min: 240, max: 1440);
-    final viewportHeight = _boundedIntParam(schema, 'viewportHeight', defaultValue: 844, min: 320, max: 2400);
+    final viewportWidth = _boundedIntParam(schema, 'viewportWidth',
+        defaultValue: 390, min: 240, max: 1440);
+    final viewportHeight = _boundedIntParam(schema, 'viewportHeight',
+        defaultValue: 844, min: 320, max: 2400);
     String? target;
     String? previewUrl;
     String html = '';
@@ -2243,7 +2822,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'HTML file does not exist for preview snapshot: ${_relative(target)}',
           failureKind: ActionFailureKind.processFailed,
-          recoveryActions: const ['Create or preview the HTML file before capturing a snapshot.'],
+          recoveryActions: const [
+            'Create or preview the HTML file before capturing a snapshot.'
+          ],
         );
       }
       html = await file.readAsString();
@@ -2251,7 +2832,8 @@ class ActionRunner {
       source = 'file';
     } else if (htmlParam is String && htmlParam.trim().isNotEmpty) {
       html = htmlParam;
-      target = _resolveWorkspacePath('.mobilecode_preview_snapshot/inline.html');
+      target =
+          _resolveWorkspacePath('.mobilecode_preview_snapshot/inline.html');
       final file = File(target);
       await file.parent.create(recursive: true);
       await file.writeAsString(html, flush: true);
@@ -2265,7 +2847,9 @@ class ActionRunner {
       throw const _ActionRunnerFailure(
         'previewSnapshot requires params.path, params.html, or params.url.',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: ['Pass the same path used by preview_html or a safe preview URL.'],
+        recoveryActions: [
+          'Pass the same path used by preview_html or a safe preview URL.'
+        ],
       );
     }
 
@@ -2283,7 +2867,7 @@ class ActionRunner {
       },
       if (target != null) 'relativePath': _relative(target),
       if (target != null) 'path': _relative(target),
-      if (previewUrl != null) 'previewUrl': previewUrl,
+      'previewUrl': previewUrl,
       if (html.isNotEmpty) ...{
         'htmlBytes': utf8.encode(html).length,
         'title': _extractHtmlTitle(html),
@@ -2295,12 +2879,16 @@ class ActionRunner {
     );
     final snapshotFile = File(snapshotPath);
     await snapshotFile.parent.create(recursive: true);
-    await snapshotFile.writeAsString(const JsonEncoder.withIndent('  ').convert(snapshot), flush: true);
+    await snapshotFile.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(snapshot),
+        flush: true);
 
     final evidence = ActionEvidence(
       evidenceId: schema.requestId ?? generateEvidenceId(),
       actionName: MobileCodeAction.previewSnapshot,
-      paramsSummary: schema.paramsSummary.isEmpty ? 'capture preview evidence snapshot' : schema.paramsSummary,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'capture preview evidence snapshot'
+          : schema.paramsSummary,
       startedAt: startedAt,
       endedAt: DateTime.now(),
       success: true,
@@ -2308,9 +2896,7 @@ class ActionRunner {
         if (target != null) target,
         snapshotPath,
       ],
-      urls: [
-        if (previewUrl != null) previewUrl,
-      ],
+      urls: [previewUrl],
       logs: [
         'Saved metadata/DOM evidence snapshot for ${target == null ? previewUrl : _relative(target)}.',
         'No native bitmap screenshot was captured for this action.',
@@ -2319,7 +2905,8 @@ class ActionRunner {
       metadata: snapshot,
     );
     evidenceStore.add(evidence);
-    return ActionRunnerResult(evidence: evidence, path: snapshotPath, url: previewUrl);
+    return ActionRunnerResult(
+        evidence: evidence, path: snapshotPath, url: previewUrl);
   }
 
   ActionRunnerResult _unsupported(ActionSchema schema, DateTime startedAt) {
@@ -2369,7 +2956,9 @@ class ActionRunner {
         }
       }
       results.add({
-        'refId': _stringValue(map['refId']).isEmpty ? 'web_${results.length + 1}' : _stringValue(map['refId']),
+        'refId': _stringValue(map['refId']).isEmpty
+            ? 'web_${results.length + 1}'
+            : _stringValue(map['refId']),
         'title': _compact(_stringValue(map['title']), 160),
         'url': url,
         'snippet': _compact(_stringValue(map['snippet']), 360),
@@ -2386,25 +2975,32 @@ class ActionRunner {
       final title = _stringValue(item['title']);
       final url = _stringValue(item['url']);
       final snippet = _stringValue(item['snippet']);
-      lines.add('- [$refId] ${title.isEmpty ? url : title}${url.isEmpty ? '' : ' - $url'}${snippet.isEmpty ? '' : ' :: $snippet'}');
+      lines.add(
+          '- [$refId] ${title.isEmpty ? url : title}${url.isEmpty ? '' : ' - $url'}${snippet.isEmpty ? '' : ' :: $snippet'}');
     }
     return lines.join('\n');
   }
 
   Uri _safeHttpsUri(String rawUrl) {
     final uri = Uri.tryParse(rawUrl.trim());
-    if (uri == null || uri.scheme.toLowerCase() != 'https' || uri.host.trim().isEmpty) {
+    if (uri == null ||
+        uri.scheme.toLowerCase() != 'https' ||
+        uri.host.trim().isEmpty) {
       throw _ActionRunnerFailure(
         'Only https URLs are allowed for relay web tools: $rawUrl',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Use a public https URL. Local, file, content, and http URLs are blocked.'],
+        recoveryActions: const [
+          'Use a public https URL. Local, file, content, and http URLs are blocked.'
+        ],
       );
     }
     if (_isBlockedHost(uri.host)) {
       throw _ActionRunnerFailure(
         'Blocked private or local URL host: ${uri.host}',
         failureKind: ActionFailureKind.commandBlocked,
-        recoveryActions: const ['Use a public documentation or reference URL instead.'],
+        recoveryActions: const [
+          'Use a public documentation or reference URL instead.'
+        ],
       );
     }
     return uri;
@@ -2422,9 +3018,62 @@ class ActionRunner {
     return _safeHttpsUri(rawUrl);
   }
 
+  LarkApiActionKind _larkActionKind(String rawKind) {
+    final normalized = rawKind.trim();
+    return LarkApiActionKind.values.firstWhere(
+      (kind) => kind.name == normalized,
+      orElse: () => throw _ActionRunnerFailure(
+        'Unsupported Lark action kind: $rawKind',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const [
+          'Use one of: readiness, docxCreate, docxAppendBlocks, driveUploadSmallFile, sheetsAppend, bitableBatchCreate, wikiListSpaces.',
+        ],
+      ),
+    );
+  }
+
+  List<String> _missingLarkRequiredParams(
+    LarkApiActionKind kind,
+    LarkApiPayloadDraft draft,
+  ) {
+    return switch (kind) {
+      LarkApiActionKind.readiness => const [],
+      LarkApiActionKind.wikiListSpaces => const [],
+      LarkApiActionKind.docxCreate => const [],
+      LarkApiActionKind.docxAppendBlocks => [
+          if (draft.documentId.trim().isEmpty) 'documentId',
+        ],
+      LarkApiActionKind.driveUploadSmallFile => [
+          if (draft.driveParentNode.trim().isEmpty) 'driveParentNode',
+        ],
+      LarkApiActionKind.sheetsAppend => [
+          if (draft.spreadsheetToken.trim().isEmpty) 'spreadsheetToken',
+        ],
+      LarkApiActionKind.bitableBatchCreate => [
+          if (draft.bitableAppToken.trim().isEmpty) 'bitableAppToken',
+          if (draft.bitableTableId.trim().isEmpty) 'bitableTableId',
+        ],
+    };
+  }
+
+  String _larkFailureKind(LarkApiCallResult result) {
+    final error = result.error.toLowerCase();
+    if (result.statusCode == 401 ||
+        result.statusCode == 403 ||
+        error.contains('token') ||
+        error.contains('scope') ||
+        error.contains('permission')) {
+      return ActionFailureKind.authFailed;
+    }
+    if (result.statusCode == 0) return ActionFailureKind.dependencyMissing;
+    return ActionFailureKind.processFailed;
+  }
+
   bool _isBlockedHost(String host) {
     final lower = host.toLowerCase();
-    if (lower == 'localhost' || lower.endsWith('.localhost') || lower.endsWith('.local')) return true;
+    if (lower == 'localhost' ||
+        lower.endsWith('.localhost') ||
+        lower.endsWith('.local')) return true;
     final ip = InternetAddress.tryParse(lower);
     if (ip == null) return false;
     if (ip.isLoopback || ip.isLinkLocal || ip.isMulticast) return true;
@@ -2440,17 +3089,24 @@ class ActionRunner {
           (a == 169 && b == 254) ||
           a == 0;
     }
-    return lower == '::1' || lower.startsWith('fc') || lower.startsWith('fd') || lower.startsWith('fe80');
+    return lower == '::1' ||
+        lower.startsWith('fc') ||
+        lower.startsWith('fd') ||
+        lower.startsWith('fe80');
   }
 
   String _extractHtmlTitle(String html) {
-    final match = RegExp(r'<title[^>]*>([\s\S]*?)</title>', caseSensitive: false).firstMatch(html);
+    final match =
+        RegExp(r'<title[^>]*>([\s\S]*?)</title>', caseSensitive: false)
+            .firstMatch(html);
     return match == null ? '' : _compact(_stripHtml(match.group(1) ?? ''), 160);
   }
 
   String _extractBodyTextPreview(String html) {
-    var text = html.replaceAll(RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false), ' ');
-    text = text.replaceAll(RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false), ' ');
+    var text = html.replaceAll(
+        RegExp(r'<script[^>]*>[\s\S]*?</script>', caseSensitive: false), ' ');
+    text = text.replaceAll(
+        RegExp(r'<style[^>]*>[\s\S]*?</style>', caseSensitive: false), ' ');
     return _compact(_stripHtml(text), 2000);
   }
 
@@ -2465,9 +3121,11 @@ class ActionRunner {
         .trim();
   }
 
-  String _stringValue(Object? value) => value is String ? value.trim() : value?.toString().trim() ?? '';
+  String _stringValue(Object? value) =>
+      value is String ? value.trim() : value?.toString().trim() ?? '';
 
-  Map<String, dynamic> _fileListEntry(String absolutePath, FileStat stat, String type) {
+  Map<String, dynamic> _fileListEntry(
+      String absolutePath, FileStat stat, String type) {
     return {
       'path': _relative(absolutePath),
       'type': type,
@@ -2487,7 +3145,9 @@ class ActionRunner {
     throw _ActionRunnerFailure(
       'Missing required string param: $key',
       failureKind: ActionFailureKind.commandBlocked,
-      recoveryActions: ['Provide params.$key before running ${schema.actionName.name}.'],
+      recoveryActions: [
+        'Provide params.$key before running ${schema.actionName.name}.'
+      ],
     );
   }
 
@@ -2536,7 +3196,8 @@ class ActionRunner {
   }
 
   List<_UnifiedFilePatch> _parseUnifiedPatch(String patch) {
-    final lines = patch.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
+    final lines =
+        patch.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
     final files = <_UnifiedFilePatch>[];
     var i = 0;
     while (i < lines.length) {
@@ -2568,7 +3229,9 @@ class ActionRunner {
         final hunk = _parseHunkHeader(lines[i]);
         i++;
         final hunkLines = <String>[];
-        while (i < lines.length && !lines[i].startsWith('@@ ') && !lines[i].startsWith('--- ')) {
+        while (i < lines.length &&
+            !lines[i].startsWith('@@ ') &&
+            !lines[i].startsWith('--- ')) {
           final hunkLine = lines[i];
           if (hunkLine == r'\ No newline at end of file') {
             i++;
@@ -2578,7 +3241,9 @@ class ActionRunner {
             i++;
             continue;
           }
-          if (hunkLine.startsWith(' ') || hunkLine.startsWith('+') || hunkLine.startsWith('-')) {
+          if (hunkLine.startsWith(' ') ||
+              hunkLine.startsWith('+') ||
+              hunkLine.startsWith('-')) {
             hunkLines.add(hunkLine);
             i++;
             continue;
@@ -2587,7 +3252,9 @@ class ActionRunner {
           throw _ActionRunnerFailure(
             'Invalid unified diff hunk line: ${_compact(hunkLine, 80)}',
             failureKind: ActionFailureKind.commandBlocked,
-            recoveryActions: const ['Use only context, addition, and removal lines inside hunks.'],
+            recoveryActions: const [
+              'Use only context, addition, and removal lines inside hunks.'
+            ],
           );
         }
         hunks.add(hunk.copyWith(lines: hunkLines));
@@ -2597,7 +3264,9 @@ class ActionRunner {
         throw const _ActionRunnerFailure(
           'Patch file path is empty.',
           failureKind: ActionFailureKind.commandBlocked,
-          recoveryActions: ['Use a workspace-relative file path in the patch headers.'],
+          recoveryActions: [
+            'Use a workspace-relative file path in the patch headers.'
+          ],
         );
       }
       files.add(_UnifiedFilePatch(
@@ -2613,7 +3282,8 @@ class ActionRunner {
     final withoutTimestamp = raw.trim().split(RegExp(r'\s+')).first;
     if (withoutTimestamp == '/dev/null') return '';
     var path = withoutTimestamp.replaceAll('\\', '/');
-    if ((path.startsWith('"') && path.endsWith('"')) || (path.startsWith("'") && path.endsWith("'"))) {
+    if ((path.startsWith('"') && path.endsWith('"')) ||
+        (path.startsWith("'") && path.endsWith("'"))) {
       path = path.substring(1, path.length - 1);
     }
     if (path.startsWith('a/')) path = path.substring(2);
@@ -2622,7 +3292,8 @@ class ActionRunner {
   }
 
   _UnifiedHunk _parseHunkHeader(String header) {
-    final match = RegExp(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@').firstMatch(header);
+    final match = RegExp(r'^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@')
+        .firstMatch(header);
     if (match == null) {
       throw _ActionRunnerFailure(
         'Invalid unified diff hunk header: $header',
@@ -2652,7 +3323,9 @@ class ActionRunner {
         throw _ActionRunnerFailure(
           'Patch hunk for ${filePatch.displayPath} does not match current file position.',
           failureKind: ActionFailureKind.processFailed,
-          recoveryActions: const ['Read the current file and regenerate a smaller patch.'],
+          recoveryActions: const [
+            'Read the current file and regenerate a smaller patch.'
+          ],
         );
       }
       output.addAll(originalLines.sublist(cursor, start));
@@ -2710,12 +3383,15 @@ class ActionRunner {
     return output;
   }
 
-  void _expectPatchLine(_UnifiedFilePatch filePatch, List<String> originalLines, int cursor, String expected) {
+  void _expectPatchLine(_UnifiedFilePatch filePatch, List<String> originalLines,
+      int cursor, String expected) {
     if (cursor >= originalLines.length || originalLines[cursor] != expected) {
       throw _ActionRunnerFailure(
         'Patch context mismatch in ${filePatch.displayPath}.',
         failureKind: ActionFailureKind.processFailed,
-        recoveryActions: const ['Read the current file and regenerate the patch from the latest content.'],
+        recoveryActions: const [
+          'Read the current file and regenerate the patch from the latest content.'
+        ],
       );
     }
   }
@@ -2732,11 +3408,14 @@ class ActionRunner {
     final candidate = p.normalize(
       p.isAbsolute(trimmed) ? trimmed : p.join(workspaceRootPath, trimmed),
     );
-    if (!(p.equals(candidate, workspaceRootPath) || p.isWithin(workspaceRootPath, candidate))) {
+    if (!(p.equals(candidate, workspaceRootPath) ||
+        p.isWithin(workspaceRootPath, candidate))) {
       throw _ActionRunnerFailure(
         'Path is outside workspace: $trimmed',
         failureKind: ActionFailureKind.cwdOutsideWorkspace,
-        recoveryActions: const ['Choose a path inside the active MobileCode workspace.'],
+        recoveryActions: const [
+          'Choose a path inside the active MobileCode workspace.'
+        ],
       );
     }
     return candidate;

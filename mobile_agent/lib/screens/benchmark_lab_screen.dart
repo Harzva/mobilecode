@@ -39,6 +39,8 @@ class BenchmarkLabScreen extends StatelessWidget {
           SizedBox(height: 12),
           _EvidenceTierPanel(),
           SizedBox(height: 12),
+          _EvidencePackPanel(),
+          SizedBox(height: 12),
           _OpenGatePanel(),
         ],
       ),
@@ -182,6 +184,42 @@ class _EvidenceTierPanel extends StatelessWidget {
       icon: Icons.stacked_line_chart_outlined,
       color: _labViolet,
       children: tiers,
+    );
+  }
+}
+
+class _EvidencePackPanel extends StatelessWidget {
+  const _EvidencePackPanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _LabSection(
+      title: 'Evidence pack index',
+      subtitle: '把 README、论文草稿和 verifier 的证据链压到 App 内可读索引；仍保持只读，不把 readiness 包装成实验结果。',
+      icon: Icons.inventory_2_outlined,
+      color: _labBlue,
+      children: [
+        _EvidenceLinkRow(
+          'Verifier readiness',
+          '12 contracts · 1225 task definitions checked',
+          'docs/mobile-harness-benchmark/reports/verifier-contract-readiness.md',
+        ),
+        _EvidenceLinkRow(
+          'T0 smoke run',
+          '60 tasks · 50 fixture passes · 10 typed GitHub blocks',
+          'docs/mobile-harness-benchmark/runs/2026-06-06-smoke-v2-t0/summary.md',
+        ),
+        _EvidenceLinkRow(
+          'Mobile evidence pack',
+          '48 Android T2 / iOS T3 templates · counts_as_mobile_experiment=false',
+          'docs/mobile-harness-benchmark/reports/mobile-evidence-pack-readiness.md',
+        ),
+        _EvidenceLinkRow(
+          'Submission gate',
+          'not upload-ready until mobile evidence, baselines and supplement are complete',
+          'docs/mobile-harness-benchmark/reports/submission-readiness.md',
+        ),
+      ],
     );
   }
 }
@@ -395,6 +433,24 @@ class _GateRow extends StatelessWidget {
       title: title,
       detail: detail,
       trailing: const _StatusBadge(label: 'open', color: _labAmber),
+    );
+  }
+}
+
+class _EvidenceLinkRow extends StatelessWidget {
+  const _EvidenceLinkRow(this.title, this.detail, this.path);
+
+  final String title;
+  final String detail;
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    return _InfoRow(
+      leading: const Icon(Icons.article_outlined, color: _labBlue, size: 19),
+      title: title,
+      detail: '$detail\n$path',
+      trailing: const _StatusBadge(label: 'read-only', color: _labBlue),
     );
   }
 }

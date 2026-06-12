@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 const implemented = [
-  'v0.1.43-last restored the v0.1.39 product UI baseline and kept it as the recovery line.',
+  'The product UI baseline is now the stable phone-native harness surface: Chat, Tools, Skills, Roles, preview, evidence, and runtime status stay visible without exposing internal branch history.',
   'DeepSeek now has a provider-native tool-calling Agent Loop path; Mimo and unsupported providers keep Single-shot fallback.',
   'ActionRunner executes safe typed tools and ActionEvidence records action name, success, duration, artifact paths, URLs, logs, and recovery hints.',
   'Agent Loop can now inspect and modify a mobile workspace with find_files, grep_files, and bounded apply_patch.',
@@ -51,6 +51,13 @@ const safeTools = [
   'agent_close',
   'web_search',
   'fetch_url',
+  'lark_readiness',
+  'lark_wiki_list_spaces',
+  'lark_docx_create',
+  'lark_docx_append_blocks',
+  'lark_sheets_append',
+  'lark_bitable_create_records',
+  'lark_drive_upload_preview',
   'write_file',
   'read_file',
   'copy_file',
@@ -191,9 +198,9 @@ export default function Experiments() {
           </div>
           <div className="experiment-ledger" aria-label="Experiment status">
             <span>Baseline</span>
-            <strong>last-recover-from-v039</strong>
+            <strong>Main product harness</strong>
             <span>Truth line</span>
-            <strong>v0.1.39 UI + DeepSeek Agent Loop</strong>
+            <strong>Phone-native UI + typed Agent Loop evidence</strong>
             <span>Next gate</span>
             <strong>Recovery evidence UI / typed Helper validation / richer preview verification</strong>
           </div>

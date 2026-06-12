@@ -71,7 +71,8 @@ class ToolCallProviderProfile {
       isDeepSeek: isDeepSeek,
       isOpenAiCompatible: isDeepSeek || isOpenAi,
       strictTools: betaStrict,
-      supportsNativeToolCalls: (isDeepSeek || isOpenAi) && !unsupportedDeepSeekExperiment,
+      supportsNativeToolCalls:
+          (isDeepSeek || isOpenAi) && !unsupportedDeepSeekExperiment,
     );
   }
 
@@ -87,10 +88,14 @@ class ToolCallProviderProfile {
       return DeepSeekProviderProfileKind.experimentalUnsupported;
     }
     if (betaStrict) return DeepSeekProviderProfileKind.strictBeta;
-    if (probe.contains('deepseek-v4-flash')) return DeepSeekProviderProfileKind.v4Flash;
-    if (probe.contains('deepseek-v4-pro')) return DeepSeekProviderProfileKind.v4Pro;
-    if (probe.contains('deepseek-chat')) return DeepSeekProviderProfileKind.legacyChat;
-    if (probe.contains('deepseek-reasoner')) return DeepSeekProviderProfileKind.legacyReasoner;
+    if (probe.contains('deepseek-v4-flash'))
+      return DeepSeekProviderProfileKind.v4Flash;
+    if (probe.contains('deepseek-v4-pro'))
+      return DeepSeekProviderProfileKind.v4Pro;
+    if (probe.contains('deepseek-chat'))
+      return DeepSeekProviderProfileKind.legacyChat;
+    if (probe.contains('deepseek-reasoner'))
+      return DeepSeekProviderProfileKind.legacyReasoner;
     return DeepSeekProviderProfileKind.unknown;
   }
 
@@ -101,7 +106,8 @@ class ToolCallProviderProfile {
       DeepSeekProviderProfileKind.strictBeta => 'DeepSeek Strict Beta',
       DeepSeekProviderProfileKind.legacyChat => 'DeepSeek Legacy Chat',
       DeepSeekProviderProfileKind.legacyReasoner => 'DeepSeek Legacy Reasoner',
-      DeepSeekProviderProfileKind.experimentalUnsupported => 'DeepSeek Unsupported Experiment',
+      DeepSeekProviderProfileKind.experimentalUnsupported =>
+        'DeepSeek Unsupported Experiment',
       DeepSeekProviderProfileKind.unknown => 'DeepSeek OpenAI-compatible',
       DeepSeekProviderProfileKind.none => 'Generated-only',
     };
@@ -122,7 +128,8 @@ class ProviderToolCall {
   final int? index;
 
   bool get isReportResult => name == 'report_result';
-  bool get isSubAgentLiteTool => name == 'agent_open' || name == 'agent_eval' || name == 'agent_close';
+  bool get isSubAgentLiteTool =>
+      name == 'agent_open' || name == 'agent_eval' || name == 'agent_close';
 
   Map<String, dynamic> toProviderJson() {
     return {
@@ -164,18 +171,16 @@ class OpenAiToolCallStreamAssembler {
   List<OpenAiStreamingToolCallProgress> get progress {
     final builders = _builders.values.toList()
       ..sort((a, b) => a.index.compareTo(b.index));
-    return builders
-        .map((builder) {
-          final arguments = builder.arguments.toString();
-          return OpenAiStreamingToolCallProgress(
-              index: builder.index,
-              name: builder.name,
-              argumentChars: arguments.length,
-              argumentLines: _estimateDraftLineCount(arguments),
-              targetPath: _extractDraftTargetPath(arguments),
-            );
-        })
-        .toList();
+    return builders.map((builder) {
+      final arguments = builder.arguments.toString();
+      return OpenAiStreamingToolCallProgress(
+        index: builder.index,
+        name: builder.name,
+        argumentChars: arguments.length,
+        argumentLines: _estimateDraftLineCount(arguments),
+        targetPath: _extractDraftTargetPath(arguments),
+      );
+    }).toList();
   }
 
   void _appendChunkText(
@@ -208,7 +213,8 @@ class OpenAiToolCallStreamAssembler {
       for (final raw in toolCalls) {
         if (raw is! Map<String, dynamic>) continue;
         final index = _intValue(raw['index']) ?? _builders.length;
-        final builder = _builders.putIfAbsent(index, () => _StreamingToolCallBuilder(index));
+        final builder = _builders.putIfAbsent(
+            index, () => _StreamingToolCallBuilder(index));
         builder.add(raw);
       }
     }
@@ -217,7 +223,10 @@ class OpenAiToolCallStreamAssembler {
   List<ProviderToolCall> finish() {
     final calls = _builders.values.toList()
       ..sort((a, b) => a.index.compareTo(b.index));
-    return calls.map((builder) => builder.finish()).whereType<ProviderToolCall>().toList();
+    return calls
+        .map((builder) => builder.finish())
+        .whereType<ProviderToolCall>()
+        .toList();
   }
 }
 
@@ -282,10 +291,17 @@ int _estimateDraftLineCount(String arguments) {
 
 String? _extractDraftTargetPath(String arguments) {
   if (arguments.isEmpty) return null;
-  final directPath = RegExp(r'"(?:path|file_path|filepath|filename|fileName|name)"\s*:\s*"([^"\\]+)"').firstMatch(arguments)?.group(1);
-  if (directPath != null && directPath.trim().isNotEmpty) return directPath.trim();
-  final patchPath = RegExp(r'\+\+\+\s+(?:b/)?([^\\n"\r]+)').firstMatch(arguments)?.group(1);
-  if (patchPath != null && patchPath.trim().isNotEmpty && patchPath.trim() != '/dev/null') {
+  final directPath = RegExp(
+          r'"(?:path|file_path|filepath|filename|fileName|name)"\s*:\s*"([^"\\]+)"')
+      .firstMatch(arguments)
+      ?.group(1);
+  if (directPath != null && directPath.trim().isNotEmpty)
+    return directPath.trim();
+  final patchPath =
+      RegExp(r'\+\+\+\s+(?:b/)?([^\\n"\r]+)').firstMatch(arguments)?.group(1);
+  if (patchPath != null &&
+      patchPath.trim().isNotEmpty &&
+      patchPath.trim() != '/dev/null') {
     return patchPath.trim();
   }
   return null;
@@ -298,10 +314,10 @@ class OpenAiCompatibleToolCallAdapter {
 
   String get systemInstruction => [
         'When a mobile coding request needs a file or preview, use the provided tools instead of only describing the result.',
-        'MobileCode tools may include list_files, find_files, grep_files, project_summary, detect_project_type, change_history, virtual_status, agent_open, agent_eval, agent_close, web_search, fetch_url, write_file, read_file, copy_file, mkdir, delete_file, move_file, save_snapshot, virtual_diff, restore_snapshot, validate_html, validate_json, validate_markdown, apply_patch, preview_html, preview_snapshot, termux_task_start, and report_result; only call tools exposed in the current request.',
+        'MobileCode tools may include list_files, find_files, grep_files, project_summary, detect_project_type, change_history, virtual_status, agent_open, agent_eval, agent_close, web_search, fetch_url, lark_readiness, lark_wiki_list_spaces, lark_docx_create, lark_docx_append_blocks, lark_sheets_append, lark_bitable_create_records, lark_drive_upload_preview, write_file, read_file, copy_file, mkdir, delete_file, move_file, save_snapshot, virtual_diff, restore_snapshot, validate_html, validate_json, validate_markdown, apply_patch, preview_html, preview_snapshot, termux_task_start, and report_result; only call tools exposed in the current request.',
         'Use web_search/fetch_url only for public reference gathering. Use preview_snapshot after preview_html when the user asks for a visible product check.',
         'Use project_summary/detect_project_type/list_files/find_files instead of shell pwd/tree/ls/find, grep_files instead of shell grep/rg, change_history/virtual_status/save_snapshot/virtual_diff/restore_snapshot instead of shell git status/git log/diff/restore, copy_file instead of shell cp, mkdir instead of shell mkdir, move_file instead of shell mv, delete_file instead of shell rm, validate_html/validate_json/validate_markdown instead of ad-hoc validators, and apply_patch instead of shell patch/git apply. termux_task_start is a typed helper route only when exposed; never ask for raw Android or Termux shell commands.',
-        'Never request shell, Git push, publishing, remote logging, or arbitrary commands.',
+        'Never request shell, Git push, publishing, remote logging, arbitrary commands, or arbitrary Lark HTTP. Use only typed Lark tools, preview before writes, and include confirm=true only after explicit user approval.',
         'Use paths relative to the MobileCode workspace. If writing one web artifact and no path is obvious, use index.html. Do not include secrets in arguments.',
         'For complex work, choose the smallest safe next tool yourself. You may open read-only Sub-Agent Lite explorer/reviewer sessions for isolated inspection, then agent_eval/agent_close them. You may summarize, list, find, grep, search, fetch, write, read, copy, mkdir, delete a confirmed workspace file, move, save/restore snapshots, inspect virtual diffs, validate HTML, patch, preview, snapshot, or report depending on the current observation.',
         'After tool observations, call report_result or answer with a concise final summary.',
@@ -316,7 +332,8 @@ class OpenAiCompatibleToolCallAdapter {
     ToolChoiceMode toolChoice = ToolChoiceMode.auto,
     List<String>? allowedToolNames,
   }) {
-    final tools = toolDefinitions(strict: profile.strictTools, allowedToolNames: allowedToolNames);
+    final tools = toolDefinitions(
+        strict: profile.strictTools, allowedToolNames: allowedToolNames);
     final exposedToolNames = tools
         .map((tool) => (tool['function'] as Map<String, dynamic>)['name'])
         .whereType<String>()
@@ -324,7 +341,11 @@ class OpenAiCompatibleToolCallAdapter {
     return {
       'model': model,
       'messages': [
-        {'role': 'system', 'content': '$systemPrompt\n\n$systemInstruction\n\nCurrently exposed tools: $exposedToolNames.'},
+        {
+          'role': 'system',
+          'content':
+              '$systemPrompt\n\n$systemInstruction\n\nCurrently exposed tools: $exposedToolNames.'
+        },
         ...messages,
       ],
       'max_tokens': maxTokens,
@@ -349,7 +370,8 @@ class OpenAiCompatibleToolCallAdapter {
     final message = first['message'];
     final finishReason = first['finish_reason'] as String?;
     if (message is! Map<String, dynamic>) {
-      return ProviderToolCallResponse(content: '', toolCalls: const [], finishReason: finishReason);
+      return ProviderToolCallResponse(
+          content: '', toolCalls: const [], finishReason: finishReason);
     }
 
     final content = _messageContent(message['content']);
@@ -388,13 +410,16 @@ class OpenAiCompatibleToolCallAdapter {
     );
   }
 
-  Map<String, dynamic> assistantToolCallMessage(ProviderToolCallResponse response) {
+  Map<String, dynamic> assistantToolCallMessage(
+      ProviderToolCallResponse response) {
     return {
       'role': 'assistant',
       'content': response.content,
-      if (response.reasoningContent != null && response.reasoningContent!.isNotEmpty)
+      if (response.reasoningContent != null &&
+          response.reasoningContent!.isNotEmpty)
         'reasoning_content': response.reasoningContent,
-      'tool_calls': response.toolCalls.map((call) => call.toProviderJson()).toList(),
+      'tool_calls':
+          response.toolCalls.map((call) => call.toProviderJson()).toList(),
     };
   }
 
@@ -465,7 +490,8 @@ class OpenAiCompatibleToolCallAdapter {
           paramsSummary: 'provider-native change_history',
           params: {
             'count': _intArg(args, 'count', defaultValue: 20),
-            'includeReadOnly': _boolArg(args, 'include_read_only', defaultValue: false),
+            'includeReadOnly':
+                _boolArg(args, 'include_read_only', defaultValue: false),
             'actionFilter': _stringArg(args, 'action_filter'),
           },
         );
@@ -663,6 +689,91 @@ class OpenAiCompatibleToolCallAdapter {
             'maxBytes': _intArg(args, 'max_bytes', defaultValue: 80 * 1024),
           },
         );
+      case 'lark_readiness':
+        return _larkActionSchema(
+          call: call,
+          kind: 'readiness',
+          paramsSummary: 'provider-native lark_readiness',
+        );
+      case 'lark_wiki_list_spaces':
+        return _larkActionSchema(
+          call: call,
+          kind: 'wikiListSpaces',
+          paramsSummary: 'provider-native lark_wiki_list_spaces',
+        );
+      case 'lark_docx_create':
+        return _larkActionSchema(
+          call: call,
+          kind: 'docxCreate',
+          paramsSummary: 'provider-native lark_docx_create',
+          extraParams: {
+            'title': _stringArg(args, 'title'),
+            'content': _stringArg(args, 'content'),
+            'folderToken': _stringArg(args, 'folder_token'),
+            'dryRun': _boolArg(args, 'dry_run', defaultValue: false),
+            'confirm': _boolArg(args, 'confirm', defaultValue: false),
+          },
+          risk: ActionRisk.medium,
+        );
+      case 'lark_docx_append_blocks':
+        return _larkActionSchema(
+          call: call,
+          kind: 'docxAppendBlocks',
+          paramsSummary: 'provider-native lark_docx_append_blocks',
+          extraParams: {
+            'title': _stringArg(args, 'title'),
+            'content': _stringArg(args, 'content'),
+            'documentId': _stringArg(args, 'document_id'),
+            'blockId': _stringArg(args, 'block_id'),
+            'dryRun': _boolArg(args, 'dry_run', defaultValue: false),
+            'confirm': _boolArg(args, 'confirm', defaultValue: false),
+          },
+          risk: ActionRisk.medium,
+        );
+      case 'lark_sheets_append':
+        return _larkActionSchema(
+          call: call,
+          kind: 'sheetsAppend',
+          paramsSummary: 'provider-native lark_sheets_append',
+          extraParams: {
+            'title': _stringArg(args, 'title'),
+            'content': _stringArg(args, 'content'),
+            'spreadsheetToken': _stringArg(args, 'spreadsheet_token'),
+            'sheetRange': _stringArg(args, 'sheet_range'),
+            'dryRun': _boolArg(args, 'dry_run', defaultValue: false),
+            'confirm': _boolArg(args, 'confirm', defaultValue: false),
+          },
+          risk: ActionRisk.medium,
+        );
+      case 'lark_bitable_create_records':
+        return _larkActionSchema(
+          call: call,
+          kind: 'bitableBatchCreate',
+          paramsSummary: 'provider-native lark_bitable_create_records',
+          extraParams: {
+            'title': _stringArg(args, 'title'),
+            'content': _stringArg(args, 'content'),
+            'bitableAppToken': _stringArg(args, 'bitable_app_token'),
+            'bitableTableId': _stringArg(args, 'bitable_table_id'),
+            'dryRun': _boolArg(args, 'dry_run', defaultValue: false),
+            'confirm': _boolArg(args, 'confirm', defaultValue: false),
+          },
+          risk: ActionRisk.medium,
+        );
+      case 'lark_drive_upload_preview':
+        return _larkActionSchema(
+          call: call,
+          kind: 'driveUploadSmallFile',
+          paramsSummary: 'provider-native lark_drive_upload_preview',
+          extraParams: {
+            'title': _stringArg(args, 'title'),
+            'content': _stringArg(args, 'content'),
+            'driveParentNode': _stringArg(args, 'drive_parent_node'),
+            'driveFileName': _stringArg(args, 'drive_file_name'),
+            'dryRun': true,
+            'confirm': false,
+          },
+        );
       case 'preview_snapshot':
         return ActionSchema(
           actionName: MobileCodeAction.previewSnapshot,
@@ -673,7 +784,8 @@ class OpenAiCompatibleToolCallAdapter {
             'url': _stringArg(args, 'url'),
             'html': _stringArg(args, 'html'),
             'viewportWidth': _intArg(args, 'viewport_width', defaultValue: 390),
-            'viewportHeight': _intArg(args, 'viewport_height', defaultValue: 844),
+            'viewportHeight':
+                _intArg(args, 'viewport_height', defaultValue: 844),
           },
         );
       case 'termux_task_start':
@@ -686,7 +798,8 @@ class OpenAiCompatibleToolCallAdapter {
             'path': _stringArg(args, 'path'),
             'argsJson': _stringArg(args, 'args_json'),
             'timeoutMs': _intArg(args, 'timeout_ms', defaultValue: 30000),
-            'maxOutputBytes': _intArg(args, 'max_output_bytes', defaultValue: 32 * 1024),
+            'maxOutputBytes':
+                _intArg(args, 'max_output_bytes', defaultValue: 32 * 1024),
             'reason': _stringArg(args, 'reason'),
           },
         );
@@ -696,10 +809,8 @@ class OpenAiCompatibleToolCallAdapter {
   }
 
   Map<String, dynamic> buildToolResultMessage(
-    ProviderToolCall call,
-    ActionRunnerResult result,
-    {String? observationHint}
-  ) {
+      ProviderToolCall call, ActionRunnerResult result,
+      {String? observationHint}) {
     final payload = _actionResultPayload(result);
     if (observationHint != null && observationHint.trim().isNotEmpty) {
       payload['observationHint'] = observationHint.trim();
@@ -762,296 +873,868 @@ class OpenAiCompatibleToolCallAdapter {
     final tools = [
       functionTool(
         name: 'list_files',
-        description: 'List files inside the MobileCode workspace. Safe replacement for ls; cannot read outside the workspace.',
+        description:
+            'List files inside the MobileCode workspace. Safe replacement for ls; cannot read outside the workspace.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative workspace directory or file path. Use "." for workspace root.'},
-          'recursive': {'type': 'boolean', 'description': 'Whether to list nested files.'},
-          'max_entries': {'type': 'integer', 'description': 'Maximum entries to return, 1 to 200.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative workspace directory or file path. Use "." for workspace root.'
+          },
+          'recursive': {
+            'type': 'boolean',
+            'description': 'Whether to list nested files.'
+          },
+          'max_entries': {
+            'type': 'integer',
+            'description': 'Maximum entries to return, 1 to 200.'
+          },
         },
         required: const ['path', 'recursive', 'max_entries'],
       ),
       functionTool(
         name: 'find_files',
-        description: 'Find workspace files by name or glob. Safe replacement for find/fd; bounded to the MobileCode workspace.',
+        description:
+            'Find workspace files by name or glob. Safe replacement for find/fd; bounded to the MobileCode workspace.',
         properties: const {
-          'pattern': {'type': 'string', 'description': 'Filename, glob, or path fragment such as "*.html" or "index".'},
-          'path': {'type': 'string', 'description': 'Relative workspace directory or file path. Use "." for workspace root.'},
-          'max_results': {'type': 'integer', 'description': 'Maximum matching entries to return, 1 to 200.'},
+          'pattern': {
+            'type': 'string',
+            'description':
+                'Filename, glob, or path fragment such as "*.html" or "index".'
+          },
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative workspace directory or file path. Use "." for workspace root.'
+          },
+          'max_results': {
+            'type': 'integer',
+            'description': 'Maximum matching entries to return, 1 to 200.'
+          },
         },
         required: const ['pattern', 'path', 'max_results'],
       ),
       functionTool(
         name: 'grep_files',
-        description: 'Search text inside workspace files. Safe replacement for grep/rg; bounded results and file sizes.',
+        description:
+            'Search text inside workspace files. Safe replacement for grep/rg; bounded results and file sizes.',
         properties: const {
-          'query': {'type': 'string', 'description': 'Plain text query to search for.'},
-          'path': {'type': 'string', 'description': 'Relative workspace directory or file path. Use "." for workspace root.'},
-          'include_glob': {'type': 'string', 'description': 'Optional filename glob such as "*.html"; use "*" for all text files.'},
-          'max_results': {'type': 'integer', 'description': 'Maximum match rows to return, 1 to 120.'},
-          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes per file to inspect.'},
+          'query': {
+            'type': 'string',
+            'description': 'Plain text query to search for.'
+          },
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative workspace directory or file path. Use "." for workspace root.'
+          },
+          'include_glob': {
+            'type': 'string',
+            'description':
+                'Optional filename glob such as "*.html"; use "*" for all text files.'
+          },
+          'max_results': {
+            'type': 'integer',
+            'description': 'Maximum match rows to return, 1 to 120.'
+          },
+          'max_bytes': {
+            'type': 'integer',
+            'description': 'Maximum bytes per file to inspect.'
+          },
         },
-        required: const ['query', 'path', 'include_glob', 'max_results', 'max_bytes'],
+        required: const [
+          'query',
+          'path',
+          'include_glob',
+          'max_results',
+          'max_bytes'
+        ],
       ),
       functionTool(
         name: 'project_summary',
-        description: 'Summarize workspace structure, likely entrypoints, directories, extensions, and file sizes. Safe replacement for pwd/tree/stat before planning.',
+        description:
+            'Summarize workspace structure, likely entrypoints, directories, extensions, and file sizes. Safe replacement for pwd/tree/stat before planning.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative workspace path to summarize. Use "." for workspace root.'},
-          'max_depth': {'type': 'integer', 'description': 'Maximum directory depth to inspect, 1 to 6.'},
-          'max_files': {'type': 'integer', 'description': 'Maximum files to include in the compact summary.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative workspace path to summarize. Use "." for workspace root.'
+          },
+          'max_depth': {
+            'type': 'integer',
+            'description': 'Maximum directory depth to inspect, 1 to 6.'
+          },
+          'max_files': {
+            'type': 'integer',
+            'description': 'Maximum files to include in the compact summary.'
+          },
         },
         required: const ['path', 'max_depth', 'max_files'],
       ),
       functionTool(
         name: 'detect_project_type',
-        description: 'Detect likely project type and entrypoints from workspace files. Safe replacement for package/project sniffing before planning.',
+        description:
+            'Detect likely project type and entrypoints from workspace files. Safe replacement for package/project sniffing before planning.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative workspace path to inspect. Use "." for workspace root.'},
-          'max_depth': {'type': 'integer', 'description': 'Maximum directory depth to inspect, 1 to 8.'},
-          'max_files': {'type': 'integer', 'description': 'Maximum files to inspect.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative workspace path to inspect. Use "." for workspace root.'
+          },
+          'max_depth': {
+            'type': 'integer',
+            'description': 'Maximum directory depth to inspect, 1 to 8.'
+          },
+          'max_files': {
+            'type': 'integer',
+            'description': 'Maximum files to inspect.'
+          },
         },
         required: const ['path', 'max_depth', 'max_files'],
       ),
       functionTool(
         name: 'change_history',
-        description: 'Return recent MobileCode action history, including writes, patches, snapshots, restores, failures, and evidence IDs. Safe replacement for git log/status history.',
+        description:
+            'Return recent MobileCode action history, including writes, patches, snapshots, restores, failures, and evidence IDs. Safe replacement for git log/status history.',
         properties: const {
-          'count': {'type': 'integer', 'description': 'Maximum history records to return, 1 to 80.'},
-          'include_read_only': {'type': 'boolean', 'description': 'Whether to include read-only inspection tools as well as writes/failures.'},
-          'action_filter': {'type': 'string', 'description': 'Optional MobileCode action enum name to filter, or empty string.'},
+          'count': {
+            'type': 'integer',
+            'description': 'Maximum history records to return, 1 to 80.'
+          },
+          'include_read_only': {
+            'type': 'boolean',
+            'description':
+                'Whether to include read-only inspection tools as well as writes/failures.'
+          },
+          'action_filter': {
+            'type': 'string',
+            'description':
+                'Optional MobileCode action enum name to filter, or empty string.'
+          },
         },
         required: const ['count', 'include_read_only', 'action_filter'],
       ),
       functionTool(
         name: 'virtual_status',
-        description: 'Summarize workspace status, recent changes, restore points, files, extensions, and evidence IDs without shell or Git.',
+        description:
+            'Summarize workspace status, recent changes, restore points, files, extensions, and evidence IDs without shell or Git.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative workspace path to summarize. Use "." for workspace root.'},
-          'max_files': {'type': 'integer', 'description': 'Maximum files to inspect.'},
-          'max_recent': {'type': 'integer', 'description': 'Maximum recent evidence records to summarize.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative workspace path to summarize. Use "." for workspace root.'
+          },
+          'max_files': {
+            'type': 'integer',
+            'description': 'Maximum files to inspect.'
+          },
+          'max_recent': {
+            'type': 'integer',
+            'description': 'Maximum recent evidence records to summarize.'
+          },
         },
         required: const ['path', 'max_files', 'max_recent'],
       ),
       functionTool(
         name: 'agent_open',
-        description: 'Open a read-only background Sub-Agent Lite v2 worker for isolated Explorer or Reviewer inspection. It is not a shell and cannot mutate files.',
+        description:
+            'Open a read-only background Sub-Agent Lite v2 worker for isolated Explorer or Reviewer inspection. It is not a shell and cannot mutate files.',
         properties: const {
-          'role': {'type': 'string', 'description': 'Read-only role: explorer or reviewer.'},
-          'task': {'type': 'string', 'description': 'Compact inspection task for the sub-agent.'},
-          'path': {'type': 'string', 'description': 'Workspace-relative path to inspect. Use "." for workspace root.'},
-          'focus': {'type': 'string', 'description': 'Optional search/focus phrase. Use an empty string when not needed.'},
-          'timeout_ms': {'type': 'integer', 'description': 'Worker timeout in milliseconds, 1000 to 30000.'},
-          'token_budget': {'type': 'integer', 'description': 'Approximate mailbox token budget, 200 to 4000.'},
+          'role': {
+            'type': 'string',
+            'description': 'Read-only role: explorer or reviewer.'
+          },
+          'task': {
+            'type': 'string',
+            'description': 'Compact inspection task for the sub-agent.'
+          },
+          'path': {
+            'type': 'string',
+            'description':
+                'Workspace-relative path to inspect. Use "." for workspace root.'
+          },
+          'focus': {
+            'type': 'string',
+            'description':
+                'Optional search/focus phrase. Use an empty string when not needed.'
+          },
+          'timeout_ms': {
+            'type': 'integer',
+            'description': 'Worker timeout in milliseconds, 1000 to 30000.'
+          },
+          'token_budget': {
+            'type': 'integer',
+            'description': 'Approximate mailbox token budget, 200 to 4000.'
+          },
         },
-        required: const ['role', 'task', 'path', 'focus', 'timeout_ms', 'token_budget'],
+        required: const [
+          'role',
+          'task',
+          'path',
+          'focus',
+          'timeout_ms',
+          'token_budget'
+        ],
       ),
       functionTool(
         name: 'agent_eval',
-        description: 'Read mailbox and result summary for an opened Sub-Agent Lite session.',
+        description:
+            'Read mailbox and result summary for an opened Sub-Agent Lite session.',
         properties: const {
-          'agent_id': {'type': 'string', 'description': 'Sub-Agent Lite session id returned by agent_open.'},
+          'agent_id': {
+            'type': 'string',
+            'description': 'Sub-Agent Lite session id returned by agent_open.'
+          },
         },
         required: const ['agent_id'],
       ),
       functionTool(
         name: 'agent_close',
-        description: 'Close a Sub-Agent Lite session and keep its mailbox/evidence for the parent AgentLoop.',
+        description:
+            'Close a Sub-Agent Lite session and keep its mailbox/evidence for the parent AgentLoop.',
         properties: const {
-          'agent_id': {'type': 'string', 'description': 'Sub-Agent Lite session id returned by agent_open.'},
-          'reason': {'type': 'string', 'description': 'Short close/cancel reason.'},
+          'agent_id': {
+            'type': 'string',
+            'description': 'Sub-Agent Lite session id returned by agent_open.'
+          },
+          'reason': {
+            'type': 'string',
+            'description': 'Short close/cancel reason.'
+          },
         },
         required: const ['agent_id', 'reason'],
       ),
       functionTool(
         name: 'web_search',
-        description: 'Search public web references through the MobileCode managed relay. Read-only; returns compact results with ref IDs.',
+        description:
+            'Search public web references through the MobileCode managed relay. Read-only; returns compact results with ref IDs.',
         properties: const {
-          'query': {'type': 'string', 'description': 'Search query for public reference material.'},
-          'count': {'type': 'integer', 'description': 'Maximum number of compact results to return, 1 to 5.'},
+          'query': {
+            'type': 'string',
+            'description': 'Search query for public reference material.'
+          },
+          'count': {
+            'type': 'integer',
+            'description':
+                'Maximum number of compact results to return, 1 to 5.'
+          },
         },
         required: const ['query', 'count'],
       ),
       functionTool(
         name: 'fetch_url',
-        description: 'Fetch and summarize a public https URL through the MobileCode managed relay. Blocks local/private URLs.',
+        description:
+            'Fetch and summarize a public https URL through the MobileCode managed relay. Blocks local/private URLs.',
         properties: const {
           'url': {'type': 'string', 'description': 'Public https URL to read.'},
-          'max_bytes': {'type': 'integer', 'description': 'Maximum response bytes to keep, capped by MobileCode.'},
+          'max_bytes': {
+            'type': 'integer',
+            'description':
+                'Maximum response bytes to keep, capped by MobileCode.'
+          },
         },
         required: const ['url', 'max_bytes'],
       ),
       functionTool(
-        name: 'write_file',
-        description: 'Write a file inside the MobileCode workspace. This cannot write outside the app workspace.',
+        name: 'lark_readiness',
+        description:
+            'Check the configured native Lark OpenAPI connection with a low-volume read-only readiness call. No write is performed.',
+        properties: const {},
+        required: const [],
+      ),
+      functionTool(
+        name: 'lark_wiki_list_spaces',
+        description:
+            'List accessible Lark Wiki spaces through the native OpenAPI client. Read-only and evidence-backed.',
+        properties: const {},
+        required: const [],
+      ),
+      functionTool(
+        name: 'lark_docx_create',
+        description:
+            'Create a Lark Docx document from MobileCode evidence through native OpenAPI. Requires confirm=true for real writes; use dry_run=true first.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative file path inside the MobileCode workspace.'},
-          'content': {'type': 'string', 'description': 'Complete file content to write.'},
-          'overwrite': {'type': 'boolean', 'description': 'Whether an existing file may be replaced.'},
+          'title': {'type': 'string', 'description': 'Docx title.'},
+          'content': {
+            'type': 'string',
+            'description':
+                'Short evidence summary to include in metadata or follow-up blocks.'
+          },
+          'folder_token': {
+            'type': 'string',
+            'description':
+                'Optional Drive folder token. Use an empty string for default.'
+          },
+          'dry_run': {
+            'type': 'boolean',
+            'description':
+                'When true, only preview the OpenAPI request and do not call Lark.'
+          },
+          'confirm': {
+            'type': 'boolean',
+            'description':
+                'Must be true only after explicit user approval to write to Lark.'
+          },
+        },
+        required: const [
+          'title',
+          'content',
+          'folder_token',
+          'dry_run',
+          'confirm'
+        ],
+      ),
+      functionTool(
+        name: 'lark_docx_append_blocks',
+        description:
+            'Append MobileCode evidence blocks to a Lark Docx document. Requires document_id and confirm=true for real writes; use dry_run=true first.',
+        properties: const {
+          'document_id': {
+            'type': 'string',
+            'description': 'Lark Docx document token/id.'
+          },
+          'block_id': {
+            'type': 'string',
+            'description':
+                'Parent block id. Use an empty string to default to document_id.'
+          },
+          'title': {'type': 'string', 'description': 'Evidence section title.'},
+          'content': {
+            'type': 'string',
+            'description': 'Markdown-like text lines to convert to Docx blocks.'
+          },
+          'dry_run': {
+            'type': 'boolean',
+            'description':
+                'When true, only preview the OpenAPI request and do not call Lark.'
+          },
+          'confirm': {
+            'type': 'boolean',
+            'description':
+                'Must be true only after explicit user approval to write to Lark.'
+          },
+        },
+        required: const [
+          'document_id',
+          'block_id',
+          'title',
+          'content',
+          'dry_run',
+          'confirm'
+        ],
+      ),
+      functionTool(
+        name: 'lark_sheets_append',
+        description:
+            'Append one MobileCode benchmark or release evidence row to Lark Sheets. Requires confirm=true for real writes; use dry_run=true first.',
+        properties: const {
+          'spreadsheet_token': {
+            'type': 'string',
+            'description': 'Target spreadsheet token.'
+          },
+          'sheet_range': {
+            'type': 'string',
+            'description': 'Target range such as Sheet1!A1:D4.'
+          },
+          'title': {'type': 'string', 'description': 'Evidence row title.'},
+          'content': {'type': 'string', 'description': 'Evidence row detail.'},
+          'dry_run': {
+            'type': 'boolean',
+            'description':
+                'When true, only preview the OpenAPI request and do not call Lark.'
+          },
+          'confirm': {
+            'type': 'boolean',
+            'description':
+                'Must be true only after explicit user approval to write to Lark.'
+          },
+        },
+        required: const [
+          'spreadsheet_token',
+          'sheet_range',
+          'title',
+          'content',
+          'dry_run',
+          'confirm'
+        ],
+      ),
+      functionTool(
+        name: 'lark_bitable_create_records',
+        description:
+            'Create MobileCode evidence records in Lark Base/Bitable. Requires confirm=true for real writes; use dry_run=true first.',
+        properties: const {
+          'bitable_app_token': {
+            'type': 'string',
+            'description': 'Target Bitable app token.'
+          },
+          'bitable_table_id': {
+            'type': 'string',
+            'description': 'Target Bitable table id.'
+          },
+          'title': {'type': 'string', 'description': 'Record title.'},
+          'content': {
+            'type': 'string',
+            'description': 'Record evidence detail.'
+          },
+          'dry_run': {
+            'type': 'boolean',
+            'description':
+                'When true, only preview the OpenAPI request and do not call Lark.'
+          },
+          'confirm': {
+            'type': 'boolean',
+            'description':
+                'Must be true only after explicit user approval to write to Lark.'
+          },
+        },
+        required: const [
+          'bitable_app_token',
+          'bitable_table_id',
+          'title',
+          'content',
+          'dry_run',
+          'confirm'
+        ],
+      ),
+      functionTool(
+        name: 'lark_drive_upload_preview',
+        description:
+            'Preview the native Lark Drive small-file upload protocol for a MobileCode evidence artifact. This first increment is preview-only and does not attach binary bytes.',
+        properties: const {
+          'drive_parent_node': {
+            'type': 'string',
+            'description':
+                'Drive folder token or node token. Use an empty string for a placeholder preview.'
+          },
+          'drive_file_name': {
+            'type': 'string',
+            'description': 'Evidence filename such as mobilecode-evidence.json.'
+          },
+          'title': {
+            'type': 'string',
+            'description': 'Evidence title for the preview.'
+          },
+          'content': {
+            'type': 'string',
+            'description':
+                'Evidence text that would be serialized into the file.'
+          },
+        },
+        required: const [
+          'drive_parent_node',
+          'drive_file_name',
+          'title',
+          'content'
+        ],
+      ),
+      functionTool(
+        name: 'write_file',
+        description:
+            'Write a file inside the MobileCode workspace. This cannot write outside the app workspace.',
+        properties: const {
+          'path': {
+            'type': 'string',
+            'description': 'Relative file path inside the MobileCode workspace.'
+          },
+          'content': {
+            'type': 'string',
+            'description': 'Complete file content to write.'
+          },
+          'overwrite': {
+            'type': 'boolean',
+            'description': 'Whether an existing file may be replaced.'
+          },
         },
         required: const ['path', 'content', 'overwrite'],
       ),
       functionTool(
         name: 'read_file',
-        description: 'Read a file inside the MobileCode workspace and return a bounded text preview.',
+        description:
+            'Read a file inside the MobileCode workspace and return a bounded text preview.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative file path inside the MobileCode workspace.'},
-          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to read.'},
+          'path': {
+            'type': 'string',
+            'description': 'Relative file path inside the MobileCode workspace.'
+          },
+          'max_bytes': {
+            'type': 'integer',
+            'description': 'Maximum bytes to read.'
+          },
         },
         required: const ['path', 'max_bytes'],
       ),
       functionTool(
         name: 'copy_file',
-        description: 'Copy one regular file inside the MobileCode workspace. Safe replacement for cp; directories and outside-workspace paths are blocked.',
+        description:
+            'Copy one regular file inside the MobileCode workspace. Safe replacement for cp; directories and outside-workspace paths are blocked.',
         properties: const {
-          'source_path': {'type': 'string', 'description': 'Existing relative file path inside the MobileCode workspace.'},
-          'destination_path': {'type': 'string', 'description': 'Target relative file path inside the MobileCode workspace, including filename.'},
-          'overwrite': {'type': 'boolean', 'description': 'Whether an existing destination file may be replaced.'},
+          'source_path': {
+            'type': 'string',
+            'description':
+                'Existing relative file path inside the MobileCode workspace.'
+          },
+          'destination_path': {
+            'type': 'string',
+            'description':
+                'Target relative file path inside the MobileCode workspace, including filename.'
+          },
+          'overwrite': {
+            'type': 'boolean',
+            'description':
+                'Whether an existing destination file may be replaced.'
+          },
         },
         required: const ['source_path', 'destination_path', 'overwrite'],
       ),
       functionTool(
         name: 'mkdir',
-        description: 'Create a directory inside the MobileCode workspace. Safe replacement for mkdir -p; outside-workspace paths are blocked.',
+        description:
+            'Create a directory inside the MobileCode workspace. Safe replacement for mkdir -p; outside-workspace paths are blocked.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative directory path inside the MobileCode workspace.'},
-          'recursive': {'type': 'boolean', 'description': 'Whether to create missing parent directories.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative directory path inside the MobileCode workspace.'
+          },
+          'recursive': {
+            'type': 'boolean',
+            'description': 'Whether to create missing parent directories.'
+          },
         },
         required: const ['path', 'recursive'],
       ),
       functionTool(
         name: 'delete_file',
-        description: 'Delete one regular workspace file after explicit confirmation. Guarded replacement for rm; saves a pre-delete snapshot.',
+        description:
+            'Delete one regular workspace file after explicit confirmation. Guarded replacement for rm; saves a pre-delete snapshot.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative regular file path inside the MobileCode workspace.'},
-          'confirm': {'type': 'boolean', 'description': 'Must be true when the user explicitly requested deletion.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative regular file path inside the MobileCode workspace.'
+          },
+          'confirm': {
+            'type': 'boolean',
+            'description':
+                'Must be true when the user explicitly requested deletion.'
+          },
         },
         required: const ['path', 'confirm'],
       ),
       functionTool(
         name: 'move_file',
-        description: 'Move or rename one file inside the MobileCode workspace. Safe replacement for mv; directories and outside-workspace paths are blocked.',
+        description:
+            'Move or rename one file inside the MobileCode workspace. Safe replacement for mv; directories and outside-workspace paths are blocked.',
         properties: const {
-          'source_path': {'type': 'string', 'description': 'Existing relative file path inside the MobileCode workspace.'},
-          'destination_path': {'type': 'string', 'description': 'Target relative file path inside the MobileCode workspace, including filename.'},
-          'overwrite': {'type': 'boolean', 'description': 'Whether an existing destination file may be replaced.'},
+          'source_path': {
+            'type': 'string',
+            'description':
+                'Existing relative file path inside the MobileCode workspace.'
+          },
+          'destination_path': {
+            'type': 'string',
+            'description':
+                'Target relative file path inside the MobileCode workspace, including filename.'
+          },
+          'overwrite': {
+            'type': 'boolean',
+            'description':
+                'Whether an existing destination file may be replaced.'
+          },
         },
         required: const ['source_path', 'destination_path', 'overwrite'],
       ),
       functionTool(
         name: 'save_snapshot',
-        description: 'Save a bounded read-only snapshot of a workspace file or directory before risky changes. This does not run git or shell.',
+        description:
+            'Save a bounded read-only snapshot of a workspace file or directory before risky changes. This does not run git or shell.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative workspace path to snapshot. Use "." for workspace root.'},
-          'label': {'type': 'string', 'description': 'Short user-facing snapshot label.'},
-          'max_files': {'type': 'integer', 'description': 'Maximum files to copy into the snapshot, 1 to 200.'},
-          'max_bytes': {'type': 'integer', 'description': 'Maximum total bytes to snapshot.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative workspace path to snapshot. Use "." for workspace root.'
+          },
+          'label': {
+            'type': 'string',
+            'description': 'Short user-facing snapshot label.'
+          },
+          'max_files': {
+            'type': 'integer',
+            'description': 'Maximum files to copy into the snapshot, 1 to 200.'
+          },
+          'max_bytes': {
+            'type': 'integer',
+            'description': 'Maximum total bytes to snapshot.'
+          },
         },
         required: const ['path', 'label', 'max_files', 'max_bytes'],
       ),
       functionTool(
         name: 'virtual_diff',
-        description: 'Compare current workspace files against a MobileCode snapshot. Safe replacement for diff/git diff; read-only.',
+        description:
+            'Compare current workspace files against a MobileCode snapshot. Safe replacement for diff/git diff; read-only.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative workspace path to compare. Use "." for workspace root.'},
-          'snapshot_id': {'type': 'string', 'description': 'Snapshot ID returned by save_snapshot, or empty when snapshot_path is used.'},
-          'snapshot_path': {'type': 'string', 'description': 'Workspace-relative snapshot directory path, or empty when snapshot_id is used.'},
-          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to inspect while producing the virtual diff.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative workspace path to compare. Use "." for workspace root.'
+          },
+          'snapshot_id': {
+            'type': 'string',
+            'description':
+                'Snapshot ID returned by save_snapshot, or empty when snapshot_path is used.'
+          },
+          'snapshot_path': {
+            'type': 'string',
+            'description':
+                'Workspace-relative snapshot directory path, or empty when snapshot_id is used.'
+          },
+          'max_bytes': {
+            'type': 'integer',
+            'description':
+                'Maximum bytes to inspect while producing the virtual diff.'
+          },
         },
         required: const ['path', 'snapshot_id', 'snapshot_path', 'max_bytes'],
       ),
       functionTool(
         name: 'restore_snapshot',
-        description: 'Restore files from a MobileCode snapshot back into the workspace after explicit confirmation. Does not delete files absent from the snapshot.',
+        description:
+            'Restore files from a MobileCode snapshot back into the workspace after explicit confirmation. Does not delete files absent from the snapshot.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative workspace path to restore. Use "." for the whole snapshot root.'},
-          'snapshot_id': {'type': 'string', 'description': 'Snapshot ID returned by save_snapshot, or empty when snapshot_path is used.'},
-          'snapshot_path': {'type': 'string', 'description': 'Workspace-relative snapshot directory path, or empty when snapshot_id is used.'},
-          'confirm': {'type': 'boolean', 'description': 'Must be true only when the user explicitly asked to restore files.'},
-          'max_files': {'type': 'integer', 'description': 'Maximum files to restore, 1 to 120.'},
-          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to restore.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative workspace path to restore. Use "." for the whole snapshot root.'
+          },
+          'snapshot_id': {
+            'type': 'string',
+            'description':
+                'Snapshot ID returned by save_snapshot, or empty when snapshot_path is used.'
+          },
+          'snapshot_path': {
+            'type': 'string',
+            'description':
+                'Workspace-relative snapshot directory path, or empty when snapshot_id is used.'
+          },
+          'confirm': {
+            'type': 'boolean',
+            'description':
+                'Must be true only when the user explicitly asked to restore files.'
+          },
+          'max_files': {
+            'type': 'integer',
+            'description': 'Maximum files to restore, 1 to 120.'
+          },
+          'max_bytes': {
+            'type': 'integer',
+            'description': 'Maximum bytes to restore.'
+          },
         },
-        required: const ['path', 'snapshot_id', 'snapshot_path', 'confirm', 'max_files', 'max_bytes'],
+        required: const [
+          'path',
+          'snapshot_id',
+          'snapshot_path',
+          'confirm',
+          'max_files',
+          'max_bytes'
+        ],
       ),
       functionTool(
         name: 'validate_html',
-        description: 'Validate an HTML file or inline HTML for mobile WebView readiness. Returns compact structural warnings; does not run browser scripts.',
+        description:
+            'Validate an HTML file or inline HTML for mobile WebView readiness. Returns compact structural warnings; does not run browser scripts.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative HTML file path, or empty when html is provided.'},
-          'html': {'type': 'string', 'description': 'Inline HTML, or empty when path is provided.'},
-          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to validate.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative HTML file path, or empty when html is provided.'
+          },
+          'html': {
+            'type': 'string',
+            'description': 'Inline HTML, or empty when path is provided.'
+          },
+          'max_bytes': {
+            'type': 'integer',
+            'description': 'Maximum bytes to validate.'
+          },
         },
         required: const ['path', 'html', 'max_bytes'],
       ),
       functionTool(
         name: 'validate_json',
-        description: 'Validate a workspace JSON file or inline JSON string. Safe replacement for jq/python -m json.tool; returns syntax status and root type.',
+        description:
+            'Validate a workspace JSON file or inline JSON string. Safe replacement for jq/python -m json.tool; returns syntax status and root type.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative JSON file path, or empty when json is provided.'},
-          'json': {'type': 'string', 'description': 'Inline JSON, or empty when path is provided.'},
-          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to validate.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative JSON file path, or empty when json is provided.'
+          },
+          'json': {
+            'type': 'string',
+            'description': 'Inline JSON, or empty when path is provided.'
+          },
+          'max_bytes': {
+            'type': 'integer',
+            'description': 'Maximum bytes to validate.'
+          },
         },
         required: const ['path', 'json', 'max_bytes'],
       ),
       functionTool(
         name: 'validate_markdown',
-        description: 'Validate a workspace Markdown file or inline Markdown for basic structure and mobile readability. Does not run external markdownlint.',
+        description:
+            'Validate a workspace Markdown file or inline Markdown for basic structure and mobile readability. Does not run external markdownlint.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative Markdown file path, or empty when markdown is provided.'},
-          'markdown': {'type': 'string', 'description': 'Inline Markdown, or empty when path is provided.'},
-          'max_bytes': {'type': 'integer', 'description': 'Maximum bytes to validate.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative Markdown file path, or empty when markdown is provided.'
+          },
+          'markdown': {
+            'type': 'string',
+            'description': 'Inline Markdown, or empty when path is provided.'
+          },
+          'max_bytes': {
+            'type': 'integer',
+            'description': 'Maximum bytes to validate.'
+          },
         },
         required: const ['path', 'markdown', 'max_bytes'],
       ),
       functionTool(
         name: 'apply_patch',
-        description: 'Apply a small unified diff patch inside the MobileCode workspace. Safe replacement for patch/git apply; deletion, binary patches, and outside paths are blocked.',
+        description:
+            'Apply a small unified diff patch inside the MobileCode workspace. Safe replacement for patch/git apply; deletion, binary patches, and outside paths are blocked.',
         properties: const {
-          'patch': {'type': 'string', 'description': 'Unified diff patch with ---/+++ headers and @@ hunks.'},
-          'reason': {'type': 'string', 'description': 'Short reason for applying this patch.'},
+          'patch': {
+            'type': 'string',
+            'description':
+                'Unified diff patch with ---/+++ headers and @@ hunks.'
+          },
+          'reason': {
+            'type': 'string',
+            'description': 'Short reason for applying this patch.'
+          },
         },
         required: const ['patch', 'reason'],
       ),
       functionTool(
         name: 'preview_html',
-        description: 'Prepare an HTML preview from an existing workspace path or inline HTML. Use an empty string for the unused field.',
+        description:
+            'Prepare an HTML preview from an existing workspace path or inline HTML. Use an empty string for the unused field.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative HTML file path, or an empty string when html is provided.'},
-          'html': {'type': 'string', 'description': 'Inline HTML, or an empty string when path is provided.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative HTML file path, or an empty string when html is provided.'
+          },
+          'html': {
+            'type': 'string',
+            'description':
+                'Inline HTML, or an empty string when path is provided.'
+          },
         },
         required: const ['path', 'html'],
       ),
       functionTool(
         name: 'preview_snapshot',
-        description: 'Create a lightweight evidence snapshot for a prepared WebView preview. This records metadata/DOM validation only and never claims a native bitmap screenshot unless an image artifact exists.',
+        description:
+            'Create a lightweight evidence snapshot for a prepared WebView preview. This records metadata/DOM validation only and never claims a native bitmap screenshot unless an image artifact exists.',
         properties: const {
-          'path': {'type': 'string', 'description': 'Relative HTML file path, or an empty string when url/html is provided.'},
-          'url': {'type': 'string', 'description': 'Preview URL, or an empty string when path/html is provided.'},
-          'html': {'type': 'string', 'description': 'Inline HTML to snapshot, or an empty string when path/url is provided.'},
-          'viewport_width': {'type': 'integer', 'description': 'Expected viewport width for the evidence snapshot.'},
-          'viewport_height': {'type': 'integer', 'description': 'Expected viewport height for the evidence snapshot.'},
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative HTML file path, or an empty string when url/html is provided.'
+          },
+          'url': {
+            'type': 'string',
+            'description':
+                'Preview URL, or an empty string when path/html is provided.'
+          },
+          'html': {
+            'type': 'string',
+            'description':
+                'Inline HTML to snapshot, or an empty string when path/url is provided.'
+          },
+          'viewport_width': {
+            'type': 'integer',
+            'description': 'Expected viewport width for the evidence snapshot.'
+          },
+          'viewport_height': {
+            'type': 'integer',
+            'description': 'Expected viewport height for the evidence snapshot.'
+          },
         },
-        required: const ['path', 'url', 'html', 'viewport_width', 'viewport_height'],
+        required: const [
+          'path',
+          'url',
+          'html',
+          'viewport_width',
+          'viewport_height'
+        ],
       ),
       functionTool(
         name: 'termux_task_start',
-        description: 'Start a typed Termux/MobileCode Helper task when the helper route is configured. This is not raw shell; only named task kinds are accepted and stdout/stderr are evidence-backed.',
+        description:
+            'Start a typed Termux/MobileCode Helper task when the helper route is configured. This is not raw shell; only named task kinds are accepted and stdout/stderr are evidence-backed.',
         properties: const {
-          'task_kind': {'type': 'string', 'description': 'Typed task kind such as project_check, validate, build_preview, flutter_analyze, flutter_test, or npm_build.'},
-          'path': {'type': 'string', 'description': 'Relative workspace path for the task, or "." for workspace root.'},
-          'args_json': {'type': 'string', 'description': 'Small JSON object string for typed task options, or "{}". Never pass raw shell.'},
-          'timeout_ms': {'type': 'integer', 'description': 'Timeout in milliseconds, 1000 to 120000.'},
-          'max_output_bytes': {'type': 'integer', 'description': 'Maximum stdout/stderr bytes to keep in evidence.'},
-          'reason': {'type': 'string', 'description': 'Short reason for starting this typed task.'},
+          'task_kind': {
+            'type': 'string',
+            'description':
+                'Typed task kind such as project_check, validate, build_preview, flutter_analyze, flutter_test, or npm_build.'
+          },
+          'path': {
+            'type': 'string',
+            'description':
+                'Relative workspace path for the task, or "." for workspace root.'
+          },
+          'args_json': {
+            'type': 'string',
+            'description':
+                'Small JSON object string for typed task options, or "{}". Never pass raw shell.'
+          },
+          'timeout_ms': {
+            'type': 'integer',
+            'description': 'Timeout in milliseconds, 1000 to 120000.'
+          },
+          'max_output_bytes': {
+            'type': 'integer',
+            'description': 'Maximum stdout/stderr bytes to keep in evidence.'
+          },
+          'reason': {
+            'type': 'string',
+            'description': 'Short reason for starting this typed task.'
+          },
         },
-        required: const ['task_kind', 'path', 'args_json', 'timeout_ms', 'max_output_bytes', 'reason'],
+        required: const [
+          'task_kind',
+          'path',
+          'args_json',
+          'timeout_ms',
+          'max_output_bytes',
+          'reason'
+        ],
       ),
       functionTool(
         name: 'report_result',
-        description: 'Report the final result after tool observations. This does not execute device, shell, Git, or network actions.',
+        description:
+            'Report the final result after tool observations. This does not execute device, shell, Git, or network actions.',
         properties: const {
-          'status': {'type': 'string', 'description': 'One of success, blocked, failed, or partial.'},
-          'summary': {'type': 'string', 'description': 'Short user-facing result summary.'},
-          'detail': {'type': 'string', 'description': 'Useful details, evidence IDs, file paths, or recovery notes.'},
+          'status': {
+            'type': 'string',
+            'description': 'One of success, blocked, failed, or partial.'
+          },
+          'summary': {
+            'type': 'string',
+            'description': 'Short user-facing result summary.'
+          },
+          'detail': {
+            'type': 'string',
+            'description':
+                'Useful details, evidence IDs, file paths, or recovery notes.'
+          },
         },
         required: const ['status', 'summary', 'detail'],
       ),
@@ -1080,7 +1763,8 @@ class OpenAiCompatibleToolCallAdapter {
       if (result.path != null) 'path': result.path,
       if (result.url != null) 'url': result.url,
       if (evidence.failureKind != null) 'failureKind': evidence.failureKind,
-      if (evidence.recoveryActions.isNotEmpty) 'recoveryActions': evidence.recoveryActions,
+      if (evidence.recoveryActions.isNotEmpty)
+        'recoveryActions': evidence.recoveryActions,
     };
   }
 }
@@ -1103,14 +1787,17 @@ class OpenAiStreamEvent {
 
 OpenAiStreamEvent parseOpenAiStreamEvent(String line) {
   final trimmed = line.trim();
-  if (trimmed.isEmpty || trimmed.startsWith('event:') || trimmed.startsWith(':')) {
+  if (trimmed.isEmpty ||
+      trimmed.startsWith('event:') ||
+      trimmed.startsWith(':')) {
     return const OpenAiStreamEvent._(kind: OpenAiStreamEventKind.ignore);
   }
   if (trimmed == 'data: [DONE]') {
     return const OpenAiStreamEvent._(kind: OpenAiStreamEventKind.done);
   }
 
-  final payload = trimmed.startsWith('data:') ? trimmed.substring(5).trim() : trimmed;
+  final payload =
+      trimmed.startsWith('data:') ? trimmed.substring(5).trim() : trimmed;
   if (payload.isEmpty) {
     return const OpenAiStreamEvent._(kind: OpenAiStreamEventKind.ignore);
   }
@@ -1120,7 +1807,8 @@ OpenAiStreamEvent parseOpenAiStreamEvent(String line) {
   if (payload.startsWith(':')) {
     return const OpenAiStreamEvent._(kind: OpenAiStreamEventKind.ignore);
   }
-  return OpenAiStreamEvent._(kind: OpenAiStreamEventKind.payload, payload: payload);
+  return OpenAiStreamEvent._(
+      kind: OpenAiStreamEventKind.payload, payload: payload);
 }
 
 String _messageContent(Object? content) {
@@ -1188,7 +1876,8 @@ Map<String, dynamic> _repairMalformedArguments(String raw) {
     return {
       'content': html,
       'overwrite': true,
-      '_adapterArgumentRepair': 'recovered complete HTML from malformed tool arguments',
+      '_adapterArgumentRepair':
+          'recovered complete HTML from malformed tool arguments',
     };
   }
   return const {};
@@ -1238,7 +1927,8 @@ String _safeWritePath(Map<String, dynamic> args, String content) {
   ]);
   if (explicit.isNotEmpty) return explicit;
   final lowerContent = content.toLowerCase();
-  if (lowerContent.contains('<!doctype html') || lowerContent.contains('<html')) {
+  if (lowerContent.contains('<!doctype html') ||
+      lowerContent.contains('<html')) {
     return 'index.html';
   }
   return '';
@@ -1254,16 +1944,38 @@ String _writePathRepairNote(Map<String, dynamic> args, String resolvedPath) {
     'name',
   ]);
   if (aliasKey.isNotEmpty) return 'normalized path from `$aliasKey`';
-  if (resolvedPath == 'index.html') return 'inferred safe workspace path `index.html` for complete HTML';
+  if (resolvedPath == 'index.html')
+    return 'inferred safe workspace path `index.html` for complete HTML';
   return '';
 }
 
-bool _boolArg(Map<String, dynamic> args, String key, {required bool defaultValue}) {
+ActionSchema _larkActionSchema({
+  required ProviderToolCall call,
+  required String kind,
+  required String paramsSummary,
+  Map<String, dynamic> extraParams = const {},
+  ActionRisk risk = ActionRisk.safe,
+}) {
+  return ActionSchema(
+    actionName: MobileCodeAction.larkApi,
+    requestId: call.id,
+    paramsSummary: paramsSummary,
+    risk: risk,
+    params: {
+      'kind': kind,
+      ...extraParams,
+    },
+  );
+}
+
+bool _boolArg(Map<String, dynamic> args, String key,
+    {required bool defaultValue}) {
   final value = args[key];
   return value is bool ? value : defaultValue;
 }
 
-int _intArg(Map<String, dynamic> args, String key, {required int defaultValue}) {
+int _intArg(Map<String, dynamic> args, String key,
+    {required int defaultValue}) {
   final value = args[key];
   if (value is int && value > 0) return value;
   if (value is num && value > 0) return value.toInt();

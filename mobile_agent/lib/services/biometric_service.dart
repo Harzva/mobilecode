@@ -72,9 +72,6 @@ class BiometricService {
   /// Cached list of available biometrics (refreshed on each call).
   List<BiometricType> _cachedBiometrics = [];
 
-  /// Whether the service has checked availability at least once.
-  bool _hasCheckedAvailability = false;
-
   /// Cached availability result.
   bool _cachedCanCheck = false;
 
@@ -100,12 +97,10 @@ class BiometricService {
   Future<bool> canCheckBiometrics() async {
     try {
       _cachedCanCheck = await _localAuth.canCheckBiometrics;
-      _hasCheckedAvailability = true;
       return _cachedCanCheck;
     } on PlatformException catch (e) {
       debugPrint('[BiometricService] canCheckBiometrics error: $e');
       _cachedCanCheck = false;
-      _hasCheckedAvailability = true;
       return false;
     }
   }
@@ -116,7 +111,6 @@ class BiometricService {
   Future<List<BiometricType>> getAvailableBiometrics() async {
     try {
       _cachedBiometrics = await _localAuth.getAvailableBiometrics();
-      _hasCheckedAvailability = true;
       debugPrint('[BiometricService] Available: $_cachedBiometrics');
       return List.unmodifiable(_cachedBiometrics);
     } on PlatformException catch (e) {
@@ -179,39 +173,22 @@ class BiometricService {
         );
       }
 
-      final authOptions = AuthenticationOptions(
-        stickyAuth: stickyAuth,
-        useErrorDialogs: useErrorDialogs,
-        sensitiveTransaction: sensitiveTransaction,
-        biometricOnly: false, // Allow PIN/pattern fallback.
-      );
-
       final result = await _localAuth.authenticate(
         localizedReason: reason,
         authMessages: const [
           AndroidAuthMessages(
             signInTitle: 'Biometric Authentication',
             cancelButton: 'Cancel',
-            biometricHint: 'Verify your identity',
-            biometricNotRecognized: 'Not recognized, try again',
-            biometricSuccess: 'Authentication successful',
-            deviceCredentialsRequiredTitle: 'Device credentials required',
-            deviceCredentialsSetupDescription:
-                'Please set up device credentials (PIN, pattern, or password)',
-            goToSettingsButton: 'Go to Settings',
-            goToSettingsDescription:
-                'Please set up biometric authentication in device settings',
+            signInHint: 'Verify your identity',
           ),
           IOSAuthMessages(
             cancelButton: 'Cancel',
-            goToSettingsButton: 'Go to Settings',
-            goToSettingsDescription:
-                'Please set up biometric authentication in device settings',
-            lockOut:
-                'Biometric authentication is locked. Please use device PIN.',
+            localizedFallbackTitle: 'Use Passcode',
           ),
         ],
-        options: authOptions,
+        biometricOnly: false,
+        sensitiveTransaction: sensitiveTransaction,
+        persistAcrossBackgrounding: stickyAuth,
       );
 
       debugPrint('[BiometricService] Authenticate result: $result');
@@ -251,24 +228,20 @@ class BiometricService {
 
       final result = await _localAuth.authenticate(
         localizedReason: reason,
-        options: const AuthenticationOptions(
-          stickyAuth: false,
-          useErrorDialogs: true,
-          sensitiveTransaction: true,
-          biometricOnly: true,
-        ),
         authMessages: const [
           AndroidAuthMessages(
             signInTitle: 'Strong Biometric Required',
             cancelButton: 'Cancel',
-            biometricHint: 'Verify with biometric',
-            biometricSuccess: 'Authentication successful',
+            signInHint: 'Verify with biometric',
           ),
           IOSAuthMessages(
             cancelButton: 'Cancel',
-            lockOut: 'Biometric authentication is locked.',
+            localizedFallbackTitle: '',
           ),
         ],
+        biometricOnly: true,
+        sensitiveTransaction: true,
+        persistAcrossBackgrounding: stickyAuth,
       );
 
       return result;
@@ -337,8 +310,10 @@ class BiometricService {
           return Platform.isIOS ? 'Touch ID' : 'Fingerprint';
         case BiometricType.iris:
           return 'Iris';
-        case BiometricType.unknown:
-          return 'Unknown biometric';
+        case BiometricType.strong:
+          return 'Strong biometric';
+        case BiometricType.weak:
+          return 'Weak biometric';
       }
     }).toList();
 

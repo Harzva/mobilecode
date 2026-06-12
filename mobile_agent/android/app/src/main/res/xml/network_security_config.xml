@@ -25,7 +25,6 @@
     <domain includeSubdomains="true">api.github.com</domain>
     <domain includeSubdomains="true">github.com</domain>
     <domain includeSubdomains="true">openrouter.ai</domain>
-    <domain includeSubdomains="true">generativelanguage.googleapis.com</domain>
     <trust-anchors>
       <certificates src="system"/>
     </trust-anchors>

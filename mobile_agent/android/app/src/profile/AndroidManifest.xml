@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.mobilecode.app">
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- 
       PROFILE build only - performance profiling
       This file is ONLY used in profile builds (flutter run --profile)
@@ -15,7 +15,7 @@
     <application 
         android:usesCleartextTraffic="false"
         android:networkSecurityConfig="@xml/network_security_config"
-        android:debuggable="false">
+        tools:replace="android:usesCleartextTraffic,android:networkSecurityConfig">
     </application>
     
     <uses-permission android:name="android.permission.INTERNET"/>

@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.mobilecode.app">
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- 
       DEBUG build only - allows debugging tools
       This file is ONLY used in debug builds (flutter run)
@@ -9,7 +9,8 @@
     <!-- Debug: Allow cleartext for local dev server preview -->
     <application 
         android:usesCleartextTraffic="true"
-        android:networkSecurityConfig="@xml/network_security_config_debug">
+        android:networkSecurityConfig="@xml/network_security_config_debug"
+        tools:replace="android:usesCleartextTraffic,android:networkSecurityConfig">
     </application>
     
     <!-- Debug: Allow internet for Flutter debugging -->

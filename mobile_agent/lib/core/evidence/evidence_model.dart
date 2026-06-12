@@ -224,6 +224,7 @@ enum MobileCodeAction {
   webSearch,
   fetchUrl,
   previewSnapshot,
+  larkApi,
   publishPages,
   runCommand,
   cloneRepo,
@@ -315,8 +316,7 @@ class ActionSchema {
   }
 
   @override
-  String toString() =>
-      'ActionSchema(${actionName.name}, risk=${risk.name})';
+  String toString() => 'ActionSchema(${actionName.name}, risk=${risk.name})';
 }
 
 /// Execution evidence for a single MobileCode action.
@@ -479,9 +479,7 @@ class ActionEvidence {
               ? EvidenceSeverity.high
               : EvidenceSeverity.medium),
       title: '${actionName.name} ${success ? "succeeded" : "failed"}',
-      summary: paramsSummary.isNotEmpty
-          ? paramsSummary
-          : actionName.name,
+      summary: paramsSummary.isNotEmpty ? paramsSummary : actionName.name,
       details: toJson(),
       status: success ? EvidenceStatus.executed : EvidenceStatus.failed,
       createdAt: startedAt,
@@ -529,14 +527,12 @@ class ActionEvidence {
               ?.map((e) => e.toString())
               .toList() ??
           const [],
-      urls: (json['urls'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const [],
-      logs: (json['logs'] as List<dynamic>?)
-              ?.map((e) => e.toString())
-              .toList() ??
-          const [],
+      urls:
+          (json['urls'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+              const [],
+      logs:
+          (json['logs'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+              const [],
       exitCode: json['exitCode'] as int?,
       failureKind: json['failureKind'] as String?,
       recoveryActions: (json['recoveryActions'] as List<dynamic>?)
@@ -548,8 +544,7 @@ class ActionEvidence {
   }
 
   @override
-  String toString() =>
-      'ActionEvidence(${actionName.name}, success=$success, '
+  String toString() => 'ActionEvidence(${actionName.name}, success=$success, '
       'duration=${durationMs}ms${failureKind != null ? ", fail=$failureKind" : ""})';
 }
 

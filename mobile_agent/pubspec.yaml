@@ -26,6 +26,9 @@ dependencies:
 
   # SSH & Secure Storage
   flutter_secure_storage: ^9.2.4
+  local_auth: ^3.0.1
+  local_auth_android: ^2.0.9
+  local_auth_darwin: ^2.0.3
   encrypt: ^5.0.3
   crypto: ^3.0.6
 

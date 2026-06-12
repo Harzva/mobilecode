@@ -54,7 +54,8 @@ class _FeatureFlagsScreenState extends State<FeatureFlagsScreen> {
           ),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, size: 20, color: AppTheme.textSecondary),
+          icon: const Icon(Icons.arrow_back_ios_new,
+              size: 20, color: AppTheme.textSecondary),
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
@@ -84,10 +85,12 @@ class _FeatureFlagsScreenState extends State<FeatureFlagsScreen> {
           return Stack(
             children: [
               ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 itemCount: featuresByCategory.length,
                 itemBuilder: (context, categoryIndex) {
-                  final entry = featuresByCategory.entries.elementAt(categoryIndex);
+                  final entry =
+                      featuresByCategory.entries.elementAt(categoryIndex);
                   return _buildCategorySection(
                     category: entry.key,
                     features: entry.value,
@@ -248,7 +251,9 @@ class _FeatureFlagsScreenState extends State<FeatureFlagsScreen> {
               decoration: BoxDecoration(
                 color: isCore
                     ? categoryColor.withOpacity(0.1)
-                    : (feature.value ? categoryColor.withOpacity(0.2) : AppTheme.surfaceHover),
+                    : (feature.value
+                        ? categoryColor.withOpacity(0.2)
+                        : AppTheme.surfaceHover),
                 borderRadius: BorderRadius.circular(9),
               ),
               child: Center(
@@ -278,14 +283,17 @@ class _FeatureFlagsScreenState extends State<FeatureFlagsScreen> {
                             fontFamily: AppTheme.fontBody,
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: isCore ? AppTheme.textSecondary : AppTheme.textPrimary,
+                            color: isCore
+                                ? AppTheme.textSecondary
+                                : AppTheme.textPrimary,
                           ),
                         ),
                       ),
                       if (isExperimental && !isCore) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppTheme.warning.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(5),
@@ -315,7 +323,8 @@ class _FeatureFlagsScreenState extends State<FeatureFlagsScreen> {
                       if (isCore) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppTheme.textDisabled.withOpacity(0.15),
                             borderRadius: BorderRadius.circular(5),
@@ -487,7 +496,8 @@ class _FeatureFlagsScreenState extends State<FeatureFlagsScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.error,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             child: const Text(
               '重置',
@@ -562,8 +572,10 @@ class _FeatureFlagsScreenState extends State<FeatureFlagsScreen> {
         return Icons.terminal;
       case 'github_pages_deploy':
         return Icons.rocket_launch;
+      case 'lark_native_api':
+        return Icons.account_tree;
       case 'lark_cli':
-        return Icons.business_center;
+        return Icons.terminal;
       case 'team_collaboration':
         return Icons.groups;
       case 'offline_ai':
@@ -660,8 +672,10 @@ class FeatureQuickToggle extends StatelessWidget {
         return Icons.terminal;
       case 'github_pages_deploy':
         return Icons.rocket_launch;
+      case 'lark_native_api':
+        return Icons.account_tree;
       case 'lark_cli':
-        return Icons.business_center;
+        return Icons.terminal;
       case 'team_collaboration':
         return Icons.groups;
       case 'offline_ai':
@@ -707,7 +721,8 @@ class ExperimentalBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.warning_amber, size: fontSize + 1, color: AppTheme.warning),
+          Icon(Icons.warning_amber,
+              size: fontSize + 1, color: AppTheme.warning),
           const SizedBox(width: 2),
           Text(
             '实验功能',

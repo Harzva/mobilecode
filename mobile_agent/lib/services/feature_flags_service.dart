@@ -269,10 +269,19 @@ class FeatureFlagsService extends ChangeNotifier {
       category: FeatureCategory.advanced,
       defaultValue: true,
     ),
+    'lark_native_api': FeatureFlag(
+      id: 'lark_native_api',
+      name: 'Lark Native API',
+      description:
+          '原生 Lark OpenAPI 协议、token 模式、Docs/Drive/Sheets/Base/Wiki payload 和 evidence 预览',
+      category: FeatureCategory.advanced,
+      defaultValue: true,
+    ),
     'lark_cli': FeatureFlag(
       id: 'lark_cli',
-      name: 'Lark CLI 连接器',
-      description: '通过 RuntimeProvider 受控检测 lark-cli、授权状态和后续飞书/Lark结构化动作',
+      name: 'Lark CLI Dev Probe',
+      description:
+          '仅作为 Mac/CI/RuntimeProvider 开发探针，用于验证官方 CLI 行为和授权状态，不作为 App 内置运行时',
       category: FeatureCategory.advanced,
       defaultValue: false,
     ),
@@ -404,7 +413,8 @@ class FeatureFlagsService extends ChangeNotifier {
 
   void _ensureInitialized() {
     if (!_initialized) {
-      throw StateError('FeatureFlagsService not initialized. Call initialize() first.');
+      throw StateError(
+          'FeatureFlagsService not initialized. Call initialize() first.');
     }
   }
 
@@ -485,15 +495,16 @@ class FeatureFlagsService extends ChangeNotifier {
     final result = <FeatureCategory, List<FeatureFlag>>{};
     for (final feature in allFeatures.values) {
       result.putIfAbsent(feature.category, () => []).add(
-        feature.copyWith(
-          currentValue: _featureStates[feature.id] ?? feature.defaultValue,
-        ),
-      );
+            feature.copyWith(
+              currentValue: _featureStates[feature.id] ?? feature.defaultValue,
+            ),
+          );
     }
 
     // Sort categories and features within each category
     final sorted = Map.fromEntries(
-      result.entries.toList()..sort((a, b) => a.key.sortOrder.compareTo(b.key.sortOrder)),
+      result.entries.toList()
+        ..sort((a, b) => a.key.sortOrder.compareTo(b.key.sortOrder)),
     );
 
     for (final list in sorted.values) {
@@ -509,7 +520,8 @@ class FeatureFlagsService extends ChangeNotifier {
 
     return allFeatures.values
         .where((f) => f.category == category)
-        .map((f) => f.copyWith(currentValue: _featureStates[f.id] ?? f.defaultValue))
+        .map((f) =>
+            f.copyWith(currentValue: _featureStates[f.id] ?? f.defaultValue))
         .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
   }
@@ -519,7 +531,8 @@ class FeatureFlagsService extends ChangeNotifier {
     _ensureInitialized();
 
     return allFeatures.values
-        .map((f) => f.copyWith(currentValue: _featureStates[f.id] ?? f.defaultValue))
+        .map((f) =>
+            f.copyWith(currentValue: _featureStates[f.id] ?? f.defaultValue))
         .toList()
       ..sort((a, b) {
         final catCompare = a.category.sortOrder.compareTo(b.category.sortOrder);
@@ -644,7 +657,7 @@ class FeatureFlagsService extends ChangeNotifier {
       final jsonStr = _prefs?.getString(_storageKey);
       if (jsonStr == null || jsonStr.isEmpty) return;
 
-      final Map<String, dynamic> decoded = jsonDecode(jsonStr);
+      final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
       _featureStates.clear();
       for (final entry in decoded.entries) {
         _featureStates[entry.key] = entry.value as bool;

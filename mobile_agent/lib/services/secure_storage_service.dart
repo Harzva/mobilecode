@@ -124,7 +124,7 @@ class SecureStorageService {
 
   static const IOSOptions _iosOptions = IOSOptions(
     accountName: 'mobile_coding_secure',
-    accessibility: KeychainAccessibility.whenUnlockedThisDeviceOnly,
+    accessibility: KeychainAccessibility.unlocked_this_device,
   );
 
   // -- In-memory secure cache (cleared on lock) -------------------------
@@ -301,7 +301,8 @@ class SecureStorageService {
         iOptions: _iosOptions,
       );
 
-      final computedHash = sha256.convert(utf8.encode(encryptedBase64)).toString();
+      final computedHash =
+          sha256.convert(utf8.encode(encryptedBase64)).toString();
 
       if (storedHash == null) {
         // First run: store integrity hash.
@@ -314,7 +315,8 @@ class SecureStorageService {
       } else if (storedHash != computedHash) {
         // Integrity check failed: key material may have been tampered.
         throw const TamperDetectedException(
-          message: 'Encryption integrity check failed. Key material may have been compromised.',
+          message:
+              'Encryption integrity check failed. Key material may have been compromised.',
         );
       }
 
@@ -340,7 +342,8 @@ class SecureStorageService {
   void _ensureInitialized() {
     if (!_initialized) {
       throw const SecureStorageException(
-        message: 'SecureStorageService not initialized. Call initialize() first.',
+        message:
+            'SecureStorageService not initialized. Call initialize() first.',
         operation: '_ensureInitialized',
       );
     }
@@ -652,7 +655,8 @@ class SecureStorageService {
   }
 
   /// Update the stored list of providers.
-  Future<void> _updateProvidersList(String provider, {required bool add}) async {
+  Future<void> _updateProvidersList(String provider,
+      {required bool add}) async {
     final providers = await getStoredProviders();
 
     if (add) {
@@ -688,7 +692,8 @@ class SecureStorageService {
   /// Authenticate with biometrics.
   ///
   /// Returns `true` if authentication succeeded, `false` otherwise.
-  Future<bool> authenticateWithBiometric({String reason = 'Access secure data'}) async {
+  Future<bool> authenticateWithBiometric(
+      {String reason = 'Access secure data'}) async {
     try {
       final success = await _biometricService.authenticate(
         reason: reason,
@@ -764,7 +769,8 @@ class SecureStorageService {
       // Copy to clipboard.
       await Clipboard.setData(ClipboardData(text: text));
 
-      debugPrint('[SecureStorage] Copied to clipboard (auto-clear in ${clearAfter.inSeconds}s)');
+      debugPrint(
+          '[SecureStorage] Copied to clipboard (auto-clear in ${clearAfter.inSeconds}s)');
 
       // Schedule auto-clear.
       Timer(clearAfter, () async {
@@ -974,7 +980,8 @@ class TamperDetector {
     if (Platform.isAndroid) {
       try {
         const platform = MethodChannel('mobile_coding/platform');
-        final installer = await platform.invokeMethod<String>('getInstallerPackage');
+        final installer =
+            await platform.invokeMethod<String>('getInstallerPackage');
         // Valid installers: com.android.vending (Play Store), com.amazon.veneta
         final validInstallers = [
           'com.android.vending',

@@ -92,6 +92,10 @@ const hardProblems = [
     text: 'Explorer/Reviewer 可以后台只读扫描和总结；真正写入必须回到主 AgentLoop，通过 ActionRunner 统一应用。',
   },
   {
+    title: 'Lark 是 Agent-facing API，不是 CLI 外壳',
+    text: '手机端要暴露 Docx、Sheets、Base、Wiki 等 typed actions；CLI/MCP 只作为 Mac、CI 或 relay 侧的验证参考。',
+  },
+  {
     title: '移动端信息架构密度',
     text: 'Chat、Tools、Settings、Drawer、bottom sheets 和 pushed routes 必须有统一导航语义，避免用户不知道自己在哪一层。',
   },
@@ -100,6 +104,7 @@ const hardProblems = [
 const methods = [
   'Evidence-first：每个高层能力都要能指向 artifact、run、release asset、log 或 ActionEvidence。',
   'Typed tools over shell：把 Unix-like 意图收敛成 typed tool，而不是开放 exec_shell。',
+  'Agent-facing Lark：模型只能调用固定 Lark OpenAPI action，写入必须先 preview，再由用户确认。',
   'Fail closed：缺依赖、越界路径、raw command、超时和 runtime lost 都产出 failureKind 与恢复建议。',
   'GitHub-first builds：本地 Flutter 不可用时，不反复卡死；用 GitHub Actions 作为权威构建环境。',
   'Navigation contract：侧边栏、主功能区、临时面板、独立页面四层分工固定，减少移动端迷路。',
@@ -119,13 +124,36 @@ const galleryPatterns = [
   },
   {
     title: 'Tool Bridge',
-    text: 'MCP/Runtime/GitHub/WebView 统一进入 typed tool bridge，每次调用都能产出 evidence。',
+    text: 'MCP/Runtime/GitHub/WebView/Lark 统一进入 typed tool bridge，每次调用都能产出 evidence。',
     icon: Workflow,
   },
   {
     title: 'Benchmark Surface',
     text: 'MobileHarnessBench 从文档进入 App 内 Benchmark Lab，但真实 mobile evidence 仍单独计数。',
     icon: Cpu,
+  },
+];
+
+const productNarrative = [
+  {
+    title: '产品展示',
+    text: 'README 与 Pages 只展示 phone-native coding harness、产品预览图、walkthrough 和公开 release，不暴露内部工作线。',
+    icon: Smartphone,
+  },
+  {
+    title: '研究方向',
+    text: 'Mobile Harness 论文、PhoneWorld 分析和长期 roadmp 共同说明：手机 Agent 的核心资产是可控环境、任务、验证器和轨迹。',
+    icon: FileSearch,
+  },
+  {
+    title: 'Benchmark 证据',
+    text: 'MobileHarnessBench 明确区分 T0 fixture、移动端证据、baseline readiness 和 submission gate，避免把准备工作写成实验结果。',
+    icon: Cpu,
+  },
+  {
+    title: '双端构建',
+    text: '正式 release 由 GitHub Actions 产出 Android APK、iOS simulator app zip 和 unsigned archive，构建证据统一指向 main。',
+    icon: PackageCheck,
   },
 ];
 
@@ -184,6 +212,23 @@ export default function Developer() {
             Helper 任务可见性、metadata-only 预览诚实表达和临时面板返回问题；下一步继续攻克真实截图级预览和更稳定的后台只读 worker。
           </p>
         </div>
+
+        <section className="developer-section">
+          <div className="section-heading compact">
+            <p className="eyebrow">Public Narrative</p>
+            <h2>四条公开主线</h2>
+            <p>公开页面统一围绕产品、研究、benchmark 证据和双端构建，不再使用内部恢复分支叙事。</p>
+          </div>
+          <div className="solved-grid">
+            {productNarrative.map(({ title, text, icon: Icon }) => (
+              <article key={title} className="solved-card">
+                <Icon size={22} />
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </article>
+            ))}
+          </div>
+        </section>
 
         <section className="developer-section">
           <div className="section-heading compact">

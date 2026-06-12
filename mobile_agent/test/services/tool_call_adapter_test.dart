@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_agent/core/evidence/action_evidence_store.dart';
 import 'package:mobile_agent/core/evidence/action_runner.dart';
 import 'package:mobile_agent/core/evidence/evidence_model.dart';
+import 'package:mobile_agent/services/lark_api_service.dart';
 import 'package:mobile_agent/services/tool_call_adapter.dart';
 
 void main() {
@@ -55,12 +56,14 @@ void main() {
     expect(chat.isDeepSeekLegacy, true);
     expect(chat.isDeepSeekV4, false);
     expect(chat.supportsNativeToolCalls, true);
-    expect(reasoner.deepSeekProfile, DeepSeekProviderProfileKind.legacyReasoner);
+    expect(
+        reasoner.deepSeekProfile, DeepSeekProviderProfileKind.legacyReasoner);
     expect(reasoner.isDeepSeekLegacy, true);
     expect(reasoner.supportsNativeToolCalls, true);
   });
 
-  test('excludes DeepSeek experimental model that does not support tool calls', () {
+  test('excludes DeepSeek experimental model that does not support tool calls',
+      () {
     final profile = ToolCallProviderProfile.detect(
       'https://api.deepseek.com',
       'DeepSeek-V3.2-Exp',
@@ -77,7 +80,8 @@ void main() {
   test('builds strict tool schema for safe MobileCode tools only', () {
     final tools = OpenAiCompatibleToolCallAdapter.toolDefinitions(strict: true);
     final names = tools
-        .map((tool) => ((tool['function'] as Map<String, dynamic>)['name'] as String))
+        .map((tool) =>
+            ((tool['function'] as Map<String, dynamic>)['name'] as String))
         .toList();
 
     expect(names, [
@@ -93,6 +97,13 @@ void main() {
       'agent_close',
       'web_search',
       'fetch_url',
+      'lark_readiness',
+      'lark_wiki_list_spaces',
+      'lark_docx_create',
+      'lark_docx_append_blocks',
+      'lark_sheets_append',
+      'lark_bitable_create_records',
+      'lark_drive_upload_preview',
       'write_file',
       'read_file',
       'copy_file',
@@ -123,10 +134,16 @@ void main() {
 
   test('filters tool schema to currently exposed MobileCode tools', () {
     final tools = OpenAiCompatibleToolCallAdapter.toolDefinitions(
-      allowedToolNames: const ['list_files', 'write_file', 'read_file', 'report_result'],
+      allowedToolNames: const [
+        'list_files',
+        'write_file',
+        'read_file',
+        'report_result'
+      ],
     );
     final names = tools
-        .map((tool) => ((tool['function'] as Map<String, dynamic>)['name'] as String))
+        .map((tool) =>
+            ((tool['function'] as Map<String, dynamic>)['name'] as String))
         .toList();
 
     expect(names, ['list_files', 'write_file', 'read_file', 'report_result']);
@@ -140,13 +157,15 @@ void main() {
       allowedToolNames: const ['agent_open', 'agent_eval', 'agent_close'],
     );
     final names = tools
-        .map((tool) => ((tool['function'] as Map<String, dynamic>)['name'] as String))
+        .map((tool) =>
+            ((tool['function'] as Map<String, dynamic>)['name'] as String))
         .toList();
 
     expect(names, ['agent_open', 'agent_eval', 'agent_close']);
   });
 
-  test('parses non-streaming tool_calls and maps write_file to ActionSchema', () {
+  test('parses non-streaming tool_calls and maps write_file to ActionSchema',
+      () {
     final adapter = OpenAiCompatibleToolCallAdapter(
       profile: ToolCallProviderProfile.detect(
         'https://api.deepseek.com',
@@ -167,7 +186,8 @@ void main() {
                 'type': 'function',
                 'function': {
                   'name': 'write_file',
-                  'arguments': '{"path":"game/index.html","content":"<!doctype html>","overwrite":true}',
+                  'arguments':
+                      '{"path":"game/index.html","content":"<!doctype html>","overwrite":true}',
                 },
               },
             ],
@@ -204,7 +224,8 @@ void main() {
 
     expect(schema.params['path'], 'index.html');
     expect(schema.params['content'], contains('<body>Hi</body>'));
-    expect(schema.params['adapterRepair'], contains('inferred safe workspace path'));
+    expect(schema.params['adapterRepair'],
+        contains('inferred safe workspace path'));
   });
 
   test('write_file accepts common file path aliases', () {
@@ -225,10 +246,12 @@ void main() {
     ))!;
 
     expect(schema.params['path'], 'demo.html');
-    expect(schema.params['adapterRepair'], contains('normalized path from `filename`'));
+    expect(schema.params['adapterRepair'],
+        contains('normalized path from `filename`'));
   });
 
-  test('maps history status validators and typed termux tools to ActionSchema', () {
+  test('maps history status validators and typed termux tools to ActionSchema',
+      () {
     final adapter = OpenAiCompatibleToolCallAdapter(
       profile: ToolCallProviderProfile.detect(
         'https://api.deepseek.com',
@@ -304,7 +327,9 @@ void main() {
     expect(termux.params['taskKind'], 'project_check');
   });
 
-  test('repairs malformed write_file arguments that contain a complete HTML document', () {
+  test(
+      'repairs malformed write_file arguments that contain a complete HTML document',
+      () {
     final adapter = OpenAiCompatibleToolCallAdapter(
       profile: ToolCallProviderProfile.detect(
         'https://api.deepseek.com',
@@ -325,7 +350,8 @@ void main() {
                 'type': 'function',
                 'function': {
                   'name': 'write_file',
-                  'arguments': '<!doctype html><html><body>Recovered</body></html>',
+                  'arguments':
+                      '<!doctype html><html><body>Recovered</body></html>',
                 },
               },
             ],
@@ -379,7 +405,161 @@ void main() {
     expect(snapshot.params['viewportWidth'], 390);
   });
 
-  test('maps list/find/grep/summary/copy/mkdir/delete/move/snapshot/diff/restore/validate/patch to safe ActionSchema actions', () {
+  test('maps typed Lark tools to native Lark API ActionSchema', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-pro',
+      ),
+    );
+
+    final appendDoc = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_lark_doc',
+      name: 'lark_docx_append_blocks',
+      arguments: {
+        'document_id': 'doccnDemo',
+        'block_id': '',
+        'title': 'MobileCode run',
+        'content': 'Verifier passed',
+        'dry_run': true,
+        'confirm': false,
+      },
+    ))!;
+
+    expect(appendDoc.actionName, MobileCodeAction.larkApi);
+    expect(appendDoc.params['kind'], 'docxAppendBlocks');
+    expect(appendDoc.params['documentId'], 'doccnDemo');
+    expect(appendDoc.params['dryRun'], true);
+    expect(appendDoc.params['confirm'], false);
+  });
+
+  test('keeps Lark CLI parity catalog aligned with native actions', () {
+    final service = LarkApiService();
+    final draft = const LarkApiPayloadDraft(
+      title: 'MobileCode parity',
+      content: 'Verifier evidence',
+      documentId: 'doccnDemo',
+      blockId: 'blockDemo',
+      driveParentNode: 'fldcnDemo',
+      spreadsheetToken: 'shtcnDemo',
+      bitableAppToken: 'bascnDemo',
+      bitableTableId: 'tblDemo',
+    );
+    final expectedPaths = <LarkApiActionKind, String>{
+      LarkApiActionKind.docxCreate: 'POST /docx/v1/documents',
+      LarkApiActionKind.docxAppendBlocks:
+          'POST /docx/v1/documents/{document_id}/blocks/{block_id}/children',
+      LarkApiActionKind.sheetsAppend:
+          'POST /sheets/v2/spreadsheets/{spreadsheetToken}/values_append',
+      LarkApiActionKind.driveUploadSmallFile: 'POST /drive/v1/files/upload_all',
+      LarkApiActionKind.wikiListSpaces: 'GET /wiki/v2/spaces?page_size=10',
+    };
+
+    for (final entry in expectedPaths.entries) {
+      final parity = LarkApiService.cliParityFor(entry.key);
+      final spec = service.buildSpec(kind: entry.key, draft: draft);
+
+      expect(parity['cliCommandTemplate'], isNot('N/A'));
+      expect(parity['mobileNativePath'], entry.value);
+      expect(parity['requiredScopes'], isNotEmpty);
+      expect(spec.requiredScopes, isNotEmpty);
+      expect(spec.method, entry.value.split(' ').first);
+    }
+  });
+
+  test('records Lark CLI reference on dry-run evidence', () async {
+    final workspace =
+        await Directory.systemTemp.createTemp('mobilecode_lark_dry_run_');
+    final store = ActionEvidenceStore();
+    final runner = ActionRunner(
+      workspaceRootPath: workspace.path,
+      evidenceStore: store,
+      larkApiService: _FakeLarkApiService(),
+    );
+
+    try {
+      final result = await runner.run(ActionSchema(
+        actionName: MobileCodeAction.larkApi,
+        requestId: 'call_lark_dry_run',
+        paramsSummary: 'test lark dry-run evidence',
+        params: const {
+          'kind': 'wikiListSpaces',
+          'dryRun': true,
+          'confirm': false,
+        },
+      ));
+
+      expect(result.success, true);
+      expect(result.evidence.metadata['dryRun'], true);
+      final cliReference =
+          result.evidence.metadata['cliReference'] as Map<String, Object?>;
+      expect(cliReference['action'], 'wikiListSpaces');
+      expect(
+          cliReference['mobileNativePath'], 'GET /wiki/v2/spaces?page_size=10');
+    } finally {
+      if (await workspace.exists()) {
+        await workspace.delete(recursive: true);
+      }
+    }
+  });
+
+  test('records Lark failure attribution for native API execution', () async {
+    final workspace =
+        await Directory.systemTemp.createTemp('mobilecode_lark_failure_');
+    final store = ActionEvidenceStore();
+    final runner = ActionRunner(
+      workspaceRootPath: workspace.path,
+      evidenceStore: store,
+      larkApiService: _FakeLarkApiService(
+        response: const LarkApiCallResult(
+          success: false,
+          statusCode: 403,
+          elapsedMs: 17,
+          endpoint: 'https://open.larksuite.com/open-apis/wiki/v2/spaces',
+          tokenMode: 'user_access_token',
+          larkCode: 99991663,
+          larkMessage: 'permission denied',
+          requestId: 'req-lark-403',
+          body: '{"code":99991663,"msg":"permission denied"}',
+          error: 'permission denied',
+        ),
+      ),
+    );
+
+    try {
+      final result = await runner.run(ActionSchema(
+        actionName: MobileCodeAction.larkApi,
+        requestId: 'call_lark_failure',
+        paramsSummary: 'test lark failed evidence attribution',
+        params: const {
+          'kind': 'wikiListSpaces',
+          'dryRun': false,
+          'confirm': false,
+        },
+      ));
+
+      expect(result.success, false);
+      expect(result.evidence.failureKind, ActionFailureKind.authFailed);
+      final attribution = result.evidence.metadata['requestAttribution']
+          as Map<String, Object?>;
+      expect(attribution['tokenMode'], 'user_access_token');
+      expect(attribution['tool'], 'wikiListSpaces');
+      expect(attribution['httpStatus'], 403);
+      expect(attribution['requestId'], 'req-lark-403');
+      expect(attribution['errorCode'], 99991663);
+      expect(attribution['dryRun'], false);
+      final cliReference = attribution['cliReference'] as Map<String, Object?>;
+      expect(cliReference['action'], 'wikiListSpaces');
+    } finally {
+      if (await workspace.exists()) {
+        await workspace.delete(recursive: true);
+      }
+    }
+  });
+
+  test(
+      'maps list/find/grep/summary/copy/mkdir/delete/move/snapshot/diff/restore/validate/patch to safe ActionSchema actions',
+      () {
     final adapter = OpenAiCompatibleToolCallAdapter(
       profile: ToolCallProviderProfile.detect(
         'https://api.deepseek.com',
@@ -480,7 +660,12 @@ void main() {
     final snapshot = adapter.toActionSchema(const ProviderToolCall(
       id: 'call_snapshot',
       name: 'save_snapshot',
-      arguments: {'path': '.', 'label': 'before repair', 'max_files': 40, 'max_bytes': 8192},
+      arguments: {
+        'path': '.',
+        'label': 'before repair',
+        'max_files': 40,
+        'max_bytes': 8192
+      },
     ))!;
     expect(snapshot.actionName, MobileCodeAction.saveSnapshot);
     expect(snapshot.params['path'], '.');
@@ -543,7 +728,9 @@ void main() {
     expect(patch.params['reason'], 'replace text');
   });
 
-  test('assistant tool-call message preserves reasoning_content and tool_calls JSON', () {
+  test(
+      'assistant tool-call message preserves reasoning_content and tool_calls JSON',
+      () {
     final adapter = OpenAiCompatibleToolCallAdapter(
       profile: ToolCallProviderProfile.detect(
         'https://api.deepseek.com',
@@ -574,7 +761,8 @@ void main() {
                 'type': 'function',
                 'function': {
                   'name': 'write_file',
-                  'arguments': '{"path":"snake/index.html","content":"<!doctype html>","overwrite":true}',
+                  'arguments':
+                      '{"path":"snake/index.html","content":"<!doctype html>","overwrite":true}',
                 },
               },
             ],
@@ -592,7 +780,8 @@ void main() {
     expect(assistantMessage['role'], 'assistant');
     expect(assistantMessage['content'], '');
     expect(assistantMessage.containsKey('finish_reason'), false);
-    expect(assistantMessage['reasoning_content'], 'Need to create one HTML file.');
+    expect(
+        assistantMessage['reasoning_content'], 'Need to create one HTML file.');
     expect(assistantToolCalls.length, 1);
     expect(assistantToolCalls.first['id'], 'call_write');
     expect(assistantToolCalls.first['type'], 'function');
@@ -613,7 +802,10 @@ void main() {
                 {
                   'index': 0,
                   'id': 'call_read',
-                  'function': {'name': 'read_file', 'arguments': '{"path":"index'},
+                  'function': {
+                    'name': 'read_file',
+                    'arguments': '{"path":"index'
+                  },
                 },
               ],
             },
@@ -642,7 +834,8 @@ void main() {
     expect(calls.single.arguments['max_bytes'], 1024);
   });
 
-  test('streams content and reasoning_content together with tool call deltas', () {
+  test('streams content and reasoning_content together with tool call deltas',
+      () {
     final assembler = OpenAiToolCallStreamAssembler()
       ..addChunk({
         'choices': [
@@ -654,7 +847,10 @@ void main() {
                 {
                   'index': 0,
                   'id': 'call_read',
-                  'function': {'name': 'read_file', 'arguments': '{"path":"demo/'},
+                  'function': {
+                    'name': 'read_file',
+                    'arguments': '{"path":"demo/'
+                  },
                 },
               ],
             },
@@ -687,7 +883,9 @@ void main() {
     expect(calls.single.arguments['max_bytes'], 1024);
   });
 
-  test('ignores keep-alive, empty, and DONE chunks when parsing stream payloads', () {
+  test(
+      'ignores keep-alive, empty, and DONE chunks when parsing stream payloads',
+      () {
     final ignoreDone = [
       parseOpenAiStreamEvent(''),
       parseOpenAiStreamEvent('event: ping'),
@@ -772,7 +970,9 @@ void main() {
     expect(calls[1].arguments['overwrite'], isTrue);
   });
 
-  test('choices=[] chunks with usage are ignored and never create fake tool calls', () {
+  test(
+      'choices=[] chunks with usage are ignored and never create fake tool calls',
+      () {
     final assembler = OpenAiToolCallStreamAssembler()
       ..addChunk({
         'id': 'response-id',
@@ -792,7 +992,8 @@ void main() {
                   'id': 'call_report',
                   'function': {
                     'name': 'report_result',
-                    'arguments': '{"status":"success","summary":"ok","detail":"ok"}',
+                    'arguments':
+                        '{"status":"success","summary":"ok","detail":"ok"}',
                   },
                 },
               ],
@@ -876,7 +1077,8 @@ void main() {
     expect(calls.single.arguments['max_bytes'], 20);
   });
 
-  test('exposes streaming tool argument progress for long write_file calls', () {
+  test('exposes streaming tool argument progress for long write_file calls',
+      () {
     final assembler = OpenAiToolCallStreamAssembler()
       ..addChunk({
         'choices': [
@@ -919,9 +1121,11 @@ void main() {
   });
 
   test('builds tool result message from ActionRunner evidence', () async {
-    final workspace = await Directory.systemTemp.createTemp('mobilecode_tool_adapter_');
+    final workspace =
+        await Directory.systemTemp.createTemp('mobilecode_tool_adapter_');
     final store = ActionEvidenceStore();
-    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final runner =
+        ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
     final adapter = OpenAiCompatibleToolCallAdapter(
       profile: ToolCallProviderProfile.detect(
         'https://api.deepseek.com',
@@ -952,10 +1156,14 @@ void main() {
     }
   });
 
-  test('tool result records adapter repair evidence when arguments are recovered', () async {
-    final workspace = await Directory.systemTemp.createTemp('mobilecode_tool_adapter_repair_');
+  test(
+      'tool result records adapter repair evidence when arguments are recovered',
+      () async {
+    final workspace = await Directory.systemTemp
+        .createTemp('mobilecode_tool_adapter_repair_');
     final store = ActionEvidenceStore();
-    final runner = ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final runner =
+        ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
     final adapter = OpenAiCompatibleToolCallAdapter(
       profile: ToolCallProviderProfile.detect(
         'https://api.deepseek.com',
@@ -974,8 +1182,10 @@ void main() {
       final result = await runner.run(adapter.toActionSchema(call)!);
 
       expect(result.success, true);
-      expect(result.evidence.logs.join(' '), contains('Adapter repaired tool arguments'));
-      expect(result.evidence.metadata['adapterRepair'], contains('inferred safe workspace path'));
+      expect(result.evidence.logs.join(' '),
+          contains('Adapter repaired tool arguments'));
+      expect(result.evidence.metadata['adapterRepair'],
+          contains('inferred safe workspace path'));
       expect(await File('${workspace.path}/index.html').exists(), true);
     } finally {
       if (await workspace.exists()) {
@@ -983,4 +1193,34 @@ void main() {
       }
     }
   });
+}
+
+class _FakeLarkApiService extends LarkApiService {
+  _FakeLarkApiService({this.response});
+
+  final LarkApiCallResult? response;
+
+  @override
+  Future<LarkApiConnection> loadConnection() async {
+    return const LarkApiConnection(
+      accessToken: 'user-access-token-for-test',
+      tokenMode: LarkTokenMode.userAccessToken,
+    );
+  }
+
+  @override
+  Future<LarkApiCallResult> execute({
+    required LarkApiConnection connection,
+    required LarkApiRequestSpec spec,
+  }) async {
+    return response ??
+        LarkApiCallResult(
+          success: true,
+          statusCode: 200,
+          elapsedMs: 11,
+          endpoint: spec.uri(connection.baseUrl).toString(),
+          tokenMode: connection.tokenMode.evidenceName,
+          body: '{"code":0,"msg":"ok"}',
+        );
+  }
 }

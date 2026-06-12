@@ -1,0 +1,84 @@
+{
+  "tool": "lark_relay.live_event_consume",
+  "event_key": "im.message.receive_v1",
+  "send_mode": "live",
+  "event": {
+    "event_id": "evt_live_reply_success_sanitized",
+    "request_id": "req_live_reply_success_sanitized",
+    "chat_id": "<redacted_chat_id>",
+    "sender_id": "<redacted_open_id>",
+    "message_text": "/mc <redacted_user_prompt>",
+    "received_at": "2026-06-12T13:00:00Z"
+  },
+  "event_metadata": {
+    "message_id": "<redacted_inbound_message_id>",
+    "message_type": "text",
+    "chat_type": "p2p",
+    "event_type": "im.message.receive_v1"
+  },
+  "event_id": "evt_live_reply_success_sanitized",
+  "request_id": "req_live_reply_success_sanitized",
+  "dry_run_id": "dry-run-live-reply-success-sanitized",
+  "failure_kind": "none",
+  "next_action": "reply_sent",
+  "message_text": "/mc <redacted_user_prompt>",
+  "reply_text": "<redacted_model_reply>",
+  "timestamp": "2026-06-12T13:00:05Z",
+  "consumer": {
+    "command": [
+      "lark-cli",
+      "event",
+      "consume",
+      "im.message.receive_v1",
+      "--as",
+      "bot",
+      "--max-events",
+      "1",
+      "--timeout",
+      "2m"
+    ],
+    "ready": true,
+    "stderr_tail": [
+      "<redacted_ready_line>"
+    ]
+  },
+  "reply": {
+    "command": [
+      "lark-cli",
+      "im",
+      "+messages-reply",
+      "--as",
+      "bot",
+      "--message-id",
+      "<redacted_inbound_message_id>",
+      "--text",
+      "<redacted_model_reply>",
+      "--idempotency-key",
+      "<redacted_idempotency_key>",
+      "--format",
+      "json"
+    ],
+    "returncode": 0,
+    "stdout": "<redacted_json>",
+    "stderr": "",
+    "json": {
+      "code": 0,
+      "msg": "success",
+      "data": {
+        "message_id": "<redacted_reply_message_id>"
+      }
+    }
+  },
+  "agent": {
+    "mode": "command",
+    "command": "python3 tools/lark_relay/agent_command_openai_compatible.py",
+    "returncode": 0,
+    "stdout": "<redacted_model_reply>",
+    "stderr": ""
+  },
+  "daemon": {
+    "dedupe_enabled": true,
+    "duplicate": false
+  },
+  "raw_json_preview_status": "Sanitized live relay evidence loaded; chat IDs, open IDs, message IDs, and content are redacted."
+}

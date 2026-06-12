@@ -100,6 +100,40 @@ python3 tools/lark_relay/live_event_relay.py \
   --strip-trigger-prefix
 ```
 
+Minimal daemon mode restarts one `lark-cli event consume` cycle after each
+timeout or processed batch, and keeps an ignored state file for `event_id`
+de-duplication:
+
+```bash
+python3 tools/lark_relay/live_event_relay.py \
+  --daemon \
+  --max-events 1 \
+  --timeout 2m \
+  --send-mode dry-run \
+  --trigger-prefix "/mc " \
+  --strip-trigger-prefix
+```
+
+Live daemon replies still require the explicit live guard:
+
+```bash
+python3 tools/lark_relay/live_event_relay.py \
+  --daemon \
+  --max-events 1 \
+  --timeout 2m \
+  --send-mode live \
+  --allow-live \
+  --trigger-prefix "/mc " \
+  --strip-trigger-prefix \
+  --agent-mode command \
+  --agent-command "python3 tools/lark_relay/agent_command_openai_compatible.py"
+```
+
+Daemon state defaults to
+`tools/lark_relay/evidence/.relay-daemon-state.json`, which is ignored by Git.
+It stores processed `event_id` values only; do not put tokens or raw auth logs in
+the state file.
+
 Recommended first test: send the bot a private message that starts with
 `/mc `, for example `/mc 你好`.
 
@@ -118,6 +152,11 @@ dry-run/live mode.
 Evidence JSON may contain chat IDs, message IDs, and sender open IDs. Keep
 `tools/lark_relay/evidence/*.json` local unless it has been explicitly
 sanitized for public sharing.
+
+Public-safe samples live under `tools/lark_relay/samples/`. For example,
+`samples/live_reply_success.sanitized.json` is the shape consumed by MobileCode
+Lark API Lab to render an event -> reply -> evidence timeline without exposing
+chat IDs, open IDs, message IDs, or private message content.
 
 ## Expected event payload example
 

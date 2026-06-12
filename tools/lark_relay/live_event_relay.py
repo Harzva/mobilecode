@@ -9,6 +9,7 @@ import shlex
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
@@ -81,6 +82,44 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR))
     parser.add_argument("--tool", default=DEFAULT_TOOL)
+    parser.add_argument(
+        "--daemon",
+        action="store_true",
+        help=(
+            "Run as a minimal long-lived service by restarting one consume "
+            "cycle after each timeout or processed batch."
+        ),
+    )
+    parser.add_argument(
+        "--daemon-cycles",
+        type=int,
+        default=0,
+        help="Maximum daemon cycles before exit. 0 means run until interrupted.",
+    )
+    parser.add_argument(
+        "--daemon-sleep",
+        type=float,
+        default=2.0,
+        help="Seconds to wait between daemon consume cycles.",
+    )
+    parser.add_argument(
+        "--daemon-stop-on-error",
+        action="store_true",
+        help="Stop daemon mode when a consume cycle exits non-zero.",
+    )
+    parser.add_argument(
+        "--state-file",
+        help=(
+            "JSON state file for event_id de-duplication. In daemon mode the "
+            "default is <output-dir>/.relay-daemon-state.json."
+        ),
+    )
+    parser.add_argument(
+        "--max-state-events",
+        type=int,
+        default=500,
+        help="Maximum processed event IDs retained in the state file.",
+    )
     return parser
 
 
@@ -227,6 +266,74 @@ def _write_evidence(output_dir: Path, evidence: dict[str, Any]) -> Path:
     return output
 
 
+def _default_state_path(args: argparse.Namespace) -> Optional[Path]:
+    if args.state_file:
+        return Path(args.state_file)
+    if args.daemon:
+        return Path(args.output_dir) / ".relay-daemon-state.json"
+    return None
+
+
+def _load_state(path: Optional[Path]) -> dict[str, Any]:
+    if path is None or not path.exists():
+        return {
+            "schema": "mobilecode.lark_relay.state.v1",
+            "processed_event_ids": [],
+            "updated_at": _now_iso8601(),
+        }
+    try:
+        state = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "schema": "mobilecode.lark_relay.state.v1",
+            "processed_event_ids": [],
+            "updated_at": _now_iso8601(),
+            "state_warning": "state_file_unreadable_reinitialized",
+        }
+    if not isinstance(state, dict):
+        return {
+            "schema": "mobilecode.lark_relay.state.v1",
+            "processed_event_ids": [],
+            "updated_at": _now_iso8601(),
+            "state_warning": "state_file_not_object_reinitialized",
+        }
+    raw_ids = state.get("processed_event_ids")
+    if not isinstance(raw_ids, list):
+        state["processed_event_ids"] = []
+    return state
+
+
+def _save_state(path: Optional[Path], state: dict[str, Any]) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    state["updated_at"] = _now_iso8601()
+    temp = path.with_suffix(path.suffix + ".tmp")
+    temp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    temp.replace(path)
+
+
+def _state_ids(state: dict[str, Any]) -> list[str]:
+    raw_ids = state.get("processed_event_ids")
+    if not isinstance(raw_ids, list):
+        return []
+    return [str(item) for item in raw_ids if str(item).strip()]
+
+
+def _mark_event_processed(
+    state: dict[str, Any],
+    event_id: str,
+    max_state_events: int,
+) -> None:
+    event_id = event_id.strip()
+    if not event_id:
+        return
+    ids = [item for item in _state_ids(state) if item != event_id]
+    ids.append(event_id)
+    keep = max(1, max_state_events)
+    state["processed_event_ids"] = ids[-keep:]
+
+
 def _run_reply(command: list[str]) -> tuple[int, str, str, Optional[dict[str, Any]]]:
     result = subprocess.run(command, capture_output=True, text=True)
     parsed: Optional[dict[str, Any]] = None
@@ -312,6 +419,9 @@ def run_live_relay(args: argparse.Namespace) -> int:
     consumer_stderr: list[str] = []
     ready = threading.Event()
     output_dir = Path(args.output_dir)
+    state_path = _default_state_path(args)
+    state = _load_state(state_path)
+    processed_event_ids = set(_state_ids(state))
     processed = 0
 
     process = subprocess.Popen(
@@ -360,6 +470,7 @@ def run_live_relay(args: argparse.Namespace) -> int:
             continue
 
         event, metadata = _normalize_event(payload)
+        duplicate = event.event_id in processed_event_ids
         skipped, skip_reason, agent_input = _should_skip_event(event, args)
         reply_text = ""
         reply_command = None
@@ -373,7 +484,12 @@ def run_live_relay(args: argparse.Namespace) -> int:
         failure_kind = "none"
         next_action = "reply_dry_run_written" if args.send_mode == "dry-run" else "reply_sent"
 
-        if skipped:
+        if duplicate:
+            skipped = True
+            skip_reason = "duplicate_event"
+            failure_kind = "duplicate_event"
+            next_action = "already_processed_wait_for_new_event"
+        elif skipped:
             failure_kind = skip_reason
             next_action = "wait_for_matching_event"
         else:
@@ -425,9 +541,20 @@ def run_live_relay(args: argparse.Namespace) -> int:
             skipped=skipped,
             skip_reason=skip_reason,
         )
+        if state_path is not None:
+            evidence["daemon"] = {
+                "state_file": str(state_path),
+                "dedupe_enabled": True,
+                "duplicate": duplicate,
+                "retained_event_ids": len(_state_ids(state)),
+            }
         output = _write_evidence(output_dir, evidence)
         print(f"evidence written: {output}")
         print(json.dumps(evidence, ensure_ascii=False))
+        if not duplicate and state_path is not None:
+            _mark_event_processed(state, event.event_id, args.max_state_events)
+            processed_event_ids.add(event.event_id)
+            _save_state(state_path, state)
         processed += 1
 
     process.wait()
@@ -476,9 +603,38 @@ def run_live_relay(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_daemon(args: argparse.Namespace) -> int:
+    cycle = 0
+    last_code = 0
+    if not args.state_file:
+        args.state_file = str(Path(args.output_dir) / ".relay-daemon-state.json")
+    print(
+        "lark relay daemon started: "
+        f"send_mode={args.send_mode} max_events={args.max_events} "
+        f"timeout={args.timeout} state_file={args.state_file}"
+    )
+    while True:
+        cycle += 1
+        cycle_args = argparse.Namespace(**vars(args))
+        cycle_args.daemon = False
+        print(f"lark relay daemon cycle {cycle} started")
+        try:
+            last_code = run_live_relay(cycle_args)
+        except KeyboardInterrupt:
+            print("lark relay daemon interrupted")
+            return 130
+        if last_code != 0 and args.daemon_stop_on_error:
+            return last_code
+        if args.daemon_cycles > 0 and cycle >= args.daemon_cycles:
+            return last_code
+        time.sleep(max(0.0, args.daemon_sleep))
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    if args.daemon:
+        return run_daemon(args)
     return run_live_relay(args)
 
 

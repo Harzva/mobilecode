@@ -254,13 +254,14 @@ Recommended token modes:
 
 ### Live Relay Evidence Ingestion (MVP)
 
-- [ ] Define a shared relay evidence shape for local packs in `tools/lark_relay/evidence/*.json`:
+- [x] Define a shared relay evidence shape for local packs in `tools/lark_relay/evidence/*.json` and sanitized public samples in `tools/lark_relay/samples/`:
   - `event`: `event_id`, `tool`, `text`, `received_at`, optional `chat_id`/`message_id`/`open_id`
   - `reply`: `send_mode`, `status`, `text`, optional reply `message_id`
   - `evidence`: `failure_kind`, `next_action`, `request_id`, `event_id`, `log_id`, `token_mode`, `tool`, `error_code`, `raw_json_path`
-- [ ] Lark API Lab renders each item as Event -> Reply -> Evidence timeline blocks.
+- [x] Lark API Lab renders sanitized items as Event -> Reply -> Evidence timeline blocks, including live success and consumer-not-running samples.
 - [ ] Include read-only raw JSON preview block for each entry.
 - [ ] `tools/lark_relay/evidence/*.json` may contain `chat_id`、`message_id`、`open_id`; keep these fields out of public UI unless sanitized.
+- [ ] Add a mobile-safe import path for user-selected sanitized evidence files; do not auto-read ignored local evidence paths from the public app.
 
 ### H5 Companion Surface
 
@@ -342,7 +343,7 @@ Acceptance:
 - [ ] Add local preview cards for selected Lark targets.
 - [ ] Add H5 target-picking bridge for docs/files/chats when available.
 - [ ] Add evidence preview before any write.
-- [ ] Add relay evidence reader for `tools/lark_relay/evidence/*.json` and show event/reply/evidence timeline in Lark API Lab.
+- [ ] Add relay evidence reader for user-selected sanitized evidence JSON and show event/reply/evidence timeline in Lark API Lab.
 
 Acceptance:
 

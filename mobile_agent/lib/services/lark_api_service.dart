@@ -220,6 +220,10 @@ class LarkRelayEvidenceSample {
     required this.rawJsonPreviewStatus,
     this.rawJsonPreviewAvailable = false,
     this.eventTool = 'event consume im.message.receive_v1',
+    this.replyStatus = 'N/A',
+    this.consumerReady = 'N/A',
+    this.agentMode = 'N/A',
+    this.evidenceSource = 'sanitized_sample',
   });
 
   final String sendMode;
@@ -231,6 +235,10 @@ class LarkRelayEvidenceSample {
   final String rawJsonPreviewStatus;
   final bool rawJsonPreviewAvailable;
   final String eventTool;
+  final String replyStatus;
+  final String consumerReady;
+  final String agentMode;
+  final String evidenceSource;
 
   bool get isSample => rawJsonPreviewAvailable;
 
@@ -243,6 +251,10 @@ class LarkRelayEvidenceSample {
       'request_id': requestId,
       'reply_message_id': replyMessageId,
       'raw_json_preview_status': rawJsonPreviewStatus,
+      'reply_status': replyStatus,
+      'consumer_ready': consumerReady,
+      'agent_mode': agentMode,
+      'evidence_source': evidenceSource,
     };
   }
 }
@@ -613,50 +625,167 @@ class LarkApiService {
   }
 }''';
 
+  static const String _relayLiveReplySuccessSampleJson = '''
+{
+  "tool": "lark_relay.live_event_consume",
+  "event_key": "im.message.receive_v1",
+  "send_mode": "live",
+  "event": {
+    "event_id": "evt_live_reply_success_sanitized",
+    "request_id": "req_live_reply_success_sanitized",
+    "chat_id": "<redacted_chat_id>",
+    "sender_id": "<redacted_open_id>",
+    "message_text": "/mc <redacted_user_prompt>",
+    "received_at": "2026-06-12T13:00:00Z"
+  },
+  "event_metadata": {
+    "message_id": "<redacted_inbound_message_id>",
+    "message_type": "text",
+    "chat_type": "p2p",
+    "event_type": "im.message.receive_v1"
+  },
+  "event_id": "evt_live_reply_success_sanitized",
+  "request_id": "req_live_reply_success_sanitized",
+  "dry_run_id": "dry-run-live-reply-success-sanitized",
+  "failure_kind": "none",
+  "next_action": "reply_sent",
+  "message_text": "/mc <redacted_user_prompt>",
+  "reply_text": "<redacted_model_reply>",
+  "timestamp": "2026-06-12T13:00:05Z",
+  "consumer": {
+    "command": [
+      "lark-cli",
+      "event",
+      "consume",
+      "im.message.receive_v1",
+      "--as",
+      "bot",
+      "--max-events",
+      "1",
+      "--timeout",
+      "2m"
+    ],
+    "ready": true,
+    "stderr_tail": ["<redacted_ready_line>"]
+  },
+  "reply": {
+    "command": [
+      "lark-cli",
+      "im",
+      "+messages-reply",
+      "--as",
+      "bot",
+      "--message-id",
+      "<redacted_inbound_message_id>",
+      "--text",
+      "<redacted_model_reply>",
+      "--idempotency-key",
+      "<redacted_idempotency_key>",
+      "--format",
+      "json"
+    ],
+    "returncode": 0,
+    "stdout": "<redacted_json>",
+    "stderr": "",
+    "json": {
+      "code": 0,
+      "msg": "success",
+      "data": {
+        "message_id": "<redacted_reply_message_id>"
+      }
+    }
+  },
+  "agent": {
+    "mode": "command",
+    "command": "python3 tools/lark_relay/agent_command_openai_compatible.py",
+    "returncode": 0,
+    "stdout": "<redacted_model_reply>",
+    "stderr": ""
+  },
+  "daemon": {
+    "dedupe_enabled": true,
+    "duplicate": false
+  },
+  "raw_json_preview_status": "Sanitized live relay evidence loaded; chat IDs, open IDs, message IDs, and content are redacted."
+}''';
+
   static List<LarkRelayEvidenceSample> relayEvidenceSamples() {
     return [
       parseRelayEvidenceSample(_relayEvidenceSampleJson),
+      parseRelayEvidenceSample(_relayLiveReplySuccessSampleJson),
     ];
   }
 
   static LarkRelayEvidenceSample parseRelayEvidenceSample(String rawJson) {
     final envelope = _tryDecodeMap(rawJson);
     final safeEnvelope = _sanitizeEnvelopeKeys(envelope);
-    final event = safeEnvelope['event'] is Map<String, Object?>
-        ? safeEnvelope['event'] as Map<String, Object?>
-        : const <String, Object?>{};
-    final reply = safeEnvelope['reply'] is Map<String, Object?>
-        ? safeEnvelope['reply'] as Map<String, Object?>
-        : const <String, Object?>{};
-    final evidence = safeEnvelope['evidence'] is Map<String, Object?>
-        ? safeEnvelope['evidence'] as Map<String, Object?>
-        : const <String, Object?>{};
+    final event = _safeRelayMap(safeEnvelope['event']);
+    final reply = _safeRelayMap(safeEnvelope['reply']);
+    final evidence = _safeRelayMap(safeEnvelope['evidence']);
+    final consumer = _safeRelayMap(safeEnvelope['consumer']);
+    final agent = _safeRelayMap(safeEnvelope['agent']);
     final sendMode = _safeRelayValue(
-      event['send_mode'] ?? event['sendMode'],
+      event['send_mode'] ??
+          event['sendMode'] ??
+          reply['send_mode'] ??
+          reply['sendMode'] ??
+          safeEnvelope['send_mode'] ??
+          safeEnvelope['sendMode'],
       fallback: 'N/A',
     );
     final failureKind = _safeRelayValue(
-      evidence['failure_kind'] ?? evidence['failureKind'],
+      evidence['failure_kind'] ??
+          evidence['failureKind'] ??
+          safeEnvelope['failure_kind'] ??
+          safeEnvelope['failureKind'],
       fallback: 'N/A',
     );
     final nextAction = _safeRelayValue(
-      evidence['next_action'] ?? evidence['nextAction'],
+      evidence['next_action'] ??
+          evidence['nextAction'] ??
+          safeEnvelope['next_action'] ??
+          safeEnvelope['nextAction'],
       fallback: 'Inspect evidence and retry with active consumer.',
     );
     final eventId = _safeRelayValue(
-      event['event_id'] ?? event['eventId'],
+      event['event_id'] ??
+          event['eventId'] ??
+          safeEnvelope['event_id'] ??
+          safeEnvelope['eventId'],
       fallback: 'N/A',
     );
     final requestId = _safeRelayValue(
       evidence['request_id'] ??
           evidence['requestId'] ??
           event['request_id'] ??
-          event['requestId'],
+          event['requestId'] ??
+          safeEnvelope['request_id'] ??
+          safeEnvelope['requestId'],
       fallback: 'N/A',
     );
     final replyMessageId = _safeRelayValue(
-      reply['message_id'] ?? reply['messageId'],
+      reply['message_id'] ??
+          reply['messageId'] ??
+          _nestedRelayValue(reply['json'], const [
+            'data',
+            'message_id',
+          ]) ??
+          _nestedRelayValue(reply['json'], const [
+            'data',
+            'message',
+            'message_id',
+          ]),
       fallback: 'N/A',
+    );
+    final replyStatus = _safeRelayValue(
+      reply['status'] ??
+          reply['reply_status'] ??
+          (reply.containsKey('returncode')
+              ? (_isZeroRelayValue(reply['returncode'])
+                  ? (sendMode == 'live' ? 'sent' : 'dry_run_ok')
+                  : 'failed')
+              : null),
+      fallback: 'not_sent',
     );
     return LarkRelayEvidenceSample(
       sendMode: sendMode,
@@ -678,7 +807,47 @@ class LarkApiService {
         event['tool'] ?? safeEnvelope['tool'],
         fallback: 'event consume im.message.receive_v1',
       ),
+      replyStatus: replyStatus,
+      consumerReady: _safeRelayValue(
+        consumer['ready'],
+        fallback: 'N/A',
+      ),
+      agentMode: _safeRelayValue(
+        agent['mode'],
+        fallback: 'N/A',
+      ),
+      evidenceSource: _safeRelayValue(
+        safeEnvelope['dry_run_id'] ??
+            evidence['raw_json_path'] ??
+            safeEnvelope['raw_json_path'],
+        fallback: 'sanitized_sample',
+      ),
     );
+  }
+
+  static Map<String, Object?> _safeRelayMap(Object? value) {
+    if (value is Map<String, Object?>) return value;
+    if (value is Map) {
+      return value
+          .map((key, innerValue) => MapEntry(key.toString(), innerValue));
+    }
+    return const <String, Object?>{};
+  }
+
+  static Object? _nestedRelayValue(Object? value, List<String> path) {
+    Object? current = value;
+    for (final segment in path) {
+      final map = _safeRelayMap(current);
+      if (map.isEmpty || !map.containsKey(segment)) return null;
+      current = map[segment];
+    }
+    return current;
+  }
+
+  static bool _isZeroRelayValue(Object? value) {
+    if (value == 0) return true;
+    if (value is String) return value.trim() == '0';
+    return false;
   }
 
   static Map<String, Object?> _sanitizeEnvelopeKeys(

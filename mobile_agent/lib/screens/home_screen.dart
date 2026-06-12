@@ -9582,7 +9582,12 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            'failure_kind=${sample.failureKind} · reply message id=${sample.replyMessageId}',
+            'consumer_ready=${sample.consumerReady} · agent=${sample.agentMode} · reply_status=${sample.replyStatus}',
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'failure_kind=${sample.failureKind} · reply_message_id=${sample.replyMessageId}',
             style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
           ),
           const SizedBox(height: 4),
@@ -9594,6 +9599,11 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
           Text(
             'raw JSON preview: ${sample.rawJsonPreviewStatus}',
             style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'evidence_source=${sample.evidenceSource}',
+            style: const TextStyle(color: _faint, fontSize: 10, height: 1.35),
           ),
         ],
       ),

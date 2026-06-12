@@ -282,6 +282,10 @@ npm install
 npm run build
 ```
 
+### Delegate bounded development tasks
+
+Non-multimodal small tasks should default to `cxspark`: README/docs drafts, narrow code patches, checklists, prompt edits, and mechanical changes. The parent Codex session still owns planning, review, verification, commits, releases, visual/device QA, and any risky operation. See [cxspark Agent Workflow](docs/cxspark-agent-workflow.md).
+
 ### Build the Flutter app
 
 Local Flutter SDK is required:

@@ -69,6 +69,17 @@ def _find_url_or_token(value: Any) -> Optional[str]:
     return None
 
 
+def _as_document_link(reference: str) -> str:
+    if reference.startswith(("http://", "https://")):
+        return reference
+    base_url = os.getenv("MOBILECODE_LARK_DOC_BASE_URL", "").strip().rstrip("/")
+    if not base_url:
+        return reference
+    if base_url.endswith("/docx"):
+        return f"{base_url}/{reference}"
+    return f"{base_url}/docx/{reference}"
+
+
 def _base_meta(title: str, mode: str) -> dict[str, Any]:
     return {
         "chain_stage": "event_to_docx_to_reply",
@@ -88,7 +99,11 @@ def _create_docx(title: str, markdown: str) -> tuple[int, str, dict[str, Any]]:
     mode = os.getenv("MOBILECODE_LARK_DEVLOG_MODE", "dry-run").strip().lower()
     live_allowed = os.getenv("MOBILECODE_LARK_DEVLOG_ALLOW_LIVE") == "1"
     identity = os.getenv("MOBILECODE_LARK_DEVLOG_AS", "user").strip() or "user"
-    folder_token = os.getenv("MOBILECODE_LARK_DEVLOG_FOLDER_TOKEN", "").strip()
+    parent_token = (
+        os.getenv("MOBILECODE_LARK_DEVLOG_PARENT_TOKEN", "").strip()
+        or os.getenv("MOBILECODE_LARK_DEVLOG_FOLDER_TOKEN", "").strip()
+    )
+    parent_position = os.getenv("MOBILECODE_LARK_DEVLOG_PARENT_POSITION", "").strip()
     meta = _base_meta(title, mode)
     meta["lark_docx"]["token_mode"] = identity
 
@@ -121,8 +136,6 @@ def _create_docx(title: str, markdown: str) -> tuple[int, str, dict[str, Any]]:
         "v2",
         "--doc-format",
         "markdown",
-        "--title",
-        title,
         "--content",
         markdown,
         "--as",
@@ -130,8 +143,10 @@ def _create_docx(title: str, markdown: str) -> tuple[int, str, dict[str, Any]]:
         "--format",
         "json",
     ]
-    if folder_token:
-        command.extend(["--folder-token", folder_token])
+    if parent_token:
+        command.extend(["--parent-token", parent_token])
+    elif parent_position:
+        command.extend(["--parent-position", parent_position])
 
     result = subprocess.run(command, capture_output=True, text=True, timeout=30)
     output = (result.stdout or result.stderr or "").strip()
@@ -150,8 +165,10 @@ def _create_docx(title: str, markdown: str) -> tuple[int, str, dict[str, Any]]:
     meta["next_action"] = "reply_sent_with_docx_link"
     meta["lark_docx"]["status"] = "created"
     if link:
-        meta["lark_docx"]["document_url"] = link
-        return 0, f"Development log Docx created: {link}", meta
+        document_link = _as_document_link(link)
+        meta["lark_docx"]["document_url"] = document_link
+        meta["lark_docx"]["document_reference"] = link
+        return 0, f"Development log Docx created: {document_link}", meta
     meta["lark_docx"]["response_preview"] = _compact(output)
     return 0, f"Development log Docx created. Response: {_compact(output)}", meta
 

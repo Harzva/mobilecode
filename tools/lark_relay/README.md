@@ -233,7 +233,10 @@ then opt in explicitly:
 ```bash
 export MOBILECODE_LARK_DEVLOG_MODE=live
 export MOBILECODE_LARK_DEVLOG_ALLOW_LIVE=1
-export MOBILECODE_LARK_DEVLOG_FOLDER_TOKEN=<target_folder_token>
+export MOBILECODE_LARK_DEVLOG_AS=bot
+export MOBILECODE_LARK_DEVLOG_PARENT_TOKEN=<target_folder_token>
+# Optional, when you want the bot reply to turn a returned document token into a full URL:
+# export MOBILECODE_LARK_DOC_BASE_URL=https://<tenant>.feishu.cn
 
 python3 tools/lark_relay/live_event_relay.py \
   --daemon \
@@ -249,6 +252,11 @@ python3 tools/lark_relay/live_event_relay.py \
 
 The sanitized sample `samples/dev_log_docx_chain.sanitized.json` mirrors this
 chain for public UI testing without exposing a real document URL.
+
+`MOBILECODE_LARK_DEVLOG_FOLDER_TOKEN` is still accepted as a compatibility alias
+for `MOBILECODE_LARK_DEVLOG_PARENT_TOKEN`. If no parent is configured, the CLI
+uses its default create location. `MOBILECODE_LARK_DEVLOG_PARENT_POSITION` can
+be set to values such as `my_library` when the current identity supports it.
 
 Command agents may emit structured evidence metadata on stderr with the prefix
 `MOBILECODE_RELAY_META_JSON=`. The relay keeps stdout as the bot reply, removes

@@ -16,6 +16,7 @@ import {
   Wrench,
   Cpu,
   GalleryHorizontalEnd,
+  MessageSquareMore,
 } from 'lucide-react';
 
 const architectureLayers = [
@@ -154,6 +155,25 @@ const productNarrative = [
     title: '双端构建',
     text: '正式 release 由 GitHub Actions 产出 Android APK、iOS simulator app zip 和 unsigned archive，构建证据统一指向 main。',
     icon: PackageCheck,
+  },
+];
+
+const bidirectionalChannel = [
+  {
+    title: 'MobileCode in-app face',
+    text: '手机 App 是主控制台：聊天、工具编排、文件、预览、approval、evidence 和失败归因都在这里闭环。',
+  },
+  {
+    title: 'Lark workspace face',
+    text: '飞书 Bot 是工作现场入口：群聊、私聊、文档或任务事件可以触发 MobileCode agent，但不复制完整 App 聊天体验。',
+  },
+  {
+    title: 'Thin Relay bridge',
+    text: 'Relay 只做事件桥接和 envelope 转换：event consume、队列、agent 调用、IM reply、evidence 落盘。',
+  },
+  {
+    title: 'Shared task state',
+    text: '两边共享 task id、tool calls、approval state、failure kind、result artifacts 和 raw evidence preview。',
   },
 ];
 
@@ -326,6 +346,42 @@ export default function Developer() {
               <strong>Skill spec + task registry + Benchmark Lab</strong>
               <ArrowRight size={16} />
             </a>
+          </div>
+        </section>
+
+        <section className="developer-section lark-channel-log">
+          <div className="section-heading compact">
+            <p className="eyebrow">Work Log · Lark Bidirectional Channel</p>
+            <h2>一个 Mobile Agent，两种入口</h2>
+            <p>
+              MobileCode 不需要把飞书机器人做成第二个聊天窗口。正确边界是：MobileCode App 是手机端主控制台，
+              飞书 Bot 是团队工作现场的轻量触发和回执入口。两边共享同一套 action envelope、approval state 和 evidence。
+            </p>
+          </div>
+          <div className="lark-channel-visual">
+            <img
+              src="showcase/mobilecode-lark-bidirectional-channel.png"
+              alt="MobileCode and Lark bidirectional agent channel"
+            />
+          </div>
+          <div className="lark-channel-grid">
+            {bidirectionalChannel.map((item) => (
+              <article key={item.title}>
+                <MessageSquareMore size={20} />
+                <h3>{item.title}</h3>
+                <p>{item.text}</p>
+              </article>
+            ))}
+          </div>
+          <div className="lark-channel-proof">
+            <span>Current bridge proof</span>
+            <strong>Feishu event → MobileCode relay → bot reply → local evidence</strong>
+            <p>
+              The first live path is intentionally narrow: `lark-cli event consume im.message.receive_v1 --as bot`
+              feeds a relay envelope, the agent adapter drafts a reply, `lark-cli im +messages-reply` writes back, and
+              local evidence records `send_mode`, `failure_kind`, `next_action`, request IDs, reply result, and raw JSON preview.
+              Raw evidence files stay local unless sanitized because they may contain chat/message/user identifiers.
+            </p>
           </div>
         </section>
 

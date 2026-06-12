@@ -8886,6 +8886,8 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
   bool _showSecret = false;
   final Map<LarkApiActionKind, _LarkCapabilityState> _capabilityState = {};
   final Map<LarkApiActionKind, String> _capabilityDetail = {};
+  _LarkCapabilityState _agentChatReadinessState = _LarkCapabilityState.unknown;
+  String _agentChatReadinessDetail = 'Not checked yet.';
   final List<String> _lines = [
     'Lark API Lab is native-first. CLI and MCP are Mac/CI development probes, not embedded app runtimes.',
   ];
@@ -9121,26 +9123,70 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
     if (!_capabilityState.containsKey(kind)) {
       _capabilityState[kind] = _LarkCapabilityState.unknown;
     }
-    final status = result.success
-        ? _LarkCapabilityState.ready
-        : (result.statusCode == 401 || result.statusCode == 403
-            ? _LarkCapabilityState.missingScope
-            : _LarkCapabilityState.failed);
+    final diagnosis = result.diagnosis;
+    final status = _stateForDiagnosis(diagnosis, result.success);
     _capabilityState[kind] = status;
+    final trace = _compact(spec.toPrettyPreview(connection), limit: 280);
+    final ids = <String>[];
+    if (result.requestId != null) ids.add('requestId=${result.requestId}');
+    if (diagnosis.logId != null && diagnosis.logId != result.requestId) {
+      ids.add('logId=${diagnosis.logId}');
+    }
+    final idSuffix = ids.isEmpty ? '' : ' ${ids.join(' ')}';
     final scopeHint = spec.requiredScopes.join(' / ');
     final base =
-        'tool=${kind.name} tokenMode=${connection.tokenMode.evidenceName} HTTP ${result.statusCode}';
+        'tool=${kind.name} tokenMode=${connection.tokenMode.evidenceName} HTTP ${result.statusCode}$idSuffix';
     if (result.success) {
-      _capabilityDetail[kind] = '$base executed successfully.';
+      _capabilityDetail[kind] =
+          '$base executed successfully.\nDry-run: $trace\n${_diagnosisDetail(diagnosis)}';
     } else {
       _capabilityDetail[kind] =
-          "$base failed; requestId=${result.requestId ?? 'N/A'} errorCode=${result.larkCode ?? 'N/A'} ${_compact(result.error, limit: 160)}";
-      if (scopeHint.isNotEmpty && status == _LarkCapabilityState.missingScope) {
+          '$base failed; errorCode=${result.larkCode ?? 'N/A'}\nDry-run: $trace\n${_diagnosisDetail(diagnosis, errorCode: result.larkCode)}';
+      if (scopeHint.isNotEmpty &&
+          status == _LarkCapabilityState.missingScope &&
+          diagnosis.missingScopes.isEmpty) {
         _capabilityDetail[kind] =
             '${_capabilityDetail[kind]}\nScope hint: $scopeHint';
       }
     }
     setState(() {});
+  }
+
+  _LarkCapabilityState _stateForDiagnosis(
+    LarkApiDiagnosis diagnosis,
+    bool success,
+  ) {
+    return switch (diagnosis.failureKind) {
+      LarkApiFailureKind.none ||
+      LarkApiFailureKind.emptyResult =>
+        success ? _LarkCapabilityState.ready : _LarkCapabilityState.failed,
+      LarkApiFailureKind.missingToken ||
+      LarkApiFailureKind.missingRelay ||
+      LarkApiFailureKind.previewOnly =>
+        _LarkCapabilityState.missingConfig,
+      LarkApiFailureKind.missingScope ||
+      LarkApiFailureKind.appScopeNotApplied ||
+      LarkApiFailureKind.permissionDenied =>
+        _LarkCapabilityState.missingScope,
+      LarkApiFailureKind.eventConsumerNotRunning =>
+        _LarkCapabilityState.missingConfig,
+      LarkApiFailureKind.transportError ||
+      LarkApiFailureKind.apiError =>
+        _LarkCapabilityState.failed,
+    };
+  }
+
+  String _diagnosisDetail(LarkApiDiagnosis diagnosis, {int? errorCode}) {
+    return [
+      'failureKind=${diagnosis.failureKind.evidenceName}',
+      diagnosis.summary,
+      if (diagnosis.missingScopes.isNotEmpty)
+        'missingScopes=${diagnosis.missingScopes.join(' / ')}',
+      if (errorCode != null) 'errorCode=$errorCode',
+      if (diagnosis.logId != null) 'logId=${diagnosis.logId}',
+      if (diagnosis.consoleUrl != null) 'console=${diagnosis.consoleUrl}',
+      'Next: ${diagnosis.nextAction}',
+    ].join('\n');
   }
 
   Future<bool?> _confirmWrite(LarkApiRequestSpec spec) {
@@ -9237,6 +9283,8 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
       _checkingCapability = true;
       _capabilityState.clear();
       _capabilityDetail.clear();
+      _agentChatReadinessState = _LarkCapabilityState.unknown;
+      _agentChatReadinessDetail = 'Not checked yet.';
       _lines
         ..clear()
         ..add('Running Lark capability probe...');
@@ -9250,6 +9298,9 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
         _LarkCapabilityState.missingConfig,
         'Token / relay not configured for current mode.',
       );
+      _agentChatReadinessState = _LarkCapabilityState.missingConfig;
+      _agentChatReadinessDetail =
+          'Agent chat uses IM event streams. Configure token/relay and run a consumer check after token-level readiness passes.';
       setState(() {
         _checkingCapability = false;
         _lines
@@ -9269,11 +9320,19 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
         connection: connection,
         spec: readinessSpec,
       );
-      final hasScopeHint =
-          readiness.statusCode == 401 || readiness.statusCode == 403;
-      final scopeHint = hasScopeHint
-          ? 'Need scope: ${readinessSpec.requiredScopes.join(' / ')}'
-          : 'Authorization check passed.';
+      final readinessDiagnosis = readiness.diagnosis;
+      final readinessState =
+          _stateForDiagnosis(readinessDiagnosis, readiness.success);
+      final scopeHint = readinessDiagnosis.missingScopes.isNotEmpty
+          ? 'Need scope: ${readinessDiagnosis.missingScopes.join(' / ')}'
+          : 'Need scope: ${readinessSpec.requiredScopes.join(' / ')}';
+      final chatReadiness = _agentChatReadinessEvaluation(
+        connection: connection,
+        readinessDiagnosis: readinessDiagnosis,
+        readinessSuccess: readiness.success,
+      );
+      _agentChatReadinessState = chatReadiness.state;
+      _agentChatReadinessDetail = chatReadiness.detail;
 
       void updateKind(LarkApiActionKind kind, String capabilityName) {
         final missingFields = _missingLarkRequiredParams(kind, draft);
@@ -9284,17 +9343,15 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
           return;
         }
         if (!readiness.success) {
-          checkMap[kind] = hasScopeHint
-              ? _LarkCapabilityState.missingScope
-              : _LarkCapabilityState.failed;
-          final suffix = hasScopeHint ? ' / $scopeHint' : '';
-          detailMap[kind] =
-              '${_compact(readiness.error.isEmpty ? 'Network or token mode issue.' : readiness.error, limit: 260)}$suffix';
+          checkMap[kind] = readinessState;
+          final suffix = readinessState == _LarkCapabilityState.missingScope
+              ? ' / $scopeHint'
+              : '';
+          detailMap[kind] = '${_diagnosisDetail(readinessDiagnosis)}$suffix';
           return;
         }
         checkMap[kind] = _LarkCapabilityState.ready;
-        detailMap[kind] =
-            hasScopeHint ? scopeHint : 'Baseline endpoint reachable.';
+        detailMap[kind] = _diagnosisDetail(readinessDiagnosis);
       }
 
       updateKind(LarkApiActionKind.wikiListSpaces, 'Wiki');
@@ -9304,6 +9361,20 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
       updateKind(LarkApiActionKind.sheetsAppend, 'Sheets');
       updateKind(LarkApiActionKind.bitableBatchCreate, 'Bitable');
 
+      final capabilityCounts = <_LarkCapabilityState>[
+        ...checkMap.values,
+        _agentChatReadinessState,
+      ];
+      final readyCount = capabilityCounts
+          .where((state) => state == _LarkCapabilityState.ready)
+          .length;
+      final warningCount = capabilityCounts
+          .where((state) => state == _LarkCapabilityState.missingScope)
+          .length;
+      final configCount = capabilityCounts
+          .where((state) => state == _LarkCapabilityState.missingConfig)
+          .length;
+
       setState(() {
         _checkingCapability = false;
         _capabilityState
@@ -9312,17 +9383,11 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
         _capabilityDetail
           ..clear()
           ..addAll(detailMap);
-        if (_capabilityState.isNotEmpty) {
-          final readyCount = _capabilityState.values
-              .where((state) => state == _LarkCapabilityState.ready)
-              .length;
-          final warningCount = _capabilityState.values
-              .where((state) => state == _LarkCapabilityState.missingScope)
-              .length;
+        if (checkMap.isNotEmpty) {
           _lines
             ..clear()
             ..add(
-                'Capability probe: ready=$readyCount/6, missing scope=$warningCount');
+                'Capability probe: ready=$readyCount/7, missing scope=$warningCount, missing config=$configCount');
         } else {
           _lines
             ..clear()
@@ -9334,6 +9399,9 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
         _LarkCapabilityState.failed,
         'Capability probe error: ${_compact(error.toString(), limit: 180)}',
       );
+      _agentChatReadinessState = _LarkCapabilityState.failed;
+      _agentChatReadinessDetail =
+          'Capability probe failed before agent chat readiness could be computed: ${_compact(error.toString(), limit: 180)}';
       setState(() {
         _checkingCapability = false;
         _lines
@@ -9356,6 +9424,33 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
       _capabilityState[kind] = state;
       _capabilityDetail[kind] = detail;
     }
+  }
+
+  ({_LarkCapabilityState state, String detail}) _agentChatReadinessEvaluation({
+    required LarkApiConnection connection,
+    required LarkApiDiagnosis readinessDiagnosis,
+    required bool readinessSuccess,
+  }) {
+    final tokenMode = connection.tokenMode.evidenceName;
+    const dryRun =
+        'lark-cli event consume im.message.receive_v1 --app-id <app_id> --tenant-key <tenant_access_token> --dry-run';
+    if (!readinessSuccess) {
+      final isConsumerFailure = readinessDiagnosis.failureKind ==
+          LarkApiFailureKind.eventConsumerNotRunning;
+      return (
+        state: isConsumerFailure
+            ? _LarkCapabilityState.missingConfig
+            : _stateForDiagnosis(readinessDiagnosis, false),
+        detail:
+            '${_diagnosisDetail(readinessDiagnosis)}\ntool=event consume im.message.receive_v1\ntokenMode=$tokenMode\nrequiredScopes=im:message:readonly or event subscription scopes\nDry-run: $dryRun\nNext: ${isConsumerFailure ? 'Start a relay consumer or callback service, then re-run the probe.' : 'Fix readiness blocker first, then retry consumer readiness.'}',
+      );
+    }
+
+    return (
+      state: _LarkCapabilityState.missingConfig,
+      detail:
+          'tool=event consume im.message.receive_v1\ntokenMode=$tokenMode\nrequiredScopes=im:message:readonly or event subscription scopes\nDry-run: $dryRun\nNext: Start a relay consumer or callback service; OpenAPI token checks are not sufficient for chat replies.',
+    );
   }
 
   Widget _capabilityLine(LarkApiActionKind kind, String capability) {
@@ -9387,6 +9482,78 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
                 (status == _LarkCapabilityState.unknown
                     ? 'Not checked yet.'
                     : 'No detail yet.'),
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _agentChatReadinessLine() {
+    final status = _agentChatReadinessState;
+    return _Panel(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(status.icon, size: 18, color: status.color),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text('Agent Chat · readiness',
+                    style:
+                        TextStyle(color: _text, fontWeight: FontWeight.w700)),
+              ),
+              const Text(
+                'im:message:readonly / event subscription scopes',
+                style: TextStyle(color: _faint, fontSize: 11),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _agentChatReadinessDetail,
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _taxonomySampleCard(Map<String, Object?> sample) {
+    final missingScopes = (sample['missingScopes'] as List<Object?>?)
+            ?.map((scope) => scope.toString())
+            .where((scope) => scope.trim().isNotEmpty)
+            .join(' / ') ??
+        '';
+    return _Panel(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(sample['sample']?.toString() ?? 'Lark diagnostic sample',
+              style: const TextStyle(
+                  color: _text, fontSize: 12, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(
+            [
+              'tool=${sample['tool'] ?? 'N/A'}',
+              'tokenMode=${sample['tokenMode'] ?? 'N/A'}',
+              'failureKind=${sample['failureKind'] ?? 'N/A'}',
+              if (sample['code'] != null) 'code=${sample['code']}',
+              if (sample['errorCode'] != null)
+                'errorCode=${sample['errorCode']}',
+              if (sample['httpStatus'] != null)
+                'httpStatus=${sample['httpStatus']}',
+              if (sample['requestId'] != null)
+                'requestId=${sample['requestId']}',
+              if (sample['logId'] != null) 'logId=${sample['logId']}',
+              if (missingScopes.isNotEmpty) 'missingScopes=$missingScopes',
+              if (sample['dryRunTrace'] != null)
+                'dryRun=${_compact(sample['dryRunTrace'].toString(), limit: 220)}',
+              'Next: ${sample['nextAction'] ?? 'Inspect evidence and retry.'}',
+            ].join('\n'),
             style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
           ),
         ],
@@ -9548,12 +9715,35 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const Text('Failure taxonomy',
+                    style:
+                        TextStyle(color: _text, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 8),
+                const Text(
+                  'CLI samples are mapped to mobile-native evidence so the agent can recover from Lark failures instead of blindly retrying.',
+                  style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                for (final sample in LarkApiService.failureTaxonomySamples())
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _taxonomySampleCard(sample),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _Panel(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 const Text('Capability checks',
                     style:
                         TextStyle(color: _text, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 8),
                 const Text(
-                  '至少检查 Docs / Drive / Sheets / Bitable / Wiki 四类能力。未满足时会给出缺失 Scope 的提示。',
+                  '至少检查 Docs / Drive / Sheets / Bitable / Wiki + Agent Chat readiness。未满足时会给出缺失 Scope 或 consumer 配置提示。',
                   style: TextStyle(color: _muted, fontSize: 12, height: 1.35),
                 ),
                 const SizedBox(height: 10),
@@ -9577,6 +9767,9 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
                           setState(() {
                             _capabilityState.clear();
                             _capabilityDetail.clear();
+                            _agentChatReadinessState =
+                                _LarkCapabilityState.unknown;
+                            _agentChatReadinessDetail = 'Not checked yet.';
                             _lines
                               ..clear()
                               ..add('Capability status cleared.');
@@ -9585,6 +9778,7 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
                   ],
                 ),
                 const SizedBox(height: 10),
+                _agentChatReadinessLine(),
                 _capabilityLine(LarkApiActionKind.docxCreate, 'Docs'),
                 _capabilityLine(
                     LarkApiActionKind.driveUploadSmallFile, 'Drive'),

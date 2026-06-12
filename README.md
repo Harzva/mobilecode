@@ -224,6 +224,30 @@ flowchart LR
 - Observability: RR AgentView, pending role approvals, Token Usage/cache-hit statistics, searchable/sortable LiteLLM-style pricing with manual snapshot checks, and Device Telemetry htop-style phone health.
 - [Lark Native API plan](docs/lark-native-api-upgrade-plan.md): agent-facing, Node-free Lark OpenAPI tools for Docs, Drive, Sheets, Bitable, Wiki, and evidence publishing; official CLI/MCP remain Mac/CI development probes, not embedded app runtimes.
 
+## Long-term Termux-like Runtime Plan
+
+MobileCode is the phone-native layer for agent control, artifact review, and release evidence.
+The long-term runtime direction is a **Termux-like substrate** (git + node + python + shell) that is invoked by the app as a service, while the user stays in MobileCode's control surface.
+
+It should **not** be an embedded Termux terminal UI, and it should not become a generic remote IDE shell. The phone is still the command center: chat, role controls, route selection, previews, and shipping actions remain first-class inside MobileCode.
+
+- Layer 1 - **MobileCode App**: conversations, tool cards, prompt state, repo selection, publish checks, and evidence surfaces.
+- Layer 2 - **Termux-like Runtime**: long-term execution substrate for commands and project-level tooling, with isolation, caching, and runtime profiles.
+- Layer 3 - **Bridge Layer**: typed runtime API, auth/session binding, intent routing, quota + timeout policy, and cancellation semantics.
+- Layer 4 - **Evidence Layer**: command traces, logs, verifier signals, publish artifacts, and reproducibility records.
+
+```mermaid
+flowchart TB
+  A["MobileCode App\nAgent UI / control / evidence cards"] --> B["Bridge Layer\nIntents / auth / quotas / telemetry"]
+  B --> C["Termux-like Runtime\nGit / Node / Python / Shell"]
+  B --> D["Remote Service Backends\nGitHub Actions / providers"]
+  C --> E["Runtime output + logs"]
+  E --> F["Evidence Layer\nTrace card / verifier feed / artifacts"]
+  F --> A
+```
+
+Current repo implementation has runtime abstractions and helper paths in place; the full Termux-like embedded substrate is a roadmap objective, not a completed production feature yet.
+
 ## Architecture
 
 ```mermaid

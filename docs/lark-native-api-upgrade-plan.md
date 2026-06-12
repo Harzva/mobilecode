@@ -109,9 +109,19 @@ This keeps MobileCode mobile path lightweight while preserving protocol compatib
 
 更新节奏：每完成一个新 CLI 样本，立即在此表新增一行，并在 `LarkApiService.cliParityCatalog()` / `ActionEvidence` 中写入对应 `cliReference` 与 `requiredScopes`，确保 CLI 参照可追踪。
 
+#### CLI 采样失败归因映射（2026-06-12）
+
+| CLI probe | Token mode | 观测结果 | Mobile failureKind | Agent recovery |
+| --- | --- | --- | --- | --- |
+| `lark-cli wiki +space-list --as user --page-size 1 --format json`（授权前） | `user_access_token` | `missing required scope(s): wiki:space:retrieve` | `missing_scope` | 触发 user OAuth，追加 `wiki:space:retrieve`，不要误判为 token 无效 |
+| `lark-cli auth login --scope "wiki:space:retrieve"` 后重跑 user list | `user_access_token` | `ok=true`, `spaces=[]` | `empty_result` | API 已通；提示当前账号无可见 Wiki space，尝试 `my_library`、加入/创建测试 Wiki |
+| `lark-cli wiki +space-list --as bot --page-size 1 --format json` | `tenant_access_token` | `code=99991672`, `app_scope_not_applied`, `log_id` 和 `console_url` | `app_scope_not_applied` | 打开开发者后台为 app 申请 `wiki:wiki` / `wiki:wiki:readonly` / `wiki:space:retrieve` |
+| 飞书里直接私聊 CLI bot | bot/event | Bot identity ready 但无事件消费者或回调服务 | `event_consumer_not_running` | 运行 `lark-cli event consume im.message.receive_v1 --as bot` 或配置 callback/relay，再接模型回复链路 |
+
 当前移动端追踪点：
 
 - `LarkApiService.cliParityCatalog()` 是 CLI 参照的代码内清单。
+- `LarkApiService.failureTaxonomySamples()` 是 CLI 失败归因的代码内清单。
 - `LarkApiService.cliParityFor(actionKind)` 是单个 mobile-native action 的最低追溯项。
 - `ActionEvidence.metadata["cliReference"]` 记录 dry-run 参照。
 - `ActionEvidence.metadata["requestAttribution"]` 记录真实执行的 token mode、tool、HTTP status、request id、Lark error code、dry-run/confirm 痕迹与 required scopes。
@@ -242,6 +252,16 @@ Recommended token modes:
 - [ ] Link resulting Docx, Drive file, Sheet row, or Bitable record back into the MobileCode run.
 - [ ] Make verifier outputs exportable to Lark Docs and Bitable.
 
+### Live Relay Evidence Ingestion (MVP)
+
+- [ ] Define a shared relay evidence shape for local packs in `tools/lark_relay/evidence/*.json`:
+  - `event`: `event_id`, `tool`, `text`, `received_at`, optional `chat_id`/`message_id`/`open_id`
+  - `reply`: `send_mode`, `status`, `text`, optional reply `message_id`
+  - `evidence`: `failure_kind`, `next_action`, `request_id`, `event_id`, `log_id`, `token_mode`, `tool`, `error_code`, `raw_json_path`
+- [ ] Lark API Lab renders each item as Event -> Reply -> Evidence timeline blocks.
+- [ ] Include read-only raw JSON preview block for each entry.
+- [ ] `tools/lark_relay/evidence/*.json` may contain `chat_id`、`message_id`、`open_id`; keep these fields out of public UI unless sanitized.
+
 ### H5 Companion Surface
 
 - [ ] Add a small Lark H5 companion mode for target selection when MobileCode is opened from Lark.
@@ -322,11 +342,13 @@ Acceptance:
 - [ ] Add local preview cards for selected Lark targets.
 - [ ] Add H5 target-picking bridge for docs/files/chats when available.
 - [ ] Add evidence preview before any write.
+- [ ] Add relay evidence reader for `tools/lark_relay/evidence/*.json` and show event/reply/evidence timeline in Lark API Lab.
 
 Acceptance:
 
 - MobileCode can inspect a Lark target and show what will be written.
 - Failed access is represented as `needs_permission`, `not_found`, `rate_limited`, or `unsupported`.
+- Relay evidence view presents `send_mode`, `failure_kind`, `next_action`, `event_id/request_id`, reply `message_id`, and raw JSON preview.
 
 ### P5: Confirmed Writes
 

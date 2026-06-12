@@ -997,6 +997,9 @@ select {
 .layer-card,
 .solved-card,
 .gallery-patterns,
+.lark-channel-log,
+.lark-channel-grid article,
+.lark-channel-proof,
 .gallery-pattern-grid article,
 .developer-split article,
 .release-evidence,
@@ -1178,6 +1181,71 @@ select {
   grid-row: 1 / span 2;
   grid-column: 2;
   color: var(--mint);
+}
+
+.lark-channel-log {
+  padding: 24px;
+  border-color: rgba(115, 243, 208, 0.28);
+}
+
+.lark-channel-visual {
+  margin-top: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(3, 5, 11, 0.45);
+}
+
+.lark-channel-visual img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.lark-channel-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.lark-channel-grid article {
+  min-height: 184px;
+  padding: 18px;
+  box-shadow: none;
+  background: rgba(3, 5, 11, 0.38);
+}
+
+.lark-channel-grid svg {
+  color: var(--mint);
+}
+
+.lark-channel-grid h3 {
+  margin: 10px 0 8px;
+  color: #ffffff;
+  line-height: 1.22;
+}
+
+.lark-channel-proof {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 18px;
+  box-shadow: none;
+  background: rgba(15, 118, 110, 0.12);
+}
+
+.lark-channel-proof span {
+  color: var(--mint);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.lark-channel-proof strong {
+  color: #ffffff;
+  line-height: 1.4;
 }
 
 .developer-split {
@@ -1368,6 +1436,7 @@ select {
   .developer-split,
   .gallery-pattern-grid,
   .gallery-pattern-links,
+  .lark-channel-grid,
   .system-flow,
   .release-evidence,
   .roadmap-grid,
@@ -1438,6 +1507,7 @@ select {
   .developer-proof,
   .developer-split article,
   .developer-roadmap,
+  .lark-channel-log,
   .release-evidence {
     padding: 18px;
   }

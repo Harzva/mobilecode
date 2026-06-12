@@ -119,6 +119,95 @@ extension LarkApiActionKindLabel on LarkApiActionKind {
   }
 }
 
+enum LarkApiFailureKind {
+  none,
+  missingToken,
+  missingRelay,
+  missingScope,
+  appScopeNotApplied,
+  permissionDenied,
+  emptyResult,
+  previewOnly,
+  transportError,
+  apiError,
+  eventConsumerNotRunning,
+}
+
+extension LarkApiFailureKindLabel on LarkApiFailureKind {
+  String get evidenceName {
+    return switch (this) {
+      LarkApiFailureKind.none => 'none',
+      LarkApiFailureKind.missingToken => 'missing_token',
+      LarkApiFailureKind.missingRelay => 'missing_relay',
+      LarkApiFailureKind.missingScope => 'missing_scope',
+      LarkApiFailureKind.appScopeNotApplied => 'app_scope_not_applied',
+      LarkApiFailureKind.permissionDenied => 'permission_denied',
+      LarkApiFailureKind.emptyResult => 'empty_result',
+      LarkApiFailureKind.previewOnly => 'preview_only',
+      LarkApiFailureKind.transportError => 'transport_error',
+      LarkApiFailureKind.apiError => 'api_error',
+      LarkApiFailureKind.eventConsumerNotRunning =>
+        'event_consumer_not_running',
+    };
+  }
+
+  String get label {
+    return switch (this) {
+      LarkApiFailureKind.none => 'OK',
+      LarkApiFailureKind.missingToken => 'Missing token',
+      LarkApiFailureKind.missingRelay => 'Missing relay',
+      LarkApiFailureKind.missingScope => 'Missing user scope',
+      LarkApiFailureKind.appScopeNotApplied => 'App scope not applied',
+      LarkApiFailureKind.permissionDenied => 'Permission denied',
+      LarkApiFailureKind.emptyResult => 'Empty result',
+      LarkApiFailureKind.previewOnly => 'Preview only',
+      LarkApiFailureKind.transportError => 'Transport error',
+      LarkApiFailureKind.apiError => 'API error',
+      LarkApiFailureKind.eventConsumerNotRunning =>
+        'Event consumer not running',
+    };
+  }
+}
+
+@immutable
+class LarkApiDiagnosis {
+  const LarkApiDiagnosis({
+    required this.failureKind,
+    required this.summary,
+    required this.nextAction,
+    this.missingScopes = const [],
+    this.logId,
+    this.consoleUrl,
+    this.source = 'mobile_native',
+  });
+
+  final LarkApiFailureKind failureKind;
+  final String summary;
+  final String nextAction;
+  final List<String> missingScopes;
+  final String? logId;
+  final String? consoleUrl;
+  final String source;
+
+  bool get ok =>
+      failureKind == LarkApiFailureKind.none ||
+      failureKind == LarkApiFailureKind.emptyResult;
+
+  Map<String, Object?> toJson() {
+    return {
+      'source': source,
+      'failureKind': failureKind.evidenceName,
+      'label': failureKind.label,
+      'ok': ok,
+      'summary': summary,
+      'nextAction': nextAction,
+      'missingScopes': missingScopes,
+      'logId': logId,
+      'consoleUrl': consoleUrl,
+    };
+  }
+}
+
 @immutable
 class LarkApiConnection {
   const LarkApiConnection({
@@ -308,7 +397,10 @@ class LarkApiCallResult {
   final String body;
   final String error;
 
+  LarkApiDiagnosis get diagnosis => LarkApiService.diagnoseResult(this);
+
   Map<String, Object?> toEvidenceJson() {
+    final diagnostic = diagnosis;
     return {
       'success': success,
       'statusCode': statusCode,
@@ -320,6 +412,10 @@ class LarkApiCallResult {
       'larkMessage': larkMessage,
       'body': LarkApiService.compact(body, limit: 1600),
       'error': error,
+      'failureKind': diagnostic.failureKind.evidenceName,
+      'missingScopes': diagnostic.missingScopes,
+      'nextAction': diagnostic.nextAction,
+      'diagnosis': diagnostic.toJson(),
     };
   }
 
@@ -371,11 +467,14 @@ class LarkApiService {
     LarkCliParityBlueprint(
       actionKind: LarkApiActionKind.wikiListSpaces,
       cliCommandTemplate:
-          'lark-cli wiki +space list --page-size 10 --format json',
+          'lark-cli wiki +space-list --page-size 10 --format json',
       mobileNativePath: 'GET /wiki/v2/spaces?page_size=10',
       tokenCarrier: 'CLI auth token',
-      cliErrorCodes: '0|1001|9999',
-      requiredScopes: ['wiki:wiki:readonly or wiki:wiki'],
+      cliErrorCodes: '0|missing_scope|99991672|empty_spaces',
+      requiredScopes: [
+        'wiki:space:retrieve',
+        'wiki:wiki:readonly or wiki:wiki'
+      ],
     ),
   ];
 
@@ -397,6 +496,58 @@ class LarkApiService {
 
   static List<Map<String, Object?>> cliParityCatalog() {
     return _cliParityCatalog.map((item) => item.toJson()).toList();
+  }
+
+  static List<Map<String, Object?>> failureTaxonomySamples() {
+    return const [
+      {
+        'sample': 'CLI user before scope grant',
+        'tool': 'wiki +space-list',
+        'tokenMode': 'user_access_token',
+        'failureKind': 'missing_scope',
+        'missingScopes': ['wiki:space:retrieve'],
+        'nextAction':
+            'Run lark-cli auth login --scope "wiki:space:retrieve" or start the mobile OAuth flow for that user scope.',
+      },
+      {
+        'sample': 'CLI user after scope grant',
+        'tool': 'wiki +space-list',
+        'tokenMode': 'user_access_token',
+        'failureKind': 'empty_result',
+        'missingScopes': [],
+        'nextAction':
+            'API path is reachable. If spaces is empty, show a no-visible-wiki-space state instead of retrying auth.',
+      },
+      {
+        'sample': 'CLI bot without app scope',
+        'tool': 'wiki +space-list',
+        'tokenMode': 'tenant_access_token',
+        'failureKind': 'app_scope_not_applied',
+        'code': 99991672,
+        'missingScopes': [
+          'wiki:wiki',
+          'wiki:wiki:readonly',
+          'wiki:space:retrieve',
+        ],
+        'nextAction':
+            'Open the Feishu developer console for the app and apply the missing bot/app scopes before retrying with tenant token.',
+      },
+      {
+        'sample': 'Feishu bot chat no reply',
+        'tool': 'event consume im.message.receive_v1',
+        'tokenMode': 'tenant_access_token',
+        'failureKind': 'event_consumer_not_running',
+        'httpStatus': 200,
+        'errorCode': 'event_consumer_not_running',
+        'logId': '<log_id>',
+        'requestId': '<request_id>',
+        'dryRunTrace':
+            'lark-cli event consume im.message.receive_v1 --app-id <app_id> --tenant-key <tenant_access_token> --dry-run',
+        'missingScopes': ['im:message:readonly or event subscription scopes'],
+        'nextAction':
+            'Run a Mac/CI/relay event consumer or configure a Feishu callback URL; creating the bot alone does not start an agent reply loop.',
+      },
+    ];
   }
 
   LarkApiService({
@@ -461,7 +612,10 @@ class LarkApiService {
           path: '/wiki/v2/spaces',
           query: {'page_size': '1'},
           label: 'Readiness probe through a low-volume Wiki list call',
-          requiredScopes: ['wiki:wiki:readonly or wiki:wiki'],
+          requiredScopes: [
+            'wiki:space:retrieve',
+            'wiki:wiki:readonly or wiki:wiki'
+          ],
         ),
       LarkApiActionKind.wikiListSpaces => const LarkApiRequestSpec(
           kind: LarkApiActionKind.wikiListSpaces,
@@ -469,7 +623,10 @@ class LarkApiService {
           path: '/wiki/v2/spaces',
           query: {'page_size': '10'},
           label: 'List accessible Wiki spaces',
-          requiredScopes: ['wiki:wiki:readonly or wiki:wiki'],
+          requiredScopes: [
+            'wiki:space:retrieve',
+            'wiki:wiki:readonly or wiki:wiki'
+          ],
         ),
       LarkApiActionKind.docxCreate => LarkApiRequestSpec(
           kind: LarkApiActionKind.docxCreate,
@@ -782,6 +939,259 @@ class LarkApiService {
     final trimmed = value.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (trimmed.length <= limit) return trimmed;
     return '${trimmed.substring(0, limit)}...';
+  }
+
+  static LarkApiDiagnosis diagnoseResult(LarkApiCallResult result) {
+    final bodyJson = _tryDecodeMap(result.body);
+    final errorJson = _tryDecodeMap(result.error);
+    final envelope = _mergeDiagnosticMaps(bodyJson, errorJson);
+    final text = [
+      result.error,
+      result.body,
+      result.larkMessage ?? '',
+      jsonEncode(envelope),
+    ].join(' ').toLowerCase();
+    final missingScopes = _extractMissingScopes(envelope, text);
+    final logId = _firstString(envelope, const [
+          'log_id',
+          'logId',
+          'request_id',
+          'requestId',
+        ]) ??
+        result.requestId;
+    final consoleUrl = _firstString(envelope, const [
+      'console_url',
+      'consoleUrl',
+    ]);
+
+    if (result.success) {
+      if (_isEmptyWikiSpacesResult(result)) {
+        return const LarkApiDiagnosis(
+          failureKind: LarkApiFailureKind.emptyResult,
+          summary:
+              'OpenAPI reachable and authorized, but no visible Wiki spaces were returned.',
+          nextAction:
+              'Treat this as a valid empty state. Offer my_library lookup, joining a Wiki space, or creating a test Wiki space.',
+        );
+      }
+      return const LarkApiDiagnosis(
+        failureKind: LarkApiFailureKind.none,
+        summary: 'OpenAPI request succeeded.',
+        nextAction: 'Continue with the requested Lark action.',
+      );
+    }
+
+    if (text.contains('no direct access token is configured')) {
+      return const LarkApiDiagnosis(
+        failureKind: LarkApiFailureKind.missingToken,
+        summary: 'No direct user or tenant access token is configured.',
+        nextAction:
+            'Paste a user/tenant token, use runtime-provided token mode, or configure managed relay.',
+      );
+    }
+
+    if (text.contains('managed relay url is not configured')) {
+      return const LarkApiDiagnosis(
+        failureKind: LarkApiFailureKind.missingRelay,
+        summary: 'Managed relay mode is selected but no relay URL is set.',
+        nextAction:
+            'Set the managed relay URL or switch to user/tenant access token mode.',
+      );
+    }
+
+    if (result.larkCode == 99991672 ||
+        text.contains('app_scope_not_applied') ||
+        text.contains('has not applied for the required scope')) {
+      return LarkApiDiagnosis(
+        failureKind: LarkApiFailureKind.appScopeNotApplied,
+        summary:
+            'The Feishu/Lark app has not applied for the required API scopes.',
+        nextAction: consoleUrl == null
+            ? 'Open the Feishu developer console and apply the missing app scopes before retrying.'
+            : 'Open $consoleUrl and apply the missing app scopes before retrying.',
+        missingScopes: missingScopes,
+        logId: logId,
+        consoleUrl: consoleUrl,
+      );
+    }
+
+    if (text.contains('missing_scope') ||
+        text.contains('missing required scope') ||
+        missingScopes.isNotEmpty) {
+      return LarkApiDiagnosis(
+        failureKind: LarkApiFailureKind.missingScope,
+        summary: 'The current user token is valid but lacks required scopes.',
+        nextAction: missingScopes.isEmpty
+            ? 'Re-authorize the user token with the required scopes.'
+            : 'Re-authorize with scope ${missingScopes.join(' / ')}.',
+        missingScopes: missingScopes,
+        logId: logId,
+      );
+    }
+
+    if (result.statusCode == 401 || result.statusCode == 403) {
+      return LarkApiDiagnosis(
+        failureKind: LarkApiFailureKind.permissionDenied,
+        summary: 'Lark rejected the request for auth or permission reasons.',
+        nextAction:
+            'Check token mode, app visibility, resource membership, and required scopes before retrying.',
+        missingScopes: missingScopes,
+        logId: logId,
+      );
+    }
+
+    if (text.contains('first ui increment does not attach') ||
+        text.contains('preview') && result.statusCode == 0) {
+      return const LarkApiDiagnosis(
+        failureKind: LarkApiFailureKind.previewOnly,
+        summary: 'This action currently supports protocol preview only.',
+        nextAction:
+            'Use Preview JSON or Copy cURL, then add native execution support for the missing payload path.',
+      );
+    }
+
+    if (text.contains('event_consumer_not_running') ||
+        text.contains('event consumer is not running') ||
+        text.contains('im.message.receive_v1')) {
+      return LarkApiDiagnosis(
+        failureKind: LarkApiFailureKind.eventConsumerNotRunning,
+        summary:
+            'Bot event consumer process is not running for this tenant/app context.',
+        nextAction:
+            'Start an event consumer service or callback path (Mac/CI/relay), then retry the chat flow.',
+        missingScopes: const [
+          'im:message:readonly or event subscription scopes',
+        ],
+        logId: logId,
+      );
+    }
+
+    if (result.statusCode == 0) {
+      return LarkApiDiagnosis(
+        failureKind: LarkApiFailureKind.transportError,
+        summary: 'No HTTP status was returned by the native request.',
+        nextAction:
+            'Check network, base URL, relay availability, token mode, and platform HTTP permissions.',
+        logId: logId,
+      );
+    }
+
+    return LarkApiDiagnosis(
+      failureKind: LarkApiFailureKind.apiError,
+      summary: result.error.isEmpty
+          ? 'Lark API returned an unsuccessful response.'
+          : compact(result.error, limit: 220),
+      nextAction:
+          'Use statusCode, larkCode, requestId/logId, and required scopes to choose the next recovery step.',
+      missingScopes: missingScopes,
+      logId: logId,
+    );
+  }
+
+  static Map<String, Object?> _mergeDiagnosticMaps(
+    Map<String, Object?> first,
+    Map<String, Object?> second,
+  ) {
+    final merged = <String, Object?>{};
+    void addMap(Map<String, Object?> source) {
+      for (final entry in source.entries) {
+        merged[entry.key] = entry.value;
+        final value = entry.value;
+        if (value is Map<String, Object?>) {
+          for (final nested in value.entries) {
+            merged.putIfAbsent(nested.key, () => nested.value);
+          }
+        }
+      }
+    }
+
+    addMap(first);
+    addMap(second);
+    return merged;
+  }
+
+  static Map<String, Object?> _tryDecodeMap(Object? value) {
+    if (value is Map<String, Object?>) return value;
+    if (value is Map) {
+      return value.map((key, val) => MapEntry(key.toString(), val));
+    }
+    if (value is! String || value.trim().isEmpty) return const {};
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is Map<String, Object?>) return decoded;
+      if (decoded is Map) {
+        return decoded.map((key, val) => MapEntry(key.toString(), val));
+      }
+    } catch (_) {
+      // Non-JSON Lark errors are classified with text fallbacks.
+    }
+    return const {};
+  }
+
+  static List<String> _extractMissingScopes(
+    Map<String, Object?> envelope,
+    String text,
+  ) {
+    final scopes = <String>{};
+
+    void addValue(Object? value) {
+      if (value is List) {
+        for (final item in value) {
+          addValue(item);
+        }
+        return;
+      }
+      if (value is String) {
+        for (final part in value.split(RegExp(r'[\s,]+'))) {
+          final trimmed = part.trim().replaceAll(RegExp(r'["\[\]]'), '');
+          if (trimmed.contains(':') && trimmed.length > 3) scopes.add(trimmed);
+        }
+      }
+    }
+
+    for (final key in const [
+      'missing_scopes',
+      'missingScopes',
+      'required_scopes',
+      'requiredScopes',
+    ]) {
+      addValue(envelope[key]);
+    }
+
+    final missingScopeMatch =
+        RegExp(r'missing required scope\(s\):\s*([^"\n]+)').firstMatch(text);
+    if (missingScopeMatch != null) {
+      addValue(missingScopeMatch.group(1));
+    }
+
+    final quotedScopeMatches =
+        RegExp(r'[a-z][a-z0-9_]*:[a-z0-9_:.\-]+').allMatches(text);
+    for (final match in quotedScopeMatches) {
+      scopes.add(match.group(0)!);
+    }
+
+    return scopes.toList()..sort();
+  }
+
+  static String? _firstString(
+      Map<String, Object?> envelope, List<String> keys) {
+    for (final key in keys) {
+      final value = envelope[key];
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+    return null;
+  }
+
+  static bool _isEmptyWikiSpacesResult(LarkApiCallResult result) {
+    if (!result.endpoint.contains('/wiki/v2/spaces')) return false;
+    final decoded = _tryDecodeMap(result.body);
+    final Object? data = decoded['data'];
+    if (data is Map) {
+      final spaces = data['spaces'] ?? data['items'];
+      return spaces is List && spaces.isEmpty;
+    }
+    final spaces = decoded['spaces'] ?? decoded['items'];
+    return spaces is List && spaces.isEmpty;
   }
 
   Future<void> _ensureSecureStorage() async {

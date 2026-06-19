@@ -28,6 +28,14 @@ SENSITIVE_PATH_KEYS = {
     "union_id",
     "idempotency_key",
 }
+COMMAND_REDACT_NEXT_FLAGS = {
+    "--chat-id": "redacted_chat_id",
+    "--idempotency-key": "redacted_idempotency_key",
+    "--message-id": "redacted_message_id",
+    "--open-id": "redacted_open_id",
+    "--text": "redacted_message_text",
+    "--user-id": "redacted_user_id",
+}
 
 
 def _now_iso8601() -> str:
@@ -63,8 +71,24 @@ def _safe_reply_text(value: Any) -> str:
     return "<redacted_model_reply>"
 
 
+def _sanitize_command(value: list[Any]) -> list[str]:
+    sanitized: list[str] = []
+    redact_next = ""
+    for item in value[:30]:
+        text = str(item)
+        if redact_next:
+            sanitized.append(f"<{redact_next}>")
+            redact_next = ""
+            continue
+        sanitized.append(text)
+        redact_next = COMMAND_REDACT_NEXT_FLAGS.get(text, "")
+    return sanitized
+
+
 def _sanitize_scalar(key: str, value: Any) -> Any:
     lower = key.lower()
+    if lower in {"document_url", "documenturl", "document_reference", "documentreference"}:
+        return _redacted(value, "redacted_docx_url")
     if key in SENSITIVE_PATH_KEYS or lower.endswith("_id") or lower.endswith("id"):
         if key in {"event_id", "request_id", "dry_run_id"}:
             return _compact(value, 96)
@@ -86,6 +110,8 @@ def sanitize_value(value: Any, key: str = "") -> Any:
     if isinstance(value, dict):
         return {str(item_key): sanitize_value(item_value, str(item_key)) for item_key, item_value in value.items()}
     if isinstance(value, list):
+        if key == "command":
+            return _sanitize_command(value)
         return [sanitize_value(item, key) for item in value[:20]]
     if isinstance(value, (str, int, float, bool)) or value is None:
         return _sanitize_scalar(key, value)
@@ -105,7 +131,11 @@ def sanitize_evidence(record: dict[str, Any], source_path: Path) -> dict[str, An
 
 def load_feed(evidence_dir: Path, limit: int) -> dict[str, Any]:
     files = sorted(
-        evidence_dir.glob("*.json"),
+        (
+            path
+            for path in evidence_dir.glob("*.json")
+            if not path.name.endswith(".summary.json")
+        ),
         key=lambda path: path.stat().st_mtime if path.exists() else 0,
         reverse=True,
     )

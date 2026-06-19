@@ -258,6 +258,52 @@ for `MOBILECODE_LARK_DEVLOG_PARENT_TOKEN`. If no parent is configured, the CLI
 uses its default create location. `MOBILECODE_LARK_DEVLOG_PARENT_POSITION` can
 be set to values such as `my_library` when the current identity supports it.
 
+## Dev-log E2E runner
+
+Use the bounded runner when you want one command to orchestrate the product
+chain and produce a sanitized local summary:
+
+```bash
+python3 tools/lark_relay/e2e_devlog_runner.py \
+  --send-method manual \
+  --send-mode dry-run \
+  --docx-mode dry-run \
+  --timeout 2m
+```
+
+When the runner prints the manual trigger prompt, send `/mc 写开发日志` to the
+bot. It starts `live_event_relay.py`, waits for one matching event, writes local
+relay evidence, reads the sanitized feed, and writes an ignored summary file
+under `tools/lark_relay/evidence/summaries/e2e-*.summary.json`.
+
+If your user token has `im:message.send_as_user` and `im:message`, the runner can
+send the trigger through `lark-cli`:
+
+```bash
+python3 tools/lark_relay/e2e_devlog_runner.py \
+  --send-method lark-cli \
+  --chat-id <oc_xxx> \
+  --send-mode dry-run \
+  --docx-mode dry-run
+```
+
+Real writes require an explicit opt-in. This creates a real Docx and sends a
+real bot reply:
+
+```bash
+python3 tools/lark_relay/e2e_devlog_runner.py \
+  --send-method manual \
+  --send-mode live \
+  --docx-mode live \
+  --allow-live \
+  --timeout 3m
+```
+
+The runner summary is public-safe by design: it redacts the trigger text,
+recipient target, chat IDs, message IDs, and private content. Raw evidence stays
+in the ignored `tools/lark_relay/evidence/` directory. The feed server ignores
+runner summaries and only serves event evidence.
+
 Command agents may emit structured evidence metadata on stderr with the prefix
 `MOBILECODE_RELAY_META_JSON=`. The relay keeps stdout as the bot reply, removes
 the marker from visible stderr, and copies supported metadata such as

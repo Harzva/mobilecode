@@ -9567,16 +9567,91 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
     );
   }
 
-  Widget _relayEvidenceSampleCard(LarkRelayEvidenceSample sample) {
+  Color _relayEvidenceStatusColor(LarkRelayEvidenceSample sample) {
+    if (sample.isSuccess) return _mint;
+    if (sample.failureKind == 'event_consumer_not_running' ||
+        sample.failureKind == 'event_timeout_no_message' ||
+        sample.failureKind == 'missing_scope') {
+      return _amber;
+    }
+    return _rose;
+  }
+
+  IconData _relayEvidenceStatusIcon(LarkRelayEvidenceSample sample) {
+    if (sample.isSuccess) return Icons.verified_outlined;
+    if (sample.failureKind == 'event_consumer_not_running' ||
+        sample.failureKind == 'event_timeout_no_message') {
+      return Icons.sensors_off_outlined;
+    }
+    return Icons.error_outline;
+  }
+
+  Widget _relayEvidenceSampleCard(
+    LarkRelayEvidenceSample sample, {
+    bool highlighted = false,
+    bool builtIn = false,
+  }) {
+    final statusColor = _relayEvidenceStatusColor(sample);
+    final title = highlighted
+        ? 'Latest synced chain'
+        : (builtIn ? 'Built-in sanitized chain' : 'Relay evidence chain');
     return _Panel(
-      padding: const EdgeInsets.all(10),
+      padding: EdgeInsets.all(highlighted ? 12 : 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('event -> reply -> evidence',
-              style: TextStyle(
-                  color: _text, fontSize: 12, fontWeight: FontWeight.w800)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(_relayEvidenceStatusIcon(sample),
+                  size: 18, color: statusColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title,
+                        style: const TextStyle(
+                            color: _text,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 2),
+                    Text(
+                      sample.chainSummary,
+                      style: TextStyle(
+                          color: statusColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          height: 1.35),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(999),
+                  border:
+                      Border.all(color: statusColor.withValues(alpha: 0.28)),
+                ),
+                child: Text(
+                  sample.isLive ? 'live write' : 'dry-run/safe',
+                  style: TextStyle(
+                      color: statusColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 6),
+          Text(
+            'path=event -> MobileCode agent${sample.hasDocx ? ' -> Docx' : ''} -> reply -> evidence',
+            style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+          ),
+          const SizedBox(height: 4),
           Text(
             'tool=${sample.eventTool} · send_mode=${sample.sendMode}',
             style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
@@ -9605,7 +9680,10 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
             const SizedBox(height: 4),
             Text(
               'docx_status=${sample.docxStatus} · docx=${sample.docxUrl}',
-              style: const TextStyle(color: _muted, fontSize: 11, height: 1.35),
+              style: TextStyle(
+                  color: sample.isDocxCreated ? _mint : _muted,
+                  fontSize: 11,
+                  height: 1.35),
             ),
           ],
           const SizedBox(height: 4),
@@ -9649,6 +9727,12 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
         result.message,
         if (result.endpoint.isNotEmpty) 'endpoint=${result.endpoint}',
         'status=${result.statusCode}',
+        'synced_at=${result.syncedAt.toIso8601String()}',
+        if (result.feedSchema.isNotEmpty) 'feed_schema=${result.feedSchema}',
+        if (result.feedSource.isNotEmpty) 'feed_source=${result.feedSource}',
+        if (result.feedGeneratedAt.isNotEmpty)
+          'feed_generated_at=${result.feedGeneratedAt}',
+        if (result.feedCount > 0) 'feed_count=${result.feedCount}',
         if (result.rawPreview.isNotEmpty)
           'rawPreview=${_compact(result.rawPreview, limit: 320)}',
       ].join('\n');
@@ -9838,10 +9922,12 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
   @override
   Widget build(BuildContext context) {
     final preview = _preview;
-    final relayEvidenceSamples = [
-      ..._syncedRelayEvidence,
-      ...LarkApiService.relayEvidenceSamples(),
+    final LarkRelayEvidenceSample? latestSyncedRelayEvidence =
+        _syncedRelayEvidence.isEmpty ? null : _syncedRelayEvidence.first;
+    final relayEvidenceHistorySamples = <LarkRelayEvidenceSample>[
+      if (_syncedRelayEvidence.length > 1) ..._syncedRelayEvidence.skip(1),
     ];
+    final builtInRelayEvidenceSamples = LarkApiService.relayEvidenceSamples();
     return _SheetScaffold(
       icon: Icons.account_tree_outlined,
       title: 'Lark API Lab',
@@ -9950,10 +10036,30 @@ class _LarkApiLabSheetState extends State<_LarkApiLabSheet> {
                       color: _muted, fontSize: 11, height: 1.35),
                 ),
                 const SizedBox(height: 10),
-                for (final sample in relayEvidenceSamples)
+                if (latestSyncedRelayEvidence != null) ...[
+                  _relayEvidenceSampleCard(
+                    latestSyncedRelayEvidence,
+                    highlighted: true,
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Evidence history and built-in samples',
+                    style: TextStyle(
+                        color: _text,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                for (final sample in relayEvidenceHistorySamples)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: _relayEvidenceSampleCard(sample),
+                  ),
+                for (final sample in builtInRelayEvidenceSamples)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _relayEvidenceSampleCard(sample, builtIn: true),
                   ),
               ],
             ),

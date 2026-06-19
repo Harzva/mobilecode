@@ -467,6 +467,14 @@ def run_live_relay(args: argparse.Namespace) -> int:
     )
     stderr_thread.start()
     ready.wait(timeout=15)
+    if ready.is_set():
+        print(f"[relay] ready event_key={EVENT_KEY}", file=sys.stderr, flush=True)
+    else:
+        print(
+            f"[relay] ready_timeout event_key={EVENT_KEY}",
+            file=sys.stderr,
+            flush=True,
+        )
 
     assert process.stdout is not None
     for line in process.stdout:

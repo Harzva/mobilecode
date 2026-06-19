@@ -246,7 +246,17 @@ class LarkRelayEvidenceSample {
   final String docxStatus;
   final String docxUrl;
 
-  bool get isSample => rawJsonPreviewAvailable;
+  bool get isSuccess => failureKind == 'none';
+  bool get isLive => sendMode == 'live';
+  bool get isDryRun => sendMode == 'dry-run';
+  bool get hasDocx => docxStatus != 'N/A' || docxUrl != 'N/A';
+  bool get isDocxCreated => docxStatus == 'created';
+  bool get isSample => evidenceSource == 'sanitized_sample';
+  String get chainSummary {
+    final mode = isLive ? 'live' : (isDryRun ? 'dry-run' : sendMode);
+    final outcome = isSuccess ? 'passed' : failureKind;
+    return '$chainStage · $mode · $outcome';
+  }
 
   Map<String, Object?> toDisplayMap() {
     return {
@@ -278,6 +288,10 @@ class LarkRelayEvidenceSyncResult {
     required this.message,
     required this.syncedAt,
     this.rawPreview = '',
+    this.feedSchema = '',
+    this.feedSource = '',
+    this.feedGeneratedAt = '',
+    this.feedCount = 0,
   });
 
   final bool success;
@@ -287,6 +301,10 @@ class LarkRelayEvidenceSyncResult {
   final String message;
   final DateTime syncedAt;
   final String rawPreview;
+  final String feedSchema;
+  final String feedSource;
+  final String feedGeneratedAt;
+  final int feedCount;
 }
 
 @immutable
@@ -974,6 +992,13 @@ class LarkApiService {
     return false;
   }
 
+  static int _safeRelayInt(Object? value, {required int fallback}) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value.trim()) ?? fallback;
+    return fallback;
+  }
+
   static Map<String, Object?> _sanitizeEnvelopeKeys(
     Map<String, Object?> envelope,
   ) {
@@ -1286,6 +1311,10 @@ class LarkApiService {
       final response =
           await request.close().timeout(const Duration(seconds: 20));
       final body = await utf8.decodeStream(response);
+      final feedEnvelope =
+          response.statusCode >= 200 && response.statusCode < 300
+              ? _tryDecodeMap(body)
+              : const <String, Object?>{};
       final samples = response.statusCode >= 200 && response.statusCode < 300
           ? parseRelayEvidenceFeed(body)
           : const <LarkRelayEvidenceSample>[];
@@ -1299,6 +1328,14 @@ class LarkApiService {
             : 'Relay evidence sync failed with HTTP ${response.statusCode}.',
         syncedAt: DateTime.now(),
         rawPreview: redactBody(compact(body, limit: 1600)),
+        feedSchema: _safeRelayValue(feedEnvelope['schema'], fallback: ''),
+        feedSource: _safeRelayValue(feedEnvelope['source'], fallback: ''),
+        feedGeneratedAt: _safeRelayValue(
+          feedEnvelope['generated_at'] ?? feedEnvelope['generatedAt'],
+          fallback: '',
+        ),
+        feedCount:
+            _safeRelayInt(feedEnvelope['count'], fallback: samples.length),
       );
     } on Object catch (error) {
       return LarkRelayEvidenceSyncResult(

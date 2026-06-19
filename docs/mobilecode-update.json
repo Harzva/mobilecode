@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "channel": "stable",
+  "title": "MobileCode 远程更新消息已接入",
+  "message": "App 会从 GitHub Pages 读取这个 JSON。以后只要更新 mobilecode-update.json，App 内公告、升级提示和官网入口就会同步变化。",
+  "latestVersion": "v0.1.68-mobile-harness-d2dd9a7",
+  "latestBuildNumber": 58,
+  "minimumSupportedBuildNumber": 58,
+  "severity": "info",
+  "publishedAt": "2026-06-18T12:00:00-07:00",
+  "pagesUrl": "https://harzva.github.io/mobilecode/",
+  "githubUrl": "https://github.com/Harzva/mobilecode",
+  "releaseUrl": "https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7",
+  "downloadUrl": "https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7",
+  "ctaLabel": "打开 GitHub Pages",
+  "secondaryCtaLabel": "下载最新构建",
+  "releaseNotes": [
+    "新增 App 内远程更新消息卡片。",
+    "新增 MobileCode GitHub Pages 固定入口。",
+    "更新 JSON 后，App 内消息可随 GitHub Pages 自动变化。"
+  ]
+}

@@ -218,6 +218,7 @@ flowchart LR
 - Chat and agent process UI: model call progress, stop control, trace cards, generated artifact cards.
 - HTML-first generation: built-in HTML/UI skill context, publish readiness checks, WebView preview, browser open, GitHub Pages publish.
 - GitHub-first workspace: repo list, watchlist, language/Pages/local filters, local existence status, Remote-linked folder marker.
+- [Safe container architecture](docs/mobilecode-container-architecture.md): multi-workspace, multi-runtime, multi-preview, and evidence-ledger model for phone-native AI coding.
 - GitHub Actions surface: workflows, latest run status, jobs/steps, workflow dispatch, artifact zip download record.
 - API-backed file flow: browse remote tree, read text files, edit, commit via GitHub Contents API, reload on SHA conflict.
 - Extension management: Roles, Skill, MCP, Memory, Agent, Hook Registry surfaces for role-based workflows.

@@ -34,6 +34,7 @@ import '../services/github_pages_service.dart';
 import '../services/github_repo_hub_service.dart';
 import '../services/html_publish_readiness_service.dart';
 import '../services/lark_api_service.dart';
+import '../services/mobilecode_update_service.dart';
 import '../services/role_library_service.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
@@ -74,6 +75,7 @@ enum _ModuleAction {
   aiChat,
   apiConfig,
   healthCheck,
+  pagesHome,
   webDemo,
   githubTest,
   diary,
@@ -137,6 +139,8 @@ const _managedRelayToken =
     String.fromEnvironment('MOBILECODE_MANAGED_RELAY_TOKEN');
 const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
+const _mobileCodePagesUrl = MobileCodeUpdateService.pagesUrl;
+const _mobileCodeUpdateFeedUrl = MobileCodeUpdateService.defaultFeedUrl;
 const _currentProductVersion = 'v0.1.68-mobile-harness-d2dd9a7';
 const _releaseUrl =
     'https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7';
@@ -2017,9 +2021,13 @@ class _HomeScreenState extends State<HomeScreen> {
   List<RuntimeTaskSnapshot> _helperTaskHistory = const [];
   List<_ChatSession> _drawerSessions = const [];
   String? _drawerActiveSessionId;
+  MobileCodeUpdateFeed? _remoteUpdateFeed;
+  bool _remoteUpdateChecking = false;
+  String? _remoteUpdateError;
 
   late final RuntimeManager _runtimeManager =
       RuntimeManager.withExternalTermux(TermuxService());
+  late final MobileCodeUpdateService _updateService = MobileCodeUpdateService();
 
   final List<_ActivityLog> _activity = [
     _ActivityLog(
@@ -2116,6 +2124,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _brandTheme = _normalizeBrandTheme(widget.brandTheme);
     _loadConfig();
     unawaited(_checkRuntime(silent: true));
+    unawaited(_refreshRemoteUpdate(silent: true));
   }
 
   @override
@@ -2129,6 +2138,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     unawaited(_runtimeManager.dispose());
+    _updateService.dispose();
     _baseUrlController.dispose();
     _apiKeyController.dispose();
     _modelController.dispose();
@@ -2295,6 +2305,51 @@ class _HomeScreenState extends State<HomeScreen> {
           : Icons.open_in_browser_outlined,
       normalized == _browserOpenModeInApp ? _violet : _amber,
     );
+  }
+
+  Future<void> _refreshRemoteUpdate({bool silent = false}) async {
+    if (_remoteUpdateChecking) return;
+    setState(() {
+      _remoteUpdateChecking = true;
+      if (!silent) _remoteUpdateError = null;
+    });
+    try {
+      final feed =
+          await _updateService.fetch(feedUrl: _mobileCodeUpdateFeedUrl);
+      if (!mounted) return;
+      final isNew = feed.isNewerThan(
+        currentVersion: MobileCodeUpdateService.currentVersion,
+        currentBuildNumber: MobileCodeUpdateService.currentBuildNumber,
+      );
+      setState(() {
+        _remoteUpdateFeed = feed;
+        _remoteUpdateError = null;
+      });
+      _addLog(
+        isNew ? 'Remote update available' : 'Remote update feed loaded',
+        isNew
+            ? '${feed.latestVersion}+${feed.latestBuildNumber} from GitHub Pages'
+            : feed.title,
+        isNew ? Icons.system_update_alt_outlined : Icons.campaign_outlined,
+        isNew ? _amber : _mint,
+      );
+      if (!silent && isNew) {
+        _showMessage('发现新的 MobileCode 更新消息');
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 120);
+      setState(() => _remoteUpdateError = message);
+      _addLog(
+        'Remote update check failed',
+        message,
+        Icons.cloud_off_outlined,
+        _rose,
+      );
+      if (!silent) _showMessage('远程更新消息读取失败');
+    } finally {
+      if (mounted) setState(() => _remoteUpdateChecking = false);
+    }
   }
 
   void _applyProviderPreset(_ProviderPreset preset) {
@@ -2807,6 +2862,9 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       case _ModuleAction.healthCheck:
         _checkHealth();
+        break;
+      case _ModuleAction.pagesHome:
+        _openUrl(_mobileCodePagesUrl, 'MobileCode GitHub Pages');
         break;
       case _ModuleAction.webDemo:
         _openMobileCodingLabSheet(autoGenerate: true);
@@ -3544,6 +3602,13 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildToolsTab() {
     final tools = [
       _CommandShortcut(
+        icon: Icons.language_outlined,
+        title: 'MobileCode Pages',
+        subtitle: '打开 harzva.github.io/mobilecode，查看 Demo Lab、更新消息和线上说明。',
+        color: _blue,
+        action: _ModuleAction.pagesHome,
+      ),
+      _CommandShortcut(
         icon: Icons.receipt_long_outlined,
         title: 'Activity / Logs',
         subtitle:
@@ -3640,6 +3705,23 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: _openDrawer,
             icon: const Icon(Icons.menu_rounded),
           ),
+        ),
+        const SizedBox(height: 12),
+        _RemoteUpdateCard(
+          feed: _remoteUpdateFeed,
+          checking: _remoteUpdateChecking,
+          error: _remoteUpdateError,
+          currentVersion: MobileCodeUpdateService.currentVersion,
+          currentBuildNumber: MobileCodeUpdateService.currentBuildNumber,
+          onRefresh: () => _refreshRemoteUpdate(),
+          onOpenPrimary: () {
+            final url = _remoteUpdateFeed?.primaryUrl ?? _mobileCodePagesUrl;
+            _openUrl(url, 'MobileCode GitHub Pages');
+          },
+          onOpenSecondary: () {
+            final url = _remoteUpdateFeed?.secondaryUrl ?? _releaseUrl;
+            _openUrl(url, 'MobileCode release');
+          },
         ),
         const SizedBox(height: 12),
         _RuntimePermissionBanner(
@@ -5007,6 +5089,218 @@ class _ThemeChoiceChip extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _RemoteUpdateCard extends StatelessWidget {
+  const _RemoteUpdateCard({
+    required this.feed,
+    required this.checking,
+    required this.error,
+    required this.currentVersion,
+    required this.currentBuildNumber,
+    required this.onRefresh,
+    required this.onOpenPrimary,
+    required this.onOpenSecondary,
+  });
+
+  final MobileCodeUpdateFeed? feed;
+  final bool checking;
+  final String? error;
+  final String currentVersion;
+  final int currentBuildNumber;
+  final VoidCallback onRefresh;
+  final VoidCallback onOpenPrimary;
+  final VoidCallback onOpenSecondary;
+
+  @override
+  Widget build(BuildContext context) {
+    final update = feed;
+    final hasError = error != null && error!.isNotEmpty;
+    final isNew = update?.isNewerThan(
+          currentVersion: currentVersion,
+          currentBuildNumber: currentBuildNumber,
+        ) ??
+        false;
+    final requiresUpgrade =
+        update?.requiresUpgrade(currentBuildNumber: currentBuildNumber) ??
+            false;
+    final statusColor = requiresUpgrade
+        ? _rose
+        : isNew
+            ? _amber
+            : hasError
+                ? _rose
+                : _mint;
+    final statusIcon = requiresUpgrade
+        ? Icons.priority_high_rounded
+        : isNew
+            ? Icons.system_update_alt_outlined
+            : hasError
+                ? Icons.cloud_off_outlined
+                : Icons.verified_outlined;
+    final statusLabel = requiresUpgrade
+        ? 'Required'
+        : isNew
+            ? 'Update'
+            : hasError
+                ? 'Offline'
+                : 'Live';
+    final published = update?.publishedAt;
+
+    return _Panel(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: statusColor.withOpacity(0.34)),
+                ),
+                child: Icon(statusIcon, color: statusColor, size: 21),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Remote update feed',
+                            style: TextStyle(
+                              color: _text,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        if (checking)
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else
+                          _Pill(
+                            label: statusLabel,
+                            icon: statusIcon,
+                            color: statusColor,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      update?.title ??
+                          (hasError
+                              ? '读取 GitHub Pages JSON 失败'
+                              : '从 GitHub Pages 读取 App 内公告和升级消息'),
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 12,
+                        height: 1.35,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'Refresh update feed',
+                onPressed: checking ? null : onRefresh,
+                icon: const Icon(Icons.refresh_outlined, size: 20),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            update?.message ??
+                (hasError
+                    ? _compact(error!, limit: 160)
+                    : 'JSON 地址：$_mobileCodeUpdateFeedUrl。更新这个文件后，App 内消息会跟着变化。'),
+            style: const TextStyle(color: _text, fontSize: 13, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _Pill(
+                label: 'Local $currentVersion+$currentBuildNumber',
+                icon: Icons.phone_android_outlined,
+                color: _blue,
+              ),
+              _Pill(
+                label: update == null
+                    ? 'Remote pending'
+                    : 'Remote ${update.latestVersion}+${update.latestBuildNumber}',
+                icon: Icons.cloud_sync_outlined,
+                color: statusColor,
+              ),
+              if (published != null)
+                _Pill(
+                  label: published.toLocal().toString().split('.').first,
+                  icon: Icons.schedule_outlined,
+                  color: _faint,
+                ),
+            ],
+          ),
+          if (update != null && update.releaseNotes.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            for (final note in update.releaseNotes.take(3)) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.check_circle_outline,
+                      color: _mint, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      note,
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 12,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+            ],
+          ],
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onOpenPrimary,
+                  icon: const Icon(Icons.language_outlined, size: 18),
+                  label: Text(update?.ctaLabel ?? '打开 GitHub Pages'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onOpenSecondary,
+                  icon: const Icon(Icons.download_outlined, size: 18),
+                  label: Text(update?.secondaryCtaLabel ?? '下载构建'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

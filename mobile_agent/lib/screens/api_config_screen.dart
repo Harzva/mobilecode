@@ -39,15 +39,19 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
   static const _modelKey = 'mobilecode.model';
   static const _providerModeKey = 'mobilecode.providerMode';
   static const _managedProviderPresetKey = 'mobilecode.managedProviderPreset';
-  static const _deepSeekInviteAcceptedKey = 'mobilecode.deepseekDevInviteAccepted';
-  static const _defaultBaseUrl = 'https://token-plan-cn.xiaomimimo.com/anthropic';
+  static const _deepSeekInviteAcceptedKey =
+      'mobilecode.deepseekDevInviteAccepted';
+  static const _defaultBaseUrl =
+      'https://token-plan-cn.xiaomimimo.com/anthropic';
   static const _defaultModel = 'mimo-v2.5-pro';
   static const _deepSeekInviteCode = String.fromEnvironment(
     'MOBILECODE_DEEPSEEK_DEV_INVITE',
     defaultValue: 'asdfg',
   );
-  static const _managedRelayUrl = String.fromEnvironment('MOBILECODE_MANAGED_RELAY_URL');
-  static const _managedDeepSeekProviderEnabled = bool.fromEnvironment('MOBILECODE_MANAGED_DEEPSEEK_PROVIDER');
+  static const _managedRelayUrl =
+      String.fromEnvironment('MOBILECODE_MANAGED_RELAY_URL');
+  static const _managedDeepSeekProviderEnabled =
+      bool.fromEnvironment('MOBILECODE_MANAGED_DEEPSEEK_PROVIDER');
   static const _managedDeepSeekBaseUrl = String.fromEnvironment(
     'MOBILECODE_MANAGED_DEEPSEEK_BASE_URL',
     defaultValue: 'https://api.deepseek.com',
@@ -56,6 +60,8 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
     'MOBILECODE_MANAGED_DEEPSEEK_MODEL',
     defaultValue: 'deepseek-v4-flash',
   );
+  static const _managedDeepSeekApiKey =
+      String.fromEnvironment('MOBILECODE_MANAGED_DEEPSEEK_API_KEY');
 
   static const _providers = [
     _ProviderDefinition(
@@ -105,7 +111,12 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
   bool _saving = false;
 
   bool get _deepSeekSelected => _selectedPreset == _ProviderPreset.deepSeek;
-  bool get _deepSeekRelayAvailable => _managedDeepSeekProviderEnabled && _managedRelayUrl.trim().isNotEmpty;
+  bool get _deepSeekRelayAvailable =>
+      _managedDeepSeekProviderEnabled && _managedRelayUrl.trim().isNotEmpty;
+  bool get _deepSeekManagedAvailable =>
+      _managedDeepSeekProviderEnabled &&
+      (_managedRelayUrl.trim().isNotEmpty ||
+          _managedDeepSeekApiKey.trim().isNotEmpty);
 
   String get _normalizedManagedRelayUrl {
     final relay = _managedRelayUrl.trim();
@@ -134,11 +145,15 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
     final model = prefs.getString(_modelKey)?.trim();
     if (!mounted) return;
     setState(() {
-      _baseUrlController.text = baseUrl == null || baseUrl.isEmpty ? _defaultBaseUrl : baseUrl;
+      _baseUrlController.text =
+          baseUrl == null || baseUrl.isEmpty ? _defaultBaseUrl : baseUrl;
       _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
-      _modelController.text = model == null || model.isEmpty ? _defaultModel : model;
-      _selectedPreset = _detectPreset(_baseUrlController.text, _modelController.text);
-      _deepSeekInviteAccepted = prefs.getBool(_deepSeekInviteAcceptedKey) ?? false;
+      _modelController.text =
+          model == null || model.isEmpty ? _defaultModel : model;
+      _selectedPreset =
+          _detectPreset(_baseUrlController.text, _modelController.text);
+      _deepSeekInviteAccepted =
+          prefs.getBool(_deepSeekInviteAcceptedKey) ?? false;
       _loading = false;
     });
   }
@@ -163,7 +178,9 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
   void _selectPreset(_ProviderDefinition provider) {
     setState(() {
       _selectedPreset = provider.preset;
-      if (provider.preset == _ProviderPreset.deepSeek && _deepSeekInviteAccepted && _deepSeekRelayAvailable) {
+      if (provider.preset == _ProviderPreset.deepSeek &&
+          _deepSeekInviteAccepted &&
+          _deepSeekRelayAvailable) {
         _baseUrlController.text = _normalizedManagedRelayUrl;
         _apiKeyController.text = 'invite:$_deepSeekInviteCode';
       } else if (provider.baseUrl.isNotEmpty) {
@@ -241,31 +258,36 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
       _showMessage('请填写 Base URL 和 Model');
       return;
     }
-    final uri = Uri.tryParse(baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl);
+    final uri = Uri.tryParse(baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl);
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
       _showMessage('Base URL 格式不正确');
       return;
     }
-    final usesDeepSeekManagedRelay = _selectedPreset == _ProviderPreset.deepSeek &&
+    final usesDeepSeekManaged = _selectedPreset == _ProviderPreset.deepSeek &&
         _deepSeekInviteAccepted &&
-        _deepSeekRelayAvailable &&
-        baseUrl == _normalizedManagedRelayUrl;
+        _deepSeekManagedAvailable &&
+        (_deepSeekRelayAvailable
+            ? baseUrl == _normalizedManagedRelayUrl
+            : baseUrl == _managedDeepSeekBaseUrl);
     if (_selectedPreset == _ProviderPreset.deepSeek &&
-        !usesDeepSeekManagedRelay &&
+        !usesDeepSeekManaged &&
         _apiKeyController.text.trim().isEmpty) {
-      _showMessage('未使用 DeepSeek managed relay 时，需要输入自己的 DeepSeek API Key');
+      _showMessage('未使用 DeepSeek managed 模式时，需要输入自己的 DeepSeek API Key');
       return;
     }
 
     setState(() => _saving = true);
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (usesDeepSeekManagedRelay) {
+      if (usesDeepSeekManaged) {
         await prefs.setString(_providerModeKey, 'managed');
-        await prefs.setString(_managedProviderPresetKey, _ProviderPreset.deepSeek.name);
+        await prefs.setString(
+            _managedProviderPresetKey, _ProviderPreset.deepSeek.name);
         await prefs.setBool(_deepSeekInviteAcceptedKey, true);
         if (!mounted) return;
-        _showMessage('DeepSeek managed relay 已保存');
+        _showMessage('DeepSeek managed 模式已保存');
         Navigator.of(context).maybePop();
         return;
       }
@@ -283,7 +305,8 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -342,7 +365,8 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
                             prefixIcon: Icon(Icons.link_outlined),
                           ),
                           onChanged: (_) => setState(() {
-                            _selectedPreset = _detectPreset(_baseUrlController.text, _modelController.text);
+                            _selectedPreset = _detectPreset(
+                                _baseUrlController.text, _modelController.text);
                           }),
                         ),
                         const SizedBox(height: 12),
@@ -351,11 +375,13 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
                           textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
                             labelText: 'Model',
-                            hintText: 'mimo-v2.5-pro / deepseek-v4-flash / gpt-4o-mini',
+                            hintText:
+                                'mimo-v2.5-pro / deepseek-v4-flash / gpt-4o-mini',
                             prefixIcon: Icon(Icons.memory_outlined),
                           ),
                           onChanged: (_) => setState(() {
-                            _selectedPreset = _detectPreset(_baseUrlController.text, _modelController.text);
+                            _selectedPreset = _detectPreset(
+                                _baseUrlController.text, _modelController.text);
                           }),
                         ),
                         if (_deepSeekSelected) ...[
@@ -383,8 +409,11 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
                         ),
                         const SizedBox(height: 10),
                         const Text(
-                          'DeepSeek v4 Flash 是默认体验配置；邀请码只解锁测试入口，不保护内置密钥。真实 DeepSeek key 不应写进 APK/IPA，免费测试应走 relay。',
-                          style: TextStyle(color: AppTheme.auroraTextMuted, fontSize: 12, height: 1.35),
+                          'DeepSeek v4 Flash 是默认编码体验配置。测试入口可走 managed relay，也可走受控的 inbuilt 构建时密钥；不要把密钥写进仓库或日志。',
+                          style: TextStyle(
+                              color: AppTheme.auroraTextMuted,
+                              fontSize: 12,
+                              height: 1.35),
                         ),
                       ],
                     ),
@@ -394,7 +423,10 @@ class _ApiConfigScreenState extends State<ApiConfigScreen> {
                 FilledButton.icon(
                   onPressed: _saving ? null : _save,
                   icon: _saving
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.save_outlined),
                   label: Text(_saving ? 'Saving' : 'Save provider'),
                 ),
@@ -455,7 +487,7 @@ class _DeepSeekDevAccessCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            '邀请码只解锁测试入口。App 不内置真实 DeepSeek API Key；免费测试应由 relay 在服务端持有密钥。',
+            '邀请码只解锁测试入口。生产分发优先使用 relay；本地验收可使用受控的 inbuilt 构建时密钥。',
             style: TextStyle(
               color: AppTheme.auroraTextMuted,
               fontSize: 12,

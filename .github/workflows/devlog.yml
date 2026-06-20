@@ -22,13 +22,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - '.github/workflows/**'
-      - 'app/**'
-      - 'docs/**'
-      - 'mobile_agent/**'
-      - 'relay/**'
-      - 'scripts/**'
     paths-ignore:
       - 'docs/devlog/**'
 

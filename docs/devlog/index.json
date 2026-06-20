@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-06-20T04:39:23Z",
+  "repository": "Harzva/mobilecode",
+  "entries": [
+    {
+      "title": "Daily Devlog - 2026-06-20",
+      "type": "daily",
+      "date": "2026-06-20",
+      "generatedAt": "2026-06-20T04:39:23Z",
+      "head": "39a7f71b853e6bba3870459797e36690f09bb577",
+      "path": "docs/devlog/daily/2026-06-20.md"
+    },
+    {
+      "title": "Important Changes - 2026-06-20 - 39a7f71",
+      "type": "important",
+      "date": "2026-06-20",
+      "generatedAt": "2026-06-20T04:39:23Z",
+      "head": "39a7f71b853e6bba3870459797e36690f09bb577",
+      "path": "docs/devlog/important/2026-06-20-39a7f71.md"
+    }
+  ]
+}

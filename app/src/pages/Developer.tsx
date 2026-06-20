@@ -179,6 +179,10 @@ const bidirectionalChannel = [
 
 const releaseAssets = [
   {
+    label: 'Developer logs',
+    href: 'https://harzva.github.io/mobilecode/devlog/',
+  },
+  {
     label: 'Android APK',
     href: 'https://github.com/Harzva/mobilecode/releases/download/v0.1.68-mobile-harness-d2dd9a7/mobilecode-v0.1.68-mobile-harness-d2dd9a7.apk',
   },

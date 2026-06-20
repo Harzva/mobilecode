@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MobileCode Developer Logs</title>
+  <style>
+    :root { color-scheme: dark; --bg: #05070c; --panel: #101827; --line: #263449; --text: #f8fafc; --muted: #9fb1c7; --mint: #73f3d0; --cyan: #27d7e6; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0; }
+    h1 { margin: 0; font-size: clamp(36px, 8vw, 72px); line-height: 0.95; letter-spacing: 0; }
+    p { color: var(--muted); line-height: 1.55; }
+    .top { display: grid; gap: 16px; margin-bottom: 28px; }
+    .meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+    .meta span, .entry span { border: 1px solid rgba(115, 243, 208, .38); color: var(--mint); border-radius: 8px; padding: 6px 9px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+    .entry { display: grid; gap: 12px; min-height: 160px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); text-decoration: none; color: inherit; }
+    .entry:hover { border-color: var(--cyan); transform: translateY(-2px); transition: 160ms ease; }
+    .entry strong { font-size: 20px; line-height: 1.18; }
+    .entry small { color: var(--muted); }
+    .links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+    .links a { color: var(--mint); font-weight: 800; }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="top">
+      <div class="meta"><span>MobileCode</span><span>Developer Logs</span></div>
+      <h1>Daily and important engineering changes.</h1>
+      <p>These logs are generated from Git history by GitHub Actions, committed back to the repository, and published to GitHub Pages.</p>
+      <p>Last generated: <code>2026-06-20T04:39:23Z</code></p>
+    </section>
+    <section class="grid">
+
+      <a class="entry" href="./daily/2026-06-20.md">
+        <span>daily</span>
+        <strong>Daily Devlog - 2026-06-20</strong>
+        <small>2026-06-20 · 39a7f71b853e</small>
+      </a>
+
+      <a class="entry" href="./important/2026-06-20-39a7f71.md">
+        <span>important</span>
+        <strong>Important Changes - 2026-06-20 - 39a7f71</strong>
+        <small>2026-06-20 · 39a7f71b853e</small>
+      </a>
+    </section>
+    <section class="links">
+      <a href="./index.json">JSON feed</a>
+      <a href="https://github.com/Harzva/mobilecode">GitHub repository</a>
+      <a href="../">MobileCode Pages</a>
+    </section>
+  </main>
+</body>
+</html>

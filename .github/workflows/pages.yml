@@ -41,11 +41,14 @@ jobs:
         run: |
           npm ci
           npm run build
-      - name: Attach demo pages
+      - name: Attach docs and demo pages
         run: |
-          mkdir -p app/dist/demo app/dist/github-test app/dist/assets
+          mkdir -p app/dist/demo app/dist/github-test app/dist/assets app/dist/devlog
           cp -R docs/demo/2048 app/dist/demo/
           cp -R docs/github-test/* app/dist/github-test/
+          if [ -d docs/devlog ]; then
+            cp -R docs/devlog/* app/dist/devlog/
+          fi
           cp docs/mobilecode-update.json app/dist/mobilecode-update.json
           cp docs/mobilecode-local-models.json app/dist/mobilecode-local-models.json
           cp docs/mobilecode-principle-video.html app/dist/

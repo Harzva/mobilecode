@@ -55,6 +55,8 @@ Release decision:
 - It is safe to claim Android Files / DocumentsUI `.html` open-with support.
 - Chrome direct download tap needs a product decision or real-device retest because Chrome opened the downloaded HTML itself through `content://media/external/downloads/64`.
 - WeChat QA remains a physical-device or logged-in third-party-app task.
+- Real-device rerun guide: `docs/mobilecode-third-party-html-qa.md`.
+- Evidence helper script: `scripts/qa_mobilecode_html_real_device.sh`.
 
 ## v0.1.10 Release Candidate
 

@@ -182,6 +182,8 @@ flowchart LR
   - Evidence: `mobile_agent/qa-output/html-open-real-app-20260619-204552/10-chrome-download-open-attempt.png` 显示 Chrome 在模拟器中自己打开 `content://media/external/downloads/64`。
 - [ ] 微信 / 聊天工具 QA 仍需真实 App 环境。
   - Evidence: 2026-06-19 emulator package list did not include WeChat。
+- [x] 建立真实设备第三方 HTML QA runbook 和证据采集脚本。
+  - Evidence: `docs/mobilecode-third-party-html-qa.md` and `scripts/qa_mobilecode_html_real_device.sh`.
 - [x] 决定哪些 QA 截图进入公开素材目录，哪些只留在本地 `qa-output`。
   - Evidence: `docs/assets/qa/mobilecode-20260619/README.md` records curated share assets and Chrome/WeChat limitations.
 
@@ -366,6 +368,8 @@ flowchart LR
   - Evidence: 当前模拟器 Chrome direct tap 未路由到 MobileCode，需真实设备或分享入口复测。
 - [x] 将真实第三方 App QA 结果写入 `docs/mobilecode-release-qa.md` 或专项 QA 文档。
   - Evidence: `docs/mobilecode-release-qa.md` section `2026-06-19 HTML Open-With QA`.
+- [x] 将后续真机 WeChat/Chrome 复测步骤固化为 runbook 和采集脚本。
+  - Evidence: `docs/mobilecode-third-party-html-qa.md` and `scripts/qa_mobilecode_html_real_device.sh`.
 
 ### R2：Provider Auto 产品化
 

@@ -29,6 +29,33 @@ Required GitHub Actions before publishing:
   - Uses stable signing when release keystore secrets are configured.
   - Uploads `mobilecode-v0.1.10.apk` as an artifact and GitHub Release asset.
 
+## 2026-06-19 HTML Open-With QA
+
+Feature scope:
+
+- `.html` file open intents with missing MIME.
+- HTML shared through `EXTRA_TEXT`.
+- Clear user-facing error when an external file cannot be read.
+- Real third-party entry checks from Android Files / DocumentsUI, Chrome, and WeChat/chat tools.
+
+Evidence summary:
+
+| Entry | Result | Evidence |
+| --- | --- | --- |
+| Android Files / DocumentsUI | Passed | `mobile_agent/qa-output/html-open-real-app-20260619-204552/03-documentsui-opened-in-mobilecode.png` |
+| Android resolver for `.html` | Passed | `mobile_agent/qa-output/html-open-real-app-20260619-204552/02-documentsui-after-file-tap.png` |
+| Chrome download direct tap | Not passed on emulator | `mobile_agent/qa-output/html-open-real-app-20260619-204552/10-chrome-download-open-attempt.png` |
+| Chrome share alternate path | Share-asset captured, keep separate from direct-tap support | `docs/assets/qa/mobilecode-20260619/08-chrome-share-alternate.png` |
+| WeChat / chat tool | Not completed | Emulator package list did not include WeChat. Requires real phone or logged-in WeChat environment. |
+| Public-safe screenshots | Captured | `docs/assets/qa/mobilecode-20260619/README.md` |
+
+Release decision:
+
+- Do not claim universal third-party HTML open support yet.
+- It is safe to claim Android Files / DocumentsUI `.html` open-with support.
+- Chrome direct download tap needs a product decision or real-device retest because Chrome opened the downloaded HTML itself through `content://media/external/downloads/64`.
+- WeChat QA remains a physical-device or logged-in third-party-app task.
+
 ## v0.1.10 Release Candidate
 
 Release candidate:

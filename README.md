@@ -106,6 +106,7 @@ MobileCode 选择从 AI coding 切入同一条趋势：模型可以远程，重�
 - Paper: [PhoneWorld: Scaling Phone-Use Agent Environments](https://arxiv.org/abs/2605.29486)
 - Local PDF: [docs/research/phoneworld-scaling-phone-use-agent-environments-2605.29486.pdf](docs/research/phoneworld-scaling-phone-use-agent-environments-2605.29486.pdf)
 - MobileCode analysis: [PhoneWorld 与 Mobile Harness 时代](docs/mobile-harness/phoneworld-mobile-harness-era.md)
+- MobileCode product roadmp: [MobileCode 长期路线图](docs/mobilecode-long-term-roadmap.md)
 - Long-term roadmp: [Mobile Harness 长期路线图](docs/mobile-harness-roadmp/roadmp-mobile-harness.md)
 - ICLR draft: [PDF](paper/iclr-mobile-harness/main.pdf) · [TeX](paper/iclr-mobile-harness/main.tex)
 - Anonymous supplement boundary: [include/exclude and redaction gate](paper/iclr-mobile-harness/SUPPLEMENT_BOUNDARY.md)

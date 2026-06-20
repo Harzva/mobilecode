@@ -2,7 +2,7 @@
 
 目标：把 MobileCode 从手机端 AI 编码 App 推进为多工作区、多运行时、多预览、多证据账本的安全移动编码容器系统，并保留 Mobile Harness 论文与产品化双线能力。
 
-Last updated: 2026-06-19 PDT
+Last updated: 2026-06-20 UTC / 2026-06-19 PDT
 
 ## 使用规则
 
@@ -28,6 +28,107 @@ Last updated: 2026-06-19 PDT
 - 已有发布/QA 基线：`docs/mobilecode-release-qa.md` 记录 release CI gates、Android smoke、runtime CI 和历史 release evidence。
 - 本地模型策略基线：`docs/mobilecode-local-model-distribution.md` 规定 release APK 不内置模型权重，使用远程 manifest 和用户显式安装。
 - 生产硬化基线：`docs/mobilecode-production-hardening.md` 记录 provider 配置、WebView preview、Termux/Runtime 边界、日志与发布检查。
+
+## 为什么要做成安全容器系统
+
+MobileCode 的目标不是把桌面 IDE 缩小到手机屏幕，而是让手机成为 AI coding 的任务控制面。手机端的输入、权限、文件入口、预览、发布和证据保存都和桌面不同，所以长期形态必须是安全容器系统。
+
+- 多工作区解决任务污染：每个用户目标都有自己的文件、预览、运行记录和证据账本，避免一次实验覆盖另一次实验。
+- 多运行时解决能力分层：HTML 预览不需要 Termux，Android build 不应该塞进 WebView，本地模型也不应该和云端 provider 混成一个入口。
+- 多预览解决“生成了但不知道能不能用”：网页、Markdown、图片、日志、Pages、runtime report 都需要可打开、可截图、可验证。
+- 多证据账本解决可信闭环：模型选择、实际 model、路由原因、文件写入、预览、CI、截图和失败恢复都应该可追踪。
+- Provider Auto 解决成本和能力切换：简单任务走便宜模型，复杂任务走强模型，切换原因写入 evidence，而不是让用户记模型名。
+- 本地模型解决隐私和离线能力：正式 APK 不内置权重，但 App 提供 manifest、下载链接、校验和配置入口。
+- 模板图库解决重复创作成本：用户用关键词调用参考图和提示模板，不再手动找散落路径。
+
+## 目标架构图
+
+### MobileCode 总体控制面
+
+```mermaid
+flowchart TB
+  User[用户目标] --> App[MobileCode App Shell]
+  App --> Workspace[Workspace Container]
+  App --> Provider[Provider Layer]
+  App --> Runtime[Runtime Layer]
+  App --> Preview[Preview Registry]
+  App --> Evidence[Evidence Ledger]
+
+  Workspace --> Files[项目文件和导入文件]
+  Workspace --> State[工作区状态]
+  Workspace --> History[运行和预览历史]
+
+  Provider --> Presets[Mimo / DeepSeek / TierFlow / OpenAI / Anthropic / Custom]
+  Provider --> Router[Auto Router]
+
+  Runtime --> WebView[WebView-only]
+  Runtime --> Helper[MobileCode Helper]
+  Runtime --> Termux[Termux fallback]
+  Runtime --> Cloud[Cloud / CI]
+  Runtime --> LocalModel[Local model runtime]
+
+  Preview --> Html[HTML]
+  Preview --> Markdown[Markdown]
+  Preview --> Images[Images]
+  Preview --> Reports[Logs / Reports / Pages]
+
+  Evidence --> Export[脱敏导出 / Release evidence / Benchmark trace]
+```
+
+### Provider Auto 路由
+
+```mermaid
+flowchart LR
+  Prompt[用户请求] --> Preset{Provider preset}
+  Preset --> DeepSeek[DeepSeek Auto]
+  Preset --> TierFlow[TierFlow Auto]
+  Preset --> Manual[Manual provider]
+
+  DeepSeek --> LocalRouter{MobileCode 路由器}
+  LocalRouter --> Flash[deepseek-v4-flash]
+  LocalRouter --> Pro[deepseek-v4-pro]
+  Flash --> Retry{失败或复杂任务}
+  Retry --> Pro
+
+  TierFlow --> ProviderAuto[发送 model=auto]
+  Manual --> FixedModel[发送用户配置模型]
+
+  Flash --> Ledger[Evidence Ledger]
+  Pro --> Ledger
+  ProviderAuto --> Ledger
+  FixedModel --> Ledger
+  Ledger --> Fields[actualModel / routeReason / fallbackFromModel / token usage]
+```
+
+### 本地模型分发
+
+```mermaid
+flowchart TB
+  Pages[GitHub Pages model manifest] --> AppCard[App 内 Local model manifest 卡片]
+  AppCard --> Candidate[Candidate / Research model page]
+  AppCard --> Ready{Direct install ready?}
+  Ready -->|否| Link[打开模型页面和说明]
+  Ready -->|是| Download[用户显式下载]
+  Download --> Temp[临时文件]
+  Temp --> Checksum[SHA-256 校验]
+  Checksum --> Storage[App-owned models/model-id]
+  Storage --> RuntimeLoad[LocalModelRuntime.load]
+  RuntimeLoad --> LocalProvider[Local provider 可选]
+  RuntimeLoad --> Fallback[远程 provider fallback]
+```
+
+### Mobile Harness 证据闭环
+
+```mermaid
+flowchart LR
+  Task[Harness task] --> Agent[MobileCode Agent]
+  Agent --> Runtime[Runtime selection]
+  Runtime --> Artifact[Artifact / file diff]
+  Artifact --> Preview[Preview verifier]
+  Preview --> Report[Verifier report]
+  Report --> Ledger[Evidence ledger]
+  Ledger --> Export[JSONL / Markdown / Release note / Paper evidence]
+```
 
 ## Key Decisions
 
@@ -81,7 +182,8 @@ Last updated: 2026-06-19 PDT
   - Evidence: `mobile_agent/qa-output/html-open-real-app-20260619-204552/10-chrome-download-open-attempt.png` 显示 Chrome 在模拟器中自己打开 `content://media/external/downloads/64`。
 - [ ] 微信 / 聊天工具 QA 仍需真实 App 环境。
   - Evidence: 2026-06-19 emulator package list did not include WeChat。
-- [ ] 决定哪些 QA 截图进入公开素材目录，哪些只留在本地 `qa-output`。
+- [x] 决定哪些 QA 截图进入公开素材目录，哪些只留在本地 `qa-output`。
+  - Evidence: `docs/assets/qa/mobilecode-20260619/README.md` records curated share assets and Chrome/WeChat limitations.
 
 ## Phase 1：Provider Preset 与自动路由
 
@@ -205,6 +307,43 @@ Last updated: 2026-06-19 PDT
 - [ ] 发布前运行 secrets scan、路径泄漏检查、截图隐私检查。
 - [ ] 明确第三方 provider、模型 license、企业证书、iOS 限制和账号风控边界。
 
+## 基于本路线图的 30/60/90 天执行计划
+
+### 0-30 天：把已证明能力收成可信闭环
+
+- [ ] 收尾真实第三方 App QA：DocumentsUI 已通过，Chrome download direct tap 和 WeChat/聊天工具需要真实设备或明确产品决策。
+- [ ] 把可公开截图复制到 `docs/assets/` 或新建 `docs/assets/qa/`，保留截图来源、日期和不含隐私的检查记录。
+- [ ] 将 HTML open-with、Provider Auto、本地模型 manifest 写入 release QA 文档。
+- [ ] Provider Auto UI 增加说明：preset 是配置模板，不等于内置 key；DeepSeek Auto 是 MobileCode-side Flash/Pro 路由。
+- [ ] TierFlow Auto 做真实 provider smoke：health、chat、错误、token usage、费用字段。
+- [ ] App 内加入 GitHub Pages 入口，和远程 update JSON、local model manifest 形成“轻量运营面”。
+- [ ] 导出本路线图 Mermaid 架构图为 PNG/SVG，用于 README、GitHub Pages 和分享素材。
+
+### 31-60 天：做出 Workspace v1
+
+- [ ] 实现 `Workspace` 数据模型和持久化：项目根目录、provider preset、runtime profile、preview registry、evidence ledger。
+- [ ] 新建、切换、归档、删除 workspace 的基础 UI。
+- [ ] Agent 生成 artifact 时自动绑定 workspace，外部 HTML/share text 可以创建或导入 workspace。
+- [ ] Preview Registry v1 支持 HTML、Markdown、图片、文本、JSON、日志、GitHub Pages。
+- [ ] Evidence Ledger v1 支持导出 Markdown/JSONL，并默认脱敏 provider key、本地私密路径和原始 token。
+
+### 61-90 天：运行时和本地模型进入可用形态
+
+- [ ] RuntimeManager 根据 capability、权限、成本、网络、设备状态选择默认 runtime。
+- [ ] WebView-only、MobileCode Helper、Cloud/CI 三条路径先形成稳定闭环。
+- [ ] Termux fallback 只作为受控 runtime，不直接暴露危险命令给用户。
+- [ ] 本地模型下载管理完成：Wi-Fi-only、暂停/取消、临时文件、checksum、失败清理、删除。
+- [ ] Android ExecuTorch 做一个小模型 runtime proof，记录内存、速度、失败边界和 fallback 行为。
+- [ ] 本地模型 provider 只在模型 ready 后出现，远程 provider 继续作为默认 fallback。
+
+### 90 天后：产品化和论文/Benchmark 互相增强
+
+- [ ] App 内 Benchmark Lab 支持选择任务、执行、verifier report 和 trace export。
+- [ ] Mobile Harness 形成 Android emulator、Android real device、iOS simulator 三类 evidence pack。
+- [ ] Release notes 自动生成 commit、CI run、APK SHA256、截图证据和已知限制。
+- [ ] 模板图库进入 App/Skill 双入口：关键词解析参考图、用途、尺寸、版权/隐私标记和 prompt。
+- [ ] 形成公开叙事：MobileCode 是手机端 AI coding 安全容器，不是简单聊天壳。
+
 ## 基于本路线图的近期执行队列
 
 ### R0：当前 Provider Auto 收尾
@@ -225,14 +364,16 @@ Last updated: 2026-06-19 PDT
 - [ ] 微信/聊天工具分享 HTML 文本或文件到 MobileCode，保存截图和失败原因。
 - [ ] 浏览器下载页打开 `.html` 到 MobileCode，保存截图和 content URI 授权证据。
   - Evidence: 当前模拟器 Chrome direct tap 未路由到 MobileCode，需真实设备或分享入口复测。
-- [ ] 将真实第三方 App QA 结果写入 `docs/mobilecode-release-qa.md` 或专项 QA 文档。
+- [x] 将真实第三方 App QA 结果写入 `docs/mobilecode-release-qa.md` 或专项 QA 文档。
+  - Evidence: `docs/mobilecode-release-qa.md` section `2026-06-19 HTML Open-With QA`.
 
 ### R2：Provider Auto 产品化
 
 - [x] DeepSeek Auto 增加真实 router：Flash 默认，Pro 用于复杂编码、失败重试和长上下文。
   - Evidence: `mobile_agent/test/services/model_routing_service_test.dart`。
 - [ ] TierFlow Auto 增加 health check、真实请求 smoke 和错误文案。
-- [ ] 在 evidence ledger 记录实际模型和切换原因。
+- [x] 在 evidence ledger 记录实际模型和切换原因。
+  - Evidence: `_recordProviderRouteEvidence` writes `actualModel`, `routeReason`, `fallbackFromModel`, `maxTokens`, and `inputCharacters` metadata。
 - [ ] 增加 Provider preset 设置页说明，避免用户误以为 preset 等于内置 key。
 
 ### R3：本地模型下载入口
@@ -246,10 +387,16 @@ Last updated: 2026-06-19 PDT
 
 ### R4：架构图与对外表达
 
-- [ ] 画 MobileCode 总架构图：App Shell、Provider Layer、Runtime Layer、Workspace Layer、Preview Layer、Evidence Ledger。
-- [ ] 画 Provider Auto 路由图：用户请求、preset、router、Flash/Pro、TierFlow `auto`、账本记录。
-- [ ] 画本地模型分发图：manifest、下载、checksum、runtime load、fallback provider。
-- [ ] 画 Mobile Harness 闭环图：task、agent、runtime、artifact、preview、verifier、report。
+- [x] 在路线图中画 MobileCode 总架构图：App Shell、Provider Layer、Runtime Layer、Workspace Layer、Preview Layer、Evidence Ledger。
+  - Evidence: 本文件 `目标架构图 / MobileCode 总体控制面` Mermaid source。
+- [x] 在路线图中画 Provider Auto 路由图：用户请求、preset、router、Flash/Pro、TierFlow `auto`、账本记录。
+  - Evidence: 本文件 `Provider Auto 路由` Mermaid source。
+- [x] 在路线图中画本地模型分发图：manifest、下载、checksum、runtime load、fallback provider。
+  - Evidence: 本文件 `本地模型分发` Mermaid source。
+- [x] 在路线图中画 Mobile Harness 闭环图：task、agent、runtime、artifact、preview、verifier、report。
+  - Evidence: 本文件 `Mobile Harness 证据闭环` Mermaid source。
+- [ ] 将 Mermaid 图导出为 PNG/SVG，并挑选 2-3 张进入 README、GitHub Pages 或分享素材。
+  - Next evidence target: exported files under `docs/assets/architecture/`.
 
 ## Open Questions
 

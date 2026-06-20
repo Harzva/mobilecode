@@ -213,12 +213,22 @@ def screenshot_metadata(devlog_dir: Path) -> dict[str, str] | None:
     latest = devlog_dir / "screenshots" / "latest.png"
     if not latest.exists():
         return None
-    screenshots = sorted(
-        path
-        for path in (devlog_dir / "screenshots").glob("*.png")
-        if path.name != "latest.png"
-    )
-    current = screenshots[-1] if screenshots else latest
+    preferred = os.environ.get("MOBILECODE_DEVLOG_CURRENT_SCREENSHOT")
+    current = latest
+    if preferred:
+        candidate = Path(preferred)
+        if not candidate.is_absolute():
+            candidate = devlog_dir / candidate
+        if candidate.exists():
+            current = candidate
+    else:
+        screenshots = [
+            path
+            for path in (devlog_dir / "screenshots").glob("*.png")
+            if path.name != "latest.png"
+        ]
+        if screenshots:
+            current = max(screenshots, key=lambda path: (path.stat().st_mtime_ns, path.name))
     return {
         "latest": latest.relative_to(devlog_dir).as_posix(),
         "current": current.relative_to(devlog_dir).as_posix(),
@@ -308,7 +318,7 @@ def build_index(root: Path, devlog_dir: Path, generated_at: str) -> None:
     <section class="top">
       <div class="meta"><span>MobileCode</span><span>Developer Logs</span></div>
       <h1>Daily and important engineering changes.</h1>
-      <p>These logs are generated from Git history by GitHub Actions, committed back to the repository, and published to GitHub Pages.</p>
+      <p>These logs are generated from Git history by the MobileCode repository hook, then published to GitHub Pages.</p>
       <p>Last generated: <code>{html.escape(generated_at)}</code></p>
     </section>
 {screenshot_html}

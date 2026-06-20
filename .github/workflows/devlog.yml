@@ -2,31 +2,12 @@ name: Developer Log
 
 on:
   workflow_dispatch:
-    inputs:
-      mode:
-        description: Which developer log to generate
-        required: false
-        default: both
-        type: choice
-        options:
-          - daily
-          - important
-          - both
-      force_important:
-        description: Write an important-change log even if the heuristic is quiet
-        required: false
-        default: false
-        type: boolean
-  schedule:
-    - cron: '25 8 * * *'
   push:
     branches:
       - main
-    paths-ignore:
-      - 'docs/devlog/**'
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -45,45 +26,6 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-
-      - name: Resolve log mode
-        id: mode
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_MODE: ${{ github.event.inputs.mode }}
-          INPUT_FORCE_IMPORTANT: ${{ github.event.inputs.force_important }}
-        run: |
-          mode="$INPUT_MODE"
-          force="$INPUT_FORCE_IMPORTANT"
-          if [ "$EVENT_NAME" = "schedule" ]; then
-            mode="daily"
-            force="false"
-          elif [ "$EVENT_NAME" = "push" ]; then
-            mode="important"
-            force="true"
-          elif [ -z "$mode" ]; then
-            mode="both"
-          fi
-          if [ -z "$force" ]; then
-            force="false"
-          fi
-          echo "mode=$mode" >> "$GITHUB_OUTPUT"
-          echo "force=$force" >> "$GITHUB_OUTPUT"
-
-      - name: Generate developer log
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          MODE: ${{ steps.mode.outputs.mode }}
-          FORCE_IMPORTANT: ${{ steps.mode.outputs.force }}
-        run: |
-          args=(--mode "$MODE")
-          if [ "$FORCE_IMPORTANT" = "true" ]; then
-            args+=(--force-important)
-          fi
-          python3 scripts/generate_devlog.py "${args[@]}"
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -111,54 +53,12 @@ jobs:
           cp docs/assets/mobilecode-principle-* app/dist/assets/
           cp docs/assets/mobilecode-short-* app/dist/assets/
 
-      - name: Capture developer log screenshot
+      - name: Capture developer log screenshot for Pages
         env:
-          GITHUB_SHA: ${{ github.sha }}
+          MOBILECODE_DEVLOG_SKIP_BUILD: '1'
+          MOBILECODE_DEVLOG_SCREENSHOT_STRICT: '1'
         run: |
-          set -euxo pipefail
-          mkdir -p docs/devlog/screenshots
-          short_sha="$(git rev-parse --short "$GITHUB_SHA")"
-          shot_name="$(date -u +%Y-%m-%d)-${short_sha}.png"
-          shot_path="docs/devlog/screenshots/${shot_name}"
-          python3 -m http.server 4173 --directory app/dist > /tmp/mobilecode-pages-server.log 2>&1 &
-          server_pid=$!
-          trap 'kill "$server_pid" || true' EXIT
-          for attempt in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:4173/devlog/ >/dev/null; then
-              break
-            fi
-            sleep 1
-          done
-          curl -fsS http://127.0.0.1:4173/devlog/ >/dev/null
-          chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
-          if [ -z "$chrome_bin" ]; then
-            echo "No Chrome/Chromium binary found for screenshot capture." >&2
-            exit 1
-          fi
-          "$chrome_bin" \
-            --headless=new \
-            --disable-gpu \
-            --no-sandbox \
-            --window-size=1440,1400 \
-            --screenshot="$shot_path" \
-            http://127.0.0.1:4173/devlog/
-          cp "$shot_path" docs/devlog/screenshots/latest.png
-          python3 scripts/generate_devlog.py --mode index
-          rm -rf app/dist/devlog
-          mkdir -p app/dist/devlog
-          cp -R docs/devlog/* app/dist/devlog/
-
-      - name: Commit developer log updates
-        run: |
-          if git diff --quiet -- docs/devlog; then
-            echo "No developer log changes to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/devlog
-          git commit -m "Update developer logs [skip ci]"
-          git push origin HEAD:main
+          scripts/capture_devlog_screenshot.sh "${{ github.sha }}"
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

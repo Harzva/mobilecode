@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${MOBILECODE_SKIP_DEVLOG_HOOK:-}" = "1" ]; then
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root"
+
+subject="$(git log -1 --pretty=%s)"
+case "$subject" in
+  "Update developer logs"*)
+    exit 0
+    ;;
+esac
+
+changed_files="$(git diff-tree --no-commit-id --name-only -r HEAD || true)"
+if [ -n "$changed_files" ] && ! printf '%s\n' "$changed_files" | grep -Ev '^(docs/devlog/|$)' >/dev/null; then
+  exit 0
+fi
+
+base=""
+if git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+  base="$(git rev-parse HEAD^)"
+fi
+
+important_args=(--mode important --head HEAD)
+if [ -n "$base" ]; then
+  important_args+=(--base "$base")
+fi
+if [ "${MOBILECODE_DEVLOG_FORCE_IMPORTANT:-1}" != "0" ]; then
+  important_args+=(--force-important)
+fi
+
+python3 scripts/generate_devlog.py "${important_args[@]}"
+python3 scripts/generate_devlog.py --mode daily --head HEAD --since "${MOBILECODE_DEVLOG_DAILY_SINCE:-24 hours ago}"
+
+case "${MOBILECODE_DEVLOG_SCREENSHOT:-auto}" in
+  0|false|False|FALSE|off|OFF|no|NO)
+    ;;
+  *)
+    if [ "${MOBILECODE_DEVLOG_SCREENSHOT_STRICT:-0}" = "1" ]; then
+      scripts/capture_devlog_screenshot.sh HEAD
+    else
+      scripts/capture_devlog_screenshot.sh HEAD || true
+    fi
+    ;;
+esac
+
+git add docs/devlog
+
+if git diff --cached --quiet -- docs/devlog; then
+  exit 0
+fi
+
+MOBILECODE_SKIP_DEVLOG_HOOK=1 git commit -m "Update developer logs"

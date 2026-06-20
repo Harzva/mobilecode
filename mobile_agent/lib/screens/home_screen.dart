@@ -36,6 +36,7 @@ import '../services/html_publish_readiness_service.dart';
 import '../services/lark_api_service.dart';
 import '../services/mobilecode_update_service.dart';
 import '../services/model_provider_preset_service.dart';
+import '../services/model_routing_service.dart';
 import '../services/role_library_service.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
@@ -13808,6 +13809,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     final usageAccumulator =
         TokenUsageAccumulator(providerKind: _usageProviderKind(flavor));
     final usageStarted = DateTime.now();
+    ModelRouteDecision? routeDecision;
     final answerBuffer = StringBuffer();
     try {
       final assistantStarted = DateTime.now();
@@ -13818,6 +13820,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         systemPrompt: systemPrompt,
         responseTimeout: const Duration(minutes: 2),
         onUsageChunk: usageAccumulator.addChunk,
+        onRoute: (decision) => routeDecision = decision,
       )) {
         answerBuffer.write(chunk);
         final answer = answerBuffer.toString();
@@ -13851,7 +13854,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       await _persist();
       await TokenUsageService.instance.recordCompleted(
         provider: _flavorLabel(flavor),
-        model: widget.model,
+        model: routeDecision?.model ?? widget.model,
         endpoint: 'chat',
         durationMs: DateTime.now().difference(usageStarted).inMilliseconds,
         success: true,
@@ -13864,7 +13867,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       );
       widget.onLog(
           'AI response streamed',
-          '${_flavorLabel(flavor)} - ${widget.model} - ${answer.length} chars',
+          '${_flavorLabel(flavor)} - ${routeDecision?.model ?? widget.model} - ${answer.length} chars',
           Icons.forum_outlined,
           _mint);
     } on Object catch (error) {
@@ -13873,7 +13876,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       setState(() => _error = message);
       await TokenUsageService.instance.recordCompleted(
         provider: _flavorLabel(flavor),
-        model: widget.model,
+        model: routeDecision?.model ?? widget.model,
         endpoint: 'chat',
         durationMs: DateTime.now().difference(usageStarted).inMilliseconds,
         success: false,
@@ -13977,6 +13980,71 @@ class _ChatPanelState extends State<_ChatPanel> {
                 total + turn.content.length + turn.role.length + 8);
   }
 
+  String _routeUserText(List<_ChatTurn> turns) {
+    return turns
+        .where((turn) => turn.role == 'user' && turn.content.trim().isNotEmpty)
+        .map((turn) => turn.content.trim())
+        .join('\n\n');
+  }
+
+  ModelRouteDecision _providerRouteDecision(
+    List<_ChatTurn> history, {
+    required String systemPrompt,
+    required int maxTokens,
+    required ModelRouteEndpoint endpoint,
+  }) {
+    return ModelRoutingService.decide(
+      preset: widget.providerPreset,
+      configuredModel: widget.model,
+      endpoint: endpoint,
+      maxTokens: maxTokens,
+      inputCharacters: _tokenInputChars(history, systemPrompt),
+      userText: _routeUserText(history),
+    );
+  }
+
+  void _recordProviderRouteEvidence(
+    ModelRouteDecision decision, {
+    required int maxTokens,
+    required int inputCharacters,
+  }) {
+    final now = DateTime.now();
+    final metadata = Map<String, dynamic>.from(decision.metadata)
+      ..addAll({
+        'maxTokens': maxTokens,
+        'inputCharacters': inputCharacters,
+      });
+    _agentEvidenceStore.add(ActionEvidence(
+      evidenceId: generateEvidenceId(),
+      actionName: MobileCodeAction.traceCallProvider,
+      paramsSummary: decision.evidenceSummary,
+      startedAt: now,
+      endedAt: now,
+      success: true,
+      logs: [decision.evidenceSummary],
+      metadata: metadata,
+    ));
+  }
+
+  String _providerRequestErrorMessage(
+    Object error, {
+    required bool stream,
+    required Duration responseTimeout,
+  }) {
+    if (error is SocketException) {
+      return 'Provider network error: ${_friendlySocketError(error)}';
+    }
+    if (error is HttpException) {
+      return 'Provider HTTP error: ${error.message}';
+    }
+    if (error is TimeoutException) {
+      return stream
+          ? 'Provider stream timed out after ${responseTimeout.inSeconds}s. Use Pause to stop long runs or reduce requested output.'
+          : 'Provider timed out after ${responseTimeout.inSeconds}s while waiting for a model response. Try a shorter prompt/model output or stop and retry.';
+    }
+    return error.toString().replaceFirst('Exception: ', '');
+  }
+
   bool get _usesManagedRelay =>
       widget.relayUrl.trim().isNotEmpty &&
       widget.providerPreset != _ProviderPreset.custom;
@@ -14075,6 +14143,8 @@ class _ChatPanelState extends State<_ChatPanel> {
     Duration responseTimeout = const Duration(seconds: 120),
     bool trackAgentRequest = false,
     bool Function()? isCancelled,
+    ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
+    void Function(ModelRouteDecision decision)? onRoute,
   }) async {
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
@@ -14087,68 +14157,94 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
 
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
-    final requestBody = _requestBody(
-      flavor,
+    final inputCharacters = _tokenInputChars(history, systemPrompt);
+    var routeDecision = _providerRouteDecision(
       history,
       systemPrompt: systemPrompt,
       maxTokens: maxTokens,
-      stream: false,
+      endpoint: endpoint,
     );
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 12);
-    if (trackAgentRequest) {
-      _agentProviderClient = client;
+    void announceRoute(ModelRouteDecision decision) {
+      onRoute?.call(decision);
+      _recordProviderRouteEvidence(
+        decision,
+        maxTokens: maxTokens,
+        inputCharacters: inputCharacters,
+      );
     }
-    try {
-      final request = await client
-          .postUrl(
-            _usesManagedRelay
-                ? _managedRelayUri()
-                : flavor == _ApiFlavor.anthropic
-                    ? _anthropicMessagesUri(widget.baseUrl)
-                    : _openAiChatUri(widget.baseUrl),
-          )
-          .timeout(const Duration(seconds: 12));
-      if (isCancelled?.call() == true) {
-        throw Exception('Agent run stopped by user.');
-      }
-      _configureProviderRequestHeaders(request, flavor);
-      request.write(jsonEncode(_usesManagedRelay
-          ? _relayEnvelope(flavor, requestBody)
-          : requestBody));
 
-      final response = await request.close().timeout(responseTimeout);
-      if (isCancelled?.call() == true) {
-        throw Exception('Agent run stopped by user.');
+    announceRoute(routeDecision);
+    while (true) {
+      final requestBody = _requestBody(
+        flavor,
+        history,
+        systemPrompt: systemPrompt,
+        maxTokens: maxTokens,
+        stream: false,
+        modelOverride: routeDecision.model,
+      );
+      final client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 12);
+      if (trackAgentRequest) {
+        _agentProviderClient = client;
       }
-      final rawBody = await utf8.decodeStream(response);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception(
-            'Provider HTTP ${response.statusCode}: ${_compact(rawBody)}');
+      try {
+        final request = await client
+            .postUrl(
+              _usesManagedRelay
+                  ? _managedRelayUri()
+                  : flavor == _ApiFlavor.anthropic
+                      ? _anthropicMessagesUri(widget.baseUrl)
+                      : _openAiChatUri(widget.baseUrl),
+            )
+            .timeout(const Duration(seconds: 12));
+        if (isCancelled?.call() == true) {
+          throw Exception('Agent run stopped by user.');
+        }
+        _configureProviderRequestHeaders(request, flavor);
+        request.write(jsonEncode(_usesManagedRelay
+            ? _relayEnvelope(flavor, requestBody)
+            : requestBody));
+
+        final response = await request.close().timeout(responseTimeout);
+        if (isCancelled?.call() == true) {
+          throw Exception('Agent run stopped by user.');
+        }
+        final rawBody = await utf8.decodeStream(response);
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          throw Exception(
+              'Provider HTTP ${response.statusCode}: ${_compact(rawBody)}');
+        }
+        final answer = _extractAssistantText(rawBody);
+        if (answer.trim().isEmpty) {
+          throw Exception('Provider returned an empty response.');
+        }
+        return answer;
+      } on Object catch (error) {
+        if (isCancelled?.call() == true) {
+          throw Exception('Agent run stopped by user.');
+        }
+        final message = _providerRequestErrorMessage(
+          error,
+          stream: false,
+          responseTimeout: responseTimeout,
+        );
+        final retry = ModelRoutingService.retryAfterFailure(
+          routeDecision,
+          failureSummary: message,
+        );
+        if (retry != null) {
+          routeDecision = retry;
+          announceRoute(routeDecision);
+          continue;
+        }
+        throw Exception(message);
+      } finally {
+        if (identical(_agentProviderClient, client)) {
+          _agentProviderClient = null;
+        }
+        client.close(force: true);
       }
-      final answer = _extractAssistantText(rawBody);
-      if (answer.trim().isEmpty) {
-        throw Exception('Provider returned an empty response.');
-      }
-      return answer;
-    } on SocketException catch (error) {
-      if (isCancelled?.call() == true) {
-        throw Exception('Agent run stopped by user.');
-      }
-      throw Exception('Provider network error: ${_friendlySocketError(error)}');
-    } on HttpException catch (error) {
-      if (isCancelled?.call() == true) {
-        throw Exception('Agent run stopped by user.');
-      }
-      throw Exception('Provider HTTP error: ${error.message}');
-    } on TimeoutException {
-      throw Exception(
-          'Provider timed out after ${responseTimeout.inSeconds}s while waiting for a model response. Try a shorter prompt/model output or stop and retry.');
-    } finally {
-      if (identical(_agentProviderClient, client)) {
-        _agentProviderClient = null;
-      }
-      client.close(force: true);
     }
   }
 
@@ -14160,6 +14256,8 @@ class _ChatPanelState extends State<_ChatPanel> {
     bool trackAgentRequest = false,
     bool Function()? isCancelled,
     void Function(Map<String, dynamic> chunk)? onUsageChunk,
+    ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
+    void Function(ModelRouteDecision decision)? onRoute,
   }) async* {
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
@@ -14172,101 +14270,137 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
 
     final flavor = _detectApiFlavor(widget.baseUrl, widget.model);
-    final requestBody = _requestBody(
-      flavor,
+    final inputCharacters = _tokenInputChars(history, systemPrompt);
+    var routeDecision = _providerRouteDecision(
       history,
       systemPrompt: systemPrompt,
       maxTokens: maxTokens,
-      stream: true,
+      endpoint: endpoint,
     );
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 12);
-    if (trackAgentRequest) {
-      _agentProviderClient = client;
+    void announceRoute(ModelRouteDecision decision) {
+      onRoute?.call(decision);
+      _recordProviderRouteEvidence(
+        decision,
+        maxTokens: maxTokens,
+        inputCharacters: inputCharacters,
+      );
     }
 
-    try {
-      final request = await client
-          .postUrl(
-            _usesManagedRelay
-                ? _managedRelayUri()
-                : flavor == _ApiFlavor.anthropic
-                    ? _anthropicMessagesUri(widget.baseUrl)
-                    : _openAiChatUri(widget.baseUrl),
-          )
-          .timeout(const Duration(seconds: 12));
-      if (isCancelled?.call() == true) {
-        throw Exception('Agent run stopped by user.');
+    announceRoute(routeDecision);
+    while (true) {
+      var emittedText = false;
+      final requestBody = _requestBody(
+        flavor,
+        history,
+        systemPrompt: systemPrompt,
+        maxTokens: maxTokens,
+        stream: true,
+        modelOverride: routeDecision.model,
+      );
+      final client = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 12);
+      if (trackAgentRequest) {
+        _agentProviderClient = client;
       }
 
-      _configureProviderRequestHeaders(request, flavor);
-      request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
-      request.write(jsonEncode(_usesManagedRelay
-          ? _relayEnvelope(flavor, requestBody)
-          : requestBody));
-
-      final response = await request.close().timeout(responseTimeout);
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        final body = await utf8.decodeStream(response);
-        throw Exception(
-            'Provider HTTP ${response.statusCode}: ${_compact(body)}');
-      }
-
-      await for (final line in response
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())
-          .timeout(responseTimeout)) {
+      try {
+        final request = await client
+            .postUrl(
+              _usesManagedRelay
+                  ? _managedRelayUri()
+                  : flavor == _ApiFlavor.anthropic
+                      ? _anthropicMessagesUri(widget.baseUrl)
+                      : _openAiChatUri(widget.baseUrl),
+            )
+            .timeout(const Duration(seconds: 12));
         if (isCancelled?.call() == true) {
           throw Exception('Agent run stopped by user.');
         }
-        final event = parseOpenAiStreamEvent(line);
-        if (event.isIgnore) continue;
-        if (event.isDone) break;
-        final payload = event.payload;
 
-        try {
-          final decoded = jsonDecode(payload);
-          if (decoded is Map<String, dynamic>) {
-            onUsageChunk?.call(decoded);
-            if (decoded['type'] == 'message_stop') break;
-            final delta = _extractStreamDelta(decoded, flavor);
-            if (delta != null && delta.isNotEmpty) {
-              yield delta;
-            }
-            continue;
+        _configureProviderRequestHeaders(request, flavor);
+        request.headers.set(HttpHeaders.acceptHeader, 'text/event-stream');
+        request.write(jsonEncode(_usesManagedRelay
+            ? _relayEnvelope(flavor, requestBody)
+            : requestBody));
+
+        final response = await request.close().timeout(responseTimeout);
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          final body = await utf8.decodeStream(response);
+          throw Exception(
+              'Provider HTTP ${response.statusCode}: ${_compact(body)}');
+        }
+
+        await for (final line in response
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())
+            .timeout(responseTimeout)) {
+          if (isCancelled?.call() == true) {
+            throw Exception('Agent run stopped by user.');
           }
-        } catch (_) {
-          if (payload.startsWith('{')) {
-            final fallback = _extractAssistantText(payload);
-            if (fallback.trim().isNotEmpty) yield fallback.trim();
-            break;
+          final event = parseOpenAiStreamEvent(line);
+          if (event.isIgnore) continue;
+          if (event.isDone) break;
+          final payload = event.payload;
+
+          try {
+            final decoded = jsonDecode(payload);
+            if (decoded is Map<String, dynamic>) {
+              onUsageChunk?.call(decoded);
+              if (decoded['type'] == 'message_stop') break;
+              final delta = _extractStreamDelta(decoded, flavor);
+              if (delta != null && delta.isNotEmpty) {
+                emittedText = true;
+                yield delta;
+              }
+              continue;
+            }
+          } catch (_) {
+            if (payload.startsWith('{')) {
+              final fallback = _extractAssistantText(payload);
+              if (fallback.trim().isNotEmpty) {
+                emittedText = true;
+                yield fallback.trim();
+              }
+              break;
+            }
           }
         }
+        return;
+      } on Object catch (error) {
+        if (isCancelled?.call() == true) {
+          throw Exception('Agent run stopped by user.');
+        }
+        final message = _providerRequestErrorMessage(
+          error,
+          stream: true,
+          responseTimeout: responseTimeout,
+        );
+        final retry = emittedText
+            ? null
+            : ModelRoutingService.retryAfterFailure(
+                routeDecision,
+                failureSummary: message,
+              );
+        if (retry != null) {
+          routeDecision = retry;
+          announceRoute(routeDecision);
+          continue;
+        }
+        throw Exception(message);
+      } finally {
+        if (identical(_agentProviderClient, client)) {
+          _agentProviderClient = null;
+        }
+        client.close(force: true);
       }
-    } on SocketException catch (error) {
-      if (isCancelled?.call() == true) {
-        throw Exception('Agent run stopped by user.');
-      }
-      throw Exception('Provider network error: ${_friendlySocketError(error)}');
-    } on HttpException catch (error) {
-      if (isCancelled?.call() == true) {
-        throw Exception('Agent run stopped by user.');
-      }
-      throw Exception('Provider HTTP error: ${error.message}');
-    } on TimeoutException {
-      throw Exception(
-          'Provider stream timed out after ${responseTimeout.inSeconds}s. Use Pause to stop long runs or reduce requested output.');
-    } finally {
-      if (identical(_agentProviderClient, client)) {
-        _agentProviderClient = null;
-      }
-      client.close(force: true);
     }
   }
 
-  OpenAiCompatibleToolCallAdapter? _providerNativeToolCallAdapter() {
-    final profile =
-        ToolCallProviderProfile.detect(widget.baseUrl, widget.model);
+  OpenAiCompatibleToolCallAdapter? _providerNativeToolCallAdapter({
+    String? modelOverride,
+  }) {
+    final profile = ToolCallProviderProfile.detect(
+        widget.baseUrl, modelOverride ?? widget.model);
     if (!profile.supportsNativeToolCalls || !profile.isOpenAiCompatible) {
       return null;
     }
@@ -14465,8 +14599,23 @@ class _ChatPanelState extends State<_ChatPanel> {
     void Function(AgentLoopEvent event)? onLoopEvent,
     void Function(int round, String detail)? onStreamStatus,
     bool Function()? isCancelled,
+    void Function(ModelRouteDecision decision)? onRoute,
   }) async {
-    final adapter = _providerNativeToolCallAdapter();
+    final routeDecision = _providerRouteDecision(
+      history,
+      systemPrompt: systemPrompt,
+      maxTokens: 4096,
+      endpoint: ModelRouteEndpoint.agent,
+    );
+    onRoute?.call(routeDecision);
+    _recordProviderRouteEvidence(
+      routeDecision,
+      maxTokens: 4096,
+      inputCharacters: _tokenInputChars(history, systemPrompt),
+    );
+
+    final adapter =
+        _providerNativeToolCallAdapter(modelOverride: routeDecision.model);
     if (adapter == null) return null;
 
     final rootDirectory = await _mobileCodeProjectsRootDirectory();
@@ -14484,8 +14633,6 @@ class _ChatPanelState extends State<_ChatPanel> {
     final messages = _providerMessages(history)
         .map((message) => Map<String, dynamic>.from(message))
         .toList();
-    final model =
-        widget.model.trim().isEmpty ? 'deepseek-v4-flash' : widget.model.trim();
     final controller = AgentLoopController(
       adapter: adapter,
       actionRunner: actionRunner,
@@ -14507,7 +14654,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         return _streamOpenAiCompatibleToolCallRequest(
           adapter,
           adapter.buildChatCompletionRequest(
-            model: model,
+            model: routeDecision.model,
             systemPrompt: systemPrompt,
             messages: loopMessages,
             maxTokens: 4096,
@@ -14611,6 +14758,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         TokenUsageAccumulator(providerKind: _usageProviderKind(flavor));
     final agentStarted = DateTime.now();
     DateTime? providerStartedAt;
+    ModelRouteDecision? routeDecision;
     try {
       await _completeAgentRunStep(0);
       if (_agentCancelRequested) throw Exception('Agent run stopped by user.');
@@ -14649,6 +14797,7 @@ class _ChatPanelState extends State<_ChatPanel> {
               usageAccumulator: usageAccumulator,
               preset: _agentPreset,
               isCancelled: () => _agentCancelRequested,
+              onRoute: (decision) => routeDecision = decision,
               onStatus: (detail) =>
                   _setAgentRunStep(2, _AgentStepState.running, detail: detail),
               onLoopEvent: _appendAgentLoopTraceEvent,
@@ -14689,6 +14838,8 @@ class _ChatPanelState extends State<_ChatPanel> {
           trackAgentRequest: true,
           isCancelled: () => _agentCancelRequested,
           onUsageChunk: usageAccumulator.addChunk,
+          endpoint: ModelRouteEndpoint.agent,
+          onRoute: (decision) => routeDecision = decision,
         )) {
           if (_agentCancelRequested)
             throw Exception('Agent run stopped by user.');
@@ -14735,6 +14886,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           systemPrompt: agentSystemPrompt,
           originalAnswer: modelAnswer ?? '',
           isCancelled: () => _agentCancelRequested,
+          onRoute: (decision) => routeDecision = decision,
         );
         _setAgentRunStep(
           2,
@@ -14829,7 +14981,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     if (stopped) {
       await TokenUsageService.instance.recordCancelled(
         provider: _flavorLabel(flavor),
-        model: widget.model,
+        model: routeDecision?.model ?? widget.model,
         endpoint: toolName,
         durationMs: DateTime.now().difference(durationBase).inMilliseconds,
         sessionId: pending.id,
@@ -14845,7 +14997,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     } else {
       await TokenUsageService.instance.recordCompleted(
         provider: _flavorLabel(flavor),
-        model: widget.model,
+        model: routeDecision?.model ?? widget.model,
         endpoint: toolName,
         durationMs: DateTime.now().difference(durationBase).inMilliseconds,
         success: failure == null,
@@ -15482,6 +15634,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     required String systemPrompt,
     required String originalAnswer,
     bool Function()? isCancelled,
+    void Function(ModelRouteDecision decision)? onRoute,
   }) async {
     final lastUserPrompt = originalTurns.lastWhere(
       (turn) => turn.role == 'user' && turn.content.trim().isNotEmpty,
@@ -15517,6 +15670,8 @@ class _ChatPanelState extends State<_ChatPanel> {
       responseTimeout: const Duration(minutes: 2),
       trackAgentRequest: true,
       isCancelled: isCancelled,
+      endpoint: ModelRouteEndpoint.agent,
+      onRoute: onRoute,
     );
     if (_extractHtmlDocument(repaired) != null) return repaired;
     throw Exception(
@@ -15627,10 +15782,13 @@ class _ChatPanelState extends State<_ChatPanel> {
     required String systemPrompt,
     int maxTokens = 1024,
     bool stream = false,
+    String? modelOverride,
   }) {
-    final model = widget.model.isEmpty
-        ? (flavor == _ApiFlavor.anthropic ? _defaultModel : 'gpt-4o-mini')
-        : widget.model;
+    final model = modelOverride?.trim().isNotEmpty == true
+        ? modelOverride!.trim()
+        : widget.model.isEmpty
+            ? (flavor == _ApiFlavor.anthropic ? _defaultModel : 'gpt-4o-mini')
+            : widget.model;
     final messages = _providerMessages(turns);
     if (flavor == _ApiFlavor.anthropic) {
       return {

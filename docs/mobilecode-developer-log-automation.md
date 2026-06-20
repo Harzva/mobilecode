@@ -33,4 +33,4 @@ Screenshots are attempted by default when Chrome/Chromium, npm dependencies, and
 
 ## CI behavior
 
-`.github/workflows/devlog.yml` does not commit generated files anymore. On push to `main`, it builds the Pages site, attaches the already committed devlog files, captures a fresh deploy-time screenshot for the Pages artifact, and deploys GitHub Pages.
+`.github/workflows/devlog.yml` does not commit generated files anymore. On push to `main`, it builds the Pages site, verifies the committed devlog screenshot exists, attaches the committed devlog files, and deploys GitHub Pages.

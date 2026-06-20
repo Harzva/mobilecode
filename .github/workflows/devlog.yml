@@ -53,12 +53,11 @@ jobs:
           cp docs/assets/mobilecode-principle-* app/dist/assets/
           cp docs/assets/mobilecode-short-* app/dist/assets/
 
-      - name: Capture developer log screenshot for Pages
-        env:
-          MOBILECODE_DEVLOG_SKIP_BUILD: '1'
-          MOBILECODE_DEVLOG_SCREENSHOT_STRICT: '1'
+      - name: Verify committed developer log screenshot
         run: |
-          scripts/capture_devlog_screenshot.sh "${{ github.sha }}"
+          test -f docs/devlog/index.json
+          test -f docs/devlog/screenshots/latest.png
+          grep -q '"latestScreenshot"' docs/devlog/index.json
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

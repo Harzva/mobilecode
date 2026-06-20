@@ -34,6 +34,7 @@ import '../services/github_pages_service.dart';
 import '../services/github_repo_hub_service.dart';
 import '../services/html_publish_readiness_service.dart';
 import '../services/lark_api_service.dart';
+import '../services/mobilecode_local_model_manifest_service.dart';
 import '../services/mobilecode_update_service.dart';
 import '../services/model_provider_preset_service.dart';
 import '../services/model_routing_service.dart';
@@ -145,6 +146,8 @@ const _demo2048Url = 'https://harzva.github.io/mobilecode/demo/2048/';
 const _githubTestUrl = 'https://harzva.github.io/mobilecode/github-test/';
 const _mobileCodePagesUrl = MobileCodeUpdateService.pagesUrl;
 const _mobileCodeUpdateFeedUrl = MobileCodeUpdateService.defaultFeedUrl;
+const _mobileCodeLocalModelsManifestUrl =
+    MobileCodeLocalModelManifestService.defaultManifestUrl;
 const _currentProductVersion = 'v0.1.68-mobile-harness-d2dd9a7';
 const _releaseUrl =
     'https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7';
@@ -2170,10 +2173,15 @@ class _HomeScreenState extends State<HomeScreen> {
   MobileCodeUpdateFeed? _remoteUpdateFeed;
   bool _remoteUpdateChecking = false;
   String? _remoteUpdateError;
+  MobileCodeLocalModelManifest? _localModelManifest;
+  bool _localModelManifestChecking = false;
+  String? _localModelManifestError;
 
   late final RuntimeManager _runtimeManager =
       RuntimeManager.withExternalTermux(TermuxService());
   late final MobileCodeUpdateService _updateService = MobileCodeUpdateService();
+  late final MobileCodeLocalModelManifestService _localModelManifestService =
+      MobileCodeLocalModelManifestService();
 
   final List<_ActivityLog> _activity = [
     _ActivityLog(
@@ -2275,6 +2283,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadConfig();
     unawaited(_checkRuntime(silent: true));
     unawaited(_refreshRemoteUpdate(silent: true));
+    unawaited(_refreshLocalModelManifest(silent: true));
   }
 
   @override
@@ -2289,6 +2298,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     unawaited(_runtimeManager.dispose());
     _updateService.dispose();
+    _localModelManifestService.dispose();
     _baseUrlController.dispose();
     _apiKeyController.dispose();
     _modelController.dispose();
@@ -2531,6 +2541,46 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!silent) _showMessage('远程更新消息读取失败');
     } finally {
       if (mounted) setState(() => _remoteUpdateChecking = false);
+    }
+  }
+
+  Future<void> _refreshLocalModelManifest({bool silent = false}) async {
+    if (_localModelManifestChecking) return;
+    setState(() {
+      _localModelManifestChecking = true;
+      if (!silent) _localModelManifestError = null;
+    });
+    try {
+      final manifest = await _localModelManifestService.fetch(
+        manifestUrl: _mobileCodeLocalModelsManifestUrl,
+      );
+      if (!mounted) return;
+      setState(() {
+        _localModelManifest = manifest;
+        _localModelManifestError = null;
+      });
+      _addLog(
+        'Local model manifest loaded',
+        '${manifest.models.length} model candidate(s), ${manifest.readyModelCount} direct install artifact(s)',
+        Icons.memory_outlined,
+        manifest.readyModelCount > 0 ? _mint : _amber,
+      );
+      if (!silent && manifest.models.isEmpty) {
+        _showMessage('本地模型 manifest 暂无候选模型');
+      }
+    } on Object catch (error) {
+      if (!mounted) return;
+      final message = _compact(error.toString(), limit: 120);
+      setState(() => _localModelManifestError = message);
+      _addLog(
+        'Local model manifest failed',
+        message,
+        Icons.cloud_off_outlined,
+        _rose,
+      );
+      if (!silent) _showMessage('本地模型 manifest 读取失败');
+    } finally {
+      if (mounted) setState(() => _localModelManifestChecking = false);
     }
   }
 
@@ -3916,6 +3966,29 @@ class _HomeScreenState extends State<HomeScreen> {
           onOpenSecondary: () {
             final url = _remoteUpdateFeed?.secondaryUrl ?? _releaseUrl;
             _openUrl(url, 'MobileCode release');
+          },
+        ),
+        const SizedBox(height: 12),
+        _LocalModelManifestCard(
+          manifest: _localModelManifest,
+          checking: _localModelManifestChecking,
+          error: _localModelManifestError,
+          onRefresh: () => _refreshLocalModelManifest(),
+          onOpenDownload: () {
+            final url =
+                _localModelManifest?.primaryModel?.primaryDownloadUrl ?? '';
+            _openUrl(
+              url.isEmpty ? _mobileCodeLocalModelsManifestUrl : url,
+              'MobileCode local model download',
+            );
+          },
+          onOpenManifest: () {
+            _openUrl(
+              _localModelManifest?.sourceUrl.isNotEmpty == true
+                  ? _localModelManifest!.sourceUrl
+                  : _mobileCodeLocalModelsManifestUrl,
+              'MobileCode local model manifest',
+            );
           },
         ),
         const SizedBox(height: 12),
@@ -5493,6 +5566,250 @@ class _RemoteUpdateCard extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocalModelManifestCard extends StatelessWidget {
+  const _LocalModelManifestCard({
+    required this.manifest,
+    required this.checking,
+    required this.error,
+    required this.onRefresh,
+    required this.onOpenDownload,
+    required this.onOpenManifest,
+  });
+
+  final MobileCodeLocalModelManifest? manifest;
+  final bool checking;
+  final String? error;
+  final VoidCallback onRefresh;
+  final VoidCallback onOpenDownload;
+  final VoidCallback onOpenManifest;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasError = error != null && error!.isNotEmpty;
+    final models = manifest?.models ?? const <MobileCodeLocalModelEntry>[];
+    final primaryModel = manifest?.primaryModel;
+    final readyCount = manifest?.readyModelCount ?? 0;
+    final statusColor = hasError
+        ? _rose
+        : readyCount > 0
+            ? _mint
+            : models.isNotEmpty
+                ? _amber
+                : _faint;
+    final statusIcon = hasError
+        ? Icons.cloud_off_outlined
+        : readyCount > 0
+            ? Icons.verified_outlined
+            : Icons.downloading_outlined;
+    final statusLabel = hasError
+        ? 'Offline'
+        : readyCount > 0
+            ? 'Ready'
+            : models.isNotEmpty
+                ? 'Candidate'
+                : 'Pending';
+    final updatedAt = manifest?.updatedAt;
+
+    return _Panel(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: statusColor.withOpacity(0.34)),
+                ),
+                child: Icon(statusIcon, color: statusColor, size: 21),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Local model manifest',
+                            style: TextStyle(
+                              color: _text,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        if (checking)
+                          const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        else
+                          _Pill(
+                            label: statusLabel,
+                            icon: statusIcon,
+                            color: statusColor,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      hasError
+                          ? _compact(error!, limit: 140)
+                          : readyCount > 0
+                              ? '$readyCount verified artifact(s) available'
+                              : 'APK bundles no model weights; candidates stay user-installed.',
+                      style: const TextStyle(
+                        color: _muted,
+                        fontSize: 12,
+                        height: 1.35,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'Refresh local model manifest',
+                onPressed: checking ? null : onRefresh,
+                icon: const Icon(Icons.refresh_outlined, size: 20),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _Pill(
+                label: '${models.length} candidate(s)',
+                icon: Icons.inventory_2_outlined,
+                color: _blue,
+              ),
+              _Pill(
+                label: '$readyCount direct install',
+                icon: Icons.verified_user_outlined,
+                color: readyCount > 0 ? _mint : _amber,
+              ),
+              if (updatedAt != null)
+                _Pill(
+                  label: updatedAt.toLocal().toString().split('.').first,
+                  icon: Icons.schedule_outlined,
+                  color: _faint,
+                ),
+            ],
+          ),
+          if (models.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            for (final model in models.take(2)) ...[
+              _LocalModelRow(model: model),
+              const SizedBox(height: 8),
+            ],
+          ],
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onOpenDownload,
+                  icon: Icon(
+                    primaryModel?.canDirectDownload == true
+                        ? Icons.download_outlined
+                        : Icons.open_in_new_outlined,
+                    size: 18,
+                  ),
+                  label: Text(primaryModel?.canDirectDownload == true
+                      ? 'Download'
+                      : 'Model page'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onOpenManifest,
+                  icon: const Icon(Icons.data_object_outlined, size: 18),
+                  label: const Text('Manifest'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocalModelRow extends StatelessWidget {
+  const _LocalModelRow({required this.model});
+
+  final MobileCodeLocalModelEntry model;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = model.canDirectDownload
+        ? _mint
+        : model.status.toLowerCase() == 'research'
+            ? _violet
+            : _amber;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.24)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.memory_outlined, color: color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  model.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _text,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  [
+                    model.status,
+                    model.runtime,
+                    model.format.isEmpty ? 'format TBD' : model.format,
+                    model.sizeLabel,
+                  ].join(' · '),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 11,
+                    height: 1.3,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

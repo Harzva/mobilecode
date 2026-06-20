@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-06-20T00:00:00Z",
+  "docsUrl": "https://harzva.github.io/mobilecode/mobilecode-local-models.json",
+  "policy": {
+    "releaseApkBundlesWeights": false,
+    "autoDownloadOnFirstLaunch": false,
+    "requireChecksumBeforeDirectInstall": true,
+    "storage": "app-owned models/<model-id>/ after explicit user action"
+  },
+  "models": [
+    {
+      "id": "qwen3-0.6b-executorch-candidate",
+      "displayName": "Qwen3 0.6B mobile candidate",
+      "status": "candidate",
+      "runtime": "executorch",
+      "platforms": ["android"],
+      "format": "pte",
+      "downloadPageUrl": "https://huggingface.co/Qwen/Qwen3-0.6B",
+      "modelUrl": "",
+      "tokenizerUrl": "",
+      "modelSha256": "",
+      "tokenizerSha256": "",
+      "approxBytes": 0,
+      "minRamMb": 4096,
+      "license": "apache-2.0",
+      "notes": [
+        "Starter candidate for Android on-device experiments.",
+        "The upstream model page lists Qwen3-0.6B as 0.6B parameters with 32K context.",
+        "MobileCode must use a converted and checksummed mobile artifact before enabling direct install."
+      ]
+    },
+    {
+      "id": "vibethinker-3b-research",
+      "displayName": "VibeThinker-3B research candidate",
+      "status": "research",
+      "runtime": "mobile-runtime-tbd",
+      "platforms": ["android"],
+      "format": "safetensors-upstream",
+      "downloadPageUrl": "https://huggingface.co/WeiboAI/VibeThinker-3B",
+      "modelUrl": "",
+      "tokenizerUrl": "",
+      "modelSha256": "",
+      "tokenizerSha256": "",
+      "approxBytes": 0,
+      "minRamMb": 8192,
+      "license": "mit",
+      "notes": [
+        "Research candidate for verifiable reasoning and contest-style coding.",
+        "Upstream model card lists 3B parameters and BF16 safetensors.",
+        "Upstream usage notes do not recommend tool-calling or autonomous coding-agent tasks.",
+        "Needs quantization, mobile runtime selection, checksum, memory proof, and latency evidence before direct install."
+      ]
+    }
+  ]
+}

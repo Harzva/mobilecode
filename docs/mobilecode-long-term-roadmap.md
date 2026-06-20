@@ -41,9 +41,12 @@ Last updated: 2026-06-19 PDT
   - Evidence: 2026-06-19 `flutter test test/services/model_provider_preset_service_test.dart` passed；模拟器截图 `mobile_agent/qa-output/tierflow-deepseek-auto-20260619-201639/12-model-sheet-scroll-fixed.png`。
 - [x] DeepSeek Auto 采用 MobileCode-side Flash/Pro 路由元数据，默认请求模型为 `deepseek-v4-flash`，候选包含 `deepseek-v4-pro`。
   - Evidence: 2026-06-19 `flutter test test/services/model_provider_preset_service_test.dart` passed；模拟器截图 `mobile_agent/qa-output/tierflow-deepseek-auto-20260619-201639/13-final-deepseek-auto-state-scroll-fixed.png`。
-- [ ] DeepSeek Auto 的真实任务路由器尚未完成。当前完成的是 UI、配置、持久化和路由元数据。
+- [x] DeepSeek Auto 的真实任务路由器已完成：Flash 默认，长上下文、复杂编码和失败重试升级到 Pro。
+  - Evidence: `mobile_agent/lib/services/model_routing_service.dart`；2026-06-20 `flutter test test/services/model_routing_service_test.dart test/services/model_provider_preset_service_test.dart` passed。
 - [ ] TierFlow Auto 的真实端到端 provider 调用成功率、费用、失败回退和 token 账本尚未形成 release evidence。
-- [ ] 本地模型下载、校验、加载和删除流程尚未接入 App。
+- [x] 本地模型 manifest 和 App 内下载入口已接入，直接安装仍要求 checksum 和移动 runtime artifact。
+  - Evidence: `docs/mobilecode-local-models.json`；`mobile_agent/lib/services/mobilecode_local_model_manifest_service.dart`；2026-06-20 `flutter test test/services/mobilecode_local_model_manifest_service_test.dart` passed。
+- [ ] 本地模型下载、校验、加载和删除完整流程尚未接入 App。
 
 ## 总体验收标准
 
@@ -88,17 +91,20 @@ Last updated: 2026-06-19 PDT
   - Evidence: `mobile_agent/lib/services/model_provider_preset_service.dart`。
 - [x] 增加 Provider preset 单元测试。
   - Evidence: `mobile_agent/test/services/model_provider_preset_service_test.dart`。
-- [ ] 为 DeepSeek Auto 增加真实路由策略：
+- [x] 为 DeepSeek Auto 增加真实路由策略：
   - 简单聊天、短改代码、低风险生成默认走 Flash。
   - 长上下文、多文件修改、失败重试、verifier 失败、复杂编码任务升级到 Pro。
   - Pro 失败后记录原因，不静默降级。
+  - Evidence: `ModelRoutingService` 测试覆盖 default Flash、long context Pro、complex coding Pro、Flash failure retry Pro、non-auto passthrough。
 - [ ] 为 TierFlow Auto 增加 provider health 与兼容性测试：
   - health check；
   - chat completions；
   - tool call / non-tool-call 兼容；
   - token usage；
   - rate limit 和错误提示。
-- [ ] 在证据账本中记录 provider preset、实际 model、路由原因、token、延迟、失败回退。
+- [x] 在证据账本中记录 provider preset、实际 model、路由原因和失败回退。
+  - Evidence: `_recordProviderRouteEvidence` writes `traceCallProvider` records with `actualModel`, `routeReason`, `fallbackFromModel`, `maxTokens`, and `inputCharacters` metadata。
+- [ ] Token 账单和 evidence ledger 仍需合并展示延迟、费用和路由原因。
 - [ ] 增加 provider preset UI 防截断策略，窄屏按钮可查看完整名称。
 
 ## Phase 2：多工作区安全容器
@@ -142,8 +148,10 @@ Last updated: 2026-06-19 PDT
 
 - [x] 写出本地模型分发策略：release APK 不内置权重，模型通过 manifest 下载或导入。
   - Evidence: `docs/mobilecode-local-model-distribution.md`。
-- [ ] 建立模型 manifest JSON，并放到 GitHub Pages 或其他静态地址。
-- [ ] App 接入模型 manifest：展示模型名、大小、runtime、license、最低内存、下载状态。
+- [x] 建立模型 manifest JSON，并放到 GitHub Pages 或其他静态地址。
+  - Evidence: `docs/mobilecode-local-models.json` maps to `https://harzva.github.io/mobilecode/mobilecode-local-models.json`。
+- [x] App 接入模型 manifest：展示模型名、大小、runtime、license、最低内存、下载状态。
+  - Evidence: `_LocalModelManifestCard` plus `MobileCodeLocalModelManifestService` parse and show candidate/direct-install status。
 - [ ] 下载管理：Wi-Fi-only、暂停/取消、临时文件、checksum、失败清理。
 - [ ] 模型存储：app-owned `models/<model-id>/`，支持删除和重新校验。
 - [ ] Android ExecuTorch runtime proof：从 demo 模型进入真实可配置 runtime。
@@ -221,15 +229,18 @@ Last updated: 2026-06-19 PDT
 
 ### R2：Provider Auto 产品化
 
-- [ ] DeepSeek Auto 增加真实 router：Flash 默认，Pro 用于复杂编码、失败重试和长上下文。
+- [x] DeepSeek Auto 增加真实 router：Flash 默认，Pro 用于复杂编码、失败重试和长上下文。
+  - Evidence: `mobile_agent/test/services/model_routing_service_test.dart`。
 - [ ] TierFlow Auto 增加 health check、真实请求 smoke 和错误文案。
 - [ ] 在 evidence ledger 记录实际模型和切换原因。
 - [ ] 增加 Provider preset 设置页说明，避免用户误以为 preset 等于内置 key。
 
 ### R3：本地模型下载入口
 
-- [ ] 先发布模型 manifest JSON 草案，不直接接下载。
-- [ ] App 只展示下载链接和说明，默认不下载。
+- [x] 先发布模型 manifest JSON 草案，不直接接下载。
+  - Evidence: `docs/mobilecode-local-models.json` entries are `candidate` / `research` and have no direct artifact checksum yet。
+- [x] App 只展示下载链接和说明，默认不下载。
+  - Evidence: `_LocalModelManifestCard` opens model page or manifest URL; no automatic model download is triggered。
 - [ ] 选择一个小模型做 Android runtime proof，不承诺 VibeThinker-3B 已可量产。
 - [ ] 记录每个模型的内存、速度、license、文件大小和失败边界。
 

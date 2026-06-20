@@ -32,6 +32,16 @@ The app should read a small JSON manifest from GitHub Pages or another public
 static endpoint. The manifest should be safe to cache and should not contain
 secrets.
 
+Current public manifest path:
+
+- Repository source: `docs/mobilecode-local-models.json`
+- GitHub Pages URL: `https://harzva.github.io/mobilecode/mobilecode-local-models.json`
+
+The first manifest entries are candidate/research entries, not direct install
+artifacts. A model becomes a direct-install item only after MobileCode has a
+mobile runtime artifact URL, tokenizer URL, SHA-256 checksums, memory guidance,
+and license review.
+
 Recommended fields:
 
 ```json
@@ -116,4 +126,3 @@ Recommended first Android target:
 - Distribution: external `.pte` model plus tokenizer from the model manifest
 - UI: local provider appears only after runtime support and model files are
   ready
-

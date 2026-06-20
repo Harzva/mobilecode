@@ -1,0 +1,395 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anonymous.example/mobile-harness/schema/strategy_ablation_run.schema.json",
+  "title": "MobileHarnessBench Strategy Ablation Run",
+  "type": "object",
+  "required": [
+    "benchmark",
+    "schema_version",
+    "run_id",
+    "run_kind",
+    "strategy_id",
+    "strategy_family",
+    "strategies",
+    "task_subset",
+    "environment",
+    "model_lock",
+    "tool_access_policy",
+    "prompt_budget",
+    "max_steps",
+    "counts_as_experiment",
+    "summary",
+    "results",
+    "evidence_boundary"
+  ],
+  "properties": {
+    "benchmark": {
+      "type": "string",
+      "const": "MobileHarnessBench"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^0\\.[0-9]+\\.[0-9]+$"
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 8
+    },
+    "run_kind": {
+      "type": "string",
+      "enum": [
+        "strategy_scaffold_not_run",
+        "strategy_dry_run_not_counted",
+        "strategy_pilot_not_counted",
+        "strategy_ablation_result"
+      ]
+    },
+    "strategy_id": {
+      "type": "string"
+    },
+    "strategy_family": {
+      "type": "string",
+      "enum": [
+        "single_agent_reasoning",
+        "single_agent_with_verifier",
+        "multi_agent_handoff",
+        "multi_agent_swarm",
+        "mixed_strategy_ablation"
+      ]
+    },
+    "strategies": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/strategyRef"
+      }
+    },
+    "task_subset": {
+      "type": "object",
+      "required": ["name", "path", "task_count"],
+      "properties": {
+        "name": {"type": "string"},
+        "path": {"type": "string"},
+        "task_count": {"type": "integer", "minimum": 1}
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "mode",
+        "model_provider",
+        "model_name",
+        "execution_tier",
+        "device_profile",
+        "authorization_state",
+        "runtime_backend"
+      ],
+      "properties": {
+        "mode": {"type": "string"},
+        "model_provider": {"type": "string"},
+        "model_name": {"type": "string"},
+        "execution_tier": {"type": "string"},
+        "device_profile": {"type": "string"},
+        "authorization_state": {"type": "string"},
+        "runtime_backend": {"type": "string"}
+      }
+    },
+    "model_lock": {
+      "type": "object",
+      "required": ["status", "model_provider", "model_name"],
+      "properties": {
+        "status": {"type": "string"},
+        "model_provider": {"type": "string"},
+        "model_name": {"type": "string"},
+        "temperature": {"type": ["number", "null"]},
+        "top_p": {"type": ["number", "null"]},
+        "notes": {"type": "string"}
+      }
+    },
+    "tool_access_policy": {
+      "type": "object",
+      "required": ["allowed_tools", "blocked_tools", "max_tool_calls"],
+      "properties": {
+        "allowed_tools": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "blocked_tools": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "max_tool_calls": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      }
+    },
+    "prompt_budget": {
+      "type": "object",
+      "required": ["max_prompt_tokens", "max_completion_tokens", "max_total_tokens"],
+      "properties": {
+        "max_prompt_tokens": {"type": ["integer", "null"], "minimum": 1},
+        "max_completion_tokens": {"type": ["integer", "null"], "minimum": 1},
+        "max_total_tokens": {"type": ["integer", "null"], "minimum": 1}
+      }
+    },
+    "max_steps": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "counts_as_experiment": {
+      "type": "boolean"
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "total",
+        "strategies",
+        "tasks_per_strategy",
+        "passed",
+        "failed",
+        "blocked",
+        "warning",
+        "not_run",
+        "metrics"
+      ],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "strategies": {"type": "integer", "minimum": 1},
+        "tasks_per_strategy": {"type": "integer", "minimum": 1},
+        "passed": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "blocked": {"type": "integer", "minimum": 0},
+        "warning": {"type": "integer", "minimum": 0},
+        "not_run": {"type": "integer", "minimum": 0},
+        "metrics": {"$ref": "#/$defs/metricsSummary"}
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/result"
+      }
+    },
+    "evidence_boundary": {
+      "type": "string",
+      "minLength": 20
+    }
+  },
+  "$defs": {
+    "strategyRef": {
+      "type": "object",
+      "required": ["strategy_id", "strategy_family"],
+      "properties": {
+        "strategy_id": {"type": "string"},
+        "strategy_family": {
+          "type": "string",
+          "enum": [
+            "single_agent_reasoning",
+            "single_agent_with_verifier",
+            "multi_agent_handoff",
+            "multi_agent_swarm"
+          ]
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "strategy_id",
+        "strategy_family",
+        "task_id",
+        "task_category",
+        "status",
+        "strategy_trace",
+        "time_metrics",
+        "token_metrics",
+        "effect_metrics",
+        "evidence",
+        "counts_as_strategy_ablation_result"
+      ],
+      "properties": {
+        "strategy_id": {"type": "string"},
+        "strategy_family": {"type": "string"},
+        "task_id": {
+          "type": "string",
+          "pattern": "^MH-[A-Z]{2}-[0-9]{3}$"
+        },
+        "task_category": {"type": "string"},
+        "status": {
+          "type": "string",
+          "enum": ["passed", "warning", "failed", "blocked", "not_run"]
+        },
+        "strategy_trace": {"$ref": "#/$defs/strategyTrace"},
+        "time_metrics": {"$ref": "#/$defs/timeMetrics"},
+        "token_metrics": {"$ref": "#/$defs/tokenMetrics"},
+        "effect_metrics": {"$ref": "#/$defs/effectMetrics"},
+        "evidence": {"$ref": "#/$defs/evidence"},
+        "counts_as_strategy_ablation_result": {"type": "boolean"}
+      }
+    },
+    "strategyTrace": {
+      "type": "object",
+      "required": [
+        "trace_id",
+        "strategy_id",
+        "trace_status",
+        "events",
+        "handoff_count",
+        "planning_revisions",
+        "verification_failures_recovered",
+        "failure_kind"
+      ],
+      "properties": {
+        "trace_id": {"type": "string"},
+        "strategy_id": {"type": "string"},
+        "trace_status": {
+          "type": "string",
+          "enum": [
+            "scaffold_not_run",
+            "dry_run_not_counted",
+            "pilot_not_counted",
+            "running",
+            "passed",
+            "blocked",
+            "failed"
+          ]
+        },
+        "events": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/traceEvent"}
+        },
+        "handoff_count": {"type": "integer", "minimum": 0},
+        "planning_revisions": {"type": "integer", "minimum": 0},
+        "verification_failures_recovered": {"type": "integer", "minimum": 0},
+        "failure_kind": {"type": ["string", "null"]}
+      }
+    },
+    "traceEvent": {
+      "type": "object",
+      "required": ["event_id", "type", "role", "step_id", "summary"],
+      "properties": {
+        "event_id": {"type": "string"},
+        "type": {
+          "type": "string",
+          "enum": ["plan", "think", "act", "observe", "handoff", "verify", "replan", "report", "memory_commit", "scaffold"]
+        },
+        "role": {"type": "string"},
+        "step_id": {"type": ["string", "null"]},
+        "started_at": {"type": ["string", "null"]},
+        "ended_at": {"type": ["string", "null"]},
+        "tool_name": {"type": ["string", "null"]},
+        "evidence_id": {"type": ["string", "null"]},
+        "summary": {"type": "string"}
+      }
+    },
+    "timeMetrics": {
+      "type": "object",
+      "required": ["planning_ms", "execution_ms", "verification_ms", "reporting_ms", "wall_ms"],
+      "properties": {
+        "planning_ms": {"type": ["integer", "null"], "minimum": 0},
+        "execution_ms": {"type": ["integer", "null"], "minimum": 0},
+        "verification_ms": {"type": ["integer", "null"], "minimum": 0},
+        "reporting_ms": {"type": ["integer", "null"], "minimum": 0},
+        "wall_ms": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "tokenMetrics": {
+      "type": "object",
+      "required": [
+        "prompt_tokens",
+        "completion_tokens",
+        "estimated_tool_io_tokens",
+        "total_tokens",
+        "estimated_cost_usd",
+        "tokens_per_verified_success"
+      ],
+      "properties": {
+        "prompt_tokens": {"type": ["integer", "null"], "minimum": 0},
+        "completion_tokens": {"type": ["integer", "null"], "minimum": 0},
+        "estimated_tool_io_tokens": {"type": ["integer", "null"], "minimum": 0},
+        "total_tokens": {"type": ["integer", "null"], "minimum": 0},
+        "estimated_cost_usd": {"type": ["number", "null"], "minimum": 0},
+        "tokens_per_verified_success": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "effectMetrics": {
+      "type": "object",
+      "required": [
+        "task_success",
+        "verified_success",
+        "trace_completeness",
+        "artifact_availability",
+        "recovery_rate",
+        "human_intervention_count",
+        "handoff_success_rate",
+        "memory_reuse_score",
+        "steps_to_completion"
+      ],
+      "properties": {
+        "task_success": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "verified_success": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "trace_completeness": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "artifact_availability": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "recovery_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "human_intervention_count": {"type": ["integer", "null"], "minimum": 0},
+        "handoff_success_rate": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "memory_reuse_score": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "steps_to_completion": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "metricsSummary": {
+      "type": "object",
+      "required": ["time", "tokens", "effectiveness"],
+      "properties": {
+        "time": {"$ref": "#/$defs/timeMetrics"},
+        "tokens": {"$ref": "#/$defs/tokenMetrics"},
+        "effectiveness": {"$ref": "#/$defs/effectMetrics"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "boundary",
+        "artifact_paths",
+        "trace_paths",
+        "screenshot_paths",
+        "logs",
+        "verifier_outputs",
+        "transcript_paths",
+        "human_intervention_notes"
+      ],
+      "properties": {
+        "boundary": {"type": "string"},
+        "artifact_paths": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "trace_paths": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "screenshot_paths": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "logs": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "verifier_outputs": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "transcript_paths": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "human_intervention_notes": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    }
+  }
+}

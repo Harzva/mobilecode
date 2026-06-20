@@ -1,0 +1,39 @@
+--------- beginning of main
+06-20 06:30:48.292  3572  3572 I .mobilecode.app: Using CollectorTypeCMC GC.
+06-20 06:30:48.294  3572  3572 E .mobilecode.app: Not starting debugger since process cannot load the jdwp agent.
+06-20 06:30:48.295  3572  3572 D nativeloader: Load libframework-connectivity-tiramisu-jni.so using APEX ns com_android_tethering for caller /apex/com.android.tethering/javalib/framework-connectivity-t.jar: ok
+06-20 06:30:48.314  3572  3572 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.extensions.jar
+06-20 06:30:48.314  3572  3572 D ApplicationLoaders: Returning zygote-cached class loader: /system_ext/framework/androidx.window.sidecar.jar
+06-20 06:30:48.315  3572  3572 D nativeloader: Configuring clns-9 for other apk /data/app/~~6ho1G8_DeKTiCgBGjjJZjA==/com.mobilecode.app-oXThYuWm2luffTv6YOkBVg==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~6ho1G8_DeKTiCgBGjjJZjA==/com.mobilecode.app-oXThYuWm2luffTv6YOkBVg==/lib/arm64:/data/app/~~6ho1G8_DeKTiCgBGjjJZjA==/com.mobilecode.app-oXThYuWm2luffTv6YOkBVg==/base.apk!/lib/arm64-v8a, permitted_path=/data:/mnt/expand:/data/user/0/com.mobilecode.app
+06-20 06:30:48.316  3572  3572 I .mobilecode.app: AssetManager2(0xb4000078fa5e9138) locale list changing from [] to [en-US]
+06-20 06:30:48.319  3572  3572 V GraphicsEnvironment: Currently set values for:
+06-20 06:30:48.320  3572  3572 V GraphicsEnvironment:   angle_gl_driver_selection_pkgs=[]
+06-20 06:30:48.320  3572  3572 V GraphicsEnvironment:   angle_gl_driver_selection_values=[]
+06-20 06:30:48.320  3572  3572 V GraphicsEnvironment: com.mobilecode.app is not listed in per-application setting
+06-20 06:30:48.320  3572  3572 V GraphicsEnvironment: ANGLE allowlist from config: com.dreamgames.royalmatch com.dts.freefiremax com.dxx.firenow com.gramgames.mergedragons com.ludo.king com.mojang.minecraftpe com.my.defense com.nintendo.zaka com.os.airforce com.playrix.fishdomdd.gplay io.teslatech.callbreak jp.konami.prospia net.peakgames.toonblast
+06-20 06:30:48.320  3572  3572 V GraphicsEnvironment: com.mobilecode.app is not listed in ANGLE allowlist or settings, returning default
+06-20 06:30:48.320  3572  3572 V GraphicsEnvironment: Neither updatable production driver nor prerelease driver is supported.
+06-20 06:30:48.339  3572  3572 I .mobilecode.app: AssetManager2(0xb4000078fa5dcc58) locale list changing from [] to [en-US]
+06-20 06:30:48.341  3572  3572 E ashmem  : Pinning is deprecated since Android Q. Please use trim or other methods.
+--------- beginning of system
+06-20 06:30:48.346  3572  3572 I DisplayManager: Implicitly registering for refresh rate
+06-20 06:30:48.468  3572  3586 D nativeloader: Load /data/app/~~6ho1G8_DeKTiCgBGjjJZjA==/com.mobilecode.app-oXThYuWm2luffTv6YOkBVg==/base.apk!/lib/arm64-v8a/libflutter.so using class loader ns clns-9 (caller=/data/app/~~6ho1G8_DeKTiCgBGjjJZjA==/com.mobilecode.app-oXThYuWm2luffTv6YOkBVg==/base.apk): ok
+06-20 06:30:48.480  3572  3592 D skia    : [SkFontMgr Android Parser] '/product/etc/fonts_customization.xml' could not be opened
+06-20 06:30:48.511  3572  3572 I .mobilecode.app: AssetManager2(0xb4000078fa5e8198) locale list changing from [] to [en-US]
+06-20 06:30:48.515  3572  3584 I EGL_emulation: Opening libGLESv1_CM_emulation.so
+06-20 06:30:48.515  3572  3584 I EGL_emulation: Opening libGLESv2_emulation.so
+06-20 06:30:48.519  3572  3584 W HWUI    : Failed to choose config with EGL_SWAP_BEHAVIOR_PRESERVED, retrying without...
+06-20 06:30:48.520  3572  3584 W HWUI    : Failed to initialize 101010-2 format, error = EGL_SUCCESS
+06-20 06:30:48.524  3572  3572 W .mobilecode.app: type=1400 audit(0.0:12): avc:  denied  { read } for  name="max_map_count" dev="proc" ino=13063 scontext=u:r:untrusted_app:s0:c213,c256,c512,c768 tcontext=u:object_r:proc_max_map_count:s0 tclass=file permissive=0 app=com.mobilecode.app
+06-20 06:30:48.539  3572  3572 D DesktopModeFlags: Toggle override initialized to: OVERRIDE_UNSET
+06-20 06:30:48.595  3572  3596 I flutter : [IMPORTANT:flutter/shell/platform/android/android_context_gl_impeller.cc(104)] Using the Impeller rendering backend (OpenGLES).
+06-20 06:30:48.785  3572  3572 D nativeloader: Load /data/app/~~6ho1G8_DeKTiCgBGjjJZjA==/com.mobilecode.app-oXThYuWm2luffTv6YOkBVg==/base.apk!/lib/arm64-v8a/libdartjni.so using class loader ns clns-9 (caller=/data/app/~~6ho1G8_DeKTiCgBGjjJZjA==/com.mobilecode.app-oXThYuWm2luffTv6YOkBVg==/base.apk): ok
+06-20 06:30:48.812  3572  3572 D CompatChangeReporter: Compat change id reported: 377864165; UID 10213; state: ENABLED
+06-20 06:30:48.839  3572  3572 W HWUI    : Unknown dataspace 0
+06-20 06:30:48.870  3572  3572 I Choreographer: Skipped 32 frames!  The application may be doing too much work on its main thread.
+06-20 06:30:48.871  3572  3572 I WindowExtensionsImpl: Initializing Window Extensions, vendor API level=9, activity embedding enabled=true
+06-20 06:30:49.240  3572  3572 I .mobilecode.app: AssetManager2(0xb4000078fa5e8af8) locale list changing from [] to [en-US]
+06-20 06:30:49.249  3572  3572 D WindowLayoutComponentImpl: Register WindowLayoutInfoListener on Context=com.mobilecode.app.MainActivity@f1b2363, of which baseContext=android.app.ContextImpl@b2d2cea
+06-20 06:30:49.558  3572  3572 D InsetsController: hide(ime(), fromIme=false)
+06-20 06:30:49.558  3572  3572 I ImeTracker: com.mobilecode.app:39ae6a6e: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+06-20 06:30:54.305  3572  3709 D ProfileInstaller: Installing profile for com.mobilecode.app

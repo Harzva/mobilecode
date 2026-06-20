@@ -1,0 +1,13 @@
+task_id,task_category,strategy_id,strategy_family,status,wall_ms,total_tokens,counts_as_strategy_ablation_result
+MH-CE-201,code_edit,react_single_agent,single_agent_reasoning,warning,85,230,False
+MH-CE-205,code_edit,react_single_agent,single_agent_reasoning,warning,88,235,False
+MH-CE-209,code_edit,react_single_agent,single_agent_reasoning,warning,91,240,False
+MH-CE-213,code_edit,react_single_agent,single_agent_reasoning,warning,94,245,False
+MH-CE-201,code_edit,plan_execute_verify_single_agent,single_agent_reasoning,warning,108,278,False
+MH-CE-205,code_edit,plan_execute_verify_single_agent,single_agent_reasoning,warning,111,283,False
+MH-CE-209,code_edit,plan_execute_verify_single_agent,single_agent_reasoning,warning,114,288,False
+MH-CE-213,code_edit,plan_execute_verify_single_agent,single_agent_reasoning,warning,117,293,False
+MH-CE-201,code_edit,supervisor_handoff_multi_agent,multi_agent_handoff,warning,131,326,False
+MH-CE-205,code_edit,supervisor_handoff_multi_agent,multi_agent_handoff,warning,134,331,False
+MH-CE-209,code_edit,supervisor_handoff_multi_agent,multi_agent_handoff,warning,137,336,False
+MH-CE-213,code_edit,supervisor_handoff_multi_agent,multi_agent_handoff,warning,140,341,False

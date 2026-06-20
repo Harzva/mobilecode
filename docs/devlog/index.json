@@ -1,8 +1,16 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-06-20T04:39:23Z",
+  "generatedAt": "2026-06-20T04:41:36Z",
   "repository": "Harzva/mobilecode",
   "entries": [
+    {
+      "title": "Important Changes - 2026-06-20 - c473446",
+      "type": "important",
+      "date": "2026-06-20",
+      "generatedAt": "2026-06-20T04:41:36Z",
+      "head": "c473446d5b84faacf737b17e71a6064fcbd2b602",
+      "path": "docs/devlog/important/2026-06-20-c473446.md"
+    },
     {
       "title": "Daily Devlog - 2026-06-20",
       "type": "daily",

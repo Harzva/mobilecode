@@ -68,9 +68,16 @@ Last updated: 2026-06-19 PDT
   - Evidence: `mobile_agent/qa-output/tierflow-deepseek-auto-20260619-201639/09-deepseek-auto-persists-after-restart.xml` 与 `13-final-deepseek-auto-state-scroll-fixed.xml`。
 - [x] 模型选择弹层底部 overflow 已修复。
   - Evidence: `12-model-sheet-scroll-fixed.png` 不再出现 Flutter overflow 条纹。
-- [ ] 将 Provider Auto 相关代码拆成单独 commit 并 push。
-- [ ] 等 GitHub CI 完成，重点检查 Android App Smoke Test 和 Mobile Runtime CI。
-- [ ] 做真实第三方 App QA：Android 文件管理器、微信、浏览器下载页分别打开 `.html` 到 MobileCode，并保存截图。
+- [x] 将 Provider Auto 相关代码拆成单独 commit 并 push。
+  - Evidence: 2026-06-19 commit `57eef01` pushed to `origin/main`；docs follow-up commit `ba4e244` pushed separately。
+- [x] GitHub CI 完成，Android App Smoke Test 和 Mobile Runtime CI 通过。
+  - Evidence: 2026-06-20 UTC Android App Smoke Test run `27859042736` success；Mobile Runtime CI run `27859042737` success。
+- [x] 真实第三方 App QA：Android 文件管理器 / DocumentsUI 打开 `.html` 到 MobileCode。
+  - Evidence: `mobile_agent/qa-output/html-open-real-app-20260619-204552/01-documentsui-downloads.png`、`02-documentsui-after-file-tap.png`、`03-documentsui-opened-in-mobilecode.png`。
+- [ ] 浏览器下载页打开 `.html` 到 MobileCode 仍需产品决策或真实设备复测。
+  - Evidence: `mobile_agent/qa-output/html-open-real-app-20260619-204552/10-chrome-download-open-attempt.png` 显示 Chrome 在模拟器中自己打开 `content://media/external/downloads/64`。
+- [ ] 微信 / 聊天工具 QA 仍需真实 App 环境。
+  - Evidence: 2026-06-19 emulator package list did not include WeChat。
 - [ ] 决定哪些 QA 截图进入公开素材目录，哪些只留在本地 `qa-output`。
 
 ## Phase 1：Provider Preset 与自动路由
@@ -122,7 +129,7 @@ Last updated: 2026-06-19 PDT
 目标：把 MobileCode 变成手机上的生成物查看器、修复器和发布前检查器。
 
 - [x] `.html` 无 MIME、`EXTRA_TEXT` HTML 分享、读取失败提示已完成本地能力链路验证。
-  - Evidence: 用户已验收该能力链路；仍需真实第三方 App QA 截图。
+  - Evidence: 用户已验收该能力链路；2026-06-19 DocumentsUI 真实入口 QA 已保存截图；Chrome download direct tap 与 WeChat 仍单独跟踪。
 - [ ] 建立 Preview Registry：`html`、`markdown`、`image`、`text`、`json`、`log`、`runtime-report`、`github-pages`。
 - [ ] 每个 preview 记录：来源、文件路径、打开方式、渲染状态、错误、截图、最后验证时间。
 - [ ] HTML preview verifier：DOM 非空、移动端无明显 overflow、按钮可点击、JS 错误可见。
@@ -194,16 +201,22 @@ Last updated: 2026-06-19 PDT
 
 ### R0：当前 Provider Auto 收尾
 
-- [ ] 只提交 Provider Auto 相关 3 个文件：`home_screen.dart`、`model_provider_preset_service.dart`、`model_provider_preset_service_test.dart`。
-- [ ] 暂不混入未定稿 docs，除非本路线图和本地模型策略要作为同一批文档提交。
-- [ ] Push 后等待 Android App Smoke Test 和 Mobile Runtime CI。
-- [ ] 将 `12-model-sheet-scroll-fixed.png` 与 `13-final-deepseek-auto-state-scroll-fixed.png` 复制到公开素材目录或保留为本地 QA 证据。
+- [x] 只提交 Provider Auto 相关 3 个文件：`home_screen.dart`、`model_provider_preset_service.dart`、`model_provider_preset_service_test.dart`。
+  - Evidence: commit `57eef01`。
+- [x] 本路线图、本地模型策略、生产硬化说明作为独立 docs commit 提交。
+  - Evidence: commit `ba4e244`。
+- [x] Push 后等待 Android App Smoke Test 和 Mobile Runtime CI。
+  - Evidence: 2026-06-20 UTC Android App Smoke Test run `27859042736` success；Mobile Runtime CI run `27859042737` success。
+- [x] 将 `12-model-sheet-scroll-fixed.png` 与 `13-final-deepseek-auto-state-scroll-fixed.png` 保留为本地 QA 证据。
+  - Evidence: `mobile_agent/qa-output/tierflow-deepseek-auto-20260619-201639/`。
 
 ### R1：HTML 外部打开真实 QA
 
-- [ ] Android 文件管理器打开 `.html` 到 MobileCode，保存截图和 XML。
+- [x] Android 文件管理器打开 `.html` 到 MobileCode，保存截图和 XML。
+  - Evidence: `mobile_agent/qa-output/html-open-real-app-20260619-204552/03-documentsui-opened-in-mobilecode.png` 与 `.xml`。
 - [ ] 微信/聊天工具分享 HTML 文本或文件到 MobileCode，保存截图和失败原因。
 - [ ] 浏览器下载页打开 `.html` 到 MobileCode，保存截图和 content URI 授权证据。
+  - Evidence: 当前模拟器 Chrome direct tap 未路由到 MobileCode，需真实设备或分享入口复测。
 - [ ] 将真实第三方 App QA 结果写入 `docs/mobilecode-release-qa.md` 或专项 QA 文档。
 
 ### R2：Provider Auto 产品化
@@ -234,4 +247,3 @@ Last updated: 2026-06-19 PDT
 - 本地模型首发应优先 Android ExecuTorch，还是先做“下载/导入/校验 UI”再接 runtime。
 - 公开截图应放入 `docs/assets/`、README showcase，还是单独建立 `docs/assets/qa/`。
 - MobileCode 长期路线图是否需要拆成 `roadmpxx.md` 风格的主文件与 `roadmpxx-tasks/` 任务目录。
-

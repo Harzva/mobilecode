@@ -13,6 +13,12 @@ MobileCode should ship as a real Android APK with the following first-run path:
 5. User taps Preview and sees the generated web app inside WebView.
 6. User tests GitHub connectivity before publish/release actions.
 
+Release builds must not bundle local LLM weight files in the APK. On-device
+models are opt-in user-installed assets: MobileCode may show a model download
+link or model manifest in the app, then enable local inference only after the
+user downloads or imports a verified model and tokenizer. See
+`docs/mobilecode-local-model-distribution.md`.
+
 ## Tool Capability Matrix
 
 | Capability | Direct Flutter/Android | Termux Required | Remote/CI Preferred |
@@ -75,6 +81,8 @@ Recommended dashboards:
 - Keep UI probes short and cancellable.
 - Avoid running heavy code generation or build commands on the main isolate.
 - Use app-owned storage for drafts and generated files.
+- Keep model weights out of the APK; download or import them into app-owned
+  model storage after explicit user action.
 - Prefer remote CI for release builds and signing.
 - Cache provider health results briefly to avoid repeated network checks.
 - Use bounded chat context windows to control token cost and latency.
@@ -90,4 +98,3 @@ Release checklist:
 3. upload APK to release
 4. update release notes with build number, run id, and known limits
 5. smoke test: API health, Agent 2048 generation, WebView preview, Tool Lab, Termux check
-

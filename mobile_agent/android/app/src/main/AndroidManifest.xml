@@ -94,6 +94,16 @@
                 <data android:mimeType="application/octet-stream"/>
             </intent-filter>
             <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:scheme="content" android:pathPattern=".*\\.html"/>
+                <data android:scheme="content" android:pathPattern=".*\\.htm"/>
+                <data android:scheme="content" android:pathPattern=".*\\.xhtml"/>
+                <data android:scheme="file" android:pathPattern=".*\\.html"/>
+                <data android:scheme="file" android:pathPattern=".*\\.htm"/>
+                <data android:scheme="file" android:pathPattern=".*\\.xhtml"/>
+            </intent-filter>
+            <intent-filter>
                 <action android:name="android.intent.action.SEND"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <data android:mimeType="text/*"/>

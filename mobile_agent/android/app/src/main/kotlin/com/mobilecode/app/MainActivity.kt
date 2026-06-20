@@ -14,6 +14,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.util.Locale
 
 class MainActivity : FlutterActivity() {
     private var pendingInitialDeepLink: String? = null
@@ -61,7 +62,12 @@ class MainActivity : FlutterActivity() {
     private fun captureIntent(intent: Intent?) {
         if (intent == null) return
         intent.dataString?.let { pendingInitialDeepLink = it }
-        if (intent.action == Intent.ACTION_SEND || intent.action == Intent.ACTION_VIEW) {
+        val action = intent.action
+        val scheme = intent.data?.scheme
+        val isShareIntent = action == Intent.ACTION_SEND
+        val isFileViewIntent = action == Intent.ACTION_VIEW &&
+            (scheme == "content" || scheme == "file")
+        if (isShareIntent || isFileViewIntent) {
             pendingSharedIntent = intent
         }
     }
@@ -71,14 +77,20 @@ class MainActivity : FlutterActivity() {
         pendingSharedIntent = null
         val uri = sharedIntent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
             ?: sharedIntent.data
-            ?: return null
+        if (uri != null) return consumeSharedUri(sharedIntent, uri)
+        return consumeSharedText(sharedIntent)
+    }
+
+    private fun consumeSharedUri(sharedIntent: Intent, uri: Uri): Map<String, Any?> {
         return try {
             val mimeType = contentResolver.getType(uri) ?: sharedIntent.type ?: ""
             val name = uri.lastPathSegment?.substringAfterLast('/') ?: "shared-file"
             val target = File(cacheDir, "shared_${System.currentTimeMillis()}_$name")
-            contentResolver.openInputStream(uri)?.use { input ->
+            val inputStream = contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("No readable stream for shared URI")
+            inputStream.use { input ->
                 target.outputStream().use { output -> input.copyTo(output) }
-            } ?: return null
+            }
             mapOf(
                 "path" to target.absolutePath,
                 "displayName" to name,
@@ -86,9 +98,65 @@ class MainActivity : FlutterActivity() {
                 "sizeBytes" to target.length(),
                 "source" to "android_intent",
             )
-        } catch (_: Exception) {
-            null
+        } catch (error: Exception) {
+            sharedFileError(
+                code = "read_failed",
+                displayName = uri.lastPathSegment?.substringAfterLast('/') ?: "shared-file",
+                source = "android_intent",
+                detail = error.localizedMessage ?: error.javaClass.simpleName,
+            )
         }
+    }
+
+    private fun consumeSharedText(sharedIntent: Intent): Map<String, Any?>? {
+        val text = sharedIntent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
+        if (text.isBlank()) return null
+        return try {
+            val intentMimeType = sharedIntent.type ?: ""
+            val html = isHtmlMime(intentMimeType) || looksHtml(text)
+            val extension = if (html) "html" else "txt"
+            val mimeType = if (html) "text/html" else "text/plain"
+            val target = File(cacheDir, "shared_text_${System.currentTimeMillis()}.$extension")
+            target.writeText(text, Charsets.UTF_8)
+            mapOf(
+                "path" to target.absolutePath,
+                "displayName" to "shared-text.$extension",
+                "mimeType" to mimeType,
+                "sizeBytes" to target.length(),
+                "source" to "android_extra_text",
+            )
+        } catch (error: Exception) {
+            sharedFileError(
+                code = "extra_text_failed",
+                displayName = "shared-text.html",
+                source = "android_extra_text",
+                detail = error.localizedMessage ?: error.javaClass.simpleName,
+            )
+        }
+    }
+
+    private fun sharedFileError(
+        code: String,
+        displayName: String,
+        source: String,
+        detail: String,
+    ): Map<String, Any?> = mapOf(
+        "error" to code,
+        "displayName" to displayName,
+        "source" to source,
+        "message" to "MobileCode cannot read shared $displayName. Grant file access and try again. $detail",
+    )
+
+    private fun isHtmlMime(mimeType: String): Boolean {
+        val lower = mimeType.lowercase(Locale.ROOT)
+        return lower == "text/html" || lower == "application/xhtml+xml"
+    }
+
+    private fun looksHtml(text: String): Boolean {
+        val lower = text.trimStart().lowercase(Locale.ROOT)
+        return lower.startsWith("<!doctype html") ||
+            lower.startsWith("<html") ||
+            lower.contains("<body")
     }
 
     private fun isPackageInstalled(packageName: String?): Boolean {

@@ -64,16 +64,47 @@ class ExternalPreviewFile {
   }
 }
 
+class ExternalFilePreviewException implements Exception {
+  const ExternalFilePreviewException({
+    required this.code,
+    required this.message,
+    this.displayName,
+    this.source,
+  });
+
+  final String code;
+  final String message;
+  final String? displayName;
+  final String? source;
+
+  @override
+  String toString() => message;
+}
+
 class ExternalFilePreviewService {
   ExternalFilePreviewService._();
 
-  static final ExternalFilePreviewService instance = ExternalFilePreviewService._();
-  static const MethodChannel _channel = MethodChannel('mobilecode/system_tools');
+  static final ExternalFilePreviewService instance =
+      ExternalFilePreviewService._();
+  static const MethodChannel _channel =
+      MethodChannel('mobilecode/system_tools');
 
   Future<ExternalPreviewFile?> consumePendingFile() async {
-    final raw = await _channel.invokeMethod<dynamic>('consumePendingSharedFile');
+    final raw =
+        await _channel.invokeMethod<dynamic>('consumePendingSharedFile');
     if (raw == null) return null;
     if (raw is! Map) return null;
+
+    final errorCode = _stringValue(raw['error']);
+    if (errorCode != null && errorCode.trim().isNotEmpty) {
+      throw ExternalFilePreviewException(
+        code: errorCode,
+        message: _stringValue(raw['message']) ??
+            'MobileCode could not read the shared file.',
+        displayName: _stringValue(raw['displayName']),
+        source: _stringValue(raw['source']),
+      );
+    }
 
     final path = _stringValue(raw['path']);
     if (path == null || path.trim().isEmpty) return null;
@@ -236,7 +267,8 @@ class ExternalFilePreviewClassifier {
 
   static bool _looksMarkdown(String text) {
     if (text.isEmpty) return false;
-    final lines = text.split('\n').take(20).map((line) => line.trimRight()).toList();
+    final lines =
+        text.split('\n').take(20).map((line) => line.trimRight()).toList();
     final joined = lines.join('\n');
     if (RegExp(r'^#{1,6}\s+\S', multiLine: true).hasMatch(joined)) return true;
     if (RegExp(r'^[-*+]\s+\S', multiLine: true).hasMatch(joined)) return true;

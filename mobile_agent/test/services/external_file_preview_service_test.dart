@@ -14,7 +14,8 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
-  test('classifies html even when WeChat exposes an opaque extension', () async {
+  test('classifies html even when WeChat exposes an opaque extension',
+      () async {
     final dir = await Directory.systemTemp.createTemp('mobilecode_preview_');
     addTearDown(() => dir.delete(recursive: true));
     final file = File('${dir.path}/wechat_payload.bin');
@@ -32,11 +33,64 @@ void main() {
       };
     });
 
-    final preview = await ExternalFilePreviewService.instance.consumePendingFile();
+    final preview =
+        await ExternalFilePreviewService.instance.consumePendingFile();
 
     expect(preview, isNotNull);
     expect(preview!.kind, ExternalPreviewKind.html);
     expect(preview.displayName, 'wechat_payload.bin');
+  });
+
+  test('classifies html by filename when Android omits the MIME type',
+      () async {
+    final dir = await Directory.systemTemp.createTemp('mobilecode_preview_');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = File('${dir.path}/from_files_app.html');
+    await file.writeAsString('<main>Opened from another app</main>');
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      return {
+        'path': file.path,
+        'displayName': 'from_files_app.html',
+        'mimeType': '',
+        'sizeBytes': await file.length(),
+      };
+    });
+
+    final preview =
+        await ExternalFilePreviewService.instance.consumePendingFile();
+
+    expect(preview, isNotNull);
+    expect(preview!.kind, ExternalPreviewKind.html);
+  });
+
+  test('surfaces Android shared-file read failures as readable errors',
+      () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      return {
+        'error': 'read_failed',
+        'message':
+            'MobileCode cannot read shared page.html. Grant file access and try again.',
+        'displayName': 'page.html',
+        'source': 'android_intent',
+      };
+    });
+
+    expect(
+      ExternalFilePreviewService.instance.consumePendingFile,
+      throwsA(
+        isA<ExternalFilePreviewException>()
+            .having((error) => error.code, 'code', 'read_failed')
+            .having((error) => error.displayName, 'displayName', 'page.html')
+            .having(
+              (error) => error.message,
+              'message',
+              contains('cannot read shared page.html'),
+            ),
+      ),
+    );
   });
 
   test('classifies markdown by content when extension is missing', () async {
@@ -55,7 +109,8 @@ void main() {
       };
     });
 
-    final preview = await ExternalFilePreviewService.instance.consumePendingFile();
+    final preview =
+        await ExternalFilePreviewService.instance.consumePendingFile();
 
     expect(preview, isNotNull);
     expect(preview!.kind, ExternalPreviewKind.markdown);
@@ -77,7 +132,8 @@ void main() {
       };
     });
 
-    final preview = await ExternalFilePreviewService.instance.consumePendingFile();
+    final preview =
+        await ExternalFilePreviewService.instance.consumePendingFile();
 
     expect(preview, isNotNull);
     expect(preview!.kind, ExternalPreviewKind.unsupported);
@@ -88,8 +144,29 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async => null);
 
-    final preview = await ExternalFilePreviewService.instance.consumePendingFile();
+    final preview =
+        await ExternalFilePreviewService.instance.consumePendingFile();
 
     expect(preview, isNull);
+  });
+
+  test('Android manifest routes extension-only HTML view intents', () async {
+    final manifest =
+        await File('android/app/src/main/AndroidManifest.xml').readAsString();
+
+    expect(manifest, contains('android:pathPattern=".*\\\\.html"'));
+    expect(manifest, contains('android:pathPattern=".*\\\\.htm"'));
+    expect(manifest, contains('android:pathPattern=".*\\\\.xhtml"'));
+  });
+
+  test('Android bridge converts shared EXTRA_TEXT HTML into a preview file',
+      () async {
+    final mainActivity = await File(
+      'android/app/src/main/kotlin/com/mobilecode/app/MainActivity.kt',
+    ).readAsString();
+
+    expect(mainActivity, contains('Intent.EXTRA_TEXT'));
+    expect(mainActivity, contains('shared_text_'));
+    expect(mainActivity, contains('text/html'));
   });
 }

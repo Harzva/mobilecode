@@ -47,6 +47,7 @@ jobs:
           cp -R docs/demo/2048 app/dist/demo/
           cp -R docs/github-test/* app/dist/github-test/
           cp docs/mobilecode-update.json app/dist/mobilecode-update.json
+          cp docs/mobilecode-local-models.json app/dist/mobilecode-local-models.json
           cp docs/mobilecode-principle-video.html app/dist/
           cp docs/mobilecode-principle-video-script.md app/dist/
           cp docs/assets/mobilecode-principle-* app/dist/assets/

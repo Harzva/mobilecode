@@ -209,6 +209,23 @@ def parse_frontmatter(path: Path, root: Path) -> dict[str, str] | None:
     return data
 
 
+def screenshot_metadata(devlog_dir: Path) -> dict[str, str] | None:
+    latest = devlog_dir / "screenshots" / "latest.png"
+    if not latest.exists():
+        return None
+    screenshots = sorted(
+        path
+        for path in (devlog_dir / "screenshots").glob("*.png")
+        if path.name != "latest.png"
+    )
+    current = screenshots[-1] if screenshots else latest
+    return {
+        "latest": latest.relative_to(devlog_dir).as_posix(),
+        "current": current.relative_to(devlog_dir).as_posix(),
+        "currentName": current.name,
+    }
+
+
 def build_index(root: Path, devlog_dir: Path, generated_at: str) -> None:
     entries = []
     for path in sorted(devlog_dir.glob("*/*.md")):
@@ -222,6 +239,9 @@ def build_index(root: Path, devlog_dir: Path, generated_at: str) -> None:
         "repository": OWNER_REPO,
         "entries": entries,
     }
+    screenshot = screenshot_metadata(devlog_dir)
+    if screenshot:
+        feed["latestScreenshot"] = screenshot
     (devlog_dir / "index.json").write_text(json.dumps(feed, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     cards = []
     for entry in entries[:40]:
@@ -239,6 +259,20 @@ def build_index(root: Path, devlog_dir: Path, generated_at: str) -> None:
       </a>"""
         )
     cards_html = "\n".join(cards) or "<p>No developer logs yet.</p>"
+    screenshot_html = ""
+    if screenshot:
+        latest_src = html.escape(screenshot["latest"])
+        current_name = html.escape(screenshot["currentName"])
+        screenshot_html = f"""
+    <section class="screenshot">
+      <div>
+        <span>Latest screenshot</span>
+        <strong>{current_name}</strong>
+      </div>
+      <a href="./{latest_src}">
+        <img src="./{latest_src}" alt="Latest MobileCode developer log page screenshot">
+      </a>
+    </section>"""
     (devlog_dir / "index.html").write_text(
         f"""<!doctype html>
 <html lang="en">
@@ -261,6 +295,10 @@ def build_index(root: Path, devlog_dir: Path, generated_at: str) -> None:
     .entry:hover {{ border-color: var(--cyan); transform: translateY(-2px); transition: 160ms ease; }}
     .entry strong {{ font-size: 20px; line-height: 1.18; }}
     .entry small {{ color: var(--muted); }}
+    .screenshot {{ margin: 30px 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: hidden; }}
+    .screenshot div {{ display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; color: var(--muted); }}
+    .screenshot span {{ color: var(--mint); font-weight: 900; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }}
+    .screenshot img {{ display: block; width: 100%; height: auto; border-top: 1px solid var(--line); }}
     .links {{ display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }}
     .links a {{ color: var(--mint); font-weight: 800; }}
   </style>
@@ -273,6 +311,7 @@ def build_index(root: Path, devlog_dir: Path, generated_at: str) -> None:
       <p>These logs are generated from Git history by GitHub Actions, committed back to the repository, and published to GitHub Pages.</p>
       <p>Last generated: <code>{html.escape(generated_at)}</code></p>
     </section>
+{screenshot_html}
     <section class="grid">
 {cards_html}
     </section>
@@ -291,7 +330,7 @@ def build_index(root: Path, devlog_dir: Path, generated_at: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate MobileCode developer logs from git history.")
-    parser.add_argument("--mode", choices=["daily", "important", "both", "auto"], default="auto")
+    parser.add_argument("--mode", choices=["daily", "important", "both", "auto", "index"], default="auto")
     parser.add_argument("--base", default=os.environ.get("GITHUB_EVENT_BEFORE"))
     parser.add_argument("--head", default=os.environ.get("GITHUB_SHA", "HEAD"))
     parser.add_argument("--since", default="24 hours ago")
@@ -311,6 +350,10 @@ def main() -> int:
     wrote_log = False
 
     mode = args.mode
+    if mode == "index":
+        build_index(repo, devlog_dir, generated_at)
+        print(f"Rebuilt developer log index in {devlog_dir.relative_to(repo)}")
+        return 0
     if mode == "auto":
         mode = "daily" if os.environ.get("GITHUB_EVENT_NAME") == "schedule" else "important"
 

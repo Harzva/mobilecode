@@ -4,7 +4,6 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - main
       - last
       - last-recover-from-v039
     paths:

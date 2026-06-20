@@ -60,7 +60,7 @@ jobs:
             force="false"
           elif [ "$EVENT_NAME" = "push" ]; then
             mode="important"
-            force="false"
+            force="true"
           elif [ -z "$mode" ]; then
             mode="both"
           fi
@@ -84,18 +84,6 @@ jobs:
             args+=(--force-important)
           fi
           python3 scripts/generate_devlog.py "${args[@]}"
-
-      - name: Commit developer log updates
-        run: |
-          if git diff --quiet -- docs/devlog; then
-            echo "No developer log changes to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/devlog
-          git commit -m "Update developer logs [skip ci]"
-          git push origin HEAD:main
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -122,6 +110,55 @@ jobs:
           cp docs/mobilecode-principle-video-script.md app/dist/
           cp docs/assets/mobilecode-principle-* app/dist/assets/
           cp docs/assets/mobilecode-short-* app/dist/assets/
+
+      - name: Capture developer log screenshot
+        env:
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euxo pipefail
+          mkdir -p docs/devlog/screenshots
+          short_sha="$(git rev-parse --short "$GITHUB_SHA")"
+          shot_name="$(date -u +%Y-%m-%d)-${short_sha}.png"
+          shot_path="docs/devlog/screenshots/${shot_name}"
+          python3 -m http.server 4173 --directory app/dist > /tmp/mobilecode-pages-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:4173/devlog/ >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4173/devlog/ >/dev/null
+          chrome_bin="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$chrome_bin" ]; then
+            echo "No Chrome/Chromium binary found for screenshot capture." >&2
+            exit 1
+          fi
+          "$chrome_bin" \
+            --headless=new \
+            --disable-gpu \
+            --no-sandbox \
+            --window-size=1440,1400 \
+            --screenshot="$shot_path" \
+            http://127.0.0.1:4173/devlog/
+          cp "$shot_path" docs/devlog/screenshots/latest.png
+          python3 scripts/generate_devlog.py --mode index
+          rm -rf app/dist/devlog
+          mkdir -p app/dist/devlog
+          cp -R docs/devlog/* app/dist/devlog/
+
+      - name: Commit developer log updates
+        run: |
+          if git diff --quiet -- docs/devlog; then
+            echo "No developer log changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/devlog
+          git commit -m "Update developer logs [skip ci]"
+          git push origin HEAD:main
 
       - name: Configure Pages
         uses: actions/configure-pages@v6

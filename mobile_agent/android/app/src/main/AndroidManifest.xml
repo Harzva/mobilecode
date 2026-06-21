@@ -120,6 +120,19 @@
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 
+        <!-- Accessibility-gated phone-use probe for P5.7 non-counted QA. -->
+        <service
+            android:name=".PhoneUseAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/mobilecode_phone_use_accessibility_service" />
+        </service>
+
         <!-- File provider for APK installation -->
         <provider
             android:name="androidx.core.content.FileProvider"

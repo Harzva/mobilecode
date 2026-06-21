@@ -1,0 +1,7 @@
+Starting: Intent { cmp=com.mobilecode.app/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.mobilecode.app/.MainActivity
+TotalTime: 1248
+WaitTime: 1250
+Complete

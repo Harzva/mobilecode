@@ -1,0 +1,23 @@
+{
+  "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_hierarchical_swarm_multi_agent_P61-COMMUNICATION-SUBSTRATE-001",
+  "strategy_id": "hierarchical_swarm_multi_agent",
+  "trace_status": "pilot_not_counted",
+  "events": [
+    {
+      "event_id": "evt_001",
+      "type": "contract_verify",
+      "role": "RuntimeBenchmarkContractVerifier",
+      "step_id": "step_001",
+      "started_at": "2026-06-21T07:28:20Z",
+      "ended_at": "2026-06-21T07:28:20Z",
+      "tool_name": "p60_p62_contract_materializer",
+      "evidence_id": "p60-p62-runtime-benchmark-upgrade_hierarchical_swarm_multi_agent_P61-COMMUNICATION-SUBSTRATE-001",
+      "summary": "P6.1 contract scaffold materialized for hierarchical_swarm_multi_agent.",
+      "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+    }
+  ],
+  "handoff_count": 0,
+  "planning_revisions": 0,
+  "verification_failures_recovered": 0,
+  "failure_kind": null
+}

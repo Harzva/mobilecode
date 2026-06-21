@@ -10,6 +10,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -37,6 +38,14 @@ class MainActivity : FlutterActivity() {
                     "isPackageInstalled" -> result.success(isPackageInstalled(call.argument<String>("packageName")))
                     "launchPackage" -> result.success(launchPackage(call.argument<String>("packageName")))
                     "startHelperService" -> result.success(false)
+                    "getPhoneUseAccessibilityStatus" -> result.success(PhoneUseAccessibilityService.status(this))
+                    "openPhoneUseAccessibilitySettings" -> result.success(openPhoneUseAccessibilitySettings())
+                    "runPhoneUseDryProbe" -> result.success(PhoneUseAccessibilityService.dryProbe(this))
+                    "performPhoneUseAction" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val action = call.argument<Map<String, Any?>>("action") ?: emptyMap()
+                        result.success(PhoneUseAccessibilityService.performPhoneUseAction(this, action))
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -175,6 +184,17 @@ class MainActivity : FlutterActivity() {
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         startActivity(launchIntent)
         return true
+    }
+
+    private fun openPhoneUseAccessibilitySettings(): Boolean {
+        return try {
+            val settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(settingsIntent)
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     private fun installerPackage(): String? {

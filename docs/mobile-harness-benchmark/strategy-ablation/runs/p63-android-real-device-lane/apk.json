@@ -1,0 +1,7 @@
+{
+  "apk": "mobile_agent/build/app/outputs/flutter-apk/app-debug.apk",
+  "sha256": "1fd40b060887fc6a9a25bc4082675ab1e272884dea138d2d0ebf98eff12ddf87",
+  "package": "com.mobilecode.app",
+  "activity": "com.mobilecode.app.MainActivity",
+  "accessibility_service": "com.mobilecode.app/com.mobilecode.app.PhoneUseAccessibilityService"
+}

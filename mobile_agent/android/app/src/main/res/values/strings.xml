@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mobilecode_phone_use_accessibility_summary">MobileCode phone-use probe</string>
+    <string name="mobilecode_phone_use_accessibility_description">Allows MobileCode to observe UI structure and perform explicit test actions for local non-counted phone-use evaluation.</string>
+</resources>

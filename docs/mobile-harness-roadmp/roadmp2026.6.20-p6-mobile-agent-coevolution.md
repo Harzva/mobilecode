@@ -120,17 +120,23 @@ Benchmark 生成更难的 mobile tasks
   - Evidence: `docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json`。
 - [x] 输出 verifier JSON contract 和 non-counted run contract。
   - Evidence: `docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/run.json` validator passed，6 strategies、18 results、`run_kind=strategy_pilot_not_counted`、`counts_as_experiment=false`。
+- [x] 输出 Android phone-use runtime screenshots、UI XML、logcat、focus state 和 runtime score。
+  - Evidence: `docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json` status passed，runtime score 100.0，action acceptance 4/4。
+  - Boundary: emulator phone-use runtime QA only，non-counted，不证明 strategy quality 差异。
 - [ ] 对 Snake 验证 Arrow/WASD、移动、得分、暂停、重启。
 - [ ] 对 Kanban 验证输入任务、快捷键、timer、刷新后 localStorage。
 - [ ] 对 Maze 验证点击设墙、起点终点、Solve、路径长度变化。
-- [ ] 输出真实交互 screenshots、UI XML、logcat、WebView state 和 runtime score。
-  - Note: P6.0-P6.2 只完成 contract/scaffold；真实 Android/WebView 交互证据进入 P6.3/P6.4 gate。
+- [ ] 输出真实 WebView state / localStorage / generated artifact interaction runtime score。
+  - Note: P6.0-P6.2 已完成 contract/scaffold；P6.3 已完成 Android emulator phone-use runtime gate；WebView/localStorage/generated artifact 交互证据进入 P6.4 gate。
 
 ### P6.3 Real Mac / Real Android Device Lane
 
-- [ ] 建立 device registry：serial、device tier、Android version、screen size、permission status。
-- [ ] 支持 APK install、launch、Accessibility 授权检查、screenshot、UI dump、logcat、focus state。
-- [ ] 明确 emulator evidence 和 real-device evidence 的区别，不得互相替代。
+- [x] 建立 emulator device registry evidence：serial、device tier、Android screen size、permission status。
+  - Evidence: `evidence/adb-devices.txt`、`evidence/accessibility-settings.txt`、APK metadata in `apk.json`。
+- [x] 支持 APK install、launch、Accessibility 授权检查、screenshot、UI dump、logcat、focus state。
+  - Evidence: `install.txt`、`launch.txt`、`01-launch.png`、`02-tools-phone-use.png`、`03-dry-probe.png`、`04-action-probe.png`、`05-home-after-action.png`、`05-focus-after-back.txt`、`05-focus-after-home.txt`。
+- [x] 明确 emulator evidence 和 real-device evidence 的区别，不得互相替代。
+  - P6.3 当前证据是 emulator lane；外接 Android 真机 lane 仍需单独跑并保存授权状态。
 - [ ] 真机授权可先采用人工步骤，但必须保存授权状态和复测证据。
 
 ### P6.4 Strategy Tournament
@@ -166,6 +172,14 @@ Benchmark 生成更难的 mobile tasks
   - Summary: `docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/summary.md`。
   - 2026-06-21 strategy validator passed：6 strategies、18 results、`run_kind=strategy_pilot_not_counted`。
   - Boundary: `counts_as_experiment=false`、`counts_as_strategy_ablation_result=false`；这是 contract/scaffold proof，不是正式 benchmark。
+- 2026-06-21 P6.3 Android emulator phone-use runtime lane 已完成：
+  - Run package: `docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/`。
+  - Verifier JSON: `docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json`。
+  - Run JSON: `docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/run.json`。
+  - Summary: `docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/summary.md`。
+  - Result: `status=passed`、`runtime_score=100.0`、`action_acceptance=4/4`。
+  - 2026-06-21 strategy validator passed：6 strategies、6 results、`run_kind=strategy_pilot_not_counted`。
+  - Boundary: `counts_as_experiment=false`、`counts_as_strategy_ablation_result=false`；这是 emulator phone-use runtime QA，不是正式 benchmark。
 
 ## Open Questions
 

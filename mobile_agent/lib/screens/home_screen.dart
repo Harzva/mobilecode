@@ -49,6 +49,7 @@ import '../services/termux_service.dart';
 import '../services/token_usage_service.dart';
 import '../services/tool_call_adapter.dart';
 import '../services/voice_service.dart';
+import '../widgets/phone_use_mode_card.dart';
 import '../widgets/strategy_mode_card.dart';
 
 enum _ApiFlavor { openAi, anthropic }
@@ -3971,6 +3972,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 12),
         const StrategyModeCard(),
+        const SizedBox(height: 12),
+        const PhoneUseModeCard(),
         const SizedBox(height: 12),
         _LocalModelManifestCard(
           manifest: _localModelManifest,

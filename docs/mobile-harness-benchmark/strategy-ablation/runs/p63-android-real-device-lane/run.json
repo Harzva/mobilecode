@@ -1,0 +1,752 @@
+{
+  "benchmark": "MobileHarnessBench",
+  "run_id": "p63-android-real-device-lane",
+  "created_at": "2026-06-21T08:14:35Z",
+  "counts_as_experiment": false,
+  "counts_as_strategy_ablation_result": false,
+  "run_kind": "strategy_pilot_not_counted",
+  "evidence_boundary": "pilot_not_counted:p63_android_real_device_lane_not_counted",
+  "strategy_family": "mixed_strategy_ablation",
+  "mode": {
+    "name": "P6.3 Android real device lane",
+    "mode": "strategy_pilot_not_counted",
+    "non_counted_reason": "Android emulator or real-device Accessibility runtime QA; not a formal strategy ablation benchmark.",
+    "runtime_android_permission_required": true
+  },
+  "strategies": [
+    {
+      "strategy_id": "react_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "description": "One agent alternates think, act, and observe until completion or block."
+    },
+    {
+      "strategy_id": "plan_execute_verify_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "description": "One agent creates a short plan, executes a step, verifies it, and retries or replans as needed."
+    },
+    {
+      "strategy_id": "react_with_final_verifier",
+      "strategy_family": "single_agent_with_verifier",
+      "description": "A ReAct actor completes the task and a separate verifier checks the final artifact and trace."
+    },
+    {
+      "strategy_id": "supervisor_handoff_multi_agent",
+      "strategy_family": "multi_agent_handoff",
+      "description": "A Supervisor plans and delegates typed HandoffPacket work to specialist mobile coding roles."
+    },
+    {
+      "strategy_id": "swarm_router_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "description": "A router selects the best specialist swarm by task category, device/runtime profile, and load."
+    },
+    {
+      "strategy_id": "hierarchical_swarm_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "description": "A manager decomposes the task and delegates to workers, then reconciles judged outputs."
+    }
+  ],
+  "task_subset": {
+    "name": "p63-android-real-device-lane",
+    "task_count": 1,
+    "tasks": [
+      {
+        "task_id": "P63-ANDROID-REAL-DEVICE-LANE-001",
+        "task_category": "android_real_device_lane",
+        "title": "Android Accessibility phone-use dry/action probe with device evidence",
+        "max_score": 100
+      }
+    ]
+  },
+  "results": [
+    {
+      "strategy_id": "react_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "task_id": "P63-ANDROID-REAL-DEVICE-LANE-001",
+      "task_category": "android_phone_use_runtime",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p63_react_single_agent_P63-ANDROID-REAL-DEVICE-LANE-001",
+        "strategy_id": "react_single_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "android_phone_use_runtime_eval",
+            "role": "AndroidPhoneUseRuntimeVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T08:14:35Z",
+            "ended_at": "2026-06-21T08:14:35Z",
+            "tool_name": "adb_accessibility_runtime_probe",
+            "evidence_id": "phone_use_runtime_react_single_agent",
+            "summary": "P6.3 Android phone-use runtime lane completed with status passed.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 40332,
+        "verification_ms": 40332,
+        "reporting_ms": 0,
+        "wall_ms": 40332
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/apk.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/strategy_traces/react_single_agent_P63-ANDROID-REAL-DEVICE-LANE-001.json"
+        ],
+        "screenshot_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/01-launch.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/02-tools-phone-use.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/03-dry-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/04-action-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-home-after-action.png"
+        ],
+        "logs": [
+          "P6.3 Android phone-use runtime verifier executed on emulator or real device.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "Accessibility service enabled in test environment: com.mobilecode.app/com.mobilecode.app.PhoneUseAccessibilityService",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-back.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-home.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-fatal-scan.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-app-fatal-scan.txt"
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "device_connected": true,
+          "apk_installed": true,
+          "app_launched": true,
+          "accessibility_enabled": true,
+          "phone_use_card_visible": true,
+          "dry_probe_passed": true,
+          "action_probe_visible": true,
+          "action_probe_passed_or_warning": true,
+          "back_action_verified": true,
+          "home_action_verified": true,
+          "logcat_clean": true,
+          "evidence_saved": true
+        },
+        "action_accepted_count": 4,
+        "action_total": 4
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "plan_execute_verify_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "task_id": "P63-ANDROID-REAL-DEVICE-LANE-001",
+      "task_category": "android_phone_use_runtime",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p63_plan_execute_verify_single_agent_P63-ANDROID-REAL-DEVICE-LANE-001",
+        "strategy_id": "plan_execute_verify_single_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "android_phone_use_runtime_eval",
+            "role": "AndroidPhoneUseRuntimeVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T08:14:35Z",
+            "ended_at": "2026-06-21T08:14:35Z",
+            "tool_name": "adb_accessibility_runtime_probe",
+            "evidence_id": "phone_use_runtime_plan_execute_verify_single_agent",
+            "summary": "P6.3 Android phone-use runtime lane completed with status passed.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 40332,
+        "verification_ms": 40332,
+        "reporting_ms": 0,
+        "wall_ms": 40332
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/apk.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/strategy_traces/plan_execute_verify_single_agent_P63-ANDROID-REAL-DEVICE-LANE-001.json"
+        ],
+        "screenshot_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/01-launch.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/02-tools-phone-use.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/03-dry-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/04-action-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-home-after-action.png"
+        ],
+        "logs": [
+          "P6.3 Android phone-use runtime verifier executed on emulator or real device.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "Accessibility service enabled in test environment: com.mobilecode.app/com.mobilecode.app.PhoneUseAccessibilityService",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-back.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-home.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-fatal-scan.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-app-fatal-scan.txt"
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "device_connected": true,
+          "apk_installed": true,
+          "app_launched": true,
+          "accessibility_enabled": true,
+          "phone_use_card_visible": true,
+          "dry_probe_passed": true,
+          "action_probe_visible": true,
+          "action_probe_passed_or_warning": true,
+          "back_action_verified": true,
+          "home_action_verified": true,
+          "logcat_clean": true,
+          "evidence_saved": true
+        },
+        "action_accepted_count": 4,
+        "action_total": 4
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "react_with_final_verifier",
+      "strategy_family": "single_agent_with_verifier",
+      "task_id": "P63-ANDROID-REAL-DEVICE-LANE-001",
+      "task_category": "android_phone_use_runtime",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p63_react_with_final_verifier_P63-ANDROID-REAL-DEVICE-LANE-001",
+        "strategy_id": "react_with_final_verifier",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "android_phone_use_runtime_eval",
+            "role": "AndroidPhoneUseRuntimeVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T08:14:35Z",
+            "ended_at": "2026-06-21T08:14:35Z",
+            "tool_name": "adb_accessibility_runtime_probe",
+            "evidence_id": "phone_use_runtime_react_with_final_verifier",
+            "summary": "P6.3 Android phone-use runtime lane completed with status passed.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 40332,
+        "verification_ms": 40332,
+        "reporting_ms": 0,
+        "wall_ms": 40332
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/apk.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/strategy_traces/react_with_final_verifier_P63-ANDROID-REAL-DEVICE-LANE-001.json"
+        ],
+        "screenshot_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/01-launch.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/02-tools-phone-use.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/03-dry-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/04-action-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-home-after-action.png"
+        ],
+        "logs": [
+          "P6.3 Android phone-use runtime verifier executed on emulator or real device.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "Accessibility service enabled in test environment: com.mobilecode.app/com.mobilecode.app.PhoneUseAccessibilityService",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-back.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-home.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-fatal-scan.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-app-fatal-scan.txt"
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "device_connected": true,
+          "apk_installed": true,
+          "app_launched": true,
+          "accessibility_enabled": true,
+          "phone_use_card_visible": true,
+          "dry_probe_passed": true,
+          "action_probe_visible": true,
+          "action_probe_passed_or_warning": true,
+          "back_action_verified": true,
+          "home_action_verified": true,
+          "logcat_clean": true,
+          "evidence_saved": true
+        },
+        "action_accepted_count": 4,
+        "action_total": 4
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "supervisor_handoff_multi_agent",
+      "strategy_family": "multi_agent_handoff",
+      "task_id": "P63-ANDROID-REAL-DEVICE-LANE-001",
+      "task_category": "android_phone_use_runtime",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p63_supervisor_handoff_multi_agent_P63-ANDROID-REAL-DEVICE-LANE-001",
+        "strategy_id": "supervisor_handoff_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "android_phone_use_runtime_eval",
+            "role": "AndroidPhoneUseRuntimeVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T08:14:35Z",
+            "ended_at": "2026-06-21T08:14:35Z",
+            "tool_name": "adb_accessibility_runtime_probe",
+            "evidence_id": "phone_use_runtime_supervisor_handoff_multi_agent",
+            "summary": "P6.3 Android phone-use runtime lane completed with status passed.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 40332,
+        "verification_ms": 40332,
+        "reporting_ms": 0,
+        "wall_ms": 40332
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/apk.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/strategy_traces/supervisor_handoff_multi_agent_P63-ANDROID-REAL-DEVICE-LANE-001.json"
+        ],
+        "screenshot_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/01-launch.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/02-tools-phone-use.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/03-dry-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/04-action-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-home-after-action.png"
+        ],
+        "logs": [
+          "P6.3 Android phone-use runtime verifier executed on emulator or real device.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "Accessibility service enabled in test environment: com.mobilecode.app/com.mobilecode.app.PhoneUseAccessibilityService",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-back.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-home.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-fatal-scan.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-app-fatal-scan.txt"
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "device_connected": true,
+          "apk_installed": true,
+          "app_launched": true,
+          "accessibility_enabled": true,
+          "phone_use_card_visible": true,
+          "dry_probe_passed": true,
+          "action_probe_visible": true,
+          "action_probe_passed_or_warning": true,
+          "back_action_verified": true,
+          "home_action_verified": true,
+          "logcat_clean": true,
+          "evidence_saved": true
+        },
+        "action_accepted_count": 4,
+        "action_total": 4
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "swarm_router_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "task_id": "P63-ANDROID-REAL-DEVICE-LANE-001",
+      "task_category": "android_phone_use_runtime",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p63_swarm_router_multi_agent_P63-ANDROID-REAL-DEVICE-LANE-001",
+        "strategy_id": "swarm_router_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "android_phone_use_runtime_eval",
+            "role": "AndroidPhoneUseRuntimeVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T08:14:35Z",
+            "ended_at": "2026-06-21T08:14:35Z",
+            "tool_name": "adb_accessibility_runtime_probe",
+            "evidence_id": "phone_use_runtime_swarm_router_multi_agent",
+            "summary": "P6.3 Android phone-use runtime lane completed with status passed.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 40332,
+        "verification_ms": 40332,
+        "reporting_ms": 0,
+        "wall_ms": 40332
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/apk.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/strategy_traces/swarm_router_multi_agent_P63-ANDROID-REAL-DEVICE-LANE-001.json"
+        ],
+        "screenshot_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/01-launch.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/02-tools-phone-use.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/03-dry-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/04-action-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-home-after-action.png"
+        ],
+        "logs": [
+          "P6.3 Android phone-use runtime verifier executed on emulator or real device.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "Accessibility service enabled in test environment: com.mobilecode.app/com.mobilecode.app.PhoneUseAccessibilityService",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-back.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-home.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-fatal-scan.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-app-fatal-scan.txt"
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "device_connected": true,
+          "apk_installed": true,
+          "app_launched": true,
+          "accessibility_enabled": true,
+          "phone_use_card_visible": true,
+          "dry_probe_passed": true,
+          "action_probe_visible": true,
+          "action_probe_passed_or_warning": true,
+          "back_action_verified": true,
+          "home_action_verified": true,
+          "logcat_clean": true,
+          "evidence_saved": true
+        },
+        "action_accepted_count": 4,
+        "action_total": 4
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "hierarchical_swarm_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "task_id": "P63-ANDROID-REAL-DEVICE-LANE-001",
+      "task_category": "android_phone_use_runtime",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p63_hierarchical_swarm_multi_agent_P63-ANDROID-REAL-DEVICE-LANE-001",
+        "strategy_id": "hierarchical_swarm_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "android_phone_use_runtime_eval",
+            "role": "AndroidPhoneUseRuntimeVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T08:14:35Z",
+            "ended_at": "2026-06-21T08:14:35Z",
+            "tool_name": "adb_accessibility_runtime_probe",
+            "evidence_id": "phone_use_runtime_hierarchical_swarm_multi_agent",
+            "summary": "P6.3 Android phone-use runtime lane completed with status passed.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 40332,
+        "verification_ms": 40332,
+        "reporting_ms": 0,
+        "wall_ms": 40332
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/apk.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/strategy_traces/hierarchical_swarm_multi_agent_P63-ANDROID-REAL-DEVICE-LANE-001.json"
+        ],
+        "screenshot_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/01-launch.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/02-tools-phone-use.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/03-dry-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/04-action-probe.png",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-home-after-action.png"
+        ],
+        "logs": [
+          "P6.3 Android phone-use runtime verifier executed on emulator or real device.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "Accessibility service enabled in test environment: com.mobilecode.app/com.mobilecode.app.PhoneUseAccessibilityService",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-back.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-home.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-fatal-scan.txt",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-app-fatal-scan.txt"
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "device_connected": true,
+          "apk_installed": true,
+          "app_launched": true,
+          "accessibility_enabled": true,
+          "phone_use_card_visible": true,
+          "dry_probe_passed": true,
+          "action_probe_visible": true,
+          "action_probe_passed_or_warning": true,
+          "back_action_verified": true,
+          "home_action_verified": true,
+          "logcat_clean": true,
+          "evidence_saved": true
+        },
+        "action_accepted_count": 4,
+        "action_total": 4
+      },
+      "counts_as_strategy_ablation_result": false
+    }
+  ],
+  "summary": {
+    "total": 6,
+    "strategies": 6,
+    "tasks_per_strategy": 1,
+    "passed": 6,
+    "warning": 0,
+    "failed": 0,
+    "blocked": 0,
+    "not_run": 0,
+    "average_android_phone_use_runtime_score": 100.0,
+    "wall_ms": 40332
+  }
+}

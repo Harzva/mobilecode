@@ -1,0 +1,23 @@
+{
+  "trace_id": "strace_p63_supervisor_handoff_multi_agent_P63-ANDROID-REAL-DEVICE-LANE-001",
+  "strategy_id": "supervisor_handoff_multi_agent",
+  "trace_status": "pilot_not_counted",
+  "events": [
+    {
+      "event_id": "evt_001",
+      "type": "android_phone_use_runtime_eval",
+      "role": "AndroidPhoneUseRuntimeVerifier",
+      "step_id": "step_001",
+      "started_at": "2026-06-21T08:14:35Z",
+      "ended_at": "2026-06-21T08:14:35Z",
+      "tool_name": "adb_accessibility_runtime_probe",
+      "evidence_id": "phone_use_runtime_supervisor_handoff_multi_agent",
+      "summary": "P6.3 Android phone-use runtime lane completed with status passed.",
+      "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+    }
+  ],
+  "handoff_count": 0,
+  "planning_revisions": 0,
+  "verification_failures_recovered": 0,
+  "failure_kind": null
+}

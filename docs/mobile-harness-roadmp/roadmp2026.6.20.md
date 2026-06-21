@@ -265,4 +265,16 @@ git diff --check
 - Summary：`docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/summary.md`。
 - 2026-06-21 strategy validator passed：6 strategies、18 results、`run_kind=strategy_pilot_not_counted`。
 - Boundary：`counts_as_experiment=false`、`counts_as_strategy_ablation_result=false`；本轮不是正式 benchmark。
-- P6.3 Android real device lane 下一步：安装最新 APK 到独立 Android emulator 或真机，授权/核验 MobileCode Phone Use Accessibility service，跑 dry/action probe，并保存 screenshot、UI XML、logcat、focus state、WebView state assertions；promotion gate 前继续 non-counted。
+
+2026-06-21 P6.3 Android emulator phone-use runtime evidence:
+- P6.3 已在独立 Android emulator lane 安装 `mobile_agent/build/app/outputs/flutter-apk/app-debug.apk`，启动 MobileCode，并通过 test environment 开启/核验 MobileCode Phone Use Accessibility service。
+- Run package：`docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/`。
+- Verifier JSON：`docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json`。
+- Run JSON：`docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/run.json`。
+- Summary：`docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/summary.md`。
+- 关键截图：`01-launch.png`、`02-tools-phone-use.png`、`03-dry-probe.png`、`04-action-probe.png`、`05-home-after-action.png`。
+- 关键证据：UI XML、`logcat.txt`、`logcat-fatal-scan.txt`、`logcat-app-fatal-scan.txt`、Back/Home focus state、APK sha256。
+- Result：`status=passed`、`runtime_score=100.0`、`action_acceptance=4/4`；device/install/launch/accessibility/card/dry probe/action probe/back/home/logcat/evidence checks 全部通过。
+- Validator：strategy ablation validator passed，6 strategies、6 results、`run_kind=strategy_pilot_not_counted`。
+- Boundary：`counts_as_experiment=false`、`counts_as_strategy_ablation_result=false`；这是 Android phone-use runtime QA，不是正式 benchmark，也不证明六个推理框架质量差异。
+- Scope note：本轮是 emulator evidence，不替代外接 Android 真机证据；WebView/localStorage/generated artifact interaction assertion 仍进入 P6.4/P6 counted gate。

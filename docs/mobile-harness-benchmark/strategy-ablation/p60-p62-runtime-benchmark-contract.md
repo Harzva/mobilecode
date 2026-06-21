@@ -101,3 +101,12 @@ or dedicated emulator, grant/verify Accessibility manually where needed, run the
 Mobile Phone Use dry/action probe, capture screenshot/UI XML/logcat/focus state,
 and attach WebView state assertions for generated artifacts. This should remain
 non-counted until repeated task samples and promotion gates pass.
+
+2026-06-21 execution note: the dedicated Android emulator phone-use lane now has
+non-counted evidence at
+`docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/`.
+It verifies APK install/launch, Accessibility state, Mobile Phone Use dry/action
+probe, Back/Home focus state, screenshot/UI XML/logcat capture, and validator
+compatibility. It is emulator evidence only; real Android hardware and
+WebView/localStorage/generated artifact interaction assertions remain separate
+P6.3/P6.4 gates.

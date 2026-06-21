@@ -255,3 +255,14 @@ git diff --check
   - `window-strategy-swarm-details.xml`
 - App-scoped logcat：`logcat-app-after-details.txt`，未发现 `FATAL EXCEPTION`、`E/flutter`、`ANR`、`MissingPluginException`。
 - 该 QA 结果不是正式 benchmark，不得写入 counted strategy ablation result。
+
+2026-06-21 P6.0-P6.2 runtime benchmark upgrade evidence:
+- P6.0 taxonomy、P6.1 communication substrate、P6.2 verifier scaffold 已生成 contract/scaffold 证据。
+- Contract doc：`docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md`。
+- Contract JSON：`docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json`。
+- Verifier JSON：`docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json`。
+- Run JSON：`docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/run.json`。
+- Summary：`docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/summary.md`。
+- 2026-06-21 strategy validator passed：6 strategies、18 results、`run_kind=strategy_pilot_not_counted`。
+- Boundary：`counts_as_experiment=false`、`counts_as_strategy_ablation_result=false`；本轮不是正式 benchmark。
+- P6.3 Android real device lane 下一步：安装最新 APK 到独立 Android emulator 或真机，授权/核验 MobileCode Phone Use Accessibility service，跑 dry/action probe，并保存 screenshot、UI XML、logcat、focus state、WebView state assertions；promotion gate 前继续 non-counted。

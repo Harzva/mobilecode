@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../services/github_deep_service.dart';
 import '../services/subscription_usage_service.dart';
+import 'github_screen.dart';
 
 const _hubBg = Color(0xFFF8F7F3);
 const _hubText = Color(0xFF151515);
@@ -28,12 +30,16 @@ class SubscriptionUsageHubScreen extends StatefulWidget {
 class _SubscriptionUsageHubScreenState
     extends State<SubscriptionUsageHubScreen> {
   late SubscriptionProviderState _selected;
+  late final GitHubDeepService _github;
+  bool _officialLoginBusy = false;
 
   @override
   void initState() {
     super.initState();
+    _github = GitHubDeepService();
     widget.service.addListener(_handleServiceChanged);
     _selected = widget.service.states.first;
+    unawaited(_initializeLinkedAccounts());
   }
 
   @override
@@ -105,8 +111,8 @@ class _SubscriptionUsageHubScreenState
           ],
           _LoginPanel(
             state: _selected,
-            onOfficialLogin: () => unawaited(
-                widget.service.planOfficialLogin(_selected.provider.id)),
+            busy: _officialLoginBusy,
+            onOfficialLogin: () => unawaited(_handleOfficialLogin(_selected)),
             onManualCredential: () =>
                 unawaited(_showManualCredentialSheet(_selected)),
             onLogout: _selected.connected
@@ -128,6 +134,61 @@ class _SubscriptionUsageHubScreenState
       return 'Login recovery: ${state.account!.recoveryHint ?? state.provider.recoveryHint}';
     }
     return '未登录 · 先使用本地 mock quota 预览订阅账户结构';
+  }
+
+  Future<void> _initializeLinkedAccounts() async {
+    await _github.initialize();
+    await _syncGitHubAccount(notifyWhenMissing: false);
+  }
+
+  Future<void> _handleOfficialLogin(SubscriptionProviderState state) async {
+    if (_officialLoginBusy) return;
+    if (state.provider.kind != SubscriptionProviderKind.copilotGithub) {
+      await widget.service.planOfficialLogin(state.provider.id);
+      return;
+    }
+
+    setState(() => _officialLoginBusy = true);
+    try {
+      await _github.initialize();
+      if (!_github.isAuthenticated && mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const GitHubScreen()),
+        );
+        await _github.initialize();
+      }
+      final synced = await _syncGitHubAccount(notifyWhenMissing: true);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(synced
+              ? 'GitHub account linked from existing secure session'
+              : 'No GitHub session found. Complete GitHub login first.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _officialLoginBusy = false);
+    }
+  }
+
+  Future<bool> _syncGitHubAccount({required bool notifyWhenMissing}) async {
+    final username = _github.currentUser;
+    if (username == null || username.isEmpty) {
+      if (notifyWhenMissing) {
+        await widget.service.planOfficialLogin('copilotGithub');
+      }
+      return false;
+    }
+
+    await widget.service.connectExistingProviderAccount(
+      providerId: 'copilotGithub',
+      displayName: '@$username',
+      loginMethod: ProviderLoginMethod.githubOAuth,
+      authenticatedAt: _github.authenticatedAtFor(username),
+      credentialLocation: 'github_deep_service_secure_storage',
+    );
+    return true;
   }
 
   Future<void> _showManualCredentialSheet(
@@ -425,12 +486,14 @@ class _StateChip extends StatelessWidget {
 class _LoginPanel extends StatelessWidget {
   const _LoginPanel({
     required this.state,
+    required this.busy,
     required this.onOfficialLogin,
     required this.onManualCredential,
     required this.onLogout,
   });
 
   final SubscriptionProviderState state;
+  final bool busy;
   final VoidCallback onOfficialLogin;
   final VoidCallback onManualCredential;
   final VoidCallback? onLogout;
@@ -465,9 +528,17 @@ class _LoginPanel extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           ElevatedButton.icon(
-            onPressed: onOfficialLogin,
-            icon: const Icon(Icons.open_in_browser_outlined),
-            label: Text('使用 ${_primaryMethodLabel(state.provider)} 登录'),
+            onPressed: busy ? null : onOfficialLogin,
+            icon: busy
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.open_in_browser_outlined),
+            label: Text(busy
+                ? '连接中...'
+                : '使用 ${_primaryMethodLabel(state.provider)} 登录'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Color(state.provider.colorValue),
               foregroundColor: Colors.white,

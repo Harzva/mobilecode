@@ -133,6 +133,32 @@ void main() {
           isNot(contains('test_bad_pat')));
     });
 
+    test('links existing GitHub OAuth session without duplicating credentials',
+        () async {
+      final vault = _MemoryCredentialVault();
+      final service = SubscriptionUsageService(
+        credentialVault: vault,
+        loginAdapters: const {},
+        clock: () => DateTime(2026, 6, 25, 10),
+      );
+
+      await service.connectExistingProviderAccount(
+        providerId: 'copilotGithub',
+        displayName: '@octocat',
+        loginMethod: ProviderLoginMethod.githubOAuth,
+        authenticatedAt: DateTime(2026, 6, 25, 9),
+        credentialLocation: 'github_deep_service_secure_storage',
+      );
+
+      expect(vault.values, isEmpty);
+      final state = service.stateFor('copilotGithub');
+      expect(state.connected, isTrue);
+      expect(state.account!.displayName, '@octocat');
+      expect(state.account!.loginMethod, ProviderLoginMethod.githubOAuth);
+      expect(state.account!.toRedactedJson()['credential'],
+          'github_deep_service_secure_storage');
+    });
+
     test('GitHub adapter validates token against user endpoint', () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       addTearDown(() => server.close(force: true));

@@ -63,6 +63,7 @@ class SubscriptionAccount {
     this.lastLoginAt,
     this.failureKind,
     this.recoveryHint,
+    this.credentialLocation = 'stored_in_secure_storage',
   });
 
   final String providerId;
@@ -72,6 +73,7 @@ class SubscriptionAccount {
   final DateTime? lastLoginAt;
   final String? failureKind;
   final String? recoveryHint;
+  final String credentialLocation;
 
   Map<String, Object?> toRedactedJson() => {
         'providerId': providerId,
@@ -81,7 +83,7 @@ class SubscriptionAccount {
         'lastLoginAt': lastLoginAt?.toIso8601String(),
         'failureKind': failureKind,
         'recoveryHint': recoveryHint,
-        'credential': connected ? 'stored_in_secure_storage' : null,
+        'credential': connected ? credentialLocation : null,
       };
 }
 
@@ -559,6 +561,39 @@ class SubscriptionUsageService extends ChangeNotifier {
                   mock: true,
                   refreshState: SubscriptionRefreshState.success,
                   lastRefreshedAt: _clock(),
+                ))
+            .toList(growable: false),
+      ),
+    );
+  }
+
+  Future<void> connectExistingProviderAccount({
+    required String providerId,
+    required String displayName,
+    required ProviderLoginMethod loginMethod,
+    DateTime? authenticatedAt,
+    String credentialLocation = 'provider_secure_storage',
+  }) async {
+    _replaceState(
+      providerId,
+      (state) => SubscriptionProviderState(
+        provider: state.provider,
+        account: SubscriptionAccount(
+          providerId: providerId,
+          displayName: displayName.trim().isEmpty
+              ? state.provider.accountLabel
+              : displayName.trim(),
+          loginMethod: loginMethod,
+          connected: true,
+          lastLoginAt: authenticatedAt ?? _clock(),
+          recoveryHint: state.provider.recoveryHint,
+          credentialLocation: credentialLocation,
+        ),
+        quotas: state.quotas
+            .map((quota) => quota.copyWith(
+                  refreshState: SubscriptionRefreshState.success,
+                  lastRefreshedAt: _clock(),
+                  mock: true,
                 ))
             .toList(growable: false),
       ),

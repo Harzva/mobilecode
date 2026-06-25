@@ -1,6 +1,6 @@
 # T26 Subscription Login 与 Usage Hub
 
-Status: [ ] Local Phase 1 implemented; manual credential validation added for GitHub, OpenAI, Anthropic, and Gemini; official browser login adapters and real quota refresh pending
+Status: [ ] Local Phase 1 implemented; manual credential validation added for GitHub, OpenAI, Anthropic, and Gemini; Copilot/GitHub now reuses existing GitHub auth; provider-supported official login and real quota refresh still pending where available
 Priority: P2
 Owner role: software-dev-pipeline + appui-design-skill + quality-reviewer
 Depends on: T04, T13, T14, T18, T25
@@ -83,7 +83,7 @@ Depends on: T04, T13, T14, T18, T25
 - [x] Implement ChatGPT/Codex manual API key validation through OpenAI `/v1/models` before writing to secure storage.
 - [ ] Implement ChatGPT/Codex official browser/OAuth-style flow when available.
 - [x] Implement GitHub/Copilot manual token validation through GitHub `/user` before writing to secure storage.
-- [ ] Reuse or converge with the existing GitHub auth surface so GitHub app login and Usage Hub account state share one explicit token boundary.
+- [x] Reuse or converge with the existing GitHub auth surface so GitHub app login and Usage Hub account state share one explicit token boundary.
 - [ ] Implement real Copilot usage refresh after provider-supported quota source is confirmed.
 - [x] Implement Google/Antigravity manual Gemini API key validation through Gemini `models.list` before writing to secure storage.
 - [ ] Implement Google/Antigravity login using system browser account flow where available.
@@ -132,18 +132,24 @@ Manual QA should cover mock state, successful login state, login failure state, 
 - `mobile_agent/lib/services/subscription_usage_service.dart` defines `SubscriptionProvider`, `SubscriptionAccount`, `UsageQuota`, `ProviderLoginMethod`, provider-specific recovery, mock refresh, redacted snapshots, and `SubscriptionCredentialVault`.
 - `SubscriptionUsageService` accepts provider login adapters and uses `GitHubSubscriptionLoginAdapter` for `copilotGithub` manual access tokens.
 - GitHub/Copilot manual token mode calls GitHub `/user` with an explicit bearer token and stores the token only after validation succeeds.
+- Copilot/GitHub official login now reuses the existing MobileCode GitHub auth surface: Usage Hub opens/syncs `GitHubScreen` and links the active `GitHubDeepService` secure session as `github_deep_service_secure_storage` instead of duplicating the token in `SubscriptionCredentialVault`.
 - ChatGPT/Codex manual API key mode calls OpenAI `/v1/models` with an explicit bearer token and stores the key only after validation succeeds.
 - Claude manual API key mode calls Anthropic `/v1/models` with `x-api-key` and `anthropic-version: 2023-06-01`, then stores the key only after validation succeeds.
 - Google/Antigravity manual API key mode calls Gemini `models.list` with an explicit key query parameter and stores the key only after validation succeeds.
 - `SecureSubscriptionCredentialVault` writes manual credentials through `flutter_secure_storage`; UI and redacted snapshots only expose `stored_in_secure_storage`.
-- Official login buttons currently create provider-specific recovery states instead of pretending real provider login is complete.
-- `test/services/subscription_usage_service_test.dart` covers provider groups, mock quota, secure credential boundary, redaction, provider-specific recovery, GitHub/OpenAI/Anthropic/Gemini validation success/failure, direct local-server adapter validation, no vault write on failed validation, and logout clearing.
+- Non-GitHub official login buttons currently create provider-specific recovery states instead of pretending real provider login is complete.
+- `test/services/subscription_usage_service_test.dart` covers provider groups, mock quota, secure credential boundary, redaction, provider-specific recovery, GitHub/OpenAI/Anthropic/Gemini validation success/failure, direct local-server adapter validation, no vault write on failed validation, GitHub existing-session linking without duplicate credential storage, and logout clearing.
 - `test/widgets/subscription_usage_hub_screen_test.dart` covers provider tabs/cards, privacy copy, and official-login recovery state.
 - Local Mac validation on 2026-06-25 passed focused T25/T26 tests, targeted analyzer gate, debug APK build, APK install, MainActivity launch, and logcat crash-keyword scan.
 - Real quota refresh remains pending for all providers; current quota cards still use mock usage until official provider-supported quota sources are confirmed.
 - 2026-06-25 GitHub/Copilot validation follow-up passed focused T25/T26/Helper/Runtime tests, targeted analyzer gate, debug APK build, APK install, MainActivity launch, and logcat crash-keyword scan; evidence directory: `mobile_agent/qa-output/android-local-20260625-224116`.
 - 2026-06-25 manual API key validation follow-up uses official endpoint boundaries documented by OpenAI, Anthropic, and Google Gemini API docs; browser/OAuth flows and real quota refresh remain pending.
 - 2026-06-25 manual credential validation follow-up passed focused T25/T26/Helper/Runtime tests, targeted analyzer gate, debug APK build, APK install, MainActivity launch, and logcat crash-keyword scan; evidence directory: `mobile_agent/qa-output/android-local-20260625-224757`.
+- 2026-06-25 official capability review:
+  - OpenAI Codex documentation supports ChatGPT sign-in for Codex app/CLI/IDE and API-key sign-in for usage-based access. MobileCode must not claim general third-party ChatGPT subscription OAuth until OpenAI exposes a supported third-party app flow or an explicit token handoff boundary.
+  - GitHub Copilot SDK documentation supports GitHub OAuth for users to use Copilot through an application, so MobileCode can reuse its existing GitHub OAuth/PAT auth surface for Usage Hub account state.
+  - Google Gemini API documentation supports OAuth when stricter access controls are needed, but a production mobile flow requires Google OAuth client configuration and consent-screen setup before real account login can ship.
+  - Anthropic Claude API documentation supports API keys and Workload Identity Federation for API access. Claude consumer account login must remain pending unless Anthropic provides an official third-party app login boundary; cookie/session import is not allowed.
 
 ## Handoff Prompt
 

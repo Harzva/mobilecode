@@ -165,7 +165,7 @@ class _SubscriptionUsageHubScreenState
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  '凭据只写入 secure storage。不会写入 SharedPreferences、日志、roadmp、截图或 evidence 原文。',
+                  '凭据只写入 secure storage。GitHub token 会先验证 /user；不会写入 SharedPreferences、日志、roadmp、截图或 evidence 原文。',
                   style:
                       TextStyle(color: _hubMuted, fontSize: 12, height: 1.35),
                 ),
@@ -219,6 +219,7 @@ class _SubscriptionUsageHubScreenState
         providerId: state.provider.id,
         accountLabel: result.accountLabel,
         credential: result.credential,
+        method: _manualCredentialMethod(state.provider),
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -523,6 +524,13 @@ class _ManualCredentialResult {
 
   final String accountLabel;
   final String credential;
+}
+
+ProviderLoginMethod _manualCredentialMethod(SubscriptionProvider provider) {
+  if (provider.loginMethods.contains(ProviderLoginMethod.manualAccessToken)) {
+    return ProviderLoginMethod.manualAccessToken;
+  }
+  return ProviderLoginMethod.manualApiKey;
 }
 
 String _primaryMethodLabel(SubscriptionProvider provider) {

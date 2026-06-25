@@ -1,6 +1,6 @@
 # T26 Subscription Login 与 Usage Hub
 
-Status: [ ] Local Phase 1 implemented; official provider login adapters and real quota refresh pending
+Status: [ ] Local Phase 1 implemented; GitHub/Copilot manual token validation added; official browser login adapters and real quota refresh pending
 Priority: P2
 Owner role: software-dev-pipeline + appui-design-skill + quality-reviewer
 Depends on: T04, T13, T14, T18, T25
@@ -81,7 +81,9 @@ Depends on: T04, T13, T14, T18, T25
 ### Phase 2: Real Login and Refresh
 
 - [ ] Implement ChatGPT/Codex login using official browser/OAuth-style flow when available; otherwise document manual token/API-key mode behind explicit consent.
-- [ ] Implement GitHub/Copilot login via existing GitHub auth surface or a shared GitHub token boundary.
+- [x] Implement GitHub/Copilot manual token validation through GitHub `/user` before writing to secure storage.
+- [ ] Reuse or converge with the existing GitHub auth surface so GitHub app login and Usage Hub account state share one explicit token boundary.
+- [ ] Implement real Copilot usage refresh after provider-supported quota source is confirmed.
 - [ ] Implement Google/Antigravity login using system browser account flow where available.
 - [ ] Implement Claude login using official supported flow or manual API key mode; no cookie scraping by default.
 - [x] Add provider-specific failure kinds and recovery copy for not-yet-connected official flows.
@@ -95,6 +97,7 @@ Depends on: T04, T13, T14, T18, T25
 - Credentials are stored only through secure storage.
 - SharedPreferences, logs, roadmp, screenshots, and evidence do not contain raw credentials.
 - Login failure produces provider-specific recovery guidance.
+- GitHub/Copilot manual token mode validates the token before storage; failed validation does not write credentials.
 - Mock usage and real refresh states are visibly distinct.
 - AIUsage references are documented as product references only, not as copied implementation.
 
@@ -124,11 +127,15 @@ Manual QA should cover mock state, successful login state, login failure state, 
 - `mobile_agent/lib/screens/settings_screen.dart` adds `订阅账户` under AI settings.
 - `mobile_agent/lib/screens/subscription_usage_hub_screen.dart` provides provider tabs/cards for Claude, Copilot/GitHub, Antigravity/Google, and Codex/ChatGPT.
 - `mobile_agent/lib/services/subscription_usage_service.dart` defines `SubscriptionProvider`, `SubscriptionAccount`, `UsageQuota`, `ProviderLoginMethod`, provider-specific recovery, mock refresh, redacted snapshots, and `SubscriptionCredentialVault`.
+- `SubscriptionUsageService` accepts provider login adapters and uses `GitHubSubscriptionLoginAdapter` for `copilotGithub` manual access tokens.
+- GitHub/Copilot manual token mode calls GitHub `/user` with an explicit bearer token and stores the token only after validation succeeds.
 - `SecureSubscriptionCredentialVault` writes manual credentials through `flutter_secure_storage`; UI and redacted snapshots only expose `stored_in_secure_storage`.
 - Official login buttons currently create provider-specific recovery states instead of pretending real provider login is complete.
-- `test/services/subscription_usage_service_test.dart` covers provider groups, mock quota, secure credential boundary, redaction, provider-specific recovery, and logout clearing.
+- `test/services/subscription_usage_service_test.dart` covers provider groups, mock quota, secure credential boundary, redaction, provider-specific recovery, GitHub validation success/failure, direct local-server adapter validation, no vault write on failed validation, and logout clearing.
 - `test/widgets/subscription_usage_hub_screen_test.dart` covers provider tabs/cards, privacy copy, and official-login recovery state.
 - Local Mac validation on 2026-06-25 passed focused T25/T26 tests, targeted analyzer gate, debug APK build, APK install, MainActivity launch, and logcat crash-keyword scan.
+- Real Copilot quota refresh remains pending; current quota cards still use mock usage until an official provider-supported quota source is confirmed.
+- 2026-06-25 GitHub/Copilot validation follow-up passed focused T25/T26/Helper/Runtime tests, targeted analyzer gate, debug APK build, APK install, MainActivity launch, and logcat crash-keyword scan; evidence directory: `mobile_agent/qa-output/android-local-20260625-224116`.
 
 ## Handoff Prompt
 

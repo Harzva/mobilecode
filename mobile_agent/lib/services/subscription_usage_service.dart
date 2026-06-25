@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -167,6 +169,91 @@ class SubscriptionProviderState {
       };
 }
 
+@immutable
+class SubscriptionLoginValidation {
+  const SubscriptionLoginValidation({
+    required this.success,
+    this.accountLabel,
+    this.failureKind,
+    this.recoveryHint,
+  });
+
+  final bool success;
+  final String? accountLabel;
+  final String? failureKind;
+  final String? recoveryHint;
+}
+
+abstract class SubscriptionLoginAdapter {
+  Future<SubscriptionLoginValidation> validateCredential({
+    required SubscriptionProvider provider,
+    required String credential,
+    required ProviderLoginMethod method,
+  });
+}
+
+class GitHubSubscriptionLoginAdapter implements SubscriptionLoginAdapter {
+  GitHubSubscriptionLoginAdapter({
+    HttpClient? httpClient,
+    Uri? userEndpoint,
+  })  : _httpClient = httpClient ?? HttpClient(),
+        _userEndpoint =
+            userEndpoint ?? Uri.parse('https://api.github.com/user');
+
+  final HttpClient _httpClient;
+  final Uri _userEndpoint;
+
+  @override
+  Future<SubscriptionLoginValidation> validateCredential({
+    required SubscriptionProvider provider,
+    required String credential,
+    required ProviderLoginMethod method,
+  }) async {
+    if (method != ProviderLoginMethod.manualAccessToken) {
+      return SubscriptionLoginValidation(
+        success: false,
+        failureKind: 'unsupported_login_method',
+        recoveryHint:
+            'Use a GitHub personal access token here, or connect GitHub through the dedicated GitHub screen.',
+      );
+    }
+
+    try {
+      final request = await _httpClient.getUrl(_userEndpoint);
+      request.headers
+          .set(HttpHeaders.authorizationHeader, 'Bearer $credential');
+      request.headers.set('X-GitHub-Api-Version', '2022-11-28');
+      request.headers
+          .set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+      request.headers.set(HttpHeaders.userAgentHeader, 'MobileCode Usage Hub');
+      final response = await request.close();
+      final body = await utf8.decoder.bind(response).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        return const SubscriptionLoginValidation(
+          success: false,
+          failureKind: 'github_token_validation_failed',
+          recoveryHint:
+              'GitHub rejected this token. Create a valid token with user read access, then retry. The token was not saved.',
+        );
+      }
+      final payload = jsonDecode(body);
+      final login = payload is Map ? payload['login']?.toString() : null;
+      return SubscriptionLoginValidation(
+        success: true,
+        accountLabel:
+            login == null || login.isEmpty ? provider.accountLabel : '@$login',
+      );
+    } on Object {
+      return const SubscriptionLoginValidation(
+        success: false,
+        failureKind: 'github_token_validation_unreachable',
+        recoveryHint:
+            'Could not validate this token with GitHub right now. Check network access and retry. The token was not saved.',
+      );
+    }
+  }
+}
+
 abstract class SubscriptionCredentialVault {
   Future<void> writeCredential({
     required String providerId,
@@ -227,14 +314,17 @@ class SecureSubscriptionCredentialVault implements SubscriptionCredentialVault {
 class SubscriptionUsageService extends ChangeNotifier {
   SubscriptionUsageService({
     SubscriptionCredentialVault? credentialVault,
+    Map<String, SubscriptionLoginAdapter>? loginAdapters,
     DateTime Function()? clock,
   })  : _credentialVault =
             credentialVault ?? SecureSubscriptionCredentialVault(),
+        _loginAdapters = loginAdapters ?? _defaultLoginAdapters(),
         _clock = clock ?? DateTime.now {
     _states = _defaultStates(_clock());
   }
 
   final SubscriptionCredentialVault _credentialVault;
+  final Map<String, SubscriptionLoginAdapter> _loginAdapters;
   final DateTime Function() _clock;
   late List<SubscriptionProviderState> _states;
 
@@ -258,6 +348,48 @@ class SubscriptionUsageService extends ChangeNotifier {
           providerId, 'providerId', 'Credential is empty');
     }
     final accountId = _accountId(providerId);
+    final state = stateFor(providerId);
+    final adapter = _loginAdapters[providerId];
+    String displayName = accountLabel.trim().isEmpty
+        ? state.provider.accountLabel
+        : accountLabel.trim();
+    if (adapter != null) {
+      final validation = await adapter.validateCredential(
+        provider: state.provider,
+        credential: trimmedCredential,
+        method: method,
+      );
+      if (!validation.success) {
+        _replaceState(
+          providerId,
+          (state) => SubscriptionProviderState(
+            provider: state.provider,
+            account: SubscriptionAccount(
+              providerId: providerId,
+              displayName: displayName,
+              loginMethod: method,
+              connected: false,
+              failureKind:
+                  validation.failureKind ?? 'credential_validation_failed',
+              recoveryHint:
+                  validation.recoveryHint ?? state.provider.recoveryHint,
+            ),
+            quotas: state.quotas
+                .map((quota) => quota.copyWith(
+                      refreshState: SubscriptionRefreshState.error,
+                      errorMessage:
+                          'Credential validation failed. No credential was saved.',
+                    ))
+                .toList(growable: false),
+          ),
+        );
+        return;
+      }
+      displayName = validation.accountLabel?.trim().isEmpty == false
+          ? validation.accountLabel!.trim()
+          : displayName;
+    }
+
     await _credentialVault.writeCredential(
       providerId: providerId,
       accountId: accountId,
@@ -269,9 +401,7 @@ class SubscriptionUsageService extends ChangeNotifier {
         provider: state.provider,
         account: SubscriptionAccount(
           providerId: providerId,
-          displayName: accountLabel.trim().isEmpty
-              ? state.provider.accountLabel
-              : accountLabel.trim(),
+          displayName: displayName,
           loginMethod: method,
           connected: true,
           lastLoginAt: _clock(),
@@ -389,6 +519,11 @@ class SubscriptionUsageService extends ChangeNotifier {
 
   String _accountId(String providerId) => '$providerId.default';
 }
+
+Map<String, SubscriptionLoginAdapter> _defaultLoginAdapters() => {
+      SubscriptionProviderKind.copilotGithub.name:
+          GitHubSubscriptionLoginAdapter(),
+    };
 
 List<SubscriptionProviderState> _defaultStates(DateTime now) {
   const providers = [

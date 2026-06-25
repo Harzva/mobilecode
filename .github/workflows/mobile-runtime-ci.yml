@@ -8,6 +8,8 @@ on:
       - 'relay/**'
       - 'docs/mobilecode-helper-runtime-protocol.md'
       - 'docs/mobilecode-release-qa.md'
+      - 'docs/mobilecode-accessibility-background-permissions-qa.md'
+      - 'roadmap/tasks/T25-accessibility-background-permissions.md'
       - '.github/workflows/mobile-runtime-ci.yml'
   push:
     paths:
@@ -15,6 +17,8 @@ on:
       - 'relay/**'
       - 'docs/mobilecode-helper-runtime-protocol.md'
       - 'docs/mobilecode-release-qa.md'
+      - 'docs/mobilecode-accessibility-background-permissions-qa.md'
+      - 'roadmap/tasks/T25-accessibility-background-permissions.md'
       - '.github/workflows/mobile-runtime-ci.yml'
 
 permissions:
@@ -55,6 +59,7 @@ jobs:
           flutter analyze \
             lib/main.dart \
             lib/screens/home_screen.dart \
+            lib/screens/settings_screen.dart \
             lib/screens/build_preview_screen.dart \
             lib/screens/github_screen.dart \
             lib/screens/github_repo_hub_screen.dart \
@@ -75,7 +80,9 @@ jobs:
             lib/services/runtime_manager.dart \
             lib/services/runtime_actions.dart \
             lib/services/runtime_placeholder_providers.dart \
+            lib/services/mobile_code_helper_auth.dart \
             lib/services/mobile_code_helper_provider.dart \
+            lib/services/phone_use_accessibility_service.dart \
             lib/services/external_termux_provider.dart \
             lib/services/build_orchestrator.dart \
             lib/services/github_pages_service.dart \
@@ -83,6 +90,8 @@ jobs:
             lib/widgets/flutter_web_preview.dart \
             test/services/runtime_manager_test.dart \
             test/services/mobile_code_helper_provider_test.dart \
+            test/services/phone_use_accessibility_service_test.dart \
+            test/widgets/settings_screen_permissions_test.dart \
             test/services/github_pages_service_test.dart \
             test/services/html_publish_readiness_service_test.dart \
             test/services/role_library_service_test.dart \
@@ -101,6 +110,8 @@ jobs:
           flutter test \
             test/services/runtime_manager_test.dart \
             test/services/mobile_code_helper_provider_test.dart \
+            test/services/phone_use_accessibility_service_test.dart \
+            test/widgets/settings_screen_permissions_test.dart \
             test/services/github_pages_service_test.dart \
             test/services/html_publish_readiness_service_test.dart \
             test/services/role_library_service_test.dart \
@@ -134,6 +145,19 @@ jobs:
         run: |
           python3 -m py_compile mobile_agent/tooling/mobilecode_helper_daemon.py
           python3 -m py_compile mobile_agent/tooling/prepare_android_project.py
+
+      - name: Check Android projection assets
+        run: |
+          set -eux
+          grep -q 'MobileCodeHelperService' mobile_agent/tooling/prepare_android_project.py
+          grep -q 'MobileCodeHelperLauncherActivity' mobile_agent/tooling/prepare_android_project.py
+          grep -q 'PhoneUseAccessibilityService' mobile_agent/tooling/prepare_android_project.py
+          grep -q 'mobilecode_phone_use_accessibility_service' mobile_agent/tooling/prepare_android_project.py
+          grep -q 'openPhoneUseAccessibilitySettings' mobile_agent/tooling/MainActivity.kt
+          grep -q 'mobile_coding/platform' mobile_agent/tooling/MainActivity.kt
+          cmp -s mobile_agent/tooling/MobileCodeHelperService.kt mobile_agent/android/app/src/main/kotlin/com/mobilecode/app/MobileCodeHelperService.kt
+          cmp -s mobile_agent/tooling/MobileCodeHelperLauncherActivity.kt mobile_agent/android/app/src/main/kotlin/com/mobilecode/app/MobileCodeHelperLauncherActivity.kt
+          cmp -s mobile_agent/tooling/PhoneUseAccessibilityService.kt mobile_agent/android/app/src/main/kotlin/com/mobilecode/app/PhoneUseAccessibilityService.kt
 
       - name: Smoke test helper protocol
         run: |

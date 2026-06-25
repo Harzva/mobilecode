@@ -9,6 +9,11 @@ import 'runtime_actions.dart';
 import 'runtime_provider.dart';
 import 'termux_service.dart';
 
+bool _isTermuxDaemonPayload(Map<String, dynamic> payload) {
+  final runtimeKind = payload['runtimeKind']?.toString();
+  return runtimeKind == 'termuxDaemon' || payload['termux'] == true;
+}
+
 /// HTTP/NDJSON client for a local MobileCode Helper daemon.
 ///
 /// Protocol v1:
@@ -28,12 +33,18 @@ import 'termux_service.dart';
 /// - GET  /v1/tasks/:id/logs
 /// - POST /v1/project/preflight
 class MobileCodeHelperProvider
-    implements RuntimeProvider, RuntimeTaskMonitor, RuntimeTaskController, RuntimeProjectInspector, RuntimeTypedTaskRunner {
+    implements
+        RuntimeProvider,
+        RuntimeTaskMonitor,
+        RuntimeTaskController,
+        RuntimeProjectInspector,
+        RuntimeTypedTaskRunner {
   final Uri baseUri;
   final Duration probeTimeout;
   final String? authToken;
   final HttpClient _client;
-  final StreamController<String> _logController = StreamController<String>.broadcast();
+  final StreamController<String> _logController =
+      StreamController<String>.broadcast();
 
   RuntimeHealth? _lastHealth;
 
@@ -69,13 +80,35 @@ class MobileCodeHelperProvider
   Future<RuntimeHealth> healthCheck() async {
     try {
       final payload = await _getJson('/v1/health', timeout: probeTimeout);
-      final capabilities = _capabilitiesFromJson(_mapValue(payload['capabilities']));
+      if (_isTermuxDaemonPayload(payload)) {
+        final health = RuntimeHealth(
+          type: type,
+          name: name,
+          available: false,
+          ready: false,
+          status:
+              'Detected External Termux daemon at $baseUri; use the Termux daemon provider.',
+          capabilities: RuntimeCapabilities.none,
+          missingDependencies: const [
+            'MobileCode Helper APK foreground service'
+          ],
+          recoveryActions: const [
+            'Start MobileCode Helper from the app for app-private foreground-service execution.',
+            'Keep using External Termux daemon for Termux-backed git/runtime work.',
+          ],
+        );
+        _lastHealth = health;
+        return health;
+      }
+      final capabilities =
+          _capabilitiesFromJson(_mapValue(payload['capabilities']));
       final health = RuntimeHealth(
         type: type,
         name: (payload['name'] as String?) ?? name,
         available: payload['available'] as bool? ?? true,
         ready: payload['ready'] as bool? ?? false,
-        status: (payload['status'] as String?) ?? 'MobileCode Helper responded.',
+        status:
+            (payload['status'] as String?) ?? 'MobileCode Helper responded.',
         capabilities: capabilities,
         missingDependencies: _stringList(payload['missingDependencies']),
         recoveryActions: _stringList(payload['recoveryActions']),
@@ -110,12 +143,15 @@ class MobileCodeHelperProvider
     Duration? timeout,
   }) async {
     final stopwatch = Stopwatch()..start();
-    final payload = await _postJson('/v1/execute', {
-      'command': command,
-      if (workingDir != null) 'cwd': workingDir,
-      if (environment != null) 'env': environment,
-      if (timeout != null) 'timeoutMs': timeout.inMilliseconds,
-    }, timeout: timeout);
+    final payload = await _postJson(
+        '/v1/execute',
+        {
+          'command': command,
+          if (workingDir != null) 'cwd': workingDir,
+          if (environment != null) 'env': environment,
+          if (timeout != null) 'timeoutMs': timeout.inMilliseconds,
+        },
+        timeout: timeout);
     stopwatch.stop();
 
     return RuntimeCommandResult(
@@ -129,7 +165,8 @@ class MobileCodeHelperProvider
       ),
       providerType: type,
       taskId: payload['taskId'] as String?,
-      failureKind: _taskFailureKindFromString(payload['failureKind']?.toString()),
+      failureKind:
+          _taskFailureKindFromString(payload['failureKind']?.toString()),
     );
   }
 
@@ -147,7 +184,8 @@ class MobileCodeHelperProvider
 
   @override
   Future<RuntimeTaskSnapshot?> currentTask() async {
-    final payload = await _getJson('/v1/tasks/current', timeout: const Duration(seconds: 3));
+    final payload = await _getJson('/v1/tasks/current',
+        timeout: const Duration(seconds: 3));
     final taskPayload = payload['task'];
     if (taskPayload is Map) {
       return _taskSnapshotFromJson(Map<String, dynamic>.from(taskPayload));
@@ -159,7 +197,9 @@ class MobileCodeHelperProvider
     if (taskId.isEmpty && command.isEmpty && logs.isEmpty) return null;
     return RuntimeTaskSnapshot(
       taskId: taskId,
-      status: payload['running'] == true ? RuntimeTaskStatus.running : RuntimeTaskStatus.unknown,
+      status: payload['running'] == true
+          ? RuntimeTaskStatus.running
+          : RuntimeTaskStatus.unknown,
       command: command,
       logs: logs,
       providerType: type,
@@ -168,7 +208,8 @@ class MobileCodeHelperProvider
 
   @override
   Future<List<RuntimeTaskSnapshot>> listTasks({int limit = 20}) async {
-    final payload = await _getJson('/v1/tasks?limit=$limit', timeout: const Duration(seconds: 3));
+    final payload = await _getJson('/v1/tasks?limit=$limit',
+        timeout: const Duration(seconds: 3));
     final tasks = payload['tasks'];
     if (tasks is! List) return const [];
     return tasks
@@ -180,7 +221,8 @@ class MobileCodeHelperProvider
   @override
   Future<List<String>> taskLogs(String taskId, {int limit = 200}) async {
     final safeTaskId = Uri.encodeComponent(taskId);
-    final payload = await _getJson('/v1/tasks/$safeTaskId/logs?limit=$limit', timeout: const Duration(seconds: 3));
+    final payload = await _getJson('/v1/tasks/$safeTaskId/logs?limit=$limit',
+        timeout: const Duration(seconds: 3));
     return _stringList(payload['logs']);
   }
 
@@ -189,10 +231,13 @@ class MobileCodeHelperProvider
     String projectPath, {
     String? packageManager,
   }) async {
-    final payload = await _postJson('/v1/project/preflight', {
-      'cwd': projectPath,
-      if (packageManager != null) 'packageManager': packageManager,
-    }, timeout: const Duration(seconds: 8));
+    final payload = await _postJson(
+        '/v1/project/preflight',
+        {
+          'cwd': projectPath,
+          if (packageManager != null) 'packageManager': packageManager,
+        },
+        timeout: const Duration(seconds: 8));
     final detectedFiles = _stringList(payload['detectedFiles']);
     final caps = await capabilities();
     return profileRuntimeProject(
@@ -209,11 +254,14 @@ class MobileCodeHelperProvider
     String? workingDir,
     Map<String, String>? environment,
   }) async* {
-    final request = await _openPost('/v1/execute/stream', {
-      'command': command,
-      if (workingDir != null) 'cwd': workingDir,
-      if (environment != null) 'env': environment,
-    }, accept: 'application/x-ndjson');
+    final request = await _openPost(
+        '/v1/execute/stream',
+        {
+          'command': command,
+          if (workingDir != null) 'cwd': workingDir,
+          if (environment != null) 'env': environment,
+        },
+        accept: 'application/x-ndjson');
 
     final response = await request.close();
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -222,9 +270,8 @@ class MobileCodeHelperProvider
       return;
     }
 
-    await for (final line in response
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())) {
+    await for (final line
+        in response.transform(utf8.decoder).transform(const LineSplitter())) {
       if (line.trim().isEmpty) continue;
       final decoded = jsonDecode(line);
       if (decoded is! Map<String, dynamic>) {
@@ -265,12 +312,14 @@ class MobileCodeHelperProvider
 
   @override
   Future<BuildResult> buildWeb(String projectPath) async {
-    final payload = await _postJson('/v1/build/web', {'projectPath': projectPath});
+    final payload =
+        await _postJson('/v1/build/web', {'projectPath': projectPath});
     return _buildResultFromJson(payload);
   }
 
   @override
-  Future<BuildResult> buildApk(String projectPath, {BuildMode mode = BuildMode.debug}) async {
+  Future<BuildResult> buildApk(String projectPath,
+      {BuildMode mode = BuildMode.debug}) async {
     final payload = await _postJson('/v1/build/apk', {
       'projectPath': projectPath,
       'mode': mode.name,
@@ -307,18 +356,22 @@ class MobileCodeHelperProvider
   Future<void> stopTask(String taskId) async {
     final safeTaskId = Uri.encodeComponent(taskId.trim());
     if (safeTaskId.isEmpty) {
-      throw const MobileCodeHelperException('Task ID is required to stop a helper task.');
+      throw const MobileCodeHelperException(
+          'Task ID is required to stop a helper task.');
     }
     await _postJson('/v1/tasks/$safeTaskId/stop', const {});
   }
 
   Uri _resolve(String path) => baseUri.resolve(path);
 
-  Future<Map<String, dynamic>> _getJson(String path, {Duration? timeout}) async {
-    final request = await _client.getUrl(_resolve(path)).timeout(timeout ?? probeTimeout);
+  Future<Map<String, dynamic>> _getJson(String path,
+      {Duration? timeout}) async {
+    final request =
+        await _client.getUrl(_resolve(path)).timeout(timeout ?? probeTimeout);
     request.headers.set(HttpHeaders.acceptHeader, 'application/json');
     _attachAuth(request);
-    return _decodeJsonResponse(await request.close().timeout(timeout ?? probeTimeout));
+    return _decodeJsonResponse(
+        await request.close().timeout(timeout ?? probeTimeout));
   }
 
   Future<Map<String, dynamic>> _postJson(
@@ -326,8 +379,10 @@ class MobileCodeHelperProvider
     Map<String, dynamic> body, {
     Duration? timeout,
   }) async {
-    final request = await _openPost(path, body).timeout(timeout ?? const Duration(seconds: 120));
-    return _decodeJsonResponse(await request.close().timeout(timeout ?? const Duration(seconds: 120)));
+    final request = await _openPost(path, body)
+        .timeout(timeout ?? const Duration(seconds: 120));
+    return _decodeJsonResponse(
+        await request.close().timeout(timeout ?? const Duration(seconds: 120)));
   }
 
   Future<HttpClientRequest> _openPost(
@@ -349,7 +404,8 @@ class MobileCodeHelperProvider
     request.headers.set('X-MobileCode-Token', token);
   }
 
-  Future<Map<String, dynamic>> _decodeJsonResponse(HttpClientResponse response) async {
+  Future<Map<String, dynamic>> _decodeJsonResponse(
+      HttpClientResponse response) async {
     final text = await response.transform(utf8.decoder).join();
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw MobileCodeHelperException('HTTP ${response.statusCode}: $text');
@@ -357,7 +413,8 @@ class MobileCodeHelperProvider
     if (text.trim().isEmpty) return <String, dynamic>{};
     final decoded = jsonDecode(text);
     if (decoded is Map<String, dynamic>) return decoded;
-    throw const MobileCodeHelperException('Helper response was not a JSON object.');
+    throw const MobileCodeHelperException(
+        'Helper response was not a JSON object.');
   }
 
   RuntimeCapabilities _capabilitiesFromJson(Map<String, dynamic> json) {
@@ -380,7 +437,8 @@ class MobileCodeHelperProvider
       success: json['success'] as bool? ?? false,
       outputPath: json['outputPath'] as String?,
       error: json['error'] as String?,
-      buildTime: Duration(milliseconds: (json['buildTimeMs'] as num?)?.toInt() ?? 0),
+      buildTime:
+          Duration(milliseconds: (json['buildTimeMs'] as num?)?.toInt() ?? 0),
       fileSize: (json['fileSize'] as num?)?.toInt() ?? 0,
     );
   }
@@ -421,12 +479,23 @@ class MobileCodeHelperProvider
     return switch (value) {
       'timeout' || 'timedOut' || 'timed_out' => RuntimeTaskFailureKind.timeout,
       'cancelled' => RuntimeTaskFailureKind.cancelled,
-      'dependencyMissing' || 'dependency_missing' => RuntimeTaskFailureKind.dependencyMissing,
-      'commandBlocked' || 'command_blocked' => RuntimeTaskFailureKind.commandBlocked,
-      'cwdOutsideWorkspace' || 'cwd_outside_workspace' => RuntimeTaskFailureKind.cwdOutsideWorkspace,
+      'dependencyMissing' ||
+      'dependency_missing' =>
+        RuntimeTaskFailureKind.dependencyMissing,
+      'commandBlocked' ||
+      'command_blocked' =>
+        RuntimeTaskFailureKind.commandBlocked,
+      'cwdOutsideWorkspace' ||
+      'cwd_outside_workspace' =>
+        RuntimeTaskFailureKind.cwdOutsideWorkspace,
       'authFailed' || 'auth_failed' => RuntimeTaskFailureKind.authFailed,
-      'processFailed' || 'process_failed' => RuntimeTaskFailureKind.processFailed,
-      'runtimeLost' || 'runtime_lost' || 'lost' => RuntimeTaskFailureKind.runtimeLost,
+      'processFailed' ||
+      'process_failed' =>
+        RuntimeTaskFailureKind.processFailed,
+      'runtimeLost' ||
+      'runtime_lost' ||
+      'lost' =>
+        RuntimeTaskFailureKind.runtimeLost,
       _ => RuntimeTaskFailureKind.unknown,
     };
   }
@@ -508,19 +577,23 @@ class TermuxDaemonProvider extends MobileCodeHelperProvider {
         return health;
       }
 
-      final capabilities = _capabilitiesFromJson(_mapValue(payload['capabilities']));
+      final capabilities =
+          _capabilitiesFromJson(_mapValue(payload['capabilities']));
       final missing = [..._stringList(payload['missingDependencies'])];
       final recovery = [..._stringList(payload['recoveryActions'])];
       if (!capabilities.git) {
         missing.add('git in Termux');
-        recovery.add('Run pkg install git in Termux, then restart or refresh the MobileCode daemon.');
+        recovery.add(
+            'Run pkg install git in Termux, then restart or refresh the MobileCode daemon.');
       }
 
       final health = RuntimeHealth(
         type: type,
         name: name,
         available: payload['available'] as bool? ?? true,
-        ready: (payload['ready'] as bool? ?? false) && capabilities.shell && capabilities.git,
+        ready: (payload['ready'] as bool? ?? false) &&
+            capabilities.shell &&
+            capabilities.git,
         status: capabilities.git
             ? 'Termux daemon is running; git clone can execute through Termux.'
             : 'Termux daemon is running, but git is missing from Termux.',

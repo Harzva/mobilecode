@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import android.provider.Settings
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -37,9 +38,23 @@ class MainActivity : FlutterActivity() {
                     "getDeviceTelemetry" -> result.success(deviceTelemetry())
                     "isPackageInstalled" -> result.success(isPackageInstalled(call.argument<String>("packageName")))
                     "launchPackage" -> result.success(launchPackage(call.argument<String>("packageName")))
-                    "startHelperService" -> result.success(false)
+                    "rootProbe" -> result.success(rootProbe())
+                    "startHelperService" -> {
+                        val authToken = call.argument<String>("authToken") ?: ""
+                        result.success(startHelperService(authToken))
+                    }
+                    "stopHelperService" -> {
+                        stopService(
+                            Intent(this, MobileCodeHelperService::class.java)
+                                .setAction(MobileCodeHelperService.ACTION_STOP)
+                        )
+                        result.success(true)
+                    }
+                    "helperServiceStatus" -> result.success(MobileCodeHelperService.status())
                     "getPhoneUseAccessibilityStatus" -> result.success(PhoneUseAccessibilityService.status(this))
                     "openPhoneUseAccessibilitySettings" -> result.success(openPhoneUseAccessibilitySettings())
+                    "openAppSettings" -> result.success(openAppSettings())
+                    "openBatteryOptimizationSettings" -> result.success(openBatteryOptimizationSettings())
                     "runPhoneUseDryProbe" -> result.success(PhoneUseAccessibilityService.dryProbe(this))
                     "performPhoneUseAction" -> {
                         @Suppress("UNCHECKED_CAST")
@@ -186,6 +201,41 @@ class MainActivity : FlutterActivity() {
         return true
     }
 
+    private fun rootProbe(): Map<String, Any> {
+        val knownPaths = listOf(
+            "/system/bin/su",
+            "/system/xbin/su",
+            "/sbin/su",
+            "/su/bin/su",
+            "/data/adb/magisk/su",
+            "/debug_ramdisk/su"
+        )
+        val existingPath = knownPaths.firstOrNull { File(it).exists() && File(it).canExecute() }
+        if (existingPath != null) {
+            return mapOf(
+                "available" to true,
+                "detail" to "su binary visible at $existingPath. Grant root when Android prompts."
+            )
+        }
+        return try {
+            val process = ProcessBuilder("which", "su")
+                .redirectErrorStream(true)
+                .start()
+            val finished = process.waitFor(900, java.util.concurrent.TimeUnit.MILLISECONDS)
+            val output = process.inputStream.bufferedReader().readText().trim()
+            val ok = finished && process.exitValue() == 0 && output.isNotBlank()
+            mapOf(
+                "available" to ok,
+                "detail" to if (ok) "su found at $output. Grant root when Android prompts." else "No executable su was found from the app process."
+            )
+        } catch (_: Throwable) {
+            mapOf(
+                "available" to false,
+                "detail" to "Root probe failed; the app process cannot see su."
+            )
+        }
+    }
+
     private fun openPhoneUseAccessibilitySettings(): Boolean {
         return try {
             val settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
@@ -193,6 +243,49 @@ class MainActivity : FlutterActivity() {
             startActivity(settingsIntent)
             true
         } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun openAppSettings(): Boolean {
+        return try {
+            val settingsIntent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(settingsIntent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun openBatteryOptimizationSettings(): Boolean {
+        return try {
+            val settingsIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(settingsIntent)
+            true
+        } catch (_: Exception) {
+            openAppSettings()
+        }
+    }
+
+    private fun startHelperService(authToken: String): Boolean {
+        return try {
+            val serviceIntent = Intent(this, MobileCodeHelperService::class.java)
+            if (authToken.isNotBlank()) {
+                serviceIntent.putExtra(MobileCodeHelperService.EXTRA_AUTH_TOKEN, authToken)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+            Log.i(TAG, "MobileCode helper service start requested")
+            true
+        } catch (error: Throwable) {
+            Log.e(TAG, "Failed to request MobileCode helper service start", error)
             false
         }
     }
@@ -242,5 +335,9 @@ class MainActivity : FlutterActivity() {
             "timestamp" to System.currentTimeMillis(),
             "fallback" to false,
         )
+    }
+
+    companion object {
+        private const val TAG = "MobileCodeMain"
     }
 }

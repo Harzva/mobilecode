@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'external_termux_provider.dart';
+import 'mobile_code_helper_auth.dart';
 import 'mobile_code_helper_provider.dart';
 import 'runtime_actions.dart';
 import 'runtime_placeholder_providers.dart';
@@ -30,10 +31,13 @@ class RuntimeManager {
   }) {
     return RuntimeManager(
       providers: [
-        EmbeddedLiteRuntimeProvider(),
+        MobileCodeHelperProvider(
+          baseUri: helperBaseUri,
+          authToken: MobileCodeHelperAuth.token,
+        ),
         TermuxDaemonProvider(baseUri: helperBaseUri),
-        MobileCodeHelperProvider(baseUri: helperBaseUri),
         ExternalTermuxProvider(termux),
+        EmbeddedLiteRuntimeProvider(),
         CloudRuntimeProvider(),
         WebViewOnlyRuntimeProvider(),
       ],

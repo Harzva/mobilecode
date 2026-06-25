@@ -2,11 +2,19 @@ name: Android App Smoke Test
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'mobile_agent/**'
+      - 'docs/mobilecode-accessibility-background-permissions-qa.md'
+      - 'roadmap/tasks/T25-accessibility-background-permissions.md'
+      - '.github/workflows/android-app-test.yml'
   push:
     branches:
       - main
     paths:
       - 'mobile_agent/**'
+      - 'docs/mobilecode-accessibility-background-permissions-qa.md'
+      - 'roadmap/tasks/T25-accessibility-background-permissions.md'
       - '.github/workflows/android-app-test.yml'
       - '.github/workflows/android-apk.yml'
 
@@ -47,7 +55,7 @@ jobs:
 
       - name: Analyze Flutter entry surfaces
         working-directory: mobile_agent
-        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/github_screen.dart lib/screens/github_repo_hub_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/github_deep_service.dart lib/services/github_oauth_flow.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/settings_screen.dart lib/screens/github_screen.dart lib/screens/github_repo_hub_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/github_deep_service.dart lib/services/github_oauth_flow.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart lib/services/mobile_code_helper_auth.dart lib/services/phone_use_accessibility_service.dart --no-fatal-infos --no-fatal-warnings
 
       - name: Build debug APK for emulator
         working-directory: mobile_agent
@@ -66,20 +74,22 @@ jobs:
             mkdir -p artifacts
             adb wait-for-device
             installed=0; for attempt in 1 2 3; do if adb install -r mobile_agent/build/app/outputs/flutter-apk/app-debug.apk; then installed=1; break; fi; adb kill-server; adb start-server; adb wait-for-device; sleep 20; done; test "$installed" = 1
-            adb shell am start -n com.mobilecode.mobile_agent/.MobileCodeHelperLauncherActivity
+            auth_header='X-MobileCode-Token: ci-helper-token'
+            adb shell am start -n com.mobilecode.app/.MobileCodeHelperLauncherActivity --es com.mobilecode.app.extra.AUTH_TOKEN ci-helper-token
             adb forward tcp:18765 tcp:8765
-            helper_ready=0; for attempt in $(seq 1 20); do if curl -fsS http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then helper_ready=1; break; fi; sleep 1; done; if [ "$helper_ready" != 1 ]; then adb shell dumpsys activity services com.mobilecode.mobile_agent > artifacts/helper-services.txt || true; adb logcat -d -t 1500 > artifacts/android-logcat.txt || true; exit 1; fi
-            curl -fsS http://127.0.0.1:18765/v1/health | tee artifacts/android-helper-health.json
-            curl -fsS -H 'Content-Type: application/json' -X POST http://127.0.0.1:18765/v1/execute -d '{"command":"pwd","timeoutMs":10000}' | tee artifacts/android-helper-execute.json
-            curl -fsS http://127.0.0.1:18765/v1/tasks/current | tee artifacts/android-helper-task.json
+            helper_ready=0; for attempt in $(seq 1 20); do if curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then helper_ready=1; break; fi; sleep 1; done; if [ "$helper_ready" != 1 ]; then adb shell dumpsys activity services com.mobilecode.app > artifacts/helper-services.txt || true; adb logcat -d -t 1500 > artifacts/android-logcat.txt || true; exit 1; fi
+            curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health | tee artifacts/android-helper-health.json
+            curl -fsS -H "$auth_header" -H 'Content-Type: application/json' -X POST http://127.0.0.1:18765/v1/execute -d '{"command":"pwd","timeoutMs":10000}' | tee artifacts/android-helper-execute.json
+            curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/tasks/current | tee artifacts/android-helper-task.json
             grep '"name":"MobileCode Helper Service"' artifacts/android-helper-health.json
             grep '"ready":true' artifacts/android-helper-health.json
+            grep '"authRequired":true' artifacts/android-helper-health.json
             grep '"backgroundService":true' artifacts/android-helper-health.json
             grep '"exitCode":0' artifacts/android-helper-execute.json
             grep '"failureKind":"none"' artifacts/android-helper-execute.json
             adb logcat -c || true
-            adb shell am start -W -n com.mobilecode.mobile_agent/.MainActivity | tee artifacts/main-start.txt
-            app_drawn=0; for attempt in $(seq 1 24); do adb shell pidof com.mobilecode.mobile_agent; adb shell dumpsys window windows > artifacts/window-focus.txt || true; if awk '/Window #[0-9]+/ { in_app = ($0 ~ /com\.mobilecode\.mobile_agent\/com\.mobilecode\.mobile_agent\.MainActivity/) } in_app && /Surface: shown=true/ { ok=1 } END { exit ok ? 0 : 1 }' artifacts/window-focus.txt; then app_drawn=1; break; fi; sleep 5; done; echo "$app_drawn" > artifacts/app-drawn.txt; adb shell pidof com.mobilecode.mobile_agent; adb exec-out screencap -p > artifacts/mobilecode-android-smoke.png || true; adb logcat -d -t 2000 > artifacts/android-logcat.txt || true; grep -q "com.mobilecode.mobile_agent" artifacts/window-focus.txt; grep -E "FATAL EXCEPTION|E AndroidRuntime|NoSuchMethodError|MissingPluginException|ANR in com.mobilecode.mobile_agent" artifacts/android-logcat.txt && exit 1 || true; test "$app_drawn" = 1
+            adb shell am start -W -n com.mobilecode.app/.MainActivity | tee artifacts/main-start.txt
+            app_drawn=0; for attempt in $(seq 1 24); do adb shell pidof com.mobilecode.app; adb shell dumpsys window windows > artifacts/window-focus.txt || true; if awk '/Window #[0-9]+/ { in_app = ($0 ~ /com\.mobilecode\.app\/.*MainActivity/) } in_app && /Surface: shown=true/ { ok=1 } END { exit ok ? 0 : 1 }' artifacts/window-focus.txt; then app_drawn=1; break; fi; sleep 5; done; echo "$app_drawn" > artifacts/app-drawn.txt; adb shell pidof com.mobilecode.app; adb exec-out screencap -p > artifacts/mobilecode-android-smoke.png || true; adb logcat -d -t 2000 > artifacts/android-logcat.txt || true; grep -q "com.mobilecode.app" artifacts/window-focus.txt; grep -E "FATAL EXCEPTION|E AndroidRuntime|NoSuchMethodError|MissingPluginException|ANR in com.mobilecode.app" artifacts/android-logcat.txt && exit 1 || true; test "$app_drawn" = 1
 
       - name: Upload Android smoke artifacts
         uses: actions/upload-artifact@v7

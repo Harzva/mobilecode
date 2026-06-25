@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import '../services/phone_use_accessibility_service.dart';
 import '../themes/app_theme.dart';
 import '../widgets/glass_card_widget.dart';
 import 'github_screen.dart';
@@ -31,6 +34,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _githubConnected = true;
   String? _githubUsername = 'devuser';
 
+  // System permissions
+  PhoneUseAccessibilityStatus? _phoneUseStatus;
+  bool _permissionChecking = false;
+
   // App info
   final String _appVersion = '1.0.0';
   final String _buildNumber = '100';
@@ -43,6 +50,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     'Consolas',
     'Monaco',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_refreshPhoneUseStatus());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -194,7 +207,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: TextStyle(color: AppTheme.error),
                           ),
                         )
-                      : const Icon(Icons.chevron_right, color: AppTheme.textTertiary),
+                      : const Icon(Icons.chevron_right,
+                          color: AppTheme.textTertiary),
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(
@@ -202,6 +216,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                 ),
+              ]),
+            ),
+
+            // ── System Permissions Section ──
+            _buildSectionHeader('系统权限', Icons.admin_panel_settings_outlined),
+            SliverToBoxAdapter(
+              child: _buildSettingCard([
+                _buildAccessibilitySetting(),
+                const Divider(color: AppTheme.divider, height: 1),
+                _buildBackgroundPermissionSetting(),
               ]),
             ),
 
@@ -243,7 +267,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   subtitle: const Text(
                     '清除临时文件和缓存数据',
-                    style: TextStyle(fontSize: 12, color: AppTheme.textTertiary),
+                    style:
+                        TextStyle(fontSize: 12, color: AppTheme.textTertiary),
                   ),
                   onTap: () => _showClearCacheDialog(),
                 ),
@@ -257,7 +282,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   subtitle: const Text(
                     '删除所有本地数据，此操作不可撤销',
-                    style: TextStyle(fontSize: 12, color: AppTheme.textTertiary),
+                    style:
+                        TextStyle(fontSize: 12, color: AppTheme.textTertiary),
                   ),
                   onTap: () => _showResetDialog(),
                 ),
@@ -429,6 +455,213 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildAccessibilitySetting() {
+    final status = _phoneUseStatus;
+    final ready = status?.ready == true;
+    final subtitle = _accessibilitySubtitle(status);
+    return ListTile(
+      key: const ValueKey('settings.accessibility'),
+      leading: Icon(
+        Icons.accessibility_new_outlined,
+        color: ready ? AppTheme.success : AppTheme.textSecondary,
+        size: 20,
+      ),
+      title: const Text(
+        '无障碍服务',
+        style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(fontSize: 12, color: AppTheme.textTertiary),
+      ),
+      trailing: _permissionChecking
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : _PermissionStatePill(
+              label: _accessibilityPillLabel(status),
+              color: _accessibilityPillColor(status),
+            ),
+      onTap: _permissionChecking
+          ? null
+          : () => unawaited(_openAccessibilitySettings()),
+      onLongPress: () => unawaited(_refreshPhoneUseStatus()),
+    );
+  }
+
+  String _accessibilitySubtitle(PhoneUseAccessibilityStatus? status) {
+    if (status == null) return '正在检测 PhoneUseAccessibilityService 状态';
+    if (!status.supported) return '当前平台不支持 phone-use 无障碍探针';
+
+    final serviceLabel = status.serviceId.isEmpty
+        ? 'PhoneUseAccessibilityService'
+        : status.serviceId;
+    final connection =
+        status.serviceConnected ? 'service connected' : 'service disconnected';
+    if (status.ready) {
+      return '已开启，$connection，可观察窗口；服务：$serviceLabel';
+    }
+    final reason =
+        status.blockedReason == null ? '点击进入系统无障碍设置' : status.blockedReason!;
+    return '未开启，$connection；$reason；服务：$serviceLabel';
+  }
+
+  String _accessibilityPillLabel(PhoneUseAccessibilityStatus? status) {
+    if (status == null) return '检测中';
+    if (!status.supported) return '不可用';
+    if (status.ready) return '已开启';
+    if (status.accessibilityEnabled && !status.serviceConnected) return '待连接';
+    if (status.accessibilityEnabled) return '已授权';
+    return '未开启';
+  }
+
+  Color _accessibilityPillColor(PhoneUseAccessibilityStatus? status) {
+    if (status == null || !status.supported) return AppTheme.textTertiary;
+    if (status.ready) return AppTheme.success;
+    return AppTheme.warning;
+  }
+
+  Widget _buildBackgroundPermissionSetting() {
+    return ListTile(
+      key: const ValueKey('settings.backgroundPermission'),
+      leading: const Icon(
+        Icons.battery_saver_outlined,
+        color: AppTheme.textSecondary,
+        size: 20,
+      ),
+      title: const Text(
+        '后台运行权限',
+        style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+      ),
+      subtitle: const Text(
+        '引导开启应用详情、电池优化和后台保活设置',
+        style: TextStyle(fontSize: 12, color: AppTheme.textTertiary),
+      ),
+      trailing: const Icon(
+        Icons.chevron_right,
+        color: AppTheme.textTertiary,
+        size: 18,
+      ),
+      onTap: _showBackgroundPermissionGuide,
+    );
+  }
+
+  Future<void> _refreshPhoneUseStatus() async {
+    if (_permissionChecking) return;
+    setState(() => _permissionChecking = true);
+    final status = await PhoneUseAccessibilityService.instance.getStatus();
+    if (!mounted) return;
+    setState(() {
+      _phoneUseStatus = status;
+      _permissionChecking = false;
+    });
+  }
+
+  Future<void> _openAccessibilitySettings() async {
+    final opened =
+        await PhoneUseAccessibilityService.instance.openAccessibilitySettings();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(opened ? '已打开系统无障碍设置' : '无法打开无障碍设置')),
+    );
+    await _refreshPhoneUseStatus();
+  }
+
+  Future<void> _openAppSettings() async {
+    final opened =
+        await PhoneUseAccessibilityService.instance.openAppSettings();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(opened ? '已打开应用详情' : '无法打开应用详情')),
+    );
+  }
+
+  Future<void> _openBatteryOptimizationSettings() async {
+    final opened = await PhoneUseAccessibilityService.instance
+        .openBatteryOptimizationSettings();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(opened ? '已打开电池优化设置' : '无法打开电池优化设置')),
+    );
+  }
+
+  void _showBackgroundPermissionGuide() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surfaceElevated,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 18),
+                  decoration: BoxDecoration(
+                    color: AppTheme.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Text(
+                  '后台运行权限',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  '用于保持 MobileCode Helper 和长任务状态稳定。不同 Android 厂商设置名称不同，开启后请回到 MobileCode 刷新 runtime 状态。',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          unawaited(_openAppSettings());
+                        },
+                        icon: const Icon(Icons.settings_applications_outlined),
+                        label: const Text('应用详情'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          unawaited(_openBatteryOptimizationSettings());
+                        },
+                        icon: const Icon(Icons.battery_charging_full_outlined),
+                        label: const Text('电池设置'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildThemeSelector() {
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -493,7 +726,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surfaceElevated,
-        title: const Text('断开 GitHub', style: TextStyle(color: AppTheme.textPrimary)),
+        title: const Text('断开 GitHub',
+            style: TextStyle(color: AppTheme.textPrimary)),
         content: const Text(
           '确定要断开 GitHub 连接吗？',
           style: TextStyle(color: AppTheme.textSecondary),
@@ -501,7 +735,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
+            child: const Text('取消',
+                style: TextStyle(color: AppTheme.textSecondary)),
           ),
           TextButton(
             onPressed: () {
@@ -523,7 +758,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surfaceElevated,
-        title: const Text('清除缓存', style: TextStyle(color: AppTheme.textPrimary)),
+        title:
+            const Text('清除缓存', style: TextStyle(color: AppTheme.textPrimary)),
         content: const Text(
           '确定要清除缓存吗？这不会影响你的项目或设置。',
           style: TextStyle(color: AppTheme.textSecondary),
@@ -531,7 +767,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
+            child: const Text('取消',
+                style: TextStyle(color: AppTheme.textSecondary)),
           ),
           TextButton(
             onPressed: () {
@@ -560,7 +797,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消', style: TextStyle(color: AppTheme.textSecondary)),
+            child: const Text('取消',
+                style: TextStyle(color: AppTheme.textSecondary)),
           ),
           TextButton(
             onPressed: () {
@@ -581,19 +819,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surfaceElevated,
-        title: const Text('开源许可证', style: TextStyle(color: AppTheme.textPrimary)),
+        title:
+            const Text('开源许可证', style: TextStyle(color: AppTheme.textPrimary)),
         content: SizedBox(
           width: double.maxFinite,
           child: ListView(
             shrinkWrap: true,
             children: const [
               ListTile(
-                title: Text('Flutter', style: TextStyle(color: AppTheme.textPrimary)),
+                title: Text('Flutter',
+                    style: TextStyle(color: AppTheme.textPrimary)),
                 subtitle: Text('BSD 3-Clause License',
                     style: TextStyle(color: AppTheme.textSecondary)),
               ),
               ListTile(
-                title: Text('Material Design', style: TextStyle(color: AppTheme.textPrimary)),
+                title: Text('Material Design',
+                    style: TextStyle(color: AppTheme.textPrimary)),
                 subtitle: Text('Apache 2.0',
                     style: TextStyle(color: AppTheme.textSecondary)),
               ),
@@ -606,6 +847,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Text('关闭', style: TextStyle(color: AppTheme.cyan)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _PermissionStatePill extends StatelessWidget {
+  const _PermissionStatePill({
+    required this.label,
+    required this.color,
+  });
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withOpacity(0.35)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
       ),
     );
   }
@@ -653,7 +924,8 @@ class _ThemeOption extends StatelessWidget {
               label,
               style: TextStyle(
                 fontSize: 12,
-                color: isSelected ? AppTheme.violetLight : AppTheme.textSecondary,
+                color:
+                    isSelected ? AppTheme.violetLight : AppTheme.textSecondary,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
               ),
             ),

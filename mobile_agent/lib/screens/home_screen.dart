@@ -34,6 +34,7 @@ import '../services/github_pages_service.dart';
 import '../services/github_repo_hub_service.dart';
 import '../services/html_publish_readiness_service.dart';
 import '../services/lark_api_service.dart';
+import '../services/mobile_code_helper_auth.dart';
 import '../services/mobilecode_local_model_manifest_service.dart';
 import '../services/mobilecode_update_service.dart';
 import '../services/model_provider_preset_service.dart';
@@ -1803,7 +1804,9 @@ Future<_RootProbeResult?> _probeRootAvailability() async {
 
 Future<bool?> _startMobileCodeHelperService() async {
   try {
-    return await _systemToolsChannel.invokeMethod<bool>('startHelperService');
+    return await _systemToolsChannel.invokeMethod<bool>('startHelperService', {
+      'authToken': MobileCodeHelperAuth.token,
+    });
   } on MissingPluginException {
     return null;
   } on PlatformException {
@@ -12003,7 +12006,7 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'External Termux remains a fallback. MobileCode should prefer Helper, Embedded Lite, or Cloud providers through RuntimeManager whenever possible.',
+            'MobileCode prefers the app Helper foreground service, then the External Termux daemon for shell and git work. Embedded Lite stays behind those providers until controlled task support is ready.',
             style: TextStyle(color: _muted, fontSize: 12, height: 1.4),
           ),
         ],
@@ -12036,7 +12039,7 @@ class _RuntimeActionsSheet extends StatefulWidget {
 
 class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
   final _projectPath = TextEditingController(
-      text: '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime');
+      text: '/data/data/com.mobilecode.app/files/mobilecode_runtime');
   final _message = TextEditingController(text: 'mobile runtime update');
   final List<String> _lines = ['No runtime action has run yet.'];
   bool _running = false;
@@ -12435,7 +12438,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
                 disabled: _running,
                 onTap: () {
                   _projectPath.text =
-                      '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime';
+                      '/data/data/com.mobilecode.app/files/mobilecode_runtime';
                   setState(() => _lines.insert(
                       0, 'Project path reset to helper workspace default.'));
                 },

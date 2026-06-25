@@ -126,6 +126,27 @@ class PhoneUseAccessibilityService {
     }
   }
 
+  Future<bool> openAppSettings() async {
+    if (kIsWeb) return false;
+    try {
+      return await _channel.invokeMethod<bool>('openAppSettings') ?? false;
+    } on Object {
+      return false;
+    }
+  }
+
+  Future<bool> openBatteryOptimizationSettings() async {
+    if (kIsWeb) return false;
+    try {
+      return await _channel.invokeMethod<bool>(
+            'openBatteryOptimizationSettings',
+          ) ??
+          false;
+    } on Object {
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> runDryProbe() async =>
       _invokeMap('runPhoneUseDryProbe');
 

@@ -254,6 +254,153 @@ class GitHubSubscriptionLoginAdapter implements SubscriptionLoginAdapter {
   }
 }
 
+class OpenAiSubscriptionLoginAdapter implements SubscriptionLoginAdapter {
+  OpenAiSubscriptionLoginAdapter({
+    HttpClient? httpClient,
+    Uri? modelsEndpoint,
+  })  : _httpClient = httpClient ?? HttpClient(),
+        _modelsEndpoint =
+            modelsEndpoint ?? Uri.parse('https://api.openai.com/v1/models');
+
+  final HttpClient _httpClient;
+  final Uri _modelsEndpoint;
+
+  @override
+  Future<SubscriptionLoginValidation> validateCredential({
+    required SubscriptionProvider provider,
+    required String credential,
+    required ProviderLoginMethod method,
+  }) {
+    return _validateJsonGet(
+      httpClient: _httpClient,
+      endpoint: _modelsEndpoint,
+      headers: {
+        HttpHeaders.authorizationHeader: 'Bearer $credential',
+        HttpHeaders.acceptHeader: 'application/json',
+      },
+      accountLabel: 'OpenAI API key',
+      invalidFailureKind: 'openai_key_validation_failed',
+      unreachableFailureKind: 'openai_key_validation_unreachable',
+      invalidRecoveryHint:
+          'OpenAI rejected this API key. Create a valid API key, then retry. The key was not saved.',
+      unreachableRecoveryHint:
+          'Could not validate this API key with OpenAI right now. Check network access and retry. The key was not saved.',
+    );
+  }
+}
+
+class AnthropicSubscriptionLoginAdapter implements SubscriptionLoginAdapter {
+  AnthropicSubscriptionLoginAdapter({
+    HttpClient? httpClient,
+    Uri? modelsEndpoint,
+  })  : _httpClient = httpClient ?? HttpClient(),
+        _modelsEndpoint =
+            modelsEndpoint ?? Uri.parse('https://api.anthropic.com/v1/models');
+
+  final HttpClient _httpClient;
+  final Uri _modelsEndpoint;
+
+  @override
+  Future<SubscriptionLoginValidation> validateCredential({
+    required SubscriptionProvider provider,
+    required String credential,
+    required ProviderLoginMethod method,
+  }) {
+    return _validateJsonGet(
+      httpClient: _httpClient,
+      endpoint: _modelsEndpoint,
+      headers: {
+        'x-api-key': credential,
+        'anthropic-version': '2023-06-01',
+        HttpHeaders.acceptHeader: 'application/json',
+      },
+      accountLabel: 'Claude API key',
+      invalidFailureKind: 'anthropic_key_validation_failed',
+      unreachableFailureKind: 'anthropic_key_validation_unreachable',
+      invalidRecoveryHint:
+          'Anthropic rejected this API key. Create a valid Claude API key, then retry. The key was not saved.',
+      unreachableRecoveryHint:
+          'Could not validate this API key with Anthropic right now. Check network access and retry. The key was not saved.',
+    );
+  }
+}
+
+class GeminiSubscriptionLoginAdapter implements SubscriptionLoginAdapter {
+  GeminiSubscriptionLoginAdapter({
+    HttpClient? httpClient,
+    Uri? modelsEndpoint,
+  })  : _httpClient = httpClient ?? HttpClient(),
+        _modelsEndpoint = modelsEndpoint ??
+            Uri.parse(
+                'https://generativelanguage.googleapis.com/v1beta/models');
+
+  final HttpClient _httpClient;
+  final Uri _modelsEndpoint;
+
+  @override
+  Future<SubscriptionLoginValidation> validateCredential({
+    required SubscriptionProvider provider,
+    required String credential,
+    required ProviderLoginMethod method,
+  }) {
+    final endpoint = _modelsEndpoint.replace(
+      queryParameters: {
+        ..._modelsEndpoint.queryParameters,
+        'key': credential,
+      },
+    );
+    return _validateJsonGet(
+      httpClient: _httpClient,
+      endpoint: endpoint,
+      headers: const {HttpHeaders.acceptHeader: 'application/json'},
+      accountLabel: 'Gemini API key',
+      invalidFailureKind: 'gemini_key_validation_failed',
+      unreachableFailureKind: 'gemini_key_validation_unreachable',
+      invalidRecoveryHint:
+          'Gemini API rejected this key. Create a valid Google AI Studio API key, then retry. The key was not saved.',
+      unreachableRecoveryHint:
+          'Could not validate this key with Gemini API right now. Check network access and retry. The key was not saved.',
+    );
+  }
+}
+
+Future<SubscriptionLoginValidation> _validateJsonGet({
+  required HttpClient httpClient,
+  required Uri endpoint,
+  required Map<String, String> headers,
+  required String accountLabel,
+  required String invalidFailureKind,
+  required String unreachableFailureKind,
+  required String invalidRecoveryHint,
+  required String unreachableRecoveryHint,
+}) async {
+  try {
+    final request = await httpClient.getUrl(endpoint);
+    for (final entry in headers.entries) {
+      request.headers.set(entry.key, entry.value);
+    }
+    final response = await request.close();
+    await response.drain<void>();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      return SubscriptionLoginValidation(
+        success: false,
+        failureKind: invalidFailureKind,
+        recoveryHint: invalidRecoveryHint,
+      );
+    }
+    return SubscriptionLoginValidation(
+      success: true,
+      accountLabel: accountLabel,
+    );
+  } on Object {
+    return SubscriptionLoginValidation(
+      success: false,
+      failureKind: unreachableFailureKind,
+      recoveryHint: unreachableRecoveryHint,
+    );
+  }
+}
+
 abstract class SubscriptionCredentialVault {
   Future<void> writeCredential({
     required String providerId,
@@ -521,8 +668,13 @@ class SubscriptionUsageService extends ChangeNotifier {
 }
 
 Map<String, SubscriptionLoginAdapter> _defaultLoginAdapters() => {
+      SubscriptionProviderKind.claude.name: AnthropicSubscriptionLoginAdapter(),
       SubscriptionProviderKind.copilotGithub.name:
           GitHubSubscriptionLoginAdapter(),
+      SubscriptionProviderKind.antigravityGoogle.name:
+          GeminiSubscriptionLoginAdapter(),
+      SubscriptionProviderKind.codexChatGpt.name:
+          OpenAiSubscriptionLoginAdapter(),
     };
 
 List<SubscriptionProviderState> _defaultStates(DateTime now) {
@@ -557,10 +709,10 @@ List<SubscriptionProviderState> _defaultStates(DateTime now) {
       accountLabel: 'Google account',
       loginMethods: [
         ProviderLoginMethod.googleAccount,
-        ProviderLoginMethod.manualAccessToken,
+        ProviderLoginMethod.manualApiKey,
       ],
       recoveryHint:
-          'Use the system browser Google account flow when provider support is available.',
+          'Use the system browser Google account flow when provider support is available, or validate a Gemini API key explicitly.',
       colorValue: 0xFF2F7DE1,
     ),
     SubscriptionProvider(

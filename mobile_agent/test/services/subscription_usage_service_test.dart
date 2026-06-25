@@ -33,6 +33,7 @@ void main() {
       final vault = _MemoryCredentialVault();
       final service = SubscriptionUsageService(
         credentialVault: vault,
+        loginAdapters: const {},
         clock: () => DateTime(2026, 6, 25, 10),
       );
 
@@ -180,11 +181,95 @@ void main() {
       expect(result.failureKind, 'github_token_validation_failed');
     });
 
+    test('OpenAI adapter validates key against models endpoint', () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      unawaited(server.first.then((request) async {
+        expect(request.uri.path, '/v1/models');
+        expect(request.headers.value(HttpHeaders.authorizationHeader),
+            'Bearer test_openai_key');
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..headers.contentType = ContentType.json
+          ..write(jsonEncode({'data': []}));
+        await request.response.close();
+      }));
+      final adapter = OpenAiSubscriptionLoginAdapter(
+        modelsEndpoint: Uri.parse('http://127.0.0.1:${server.port}/v1/models'),
+      );
+
+      final result = await adapter.validateCredential(
+        provider: serviceProvider('codexChatGpt'),
+        credential: 'test_openai_key',
+        method: ProviderLoginMethod.manualApiKey,
+      );
+
+      expect(result.success, isTrue);
+      expect(result.accountLabel, 'OpenAI API key');
+    });
+
+    test('Anthropic adapter sends required headers to models endpoint',
+        () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      unawaited(server.first.then((request) async {
+        expect(request.uri.path, '/v1/models');
+        expect(request.headers.value('x-api-key'), 'test_anthropic_key');
+        expect(request.headers.value('anthropic-version'), '2023-06-01');
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..headers.contentType = ContentType.json
+          ..write(jsonEncode({'data': []}));
+        await request.response.close();
+      }));
+      final adapter = AnthropicSubscriptionLoginAdapter(
+        modelsEndpoint: Uri.parse('http://127.0.0.1:${server.port}/v1/models'),
+      );
+
+      final result = await adapter.validateCredential(
+        provider: serviceProvider('claude'),
+        credential: 'test_anthropic_key',
+        method: ProviderLoginMethod.manualApiKey,
+      );
+
+      expect(result.success, isTrue);
+      expect(result.accountLabel, 'Claude API key');
+    });
+
+    test('Gemini adapter validates key using models list query parameter',
+        () async {
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => server.close(force: true));
+      unawaited(server.first.then((request) async {
+        expect(request.uri.path, '/v1beta/models');
+        expect(request.uri.queryParameters['key'], 'test_gemini_key');
+        request.response
+          ..statusCode = HttpStatus.ok
+          ..headers.contentType = ContentType.json
+          ..write(jsonEncode({'models': []}));
+        await request.response.close();
+      }));
+      final adapter = GeminiSubscriptionLoginAdapter(
+        modelsEndpoint:
+            Uri.parse('http://127.0.0.1:${server.port}/v1beta/models'),
+      );
+
+      final result = await adapter.validateCredential(
+        provider: serviceProvider('antigravityGoogle'),
+        credential: 'test_gemini_key',
+        method: ProviderLoginMethod.manualApiKey,
+      );
+
+      expect(result.success, isTrue);
+      expect(result.accountLabel, 'Gemini API key');
+    });
+
     test('logout clears secure credential and keeps quota cards redacted',
         () async {
       final vault = _MemoryCredentialVault();
       final service = SubscriptionUsageService(
         credentialVault: vault,
+        loginAdapters: const {},
         clock: () => DateTime(2026, 6, 25, 10),
       );
 

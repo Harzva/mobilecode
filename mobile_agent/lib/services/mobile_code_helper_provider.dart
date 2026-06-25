@@ -213,7 +213,7 @@ class MobileCodeHelperProvider
     final tasks = payload['tasks'];
     if (tasks is! List) return const [];
     return tasks
-        .whereType<Map>()
+        .whereType<Map<Object?, Object?>>()
         .map((task) => _taskSnapshotFromJson(Map<String, dynamic>.from(task)))
         .toList();
   }

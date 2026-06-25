@@ -46,6 +46,61 @@ void main() {
       expect(health.capabilities.pty, isTrue);
     });
 
+    test('does not claim an external Termux daemon as Helper APK', () async {
+      _serve((request) async {
+        expect(request.uri.path, '/v1/health');
+        await _json(request.response, {
+          'name': 'MobileCode Helper Prototype',
+          'available': true,
+          'ready': true,
+          'status': 'Helper daemon running in Termux',
+          'runtimeKind': 'termuxDaemon',
+          'termux': true,
+          'capabilities': {'shell': true, 'git': true},
+        });
+      }, server);
+
+      final provider = MobileCodeHelperProvider(baseUri: baseUri);
+      final health = await provider.healthCheck();
+
+      expect(health.available, isFalse);
+      expect(health.ready, isFalse);
+      expect(health.status, contains('External Termux daemon'));
+    });
+
+    test('accepts external Termux daemon health as a strong runtime', () async {
+      _serve((request) async {
+        expect(request.uri.path, '/v1/health');
+        await _json(request.response, {
+          'name': 'MobileCode Helper Prototype',
+          'available': true,
+          'ready': true,
+          'status': 'Helper daemon running in Termux',
+          'runtimeKind': 'termuxDaemon',
+          'termux': true,
+          'workspaceRoot': '/data/data/com.termux/files/home/mobilecode',
+          'capabilities': {
+            'shell': true,
+            'git': true,
+            'processStreaming': true,
+            'backgroundService': true,
+          },
+        });
+      }, server);
+
+      final provider = TermuxDaemonProvider(baseUri: baseUri);
+      final health = await provider.healthCheck();
+
+      expect(health.type, RuntimeProviderType.externalTermux);
+      expect(health.ready, isTrue);
+      expect(health.capabilities.git, isTrue);
+      expect(health.status, contains('Termux daemon is running'));
+      expect(
+        provider.workspaceRoot,
+        '/data/data/com.termux/files/home/mobilecode',
+      );
+    });
+
     test('sends helper auth token header when configured', () async {
       _serve((request) async {
         expect(request.uri.path, '/v1/health');
@@ -60,7 +115,8 @@ void main() {
         });
       }, server);
 
-      final provider = MobileCodeHelperProvider(baseUri: baseUri, authToken: 'test-token');
+      final provider =
+          MobileCodeHelperProvider(baseUri: baseUri, authToken: 'test-token');
       final health = await provider.healthCheck();
 
       expect(health.ready, isTrue);
@@ -93,9 +149,12 @@ void main() {
     test('streams NDJSON helper output', () async {
       _serve((request) async {
         expect(request.uri.path, '/v1/execute/stream');
-        request.response.headers.contentType = ContentType('application', 'x-ndjson');
-        request.response.writeln(jsonEncode({'type': 'stdout', 'data': 'hello'}));
-        request.response.writeln(jsonEncode({'type': 'stderr', 'data': 'warn'}));
+        request.response.headers.contentType =
+            ContentType('application', 'x-ndjson');
+        request.response
+            .writeln(jsonEncode({'type': 'stdout', 'data': 'hello'}));
+        request.response
+            .writeln(jsonEncode({'type': 'stderr', 'data': 'warn'}));
         request.response.writeln(jsonEncode({'type': 'exit', 'exitCode': 0}));
         await request.response.close();
       }, server);
@@ -103,7 +162,11 @@ void main() {
       final provider = MobileCodeHelperProvider(baseUri: baseUri);
       final lines = await provider.executeStream('echo hello').toList();
 
-      expect(lines, ['hello', '[stderr] warn', '[exit] Helper command exited with code 0']);
+      expect(lines, [
+        'hello',
+        '[stderr] warn',
+        '[exit] Helper command exited with code 0'
+      ]);
     });
 
     test('restores current helper task snapshot', () async {

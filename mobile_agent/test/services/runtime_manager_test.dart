@@ -8,6 +8,22 @@ import 'package:mobile_agent/services/termux_service.dart';
 
 void main() {
   group('RuntimeManager', () {
+    test('default Android provider order prefers Helper and Termux daemon', () {
+      final manager = RuntimeManager.withExternalTermux(
+        TermuxService(),
+        helperBaseUri: Uri.parse('http://127.0.0.1:8765'),
+      );
+
+      expect(manager.providers.map((provider) => provider.name), [
+        'MobileCode Helper',
+        'External Termux daemon',
+        'External Termux',
+        'Embedded Lite Runtime',
+        'Cloud Runtime',
+        'WebView Only',
+      ]);
+    });
+
     test('selects the first ready provider in priority order', () async {
       final embedded = _FakeRuntimeProvider(
         type: RuntimeProviderType.embeddedLite,
@@ -55,7 +71,8 @@ void main() {
       await manager.dispose();
     });
 
-    test('falls back to WebViewOnly when shell runtimes are unavailable', () async {
+    test('falls back to WebViewOnly when shell runtimes are unavailable',
+        () async {
       final manager = RuntimeManager(providers: [
         _FakeRuntimeProvider(
           type: RuntimeProviderType.embeddedLite,
@@ -91,7 +108,8 @@ void main() {
       await manager.dispose();
     });
 
-    test('runs structured git commit action through the active runtime', () async {
+    test('runs structured git commit action through the active runtime',
+        () async {
       final provider = _FakeRuntimeProvider(
         type: RuntimeProviderType.mobileCodeHelper,
         name: 'Helper',
@@ -113,12 +131,14 @@ void main() {
       ));
 
       expect(result.success, isTrue);
-      expect(provider.commands, ['git add .', 'git commit -m "runtime action commit"']);
+      expect(provider.commands,
+          ['git add .', 'git commit -m "runtime action commit"']);
 
       await manager.dispose();
     });
 
-    test('restores current task snapshot from monitor-capable provider', () async {
+    test('restores current task snapshot from monitor-capable provider',
+        () async {
       final provider = _FakeRuntimeProviderWithTask(
         type: RuntimeProviderType.mobileCodeHelper,
         name: 'Helper',
@@ -149,7 +169,8 @@ void main() {
       await manager.dispose();
     });
 
-    test('routes task history and logs through monitor-capable provider', () async {
+    test('routes task history and logs through monitor-capable provider',
+        () async {
       const snapshot = RuntimeTaskSnapshot(
         taskId: 'task-2',
         status: RuntimeTaskStatus.failed,
@@ -211,7 +232,9 @@ void main() {
       await manager.dispose();
     });
 
-    test('runs validation pipeline and stops at first failed action with recovery hint', () async {
+    test(
+        'runs validation pipeline and stops at first failed action with recovery hint',
+        () async {
       final provider = _FakeRuntimeProvider(
         type: RuntimeProviderType.mobileCodeHelper,
         name: 'Helper',
@@ -273,7 +296,8 @@ void main() {
       );
       final manager = RuntimeManager(providers: [provider]);
 
-      final result = await manager.validateProject(projectPath: '/workspace/app');
+      final result =
+          await manager.validateProject(projectPath: '/workspace/app');
 
       expect(result.success, isTrue);
       expect(result.profile?.packageManager, 'npm');
@@ -305,7 +329,8 @@ void main() {
       );
       final manager = RuntimeManager(providers: [provider]);
 
-      final result = await manager.validateProject(projectPath: '/workspace/app');
+      final result =
+          await manager.validateProject(projectPath: '/workspace/app');
 
       expect(result.success, isTrue);
       expect(result.profile?.packageManager, 'python');
@@ -328,7 +353,8 @@ void main() {
           available: true,
           ready: true,
           status: 'ready',
-          capabilities: RuntimeCapabilities(shell: true, node: true, flutter: true),
+          capabilities:
+              RuntimeCapabilities(shell: true, node: true, flutter: true),
         ),
         stdoutByCommand: const {
           runtimeProjectProbeCommand: '',
@@ -401,12 +427,15 @@ class _FakeRuntimeProvider implements RuntimeProvider {
     final exitCode = _exitCodes[command] ?? 0;
     return RuntimeCommandResult(
       command: command,
-      stdout: _stdoutByCommand[command] ?? (exitCode == 0 ? '' : 'ok before failure'),
+      stdout: _stdoutByCommand[command] ??
+          (exitCode == 0 ? '' : 'ok before failure'),
       stderr: exitCode == 0 ? '' : 'test failed',
       exitCode: exitCode,
       duration: Duration.zero,
       providerType: type,
-      failureKind: exitCode == 0 ? RuntimeTaskFailureKind.none : RuntimeTaskFailureKind.processFailed,
+      failureKind: exitCode == 0
+          ? RuntimeTaskFailureKind.none
+          : RuntimeTaskFailureKind.processFailed,
     );
   }
 
@@ -435,7 +464,8 @@ class _FakeRuntimeProvider implements RuntimeProvider {
   }
 
   @override
-  Future<BuildResult> buildApk(String projectPath, {BuildMode mode = BuildMode.debug}) async {
+  Future<BuildResult> buildApk(String projectPath,
+      {BuildMode mode = BuildMode.debug}) async {
     return const BuildResult(success: true, buildTime: Duration.zero);
   }
 
@@ -454,7 +484,8 @@ class _FakeRuntimeProvider implements RuntimeProvider {
   Future<void> stopCurrentTask() async {}
 }
 
-class _FakeRuntimeProviderWithTask extends _FakeRuntimeProvider implements RuntimeTaskMonitor, RuntimeTaskController {
+class _FakeRuntimeProviderWithTask extends _FakeRuntimeProvider
+    implements RuntimeTaskMonitor, RuntimeTaskController {
   final RuntimeTaskSnapshot task;
   final List<String> stoppedTaskIds = [];
 
@@ -472,7 +503,8 @@ class _FakeRuntimeProviderWithTask extends _FakeRuntimeProvider implements Runti
   Future<List<RuntimeTaskSnapshot>> listTasks({int limit = 20}) async => [task];
 
   @override
-  Future<List<String>> taskLogs(String taskId, {int limit = 200}) async => task.logs;
+  Future<List<String>> taskLogs(String taskId, {int limit = 200}) async =>
+      task.logs;
 
   @override
   Future<void> stopTask(String taskId) async {

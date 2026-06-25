@@ -17,6 +17,12 @@ def ensure_application_child(text: str, block: str, marker: str) -> str:
     return text.replace('    </application>', block + '\n    </application>', 1)
 
 
+def ensure_application_attribute(text: str, attribute: str, value: str) -> str:
+    if f'{attribute}=' in text:
+        return text
+    return text.replace('<application', f'<application\n        {attribute}="{value}"', 1)
+
+
 def main() -> None:
     manifest = Path('android/app/src/main/AndroidManifest.xml')
     text = manifest.read_text()
@@ -53,12 +59,8 @@ def main() -> None:
             '    </queries>',
             1,
         )
-    if 'android:hardwareAccelerated="true"' not in text:
-        text = text.replace(
-            '<application',
-            '<application\n        android:hardwareAccelerated="true"\n        android:usesCleartextTraffic="true"',
-            1,
-        )
+    text = ensure_application_attribute(text, 'android:usesCleartextTraffic', 'false')
+    text = ensure_application_attribute(text, 'android:networkSecurityConfig', '@xml/network_security_config')
     helper_service = (
         '        <service\n'
         '            android:name=".MobileCodeHelperService"\n'
@@ -74,6 +76,20 @@ def main() -> None:
         '            android:theme="@android:style/Theme.NoDisplay" />'
     )
     text = ensure_application_child(text, helper_launcher, 'android:name=".MobileCodeHelperLauncherActivity"')
+    phone_use_service = (
+        '        <service\n'
+        '            android:name=".PhoneUseAccessibilityService"\n'
+        '            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"\n'
+        '            android:exported="true">\n'
+        '            <intent-filter>\n'
+        '                <action android:name="android.accessibilityservice.AccessibilityService" />\n'
+        '            </intent-filter>\n'
+        '            <meta-data\n'
+        '                android:name="android.accessibilityservice"\n'
+        '                android:resource="@xml/mobilecode_phone_use_accessibility_service" />\n'
+        '        </service>'
+    )
+    text = ensure_application_child(text, phone_use_service, 'android:name=".PhoneUseAccessibilityService"')
     if 'android:scheme="mobilecode"' not in text:
         oauth_filter = (
             '            <intent-filter>\n'
@@ -204,13 +220,58 @@ def main() -> None:
     launcher.parent.mkdir(parents=True, exist_ok=True)
     launcher.write_text(launcher_icon)
 
-    activity = Path('android/app/src/main/kotlin/com/mobilecode/mobile_agent/MainActivity.kt')
+    strings = '''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mobilecode_phone_use_accessibility_summary">MobileCode phone-use probe</string>
+    <string name="mobilecode_phone_use_accessibility_description">Allows MobileCode to observe UI structure and perform explicit test actions for local non-counted phone-use evaluation.</string>
+</resources>
+'''
+    strings_path = Path('android/app/src/main/res/values/strings.xml')
+    strings_path.parent.mkdir(parents=True, exist_ok=True)
+    strings_path.write_text(strings)
+
+    phone_use_accessibility = '''<?xml version="1.0" encoding="utf-8"?>
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeAllMask"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:canPerformGestures="true"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/mobilecode_phone_use_accessibility_description"
+    android:notificationTimeout="100"
+    android:summary="@string/mobilecode_phone_use_accessibility_summary" />
+'''
+    phone_use_accessibility_path = Path('android/app/src/main/res/xml/mobilecode_phone_use_accessibility_service.xml')
+    phone_use_accessibility_path.parent.mkdir(parents=True, exist_ok=True)
+    phone_use_accessibility_path.write_text(phone_use_accessibility)
+
+    network_security = '''<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
+'''
+    network_security_path = Path('android/app/src/main/res/xml/network_security_config.xml')
+    network_security_path.parent.mkdir(parents=True, exist_ok=True)
+    network_security_path.write_text(network_security)
+
+    activity = Path('android/app/src/main/kotlin/com/mobilecode/app/MainActivity.kt')
     activity.parent.mkdir(parents=True, exist_ok=True)
     activity.write_text(Path('tooling/MainActivity.kt').read_text())
-    helper_service = Path('android/app/src/main/kotlin/com/mobilecode/mobile_agent/MobileCodeHelperService.kt')
+    helper_service = Path('android/app/src/main/kotlin/com/mobilecode/app/MobileCodeHelperService.kt')
     helper_service.write_text(Path('tooling/MobileCodeHelperService.kt').read_text())
-    helper_launcher = Path('android/app/src/main/kotlin/com/mobilecode/mobile_agent/MobileCodeHelperLauncherActivity.kt')
+    helper_launcher = Path('android/app/src/main/kotlin/com/mobilecode/app/MobileCodeHelperLauncherActivity.kt')
     helper_launcher.write_text(Path('tooling/MobileCodeHelperLauncherActivity.kt').read_text())
+    phone_use_service = Path('android/app/src/main/kotlin/com/mobilecode/app/PhoneUseAccessibilityService.kt')
+    phone_use_service.write_text(Path('tooling/PhoneUseAccessibilityService.kt').read_text())
 
 
 if __name__ == '__main__':

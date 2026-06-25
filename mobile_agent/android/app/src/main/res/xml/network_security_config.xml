@@ -4,7 +4,7 @@
   
   Security Rules:
   - Only HTTPS connections are allowed by default
-  - cleartextTrafficPermitted is FALSE (no HTTP)
+  - Localhost cleartext is allowed for the in-app Helper/Termux daemon only
   - Certificate pinning for known API endpoints
   - No user-defined trust anchors
   - Debug-overrides are removed in release builds
@@ -16,6 +16,12 @@
       <certificates src="system"/>
     </trust-anchors>
   </base-config>
+
+  <!-- Allow app-local Helper/Termux daemon traffic without opening LAN cleartext. -->
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">localhost</domain>
+    <domain includeSubdomains="true">127.0.0.1</domain>
+  </domain-config>
 
   <!-- Domain-specific config for known API endpoints -->
   <domain-config cleartextTrafficPermitted="false">

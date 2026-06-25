@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -138,6 +139,8 @@ def main() -> None:
     gradle = Path('android/app/build.gradle.kts')
     if gradle.exists():
         gradle_text = gradle.read_text()
+        gradle_text = re.sub(r'namespace\s*=\s*"[^"]+"', 'namespace = "com.mobilecode.app"', gradle_text, count=1)
+        gradle_text = re.sub(r'applicationId\s*=\s*"[^"]+"', 'applicationId = "com.mobilecode.app"', gradle_text, count=1)
         gradle_text = gradle_text.replace('minSdk = flutter.minSdkVersion', 'minSdk = 24')
         if 'import java.util.Properties' not in gradle_text:
             gradle_text = (

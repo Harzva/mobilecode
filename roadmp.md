@@ -15,14 +15,14 @@
 ## 本次任务完成记录
 
 - [x] 复查本地角色库规则，按 `project-inventory + Codex current model` 处理项目组织任务。
-- [x] 复查 MobileCode `AGENTS.md`，确认本地不执行构建或编译。
+- [x] 复查并更新 MobileCode `AGENTS.md`：Mac 本地编译是完整支持的一等路径，应优先用于本地验证；GitHub Actions 保留为远端 CI/发布复核。
 - [x] 将原长文 `roadmp.md` 改造成轻量总索引。
 - [x] 新建 `roadmap/tasks/` 子任务目录。
 - [x] 将 MobileAgent 可借鉴内容拆成独立任务文件，并在本索引建立链接。
 - [x] 为每个任务补充目标、边界、输入、输出、验收和 handoff。
 - [x] 完成 T00-T23 收尾验收，闭环报告见 `docs/mobilecode-t00-t23-closure.md`。
 - [x] 2026-06-25 新增 T25/T26 未完成任务定义：无障碍与后台权限产品化、Subscription Login 与 Usage Hub。
-- [x] 2026-06-25 T25 代码实现已落地，Helper service 正式接入 Android app，Termux daemon 作为外部强 runtime 排在 EmbeddedLite 之前；远端 CI workflow 已补入 T25 focused tests 和 tokenized Helper smoke，T25 仍保持未完成，等待 CI 与 Android QA 证据。
+- [x] 2026-06-25 T25 代码实现已落地，Helper service 正式接入 Android app，Termux daemon 作为外部强 runtime 排在 EmbeddedLite 之前；Mac 本地 focused tests、targeted analyze、debug APK build、emulator Helper smoke 已通过；远端 CI workflow 已补入 T25 focused tests 和 tokenized Helper smoke，T25 仍保持未完成，等待远端 emulator smoke 和真机 QA 证据。
 
 ## 总体判断
 
@@ -43,7 +43,7 @@ MobileCode 当前已经有 `RuntimeManager`、`RuntimeProvider`、`MobileCode He
 2. 只打开任务文件中 `Read first` 列出的源文件，除非遇到明确缺口。
 3. 只修改任务文件中 `Can edit` 列出的路径。
 4. 任务文件中的相对路径默认都相对 `MobileCode` 根目录，而不是相对任务文件自身目录。
-5. 不要在本地构建或编译 MobileCode；本仓库 `AGENTS.md` 明确要求构建、打包、发布走 GitHub Actions。
+5. Mac 环境优先本地编译、测试、安装和调试 MobileCode；GitHub Actions 用于远端 CI、发布打包和最终仓库侧复核。
 6. 涉及 GitHub pull/push、Issues/PR、Actions、Releases 时，按仓库 `AGENTS.md` 使用对应 GitHub 技能或工作流。
 7. 使用 `cc*` 本地模型执行通道时，产出必须回到当前 Codex 模型复核后才能接受。
 8. 完成任务后同时更新任务文件状态和本索引 checkbox。
@@ -138,7 +138,7 @@ T00-T23 已作为第一阶段 roadmap tranche 收口，详见 [T00-T23 Closure R
 - 不把 private clone、pull、merge、rebase、push beta 宣称为 ready。
 - 不在日志、workspace、audit 中保存 token 或 secret 明文。
 - 不把 Python Helper daemon、Android Helper APK、cloud runtime 混成一个无边界实现。
-- 不在本地构建或编译；需要构建验证时交给 GitHub Actions。
+- Mac 本地编译、测试、安装和调试是优先验证路径；GitHub Actions 用于远端复核和发布制品。
 
 ## 全局完成标准
 

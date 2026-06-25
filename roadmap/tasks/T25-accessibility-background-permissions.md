@@ -1,6 +1,6 @@
 # T25 Accessibility 与后台权限产品化
 
-Status: [ ] Implemented in code; pending CI and Android QA evidence
+Status: [ ] Implemented in code; local Mac build/smoke passed; pending remote emulator and real-device QA evidence
 Priority: P1
 Owner role: software-dev-pipeline + mobilecode-mac-local-qa + quality-reviewer
 Depends on: T06, T13, T20
@@ -78,10 +78,15 @@ Depends on: T06, T13, T20
 
 ### Pending Verification
 
-- [ ] Run `flutter analyze` in GitHub Actions or another approved non-local build environment.
-- [ ] Run focused Flutter tests in GitHub Actions or another approved non-local build environment:
+- [x] Run local Mac targeted `flutter analyze` for the T25/workflow entry surfaces.
+- [x] Run local Mac focused Flutter tests:
   - `flutter test test/services/phone_use_accessibility_service_test.dart`
   - `flutter test test/widgets/settings_screen_permissions_test.dart`
+- [x] Build local Mac Android debug APK:
+  - `flutter build apk --debug --target lib/main.dart`
+- [x] Run local Mac Android emulator smoke for install, Helper launcher, Helper health/execute, MainActivity launch, screenshot, and logcat capture.
+- [ ] Resolve or quarantine pre-existing repo-wide `flutter analyze` failures before using full-repo analyze as the release gate.
+- [ ] Keep GitHub Actions as remote CI/release-side verification.
 - [ ] Android emulator QA evidence: disabled state, Accessibility settings opened, enabled/connected state, background permission guide, battery/app settings opened, blocked fallback.
 - [ ] Android real-device QA evidence using the same screenshot set when device access is available.
 
@@ -97,13 +102,14 @@ Depends on: T06, T13, T20
 
 ## Validation
 
-Local build/test is intentionally not run in this repository because `AGENTS.md` says not to build or compile locally. Approved implementation validation should run:
+Mac local build/test is a first-class supported path and should run before relying on GitHub Actions when the local toolchain is available:
 
 ```bash
 cd mobile_agent
-flutter analyze
+flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/settings_screen.dart lib/screens/github_screen.dart lib/screens/github_repo_hub_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/github_deep_service.dart lib/services/github_oauth_flow.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart lib/services/mobile_code_helper_auth.dart lib/services/phone_use_accessibility_service.dart --no-fatal-infos --no-fatal-warnings
 flutter test test/services/phone_use_accessibility_service_test.dart
-flutter test test/widgets/
+flutter test test/widgets/settings_screen_permissions_test.dart
+flutter build apk --debug --target lib/main.dart
 ```
 
 Android QA should install the app, open Settings, tap `无障碍服务`, enable the service manually, return to MobileCode, refresh status, and save screenshots/UI XML/logcat as non-counted evidence.
@@ -121,7 +127,9 @@ QA template: `docs/mobilecode-accessibility-background-permissions-qa.md`
 - `.github/workflows/mobile-runtime-ci.yml` now includes `settings_screen.dart`, `phone_use_accessibility_service.dart`, `mobile_code_helper_auth.dart`, and the focused T25 service/widget tests in the remote analyze/test gate.
 - `.github/workflows/mobile-runtime-ci.yml` also checks Android projection assets so `prepare_android_project.py`, `MobileCodeHelperService.kt`, `MobileCodeHelperLauncherActivity.kt`, and `PhoneUseAccessibilityService.kt` stay aligned with the app source used by GitHub Actions.
 - `.github/workflows/android-app-test.yml` now runs on pull requests touching T25/mobile_agent paths, analyzes T25 Settings/service sources, starts `com.mobilecode.app/.MobileCodeHelperLauncherActivity` with a CI token, and checks Helper health/execute endpoints with `X-MobileCode-Token`.
-- `mobile_agent/tooling/prepare_android_project.py` now projects `PhoneUseAccessibilityService.kt`, the AccessibilityService manifest entry, `mobilecode_phone_use_accessibility_service.xml`, and required string resources when GitHub Actions recreates the Android project.
+- `mobile_agent/tooling/prepare_android_project.py` now projects `PhoneUseAccessibilityService.kt`, the AccessibilityService manifest entry, `mobilecode_phone_use_accessibility_service.xml`, required string resources, and the canonical `com.mobilecode.app` namespace/applicationId when GitHub Actions recreates the Android project.
+- Local Mac validation on 2026-06-25 passed focused T25 tests, targeted analyzer gate, debug APK build, local emulator install, tokenized Helper launcher, Helper `/health`, Helper `/v1/execute` (`pwd`), MainActivity launch, screenshot capture, and logcat crash-keyword scan.
+- Full-repo `flutter analyze` still reports pre-existing issues outside the T25 change surface, so it is tracked separately before it can become the final release gate.
 
 Non-build checks run locally:
 

@@ -75,9 +75,7 @@ jobs:
             adb wait-for-device
             installed=0; for attempt in 1 2 3; do if adb install -r mobile_agent/build/app/outputs/flutter-apk/app-debug.apk; then installed=1; break; fi; adb kill-server; adb start-server; adb wait-for-device; sleep 20; done; test "$installed" = 1
             auth_header='X-MobileCode-Token: ci-helper-token'
-            adb shell am start \
-              -n com.mobilecode.app/.MobileCodeHelperLauncherActivity \
-              --es com.mobilecode.app.extra.AUTH_TOKEN ci-helper-token
+            adb shell am start -n com.mobilecode.app/.MobileCodeHelperLauncherActivity --es com.mobilecode.app.extra.AUTH_TOKEN ci-helper-token
             adb forward tcp:18765 tcp:8765
             helper_ready=0; for attempt in $(seq 1 20); do if curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then helper_ready=1; break; fi; sleep 1; done; if [ "$helper_ready" != 1 ]; then adb shell dumpsys activity services com.mobilecode.app > artifacts/helper-services.txt || true; adb logcat -d -t 1500 > artifacts/android-logcat.txt || true; exit 1; fi
             curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health | tee artifacts/android-helper-health.json

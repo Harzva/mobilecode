@@ -6,6 +6,7 @@ import '../themes/app_theme.dart';
 import '../widgets/glass_card_widget.dart';
 import 'github_screen.dart';
 import 'api_config_screen.dart';
+import 'subscription_usage_hub_screen.dart';
 
 /// App Settings screen
 /// Editor settings, theme, AI assistant, GitHub, About, Data management
@@ -143,6 +144,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => const ApiConfigScreen(),
+                    ),
+                  ),
+                ),
+                const Divider(color: AppTheme.divider, height: 1),
+                _buildNavigationSetting(
+                  icon: Icons.account_circle_outlined,
+                  title: '订阅账户',
+                  subtitle: 'Usage Hub：Claude、Copilot、Antigravity、Codex',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SubscriptionUsageHubScreen(),
                     ),
                   ),
                 ),

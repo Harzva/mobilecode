@@ -1,6 +1,6 @@
 # T25 Accessibility 与后台权限产品化
 
-Status: [ ] Implemented in code; local Mac build/smoke passed; pending remote emulator and real-device QA evidence
+Status: [x] Local implementation and Mac QA complete; remote emulator and real-device QA remain release evidence
 Priority: P1
 Owner role: software-dev-pipeline + mobilecode-mac-local-qa + quality-reviewer
 Depends on: T06, T13, T20
@@ -85,6 +85,7 @@ Depends on: T06, T13, T20
 - [x] Build local Mac Android debug APK:
   - `flutter build apk --debug --target lib/main.dart`
 - [x] Run local Mac Android emulator smoke for install, Helper launcher, Helper health/execute, MainActivity launch, screenshot, and logcat capture.
+- [x] Re-run local Mac debug APK install and MainActivity launch after T26 integration.
 - [ ] Resolve or quarantine pre-existing repo-wide `flutter analyze` failures before using full-repo analyze as the release gate.
 - [ ] Keep GitHub Actions as remote CI/release-side verification.
 - [ ] Android emulator QA evidence: disabled state, Accessibility settings opened, enabled/connected state, background permission guide, battery/app settings opened, blocked fallback.
@@ -129,6 +130,7 @@ QA template: `docs/mobilecode-accessibility-background-permissions-qa.md`
 - `.github/workflows/android-app-test.yml` now runs on pull requests touching T25/mobile_agent paths, analyzes T25 Settings/service sources, starts `com.mobilecode.app/.MobileCodeHelperLauncherActivity` with a CI token, and checks Helper health/execute endpoints with `X-MobileCode-Token`.
 - `mobile_agent/tooling/prepare_android_project.py` now projects `PhoneUseAccessibilityService.kt`, the AccessibilityService manifest entry, `mobilecode_phone_use_accessibility_service.xml`, required string resources, and the canonical `com.mobilecode.app` namespace/applicationId when GitHub Actions recreates the Android project.
 - Local Mac validation on 2026-06-25 passed focused T25 tests, targeted analyzer gate, debug APK build, local emulator install, tokenized Helper launcher, Helper `/health`, Helper `/v1/execute` (`pwd`), MainActivity launch, screenshot capture, and logcat crash-keyword scan.
+- Local Mac revalidation after T26 integration on 2026-06-25 passed focused tests, targeted analyzer gate, debug APK build, APK install, MainActivity launch, and logcat crash-keyword scan.
 - Full-repo `flutter analyze` still reports pre-existing issues outside the T25 change surface, so it is tracked separately before it can become the final release gate.
 
 Non-build checks run locally:

@@ -1,6 +1,6 @@
 # T26 Subscription Login 与 Usage Hub
 
-Status: [ ] Planned
+Status: [ ] Local Phase 1 implemented; official provider login adapters and real quota refresh pending
 Priority: P2
 Owner role: software-dev-pipeline + appui-design-skill + quality-reviewer
 Depends on: T04, T13, T14, T18, T25
@@ -70,13 +70,13 @@ Depends on: T04, T13, T14, T18, T25
 
 ### Phase 1: Usage Hub UI and Local Model
 
-- [ ] Add Settings entry for `订阅账户` or `Usage Hub`.
-- [ ] Add Usage Hub top-level screen with provider tabs/cards.
-- [ ] Add local models: `SubscriptionProvider`, `SubscriptionAccount`, `UsageQuota`, `ProviderLoginMethod`.
-- [ ] Support mock quota cards with usage percent, reset time, refresh status, and error state.
-- [ ] Store provider account metadata separately from credentials.
-- [ ] Keep credentials in secure storage only.
-- [ ] Add tests for model serialization, redaction, and UI empty/error/loading states.
+- [x] Add Settings entry for `订阅账户` / `Usage Hub`.
+- [x] Add Usage Hub top-level screen with provider tabs/cards.
+- [x] Add local models: `SubscriptionProvider`, `SubscriptionAccount`, `UsageQuota`, `ProviderLoginMethod`.
+- [x] Support mock quota cards with usage percent, reset time, refresh status, and error state.
+- [x] Store provider account metadata separately from credentials.
+- [x] Keep credentials in secure storage only through `SubscriptionCredentialVault`.
+- [x] Add tests for model serialization, redaction, and UI empty/error/loading states.
 
 ### Phase 2: Real Login and Refresh
 
@@ -84,9 +84,9 @@ Depends on: T04, T13, T14, T18, T25
 - [ ] Implement GitHub/Copilot login via existing GitHub auth surface or a shared GitHub token boundary.
 - [ ] Implement Google/Antigravity login using system browser account flow where available.
 - [ ] Implement Claude login using official supported flow or manual API key mode; no cookie scraping by default.
-- [ ] Add provider-specific failure kinds and recovery copy.
-- [ ] Add refresh throttling, user-visible last refresh time, and no-silent-failure behavior.
-- [ ] Ensure logout clears secure storage credentials and leaves redacted evidence.
+- [x] Add provider-specific failure kinds and recovery copy for not-yet-connected official flows.
+- [x] Add user-visible last refresh time for local mock refresh; real refresh throttling remains pending provider adapters.
+- [x] Ensure logout clears secure storage credentials and leaves redacted evidence.
 
 ## Acceptance Criteria
 
@@ -100,12 +100,13 @@ Depends on: T04, T13, T14, T18, T25
 
 ## Validation
 
-Roadmap-only update does not run these. Implementation should run:
+Local implementation validation:
 
 ```bash
 cd mobile_agent
-flutter analyze
-flutter test
+flutter analyze lib/screens/settings_screen.dart lib/screens/subscription_usage_hub_screen.dart lib/services/subscription_usage_service.dart --no-fatal-infos --no-fatal-warnings
+flutter test test/services/subscription_usage_service_test.dart test/widgets/subscription_usage_hub_screen_test.dart
+flutter build apk --debug --target lib/main.dart
 ```
 
 Additional implementation checks:
@@ -117,6 +118,17 @@ git diff --check
 ```
 
 Manual QA should cover mock state, successful login state, login failure state, refresh failure, logout, and credential redaction in screenshots/logs/evidence.
+
+## Current Implementation Evidence
+
+- `mobile_agent/lib/screens/settings_screen.dart` adds `订阅账户` under AI settings.
+- `mobile_agent/lib/screens/subscription_usage_hub_screen.dart` provides provider tabs/cards for Claude, Copilot/GitHub, Antigravity/Google, and Codex/ChatGPT.
+- `mobile_agent/lib/services/subscription_usage_service.dart` defines `SubscriptionProvider`, `SubscriptionAccount`, `UsageQuota`, `ProviderLoginMethod`, provider-specific recovery, mock refresh, redacted snapshots, and `SubscriptionCredentialVault`.
+- `SecureSubscriptionCredentialVault` writes manual credentials through `flutter_secure_storage`; UI and redacted snapshots only expose `stored_in_secure_storage`.
+- Official login buttons currently create provider-specific recovery states instead of pretending real provider login is complete.
+- `test/services/subscription_usage_service_test.dart` covers provider groups, mock quota, secure credential boundary, redaction, provider-specific recovery, and logout clearing.
+- `test/widgets/subscription_usage_hub_screen_test.dart` covers provider tabs/cards, privacy copy, and official-login recovery state.
+- Local Mac validation on 2026-06-25 passed focused T25/T26 tests, targeted analyzer gate, debug APK build, APK install, MainActivity launch, and logcat crash-keyword scan.
 
 ## Handoff Prompt
 

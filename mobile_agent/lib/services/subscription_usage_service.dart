@@ -1,0 +1,512 @@
+import 'dart:async';
+import 'dart:math';
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+enum ProviderLoginMethod {
+  officialBrowser,
+  githubOAuth,
+  googleAccount,
+  manualApiKey,
+  manualAccessToken,
+}
+
+enum SubscriptionRefreshState { idle, refreshing, success, error }
+
+enum SubscriptionProviderKind {
+  claude,
+  copilotGithub,
+  antigravityGoogle,
+  codexChatGpt,
+}
+
+@immutable
+class SubscriptionProvider {
+  const SubscriptionProvider({
+    required this.kind,
+    required this.name,
+    required this.accountLabel,
+    required this.loginMethods,
+    required this.recoveryHint,
+    required this.colorValue,
+  });
+
+  final SubscriptionProviderKind kind;
+  final String name;
+  final String accountLabel;
+  final List<ProviderLoginMethod> loginMethods;
+  final String recoveryHint;
+  final int colorValue;
+
+  String get id => kind.name;
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'name': name,
+        'accountLabel': accountLabel,
+        'loginMethods': loginMethods.map((method) => method.name).toList(),
+        'recoveryHint': recoveryHint,
+        'colorValue': colorValue,
+      };
+}
+
+@immutable
+class SubscriptionAccount {
+  const SubscriptionAccount({
+    required this.providerId,
+    required this.displayName,
+    required this.loginMethod,
+    required this.connected,
+    this.lastLoginAt,
+    this.failureKind,
+    this.recoveryHint,
+  });
+
+  final String providerId;
+  final String displayName;
+  final ProviderLoginMethod loginMethod;
+  final bool connected;
+  final DateTime? lastLoginAt;
+  final String? failureKind;
+  final String? recoveryHint;
+
+  Map<String, Object?> toRedactedJson() => {
+        'providerId': providerId,
+        'displayName': displayName,
+        'loginMethod': loginMethod.name,
+        'connected': connected,
+        'lastLoginAt': lastLoginAt?.toIso8601String(),
+        'failureKind': failureKind,
+        'recoveryHint': recoveryHint,
+        'credential': connected ? 'stored_in_secure_storage' : null,
+      };
+}
+
+@immutable
+class UsageQuota {
+  const UsageQuota({
+    required this.providerId,
+    required this.title,
+    required this.usagePercent,
+    required this.timePercent,
+    required this.resetAt,
+    required this.mock,
+    required this.refreshState,
+    this.errorMessage,
+    this.lastRefreshedAt,
+  });
+
+  final String providerId;
+  final String title;
+  final double usagePercent;
+  final double timePercent;
+  final DateTime resetAt;
+  final bool mock;
+  final SubscriptionRefreshState refreshState;
+  final String? errorMessage;
+  final DateTime? lastRefreshedAt;
+
+  UsageQuota copyWith({
+    double? usagePercent,
+    double? timePercent,
+    DateTime? resetAt,
+    bool? mock,
+    SubscriptionRefreshState? refreshState,
+    String? errorMessage,
+    DateTime? lastRefreshedAt,
+  }) {
+    return UsageQuota(
+      providerId: providerId,
+      title: title,
+      usagePercent: usagePercent ?? this.usagePercent,
+      timePercent: timePercent ?? this.timePercent,
+      resetAt: resetAt ?? this.resetAt,
+      mock: mock ?? this.mock,
+      refreshState: refreshState ?? this.refreshState,
+      errorMessage: errorMessage,
+      lastRefreshedAt: lastRefreshedAt ?? this.lastRefreshedAt,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        'providerId': providerId,
+        'title': title,
+        'usagePercent': usagePercent,
+        'timePercent': timePercent,
+        'resetAt': resetAt.toIso8601String(),
+        'mock': mock,
+        'refreshState': refreshState.name,
+        'errorMessage': errorMessage,
+        'lastRefreshedAt': lastRefreshedAt?.toIso8601String(),
+      };
+}
+
+@immutable
+class SubscriptionProviderState {
+  const SubscriptionProviderState({
+    required this.provider,
+    required this.account,
+    required this.quotas,
+  });
+
+  final SubscriptionProvider provider;
+  final SubscriptionAccount? account;
+  final List<UsageQuota> quotas;
+
+  bool get connected => account?.connected == true;
+  bool get hasError =>
+      account?.failureKind != null ||
+      quotas
+          .any((quota) => quota.refreshState == SubscriptionRefreshState.error);
+
+  Map<String, Object?> toRedactedJson() => {
+        'provider': provider.toJson(),
+        'account': account?.toRedactedJson(),
+        'quotas': quotas.map((quota) => quota.toJson()).toList(),
+      };
+}
+
+abstract class SubscriptionCredentialVault {
+  Future<void> writeCredential({
+    required String providerId,
+    required String accountId,
+    required String credential,
+  });
+
+  Future<String?> readCredential({
+    required String providerId,
+    required String accountId,
+  });
+
+  Future<void> deleteCredential({
+    required String providerId,
+    required String accountId,
+  });
+}
+
+class SecureSubscriptionCredentialVault implements SubscriptionCredentialVault {
+  SecureSubscriptionCredentialVault({
+    FlutterSecureStorage? storage,
+  }) : _storage = storage ?? const FlutterSecureStorage();
+
+  final FlutterSecureStorage _storage;
+
+  String _key(String providerId, String accountId) =>
+      'mobilecode.subscription.$providerId.$accountId.credential';
+
+  @override
+  Future<void> writeCredential({
+    required String providerId,
+    required String accountId,
+    required String credential,
+  }) {
+    return _storage.write(
+      key: _key(providerId, accountId),
+      value: credential,
+    );
+  }
+
+  @override
+  Future<String?> readCredential({
+    required String providerId,
+    required String accountId,
+  }) {
+    return _storage.read(key: _key(providerId, accountId));
+  }
+
+  @override
+  Future<void> deleteCredential({
+    required String providerId,
+    required String accountId,
+  }) {
+    return _storage.delete(key: _key(providerId, accountId));
+  }
+}
+
+class SubscriptionUsageService extends ChangeNotifier {
+  SubscriptionUsageService({
+    SubscriptionCredentialVault? credentialVault,
+    DateTime Function()? clock,
+  })  : _credentialVault =
+            credentialVault ?? SecureSubscriptionCredentialVault(),
+        _clock = clock ?? DateTime.now {
+    _states = _defaultStates(_clock());
+  }
+
+  final SubscriptionCredentialVault _credentialVault;
+  final DateTime Function() _clock;
+  late List<SubscriptionProviderState> _states;
+
+  static final SubscriptionUsageService instance = SubscriptionUsageService();
+
+  List<SubscriptionProviderState> get states => List.unmodifiable(_states);
+
+  SubscriptionProviderState stateFor(String providerId) {
+    return _states.firstWhere((state) => state.provider.id == providerId);
+  }
+
+  Future<void> connectManualCredential({
+    required String providerId,
+    required String accountLabel,
+    required String credential,
+    ProviderLoginMethod method = ProviderLoginMethod.manualApiKey,
+  }) async {
+    final trimmedCredential = credential.trim();
+    if (trimmedCredential.isEmpty) {
+      throw ArgumentError.value(
+          providerId, 'providerId', 'Credential is empty');
+    }
+    final accountId = _accountId(providerId);
+    await _credentialVault.writeCredential(
+      providerId: providerId,
+      accountId: accountId,
+      credential: trimmedCredential,
+    );
+    _replaceState(
+      providerId,
+      (state) => SubscriptionProviderState(
+        provider: state.provider,
+        account: SubscriptionAccount(
+          providerId: providerId,
+          displayName: accountLabel.trim().isEmpty
+              ? state.provider.accountLabel
+              : accountLabel.trim(),
+          loginMethod: method,
+          connected: true,
+          lastLoginAt: _clock(),
+          recoveryHint: state.provider.recoveryHint,
+        ),
+        quotas: state.quotas
+            .map((quota) => quota.copyWith(
+                  mock: true,
+                  refreshState: SubscriptionRefreshState.success,
+                  lastRefreshedAt: _clock(),
+                ))
+            .toList(growable: false),
+      ),
+    );
+  }
+
+  Future<void> planOfficialLogin(String providerId) async {
+    _replaceState(
+      providerId,
+      (state) => SubscriptionProviderState(
+        provider: state.provider,
+        account: SubscriptionAccount(
+          providerId: providerId,
+          displayName: state.provider.accountLabel,
+          loginMethod: state.provider.loginMethods.first,
+          connected: false,
+          failureKind: 'official_flow_not_connected_locally',
+          recoveryHint: state.provider.recoveryHint,
+        ),
+        quotas: state.quotas
+            .map((quota) => quota.copyWith(
+                  refreshState: SubscriptionRefreshState.error,
+                  errorMessage:
+                      'Official login requires provider-specific integration before real quota refresh.',
+                ))
+            .toList(growable: false),
+      ),
+    );
+  }
+
+  Future<void> refreshMockUsage(String providerId) async {
+    _replaceState(
+      providerId,
+      (state) => SubscriptionProviderState(
+        provider: state.provider,
+        account: state.account,
+        quotas: state.quotas
+            .map((quota) => quota.copyWith(
+                refreshState: SubscriptionRefreshState.refreshing))
+            .toList(growable: false),
+      ),
+      notify: true,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    final seed = providerId.codeUnits.fold<int>(0, (sum, code) => sum + code);
+    final random = Random(seed + _clock().minute);
+    _replaceState(
+      providerId,
+      (state) => SubscriptionProviderState(
+        provider: state.provider,
+        account: state.account,
+        quotas: [
+          for (final quota in state.quotas)
+            quota.copyWith(
+              usagePercent: (0.18 + random.nextDouble() * 0.62).clamp(0, 1),
+              timePercent: (0.10 + random.nextDouble() * 0.78).clamp(0, 1),
+              refreshState: SubscriptionRefreshState.success,
+              mock: true,
+              errorMessage: null,
+              lastRefreshedAt: _clock(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> logout(String providerId) async {
+    await _credentialVault.deleteCredential(
+      providerId: providerId,
+      accountId: _accountId(providerId),
+    );
+    _replaceState(
+      providerId,
+      (state) => SubscriptionProviderState(
+        provider: state.provider,
+        account: null,
+        quotas: state.quotas
+            .map((quota) => quota.copyWith(
+                  refreshState: SubscriptionRefreshState.idle,
+                  errorMessage: null,
+                  lastRefreshedAt: null,
+                  mock: true,
+                ))
+            .toList(growable: false),
+      ),
+    );
+  }
+
+  Map<String, Object?> redactedSnapshot() => {
+        'providers': _states.map((state) => state.toRedactedJson()).toList(),
+      };
+
+  void _replaceState(
+    String providerId,
+    SubscriptionProviderState Function(SubscriptionProviderState state)
+        update, {
+    bool notify = true,
+  }) {
+    _states = [
+      for (final state in _states)
+        if (state.provider.id == providerId) update(state) else state,
+    ];
+    if (notify) notifyListeners();
+  }
+
+  String _accountId(String providerId) => '$providerId.default';
+}
+
+List<SubscriptionProviderState> _defaultStates(DateTime now) {
+  const providers = [
+    SubscriptionProvider(
+      kind: SubscriptionProviderKind.claude,
+      name: 'Claude',
+      accountLabel: 'Claude account',
+      loginMethods: [
+        ProviderLoginMethod.officialBrowser,
+        ProviderLoginMethod.manualApiKey,
+      ],
+      recoveryHint:
+          'Use Claude official account flow when available, or add a manual API key with explicit consent.',
+      colorValue: 0xFFD06445,
+    ),
+    SubscriptionProvider(
+      kind: SubscriptionProviderKind.copilotGithub,
+      name: 'Copilot / GitHub',
+      accountLabel: 'GitHub account',
+      loginMethods: [
+        ProviderLoginMethod.githubOAuth,
+        ProviderLoginMethod.manualAccessToken,
+      ],
+      recoveryHint:
+          'Connect GitHub through the existing OAuth/token boundary, then refresh Copilot usage.',
+      colorValue: 0xFF24292F,
+    ),
+    SubscriptionProvider(
+      kind: SubscriptionProviderKind.antigravityGoogle,
+      name: 'Antigravity / Google',
+      accountLabel: 'Google account',
+      loginMethods: [
+        ProviderLoginMethod.googleAccount,
+        ProviderLoginMethod.manualAccessToken,
+      ],
+      recoveryHint:
+          'Use the system browser Google account flow when provider support is available.',
+      colorValue: 0xFF2F7DE1,
+    ),
+    SubscriptionProvider(
+      kind: SubscriptionProviderKind.codexChatGpt,
+      name: 'Codex / ChatGPT',
+      accountLabel: 'ChatGPT account',
+      loginMethods: [
+        ProviderLoginMethod.officialBrowser,
+        ProviderLoginMethod.manualApiKey,
+      ],
+      recoveryHint:
+          'Use official ChatGPT/Codex login when available; manual API key mode stays explicit and local.',
+      colorValue: 0xFF111111,
+    ),
+  ];
+
+  return [
+    for (final provider in providers)
+      SubscriptionProviderState(
+        provider: provider,
+        account: null,
+        quotas: _mockQuotas(provider.id, now),
+      ),
+  ];
+}
+
+List<UsageQuota> _mockQuotas(String providerId, DateTime now) {
+  switch (providerId) {
+    case 'claude':
+      return [
+        _quota(providerId, '当前会话', 0.35, 0.79,
+            now.add(const Duration(hours: 1, minutes: 2))),
+        _quota(providerId, '每周限制', 0.65, 0.75,
+            now.add(const Duration(days: 2, hours: 4))),
+        _quota(providerId, 'Claude Design', 0.25, 0.75,
+            now.add(const Duration(days: 2, hours: 4))),
+      ];
+    case 'copilotGithub':
+      return [
+        _quota(providerId, '聊天消息', 0.25, 0.78,
+            now.add(const Duration(days: 1, hours: 8))),
+        _quota(providerId, '内联建议', 0.425, 0.78,
+            now.add(const Duration(days: 1, hours: 8))),
+        _quota(providerId, '高级请求', 0.68, 0.78,
+            now.add(const Duration(days: 1, hours: 8))),
+      ];
+    case 'antigravityGoogle':
+      return [
+        _quota(providerId, 'Gemini Pro', 0.60, 0.52,
+            now.add(const Duration(hours: 12, minutes: 59))),
+        _quota(
+            providerId, 'Claude', 0.40, 0.68, now.add(const Duration(days: 2))),
+        _quota(providerId, 'Gemini Flash', 0.20, 0.30,
+            now.add(const Duration(hours: 3, minutes: 29))),
+      ];
+    default:
+      return [
+        _quota(providerId, '当前会话', 0.25, 0.60,
+            now.add(const Duration(hours: 1, minutes: 59))),
+        _quota(providerId, '每周限制', 0.50, 0.75,
+            now.add(const Duration(days: 2, hours: 14))),
+        _quota(
+            providerId, '每月限制', 0.75, 0.30, now.add(const Duration(days: 20))),
+      ];
+  }
+}
+
+UsageQuota _quota(
+  String providerId,
+  String title,
+  double usagePercent,
+  double timePercent,
+  DateTime resetAt,
+) {
+  return UsageQuota(
+    providerId: providerId,
+    title: title,
+    usagePercent: usagePercent,
+    timePercent: timePercent,
+    resetAt: resetAt,
+    mock: true,
+    refreshState: SubscriptionRefreshState.idle,
+  );
+}

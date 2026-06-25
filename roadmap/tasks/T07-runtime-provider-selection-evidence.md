@@ -61,6 +61,8 @@ Depends on: T06
 - `RuntimeManager.latestSelectionEvidence` records candidate availability, readiness, selected provider, and rejection reasons without tokens or secrets.
 - 2026-06-25 follow-up: `RuntimeManager.withExternalTermux()` now prefers `MobileCode Helper`, then `External Termux daemon`, then legacy `External Termux`, with `Embedded Lite Runtime` behind those providers until controlled-task support is ready.
 - 2026-06-25 follow-up: `MobileCodeHelperProvider` rejects `/v1/health` payloads marked `runtimeKind=termuxDaemon` or `termux=true`, so the Termux daemon is selected by `TermuxDaemonProvider` as an external strong runtime rather than being claimed by the Helper APK provider.
+- 2026-06-25 follow-up: `EmbeddedLiteRuntimeProvider` now provides a controlled local fallback for project preflight and WebView preview metadata only. It is intentionally not a shell runtime and does not expose git, Node, Python, Flutter, Android build, apt, or pkg capabilities.
+- 2026-06-25 follow-up: `RuntimeManager.preflightProject()` now lets a provider-owned `RuntimeProjectInspector` run before the generic shell probe, so EmbeddedLite can inspect project markers without enabling shell execution.
 
 ## Validation
 
@@ -68,6 +70,24 @@ Depends on: T06
 Select-String -Path .\mobile_agent\lib\services\runtime_manager.dart -Pattern "evidence|reason|provider"
 Select-String -Path .\mobile_agent\lib\services\runtime_provider.dart -Pattern "capabilit|health|failure"
 ```
+
+Local Mac validation for the controlled EmbeddedLite follow-up:
+
+```bash
+cd mobile_agent
+dart format --output=none --set-exit-if-changed lib/services/runtime_placeholder_providers.dart lib/services/runtime_manager.dart test/services/runtime_manager_test.dart
+git diff --check
+flutter test test/services/runtime_manager_test.dart
+flutter analyze lib/services/runtime_placeholder_providers.dart lib/services/runtime_manager.dart test/services/runtime_manager_test.dart --no-fatal-infos --no-fatal-warnings
+flutter build apk --debug --target lib/main.dart
+```
+
+2026-06-25 local evidence:
+
+- Focused T25/T26/Helper/Termux/EmbeddedLite tests: 39 passed.
+- Targeted analyze exited 0 with non-fatal style/info findings only.
+- Debug APK built at `mobile_agent/build/app/outputs/flutter-apk/app-debug.apk`.
+- Emulator smoke installed and launched `com.mobilecode.app/.MainActivity`; evidence directory: `mobile_agent/qa-output/android-local-20260625-223548`.
 
 ## Handoff Prompt
 

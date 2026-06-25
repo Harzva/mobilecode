@@ -22,8 +22,9 @@
 - [x] 为每个任务补充目标、边界、输入、输出、验收和 handoff。
 - [x] 完成 T00-T23 收尾验收，闭环报告见 `docs/mobilecode-t00-t23-closure.md`。
 - [x] 2026-06-25 新增 T25/T26 未完成任务定义：无障碍与后台权限产品化、Subscription Login 与 Usage Hub。
-- [x] 2026-06-25 T25 代码实现已落地，Helper service 正式接入 Android app，Termux daemon 作为外部强 runtime 排在 EmbeddedLite 之前；Mac 本地 focused tests、targeted analyze、debug APK build、emulator Helper smoke 已通过；远端 CI workflow 已补入 T25 focused tests 和 tokenized Helper smoke，T25 仍保持未完成，等待远端 emulator smoke 和真机 QA 证据。
+- [x] 2026-06-25 T25 代码实现已落地，Helper service 正式接入 Android app，Termux daemon 作为外部强 runtime 排在 EmbeddedLite 之前；Mac 本地 focused tests、targeted analyze、debug APK build、emulator Helper smoke 已通过；远端 CI workflow 已补入 T25 focused tests 和 tokenized Helper smoke，远端 emulator smoke 和真机 QA 证据保留为 release evidence。
 - [x] 2026-06-25 按 Mac 优先策略本地收口 T25，并完成 T26 Usage Hub 本地 Phase 1：设置页 `订阅账户` 入口、四类 provider、mock quota、secure storage 凭据边界、provider-specific recovery、logout redaction、focused tests、targeted analyze、debug APK build、emulator install/launch。
+- [x] 2026-06-25 EmbeddedLite Runtime 本地受控版落地：只支持 project preflight 与 WebView preview metadata，不暴露 shell/git/node/python/flutter/androidBuild，不实现 apt/pkg 生态；重型执行仍优先 Helper、External Termux 或 Mac 本地编译。
 
 ## 总体判断
 

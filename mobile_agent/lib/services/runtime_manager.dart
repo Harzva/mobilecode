@@ -250,6 +250,20 @@ class RuntimeManager {
     await _ensureReady();
     final provider = _activeProvider!;
     final caps = await provider.capabilities();
+    if (provider is RuntimeProjectInspector) {
+      try {
+        return await (provider as RuntimeProjectInspector).preflightProject(
+          projectPath,
+          packageManager: packageManager,
+        );
+      } on Object catch (error) {
+        return runtimeProjectPreflightFailure(
+          projectPath: projectPath,
+          summary: 'Project preflight failed: $error',
+        );
+      }
+    }
+
     if (!caps.shell) {
       return runtimeProjectPreflightFailure(
         projectPath: projectPath,
@@ -261,13 +275,6 @@ class RuntimeManager {
     }
 
     try {
-      if (provider is RuntimeProjectInspector) {
-        return await (provider as RuntimeProjectInspector).preflightProject(
-          projectPath,
-          packageManager: packageManager,
-        );
-      }
-
       final probe = await provider.execute(
         runtimeProjectProbeCommand,
         workingDir: projectPath,

@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_agent/services/runtime_actions.dart';
 import 'package:mobile_agent/services/runtime_manager.dart';
+import 'package:mobile_agent/services/runtime_placeholder_providers.dart';
 import 'package:mobile_agent/services/runtime_provider.dart';
 import 'package:mobile_agent/services/termux_service.dart';
 
@@ -106,6 +108,89 @@ void main() {
       expect((await manager.capabilities()).webViewPreview, isTrue);
 
       await manager.dispose();
+    });
+
+    test('selects Embedded Lite before WebView when strong runtimes are down',
+        () async {
+      final manager = RuntimeManager(providers: [
+        _FakeRuntimeProvider(
+          type: RuntimeProviderType.mobileCodeHelper,
+          name: 'Helper',
+          health: const RuntimeHealth(
+            type: RuntimeProviderType.mobileCodeHelper,
+            name: 'Helper',
+            available: false,
+            ready: false,
+            status: 'missing',
+            capabilities: RuntimeCapabilities.none,
+          ),
+        ),
+        EmbeddedLiteRuntimeProvider(),
+        _FakeRuntimeProvider(
+          type: RuntimeProviderType.webViewOnly,
+          name: 'WebView',
+          health: const RuntimeHealth(
+            type: RuntimeProviderType.webViewOnly,
+            name: 'WebView',
+            available: true,
+            ready: true,
+            status: 'ready',
+            capabilities: RuntimeCapabilities(webViewPreview: true),
+          ),
+        ),
+      ]);
+
+      await manager.initialize();
+
+      expect(manager.activeProvider?.type, RuntimeProviderType.embeddedLite);
+      final caps = await manager.capabilities();
+      expect(caps.webViewPreview, isTrue);
+      expect(caps.shell, isFalse);
+      expect(caps.git, isFalse);
+      expect(caps.node, isFalse);
+      expect(caps.python, isFalse);
+      expect(caps.flutter, isFalse);
+      expect(caps.androidBuild, isFalse);
+
+      await manager.dispose();
+    });
+
+    test('Embedded Lite preflights projects without shell execution', () async {
+      final projectDir = await Directory.systemTemp.createTemp('mc_embed_');
+      addTearDown(() async {
+        if (await projectDir.exists()) {
+          await projectDir.delete(recursive: true);
+        }
+      });
+      await File('${projectDir.path}/pubspec.yaml')
+          .writeAsString('name: sample\n');
+
+      final manager =
+          RuntimeManager(providers: [EmbeddedLiteRuntimeProvider()]);
+
+      final profile = await manager.preflightProject(projectDir.path);
+
+      expect(manager.activeProvider?.type, RuntimeProviderType.embeddedLite);
+      expect(profile.packageManager, 'flutter');
+      expect(profile.detectedFiles, contains('./pubspec.yaml'));
+      expect(profile.recoveryHint, contains('does not expose Flutter'));
+
+      await manager.dispose();
+    });
+
+    test('Embedded Lite blocks arbitrary command execution and builds',
+        () async {
+      final provider = EmbeddedLiteRuntimeProvider();
+
+      final result = await provider.execute('git status');
+      final webBuild = await provider.buildWeb('/workspace/app');
+      final apkBuild = await provider.buildApk('/workspace/app');
+
+      expect(result.success, isFalse);
+      expect(result.exitCode, 126);
+      expect(result.failureKind, RuntimeTaskFailureKind.commandBlocked);
+      expect(webBuild.success, isFalse);
+      expect(apkBuild.success, isFalse);
     });
 
     test('runs structured git commit action through the active runtime',

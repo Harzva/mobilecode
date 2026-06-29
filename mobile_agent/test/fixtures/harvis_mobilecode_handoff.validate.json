@@ -1,0 +1,38 @@
+{
+  "type": "mobilecode.handoff.v1",
+  "schema_version": "mobilecode.harvis.task.v1",
+  "task_id": "hm_task_validate_001",
+  "correlation_id": "corr_mobilecode_harvis_validate_001",
+  "action": "validate",
+  "approval": {
+    "required": true,
+    "approval_id": "appr_validate_001",
+    "risk": "low",
+    "summary": "Validate the Harvis MobileCode handoff fixture."
+  },
+  "source": {
+    "system": "harvis",
+    "agent_room_topic_id": "topic_mobilecode_bridge_001"
+  },
+  "target": {
+    "runtime": "mobilecode",
+    "device_selector": {
+      "kind": "none",
+      "required": false
+    }
+  },
+  "task": {
+    "title": "Validate Harvis MobileCode fixture",
+    "input": {
+      "path": "mobile_agent/test/fixtures/harvis_mobilecode_handoff.project_check.json"
+    },
+    "timeout_ms": 30000
+  },
+  "evidence_contract": {
+    "expected_types": [
+      "mobilecode.status.v1",
+      "mobilecode.action_evidence.v1"
+    ],
+    "redaction": "public_safe"
+  }
+}

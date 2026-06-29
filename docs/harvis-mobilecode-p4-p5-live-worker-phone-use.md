@@ -54,6 +54,10 @@ Expected files:
 - `*.action-evidence-event.json`
 - optional `*.route-result.json` files when `--route` is enabled
 
+Validate handoff fixture:
+
+`mobile_agent/test/fixtures/harvis_mobilecode_handoff.validate.json`
+
 ## P5 Android Emulator Phone-Use Primitive
 
 Goal:
@@ -126,6 +130,18 @@ real device only with an explicit target and evidence contract.
 - Relay route: both ACK and ActionEvidence event files were passed to
   `lark-relay route-file --no-reply` with live localhost Harvis routing enabled.
 - Relay evidence result: both route attempts returned `failureKind=none`.
+- Harvis result: `routerMessage.ok=true`, `agentRoomMessage.ok=true`, and
+  `taskStatus.ok=true` for both ACK and ActionEvidence.
+- Boundary: Lark reply was dry-run; no Lark message was sent by this
+  verification.
+
+### 2026-06-30 P4 Validate Live Harvis Route
+
+- Input: `mobile_agent/test/fixtures/harvis_mobilecode_handoff.validate.json`.
+- Result: worker accepted `hm_task_validate_001`, validated the checked-in
+  `project_check` fixture JSON, and wrote `mobilecode.action_evidence.v1`.
+- Relay route: ACK and ActionEvidence event files were passed to
+  `lark-relay route-file --no-reply` with live localhost Harvis routing enabled.
 - Harvis result: `routerMessage.ok=true`, `agentRoomMessage.ok=true`, and
   `taskStatus.ok=true` for both ACK and ActionEvidence.
 - Boundary: Lark reply was dry-run; no Lark message was sent by this

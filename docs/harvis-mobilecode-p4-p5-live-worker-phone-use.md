@@ -124,6 +124,49 @@ approval-gated handoff action in `mobilecode_remote_worker.py`. Real-device
 proof remains a separate follow-up with an explicit target and evidence
 contract.
 
+## P5 Android Real-Device Proof Lane
+
+Goal:
+
+`physical Android device -> observe screenshot -> tap -> type -> assert UI -> evidence`
+
+Boundary:
+
+- Physical Android device only.
+- Requires `--serial SERIAL`.
+- Requires `--allow-real-device`.
+- Refuses emulators.
+- Device must be unlocked and visible to the operator.
+- Does not send Lark messages.
+- Does not call Harvis.
+- Does not publish GitHub.
+
+Command:
+
+```bash
+python3 mobile_agent/tooling/harvis_mobilecode_phone_use_real_device_smoke.py \
+  --serial <physical-android-serial> \
+  --allow-real-device \
+  --apk mobile_agent/build/app/outputs/flutter-apk/app-debug.apk \
+  --package com.mobilecode.app \
+  --activity .MainActivity
+```
+
+Evidence files are written under:
+
+`mobile_agent/qa-output/harvis-mobilecode-phone-use-real-device-<timestamp>/`
+
+Required pass checks in `summary.json`:
+
+- `install_ok`
+- `launch_ok`
+- `observe_before_ok`
+- `tap_ok`
+- `type_ok`
+- `assert_ui_ok`
+- `focus_ok`
+- `logcat_clean`
+
 ## Evidence Runs
 
 ### 2026-06-30 P4 Worker Live Harvis Route
@@ -222,3 +265,16 @@ contract.
 - Regression fixed: worker-generated Lark event ids now include
   `created_at`/`updated_at` so repeated handoff runs do not collide with
   earlier `route-file` state.
+
+### 2026-06-30 P5 Real-Device Lane Prepared
+
+- Script:
+  `mobile_agent/tooling/harvis_mobilecode_phone_use_real_device_smoke.py`.
+- Safety: refuses execution unless both `--serial` and `--allow-real-device`
+  are provided.
+- Safety: refuses emulator serials such as `emulator-*`, `127.0.0.1:*`,
+  `localhost:*`, or devices tagged `device:emu`.
+- Evidence: writes blocked or passed `summary.json` under
+  `mobile_agent/qa-output/harvis-mobilecode-phone-use-real-device-<timestamp>/`.
+- Current status: no physical Android device is online on this host, so no
+  real-device proof has been claimed.

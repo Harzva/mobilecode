@@ -185,6 +185,45 @@ void main() {
       }
     });
 
+    test('runs an approved prefixed handoff message through typed runner',
+        () async {
+      final workspace =
+          await Directory.systemTemp.createTemp('mobilecode_harvis_message_');
+      final store = ActionEvidenceStore();
+      final runner = ActionRunner(
+        workspaceRootPath: workspace.path,
+        evidenceStore: store,
+        termuxTaskInvoker: (taskKind, payload) async {
+          expect(taskKind, 'validate');
+          expect(payload['args']['taskId'], 'hm_task_project_check_001');
+          return {
+            'status': 'succeeded',
+            'taskId': 'helper_validate_001',
+            'stdout': 'validate ok',
+            'exitCode': 0,
+          };
+        },
+      );
+      final service = HarvisMobileCodeBridgeService(evidenceStore: store);
+
+      try {
+        final result = await service.runApprovedHandoffMessage(
+          text: '[mobilecode-handoff] ${_handoffPayload(action: 'validate')}',
+          runner: runner,
+        );
+
+        expect(result.handoff.action, 'validate');
+        expect(result.runnerResult.success, true);
+        expect(result.actionEvidence['type'], 'mobilecode.action_evidence.v1');
+        expect(result.actionEvidence['action'], 'validate');
+        expect(result.actionEvidence['status'], 'verified');
+      } finally {
+        if (await workspace.exists()) {
+          await workspace.delete(recursive: true);
+        }
+      }
+    });
+
     test('writes failed ActionEvidence when typed runtime is unavailable',
         () async {
       final workspace =

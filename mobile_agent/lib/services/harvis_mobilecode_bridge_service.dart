@@ -159,6 +159,15 @@ class HarvisMobileCodeBridgeService {
     );
   }
 
+  Future<HarvisMobileCodeHandoffResult> runApprovedHandoffMessage({
+    required String text,
+    required ActionRunner runner,
+  }) =>
+      runApprovedHandoff(
+        payload: parseHandoffMessage(text).toTransportPayload(),
+        runner: runner,
+      );
+
   String _bridgeActionFor(MobileCodeAction action) => switch (action) {
         MobileCodeAction.validateHtml ||
         MobileCodeAction.validateJson ||
@@ -318,6 +327,25 @@ class HarvisMobileCodeHandoff {
       },
     );
   }
+
+  Map<String, dynamic> toTransportPayload() => {
+        'type': 'mobilecode.handoff.v1',
+        'schema_version': 'mobilecode.harvis.task.v1',
+        'task_id': taskId,
+        'correlation_id': correlationId,
+        'action': action,
+        'approval': {
+          'required': true,
+          'approval_id': approvalId,
+        },
+        'source': source,
+        'task': {
+          'title': title,
+          'input': input,
+          'timeout_ms': timeoutMs,
+        },
+        'evidence_contract': evidenceContract,
+      };
 }
 
 class HarvisMobileCodeHandoffResult {

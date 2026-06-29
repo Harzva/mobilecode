@@ -1,12 +1,18 @@
+import 'dart:convert';
+
 import '../core/evidence/action_evidence_store.dart';
+import '../core/evidence/action_runner.dart';
 import '../core/evidence/evidence_model.dart';
 
-/// Read-only exporter for the Harvis <-> MobileCode bridge.
+/// Exporter and minimal approval-gated handoff adapter for the Harvis <->
+/// MobileCode bridge.
 ///
-/// This service does not execute actions, control devices, publish to GitHub, or
-/// call the network. It only converts existing MobileCode runtime state and
-/// ActionEvidence into public-safe JSON envelopes that Harvis can render in
-/// Agent Room.
+/// P1 methods are read-only exporters. P2 handoff execution is intentionally
+/// narrow: it accepts only a validated `mobilecode.handoff.v1` transport
+/// payload with an approval id, calls the existing typed ActionRunner route for
+/// `project_check` or `validate`, and exports the resulting ActionEvidence. It
+/// does not control devices, publish to GitHub, store Lark credentials, or call
+/// the network.
 class HarvisMobileCodeBridgeService {
   HarvisMobileCodeBridgeService({
     ActionEvidenceStore? evidenceStore,
@@ -69,6 +75,7 @@ class HarvisMobileCodeBridgeService {
     required String taskId,
     required String correlationId,
     String? action,
+    Map<String, dynamic> approval = const {},
     String nextAction = 'render_in_harvis_agent_room',
   }) {
     final bridgeAction = action ?? _bridgeActionFor(evidence.actionName);
@@ -104,10 +111,52 @@ class HarvisMobileCodeBridgeService {
             'ref': _redactValue(url),
           },
       ],
+      if (approval.isNotEmpty) 'approval': _redactMap(approval),
       'redaction': 'public_safe',
       'created_at': evidence.endedAt.toUtc().toIso8601String(),
       'next_action': nextAction,
     };
+  }
+
+  HarvisMobileCodeHandoff parseHandoffMessage(String text) {
+    final trimmed = text.trim();
+    final jsonStart = trimmed.indexOf('{');
+    if (jsonStart < 0) {
+      throw const HarvisMobileCodeHandoffException(
+        'handoff message does not contain a JSON payload',
+      );
+    }
+    final decoded = jsonDecode(trimmed.substring(jsonStart));
+    if (decoded is! Map<String, dynamic>) {
+      throw const HarvisMobileCodeHandoffException(
+        'handoff message JSON must be an object',
+      );
+    }
+    return HarvisMobileCodeHandoff.fromTransportPayload(decoded);
+  }
+
+  Future<HarvisMobileCodeHandoffResult> runApprovedHandoff({
+    required Map<String, dynamic> payload,
+    required ActionRunner runner,
+  }) async {
+    final handoff = HarvisMobileCodeHandoff.fromTransportPayload(payload);
+    final result = await runner.run(handoff.toActionSchema());
+    final actionEvidence = exportActionEvidence(
+      evidence: result.evidence,
+      taskId: handoff.taskId,
+      correlationId: handoff.correlationId,
+      action: handoff.action,
+      approval: {
+        'required': true,
+        'approval_id': handoff.approvalId,
+        'status': 'consumed',
+      },
+    );
+    return HarvisMobileCodeHandoffResult(
+      handoff: handoff,
+      runnerResult: result,
+      actionEvidence: actionEvidence,
+    );
   }
 
   String _bridgeActionFor(MobileCodeAction action) => switch (action) {
@@ -135,8 +184,198 @@ class HarvisMobileCodeBridgeService {
   }
 }
 
+class HarvisMobileCodeHandoff {
+  const HarvisMobileCodeHandoff({
+    required this.taskId,
+    required this.correlationId,
+    required this.action,
+    required this.approvalId,
+    required this.title,
+    required this.input,
+    required this.timeoutMs,
+    required this.source,
+    required this.evidenceContract,
+  });
+
+  final String taskId;
+  final String correlationId;
+  final String action;
+  final String approvalId;
+  final String title;
+  final Map<String, dynamic> input;
+  final int timeoutMs;
+  final Map<String, dynamic> source;
+  final Map<String, dynamic> evidenceContract;
+
+  factory HarvisMobileCodeHandoff.fromTransportPayload(
+    Map<String, dynamic> payload,
+  ) {
+    final errors = <String>[];
+    final type = _stringValue(payload['type']);
+    if (type != 'mobilecode.handoff.v1') {
+      errors.add('type must be mobilecode.handoff.v1.');
+    }
+    if (_stringValue(payload['schema_version']) !=
+        'mobilecode.harvis.task.v1') {
+      errors.add('schema_version must be mobilecode.harvis.task.v1.');
+    }
+    final taskId = _stringValue(payload['task_id']);
+    if (!taskId.startsWith('hm_task_')) {
+      errors.add('task_id must start with hm_task_.');
+    }
+    final correlationId = _stringValue(payload['correlation_id']);
+    if (!correlationId.startsWith('corr_')) {
+      errors.add('correlation_id must start with corr_.');
+    }
+    final action = _stringValue(payload['action']);
+    if (action != 'project_check' && action != 'validate') {
+      errors.add('action must be project_check or validate.');
+    }
+
+    final approval = _mapValue(payload['approval']);
+    if (approval['required'] != true) {
+      errors.add('approval.required must be true.');
+    }
+    final approvalId = _stringValue(approval['approval_id']);
+    if (!approvalId.startsWith('appr_')) {
+      errors.add('approval.approval_id is required and must start with appr_.');
+    }
+
+    final source = _mapValue(payload['source']);
+    if (_stringValue(source['system']) != 'harvis') {
+      errors.add('source.system must be harvis.');
+    }
+
+    final task = _mapValue(payload['task']);
+    final title = _stringValue(task['title']).isEmpty
+        ? 'Harvis MobileCode handoff'
+        : _stringValue(task['title']);
+    final input = _mapValue(task['input']);
+    final timeoutMs = _boundedTimeoutMs(task['timeout_ms']);
+
+    final target = _mapValue(payload['target']);
+    final deviceSelector = _mapValue(target['device_selector']);
+    if (deviceSelector['required'] == true) {
+      errors.add('P2 handoff cannot require a phone, emulator, or simulator.');
+    }
+    final deviceKind = _stringValue(deviceSelector['kind']);
+    if (deviceKind.isNotEmpty && deviceKind != 'none') {
+      errors.add('P2 handoff device_selector.kind must be none.');
+    }
+
+    final evidenceContract = _mapValue(payload['evidence_contract']);
+    final expectedTypes = evidenceContract['expected_types'];
+    if (expectedTypes is! List ||
+        !expectedTypes.contains('mobilecode.action_evidence.v1')) {
+      errors.add(
+        'evidence_contract.expected_types must include mobilecode.action_evidence.v1.',
+      );
+    }
+
+    if (errors.isNotEmpty) {
+      throw HarvisMobileCodeHandoffException(
+        'MobileCode handoff validation failed.',
+        errors,
+      );
+    }
+
+    return HarvisMobileCodeHandoff(
+      taskId: taskId,
+      correlationId: correlationId,
+      action: action,
+      approvalId: approvalId,
+      title: title,
+      input: input,
+      timeoutMs: timeoutMs,
+      source: source,
+      evidenceContract: evidenceContract,
+    );
+  }
+
+  ActionSchema toActionSchema() {
+    final projectRef = _mapValue(input['project_ref']);
+    final args = <String, dynamic>{
+      'taskId': taskId,
+      'correlationId': correlationId,
+      'approvalId': approvalId,
+      'projectRefKind': _stringValue(projectRef['kind']),
+      'projectRefValue': _stringValue(projectRef['value']),
+      'projectRefCommit': _stringValue(projectRef['commit']),
+      'sourceSystem': _stringValue(source['system']),
+    }..removeWhere((_, value) => _stringValue(value).isEmpty);
+    final path = _stringValue(input['path']);
+    return ActionSchema(
+      actionName: MobileCodeAction.termuxTaskStart,
+      requestId: 'ev_$taskId',
+      paramsSummary: 'Harvis handoff $action: $title',
+      params: {
+        'taskKind': action,
+        if (path.isNotEmpty) 'path': path,
+        'reason': 'Harvis approval $approvalId',
+        'argsJson': jsonEncode(args),
+        'timeoutMs': timeoutMs,
+        'maxOutputBytes': 32768,
+      },
+    );
+  }
+}
+
+class HarvisMobileCodeHandoffResult {
+  const HarvisMobileCodeHandoffResult({
+    required this.handoff,
+    required this.runnerResult,
+    required this.actionEvidence,
+  });
+
+  final HarvisMobileCodeHandoff handoff;
+  final ActionRunnerResult runnerResult;
+  final Map<String, dynamic> actionEvidence;
+
+  Map<String, dynamic> toJson() => {
+        'ok': true,
+        'task_id': handoff.taskId,
+        'correlation_id': handoff.correlationId,
+        'action': handoff.action,
+        'approval_id': handoff.approvalId,
+        'runner_success': runnerResult.success,
+        'action_evidence': actionEvidence,
+      };
+}
+
+class HarvisMobileCodeHandoffException implements Exception {
+  const HarvisMobileCodeHandoffException(
+    this.message, [
+    this.details = const [],
+  ]);
+
+  final String message;
+  final List<String> details;
+
+  @override
+  String toString() =>
+      details.isEmpty ? message : '$message ${details.join(' ')}';
+}
+
 Map<String, dynamic> _redactMap(Map<String, dynamic> value) =>
     value.map((key, item) => MapEntry(key, _redactValue(item)));
+
+Map<String, dynamic> _mapValue(Object? value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) return Map<String, dynamic>.from(value);
+  return const {};
+}
+
+String _stringValue(Object? value) =>
+    value is String ? value.trim() : value?.toString().trim() ?? '';
+
+int _boundedTimeoutMs(Object? value) {
+  final parsed =
+      value is num ? value.toInt() : int.tryParse(_stringValue(value));
+  if (parsed == null || parsed <= 0) return 30000;
+  if (parsed < 1000) return 1000;
+  if (parsed > 120000) return 120000;
+  return parsed;
+}
 
 dynamic _redactValue(dynamic value) {
   if (value is String) {

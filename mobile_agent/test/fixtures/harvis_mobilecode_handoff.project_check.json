@@ -1,0 +1,40 @@
+{
+  "type": "mobilecode.handoff.v1",
+  "schema_version": "mobilecode.harvis.task.v1",
+  "task_id": "hm_task_project_check_001",
+  "correlation_id": "corr_mobilecode_harvis_001",
+  "action": "project_check",
+  "approval": {
+    "required": true,
+    "approval_id": "appr_project_check_001",
+    "risk": "low",
+    "summary": "Check MobileCode bridge readiness."
+  },
+  "source": {
+    "system": "harvis",
+    "agent_room_topic_id": "topic_mobilecode_bridge_001"
+  },
+  "task": {
+    "title": "Check MobileCode bridge readiness",
+    "input": {
+      "project_ref": {
+        "kind": "repo",
+        "value": "Harzva/lark-relay",
+        "commit": "P0-fixture"
+      },
+      "checks": [
+        "read protocol fixture",
+        "verify status export shape",
+        "verify evidence export shape"
+      ]
+    },
+    "timeout_ms": 300000
+  },
+  "evidence_contract": {
+    "expected_types": [
+      "mobilecode.status.v1",
+      "mobilecode.action_evidence.v1"
+    ],
+    "redaction": "public_safe"
+  }
+}

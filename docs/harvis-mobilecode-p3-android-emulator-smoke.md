@@ -105,3 +105,30 @@ After this emulator smoke passes, the next P3 step is a single end-to-end
 fixture route:
 
 `handoff fixture -> MobileCode ActionEvidence -> lark-relay route-file -> Harvis Agent Room`
+
+## Evidence Runs
+
+### 2026-06-29 Android Emulator Smoke
+
+- Evidence directory:
+  `mobile_agent/qa-output/harvis-mobilecode-android-smoke-20260629-234636/`
+- Emulator: `emulator-5554`
+- Package: `com.mobilecode.app`
+- APK SHA-256:
+  `5acc3d3b6f68a84a62f22cf2f021273f739fa0844cdb79f07e2e8fcaaf64f07e`
+- Result: `summary.json` reports `ok=true`.
+- Install: `Success`.
+- Launch: `Status: ok`, activity `com.mobilecode.app/.MainActivity`.
+- Focus: `com.mobilecode.app/com.mobilecode.app.MainActivity`.
+- UI evidence: screenshot shows the MobileCode main UI with `No messages yet`;
+  UI XML contains `MobileCode`, `No messages yet`, `Mimo`, `Single-shot`, and
+  `任务派发`.
+- Logcat fatal scan: no `FATAL EXCEPTION`, `E/flutter`, `ANR`,
+  `MissingPluginException`, or `SIGSEGV`.
+- Handoff fixture: copied as `handoff-fixture.json`, action `project_check`,
+  approval id `appr_project_check_001`, expected evidence type includes
+  `mobilecode.action_evidence.v1`.
+
+Boundary: this proves P3 emulator install/launch/evidence readiness only. It
+does not prove live Lark delivery, live Harvis routing, phone-use automation,
+Android real-device behavior, or iOS behavior.

@@ -79,6 +79,16 @@ The generated LaunchAgent omits `--once`, so the worker continuously polls the
 inbox. It does not include `--phone-use-allow-real-device` unless that flag is
 passed explicitly during plist generation or install.
 
+Verify the resident loop without installing a LaunchAgent:
+
+```bash
+python3 mobile_agent/tooling/mobilecode_remote_worker_resident_smoke.py
+```
+
+The smoke starts a temporary worker without `--once`, enqueues `project_check`,
+verifies the worker remains alive, enqueues `validate`, then records both
+ActionEvidence payloads.
+
 Evidence files are written under:
 
 `mobile_agent/.harvis-mobilecode/outbox/`
@@ -253,6 +263,23 @@ Required pass checks in `summary.json`:
 - Runtime shape: LaunchAgent `ProgramArguments` omit `--once`, so the worker
   polls `mobile_agent/.harvis-mobilecode/inbox/` and keeps ACK/evidence files
   under `mobile_agent/.harvis-mobilecode/outbox/`.
+
+### 2026-06-30 P4 Resident Worker Loop Smoke
+
+- Script: `mobile_agent/tooling/mobilecode_remote_worker_resident_smoke.py`.
+- Purpose: verify the worker loop itself, without installing a LaunchAgent.
+- Flow: start `mobilecode_remote_worker.py` without `--once`, enqueue
+  `project_check`, confirm the worker remains alive, enqueue `validate`, then
+  confirm both `mobilecode.action_evidence.v1` payloads are written.
+- Expected evidence:
+  `mobile_agent/qa-output/harvis-mobilecode-resident-worker-smoke-<timestamp>/summary.json`.
+- Required checks:
+  - `worker_continued_after_first_handoff=true`
+  - `project_check_verified=true`
+  - `validate_verified=true`
+  - `two_evidence_payloads=true`
+  - `two_processed_files=true`
+  - `failed_dir_empty=true`
 
 ### 2026-06-30 P4 Validate Live Harvis Route
 

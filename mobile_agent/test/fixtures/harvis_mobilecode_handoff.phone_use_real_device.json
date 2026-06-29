@@ -1,0 +1,48 @@
+{
+  "type": "mobilecode.handoff.v1",
+  "schema_version": "mobilecode.harvis.task.v1",
+  "task_id": "hm_task_phone_use_real_device_001",
+  "correlation_id": "corr_mobilecode_harvis_phone_use_real_001",
+  "action": "phone_use_real_device",
+  "approval": {
+    "required": true,
+    "approval_id": "appr_phone_use_real_device_001",
+    "risk": "high",
+    "summary": "Run explicit physical Android phone-use proof."
+  },
+  "source": {
+    "system": "harvis",
+    "agent_room_topic_id": "topic_mobilecode_bridge_001"
+  },
+  "target": {
+    "runtime": "mobilecode",
+    "device_selector": {
+      "kind": "android_physical",
+      "required": true
+    }
+  },
+  "task": {
+    "title": "Run physical Android phone-use proof",
+    "input": {
+      "serial": "TEST_SERIAL",
+      "allow_real_device": true,
+      "text": "HarvisP5RealDeviceFixture",
+      "package": "com.mobilecode.app",
+      "activity": ".MainActivity"
+    },
+    "timeout_ms": 120000
+  },
+  "evidence_contract": {
+    "expected_types": [
+      "mobilecode.status.v1",
+      "mobilecode.action_evidence.v1"
+    ],
+    "expected_artifacts": [
+      "summary.json",
+      "observe-after.png",
+      "window-after.xml",
+      "logcat.txt"
+    ],
+    "redaction": "public_safe"
+  }
+}

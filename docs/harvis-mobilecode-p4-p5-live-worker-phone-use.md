@@ -19,6 +19,10 @@ Boundary:
 - P4 actions are limited to `project_check` and `validate`.
 - P5 adds a separate `phone_use_emulator` action. It must target
   `android_emulator` and still refuses physical devices.
+- P5 also exposes a gated `phone_use_real_device` action. It must target
+  `android_physical`, include `task.input.allow_real_device=true`, include an
+  explicit `task.input.serial`, and the local worker must be launched with
+  `--phone-use-allow-real-device`.
 - P4 still rejects phone/emulator/simulator-required handoffs.
 
 Run once with the checked-in fixture:
@@ -63,6 +67,10 @@ Validate handoff fixture:
 Phone-use handoff fixture:
 
 `mobile_agent/test/fixtures/harvis_mobilecode_handoff.phone_use_emulator.json`
+
+Real-device phone-use handoff fixture:
+
+`mobile_agent/test/fixtures/harvis_mobilecode_handoff.phone_use_real_device.json`
 
 ## P5 Android Emulator Phone-Use Primitive
 
@@ -152,9 +160,28 @@ python3 mobile_agent/tooling/harvis_mobilecode_phone_use_real_device_smoke.py \
   --activity .MainActivity
 ```
 
+The same lane is exposed through the P5 `phone_use_real_device`
+approval-gated handoff action in `mobilecode_remote_worker.py`:
+
+```bash
+python3 mobile_agent/tooling/mobilecode_remote_worker.py \
+  --once \
+  --phone-use-allow-real-device
+```
+
+The handoff fixture must still provide `task.input.allow_real_device=true` and
+a physical Android serial. If the worker is launched without
+`--phone-use-allow-real-device`, it writes failed `mobilecode.action_evidence.v1`
+with `blocked_reason=missing_allow_real_device`.
+
 Evidence files are written under:
 
 `mobile_agent/qa-output/harvis-mobilecode-phone-use-real-device-<timestamp>/`
+
+When launched through `mobilecode_remote_worker.py`, handoff evidence is written
+under:
+
+`mobile_agent/qa-output/harvis-mobilecode-phone-use-real-device-handoff-<timestamp>/`
 
 Required pass checks in `summary.json`:
 
@@ -276,5 +303,8 @@ Required pass checks in `summary.json`:
   `localhost:*`, or devices tagged `device:emu`.
 - Evidence: writes blocked or passed `summary.json` under
   `mobile_agent/qa-output/harvis-mobilecode-phone-use-real-device-<timestamp>/`.
+- Handoff: `phone_use_real_device` is now exposed through
+  `mobilecode_remote_worker.py` with a double opt-in gate: Harvis handoff input
+  and local worker CLI flag.
 - Current status: no physical Android device is online on this host, so no
   real-device proof has been claimed.

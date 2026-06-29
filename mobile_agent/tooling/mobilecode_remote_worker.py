@@ -20,7 +20,12 @@ from pathlib import Path
 from typing import Any
 
 
-ALLOWED_ACTIONS = {"project_check", "validate", "phone_use_emulator"}
+ALLOWED_ACTIONS = {
+    "project_check",
+    "validate",
+    "phone_use_emulator",
+    "phone_use_real_device",
+}
 P4_ACTIONS = {"project_check", "validate"}
 LOCAL_PATH_MARKERS = ("/Users/", "/Volumes/", "/private/", "/var/folders/")
 
@@ -104,7 +109,9 @@ def parse_handoff(payload: dict[str, Any]) -> Handoff:
 
     action = string_value(payload.get("action"))
     if action not in ALLOWED_ACTIONS:
-        errors.append("action must be project_check, validate, or phone_use_emulator.")
+        errors.append(
+            "action must be project_check, validate, phone_use_emulator, or phone_use_real_device."
+        )
 
     approval = map_value(payload.get("approval"))
     if approval.get("required") is not True:
@@ -129,6 +136,11 @@ def parse_handoff(payload: dict[str, Any]) -> Handoff:
             errors.append("P5 phone_use_emulator requires target.device_selector.required=true.")
         if selector_kind != "android_emulator":
             errors.append("P5 phone_use_emulator requires target.device_selector.kind=android_emulator.")
+    if action == "phone_use_real_device":
+        if selector.get("required") is not True:
+            errors.append("P5 phone_use_real_device requires target.device_selector.required=true.")
+        if selector_kind != "android_physical":
+            errors.append("P5 phone_use_real_device requires target.device_selector.kind=android_physical.")
 
     contract = map_value(payload.get("evidence_contract"))
     expected = contract.get("expected_types")
@@ -140,6 +152,11 @@ def parse_handoff(payload: dict[str, Any]) -> Handoff:
     task = map_value(payload.get("task"))
     title = string_value(task.get("title")) or "Harvis MobileCode handoff"
     task_input = map_value(task.get("input"))
+    if action == "phone_use_real_device":
+        if task_input.get("allow_real_device") is not True:
+            errors.append("P5 phone_use_real_device requires task.input.allow_real_device=true.")
+        if not string_value(task_input.get("serial")):
+            errors.append("P5 phone_use_real_device requires task.input.serial.")
 
     if errors:
         raise WorkerError("MobileCode handoff validation failed.", errors)
@@ -175,6 +192,7 @@ def build_status(handoff: Handoff, state: str, summary: str) -> dict[str, Any]:
             "project_check",
             "validate",
             "phone_use_emulator",
+            "phone_use_real_device",
             "evidence_export",
         ],
         "device": device_status_for(handoff),
@@ -191,6 +209,8 @@ def build_status(handoff: Handoff, state: str, summary: str) -> dict[str, Any]:
 def device_status_for(handoff: Handoff) -> dict[str, Any]:
     if handoff.action == "phone_use_emulator":
         return {"kind": "android_emulator", "required": True, "status": "required"}
+    if handoff.action == "phone_use_real_device":
+        return {"kind": "android_physical", "required": True, "status": "required"}
     return {"kind": "none", "required": False, "status": "not_required"}
 
 
@@ -199,7 +219,9 @@ def execute_handoff(handoff: Handoff, workspace_root: Path, args: argparse.Names
         return run_project_check(handoff, workspace_root)
     if handoff.action == "validate":
         return run_validate(handoff, workspace_root)
-    return run_phone_use_emulator(handoff, workspace_root, args)
+    if handoff.action == "phone_use_emulator":
+        return run_phone_use_emulator(handoff, workspace_root, args)
+    return run_phone_use_real_device(handoff, workspace_root, args)
 
 
 def run_project_check(handoff: Handoff, workspace_root: Path) -> dict[str, Any]:
@@ -415,6 +437,176 @@ def run_phone_use_emulator(
         summary="MobileCode phone-use emulator handoff passed."
         if ok
         else "MobileCode phone-use emulator handoff failed.",
+        observations=observations,
+        artifacts=artifacts,
+    )
+
+
+def run_phone_use_real_device(
+    handoff: Handoff,
+    workspace_root: Path,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    output_dir = (
+        workspace_root
+        / "mobile_agent"
+        / "qa-output"
+        / f"harvis-mobilecode-phone-use-real-device-handoff-{stamp}"
+    )
+    text = safe_adb_text(string_value(handoff.input.get("text")) or f"HarvisP5RealDevice{stamp}")
+    serial = string_value(handoff.input.get("serial")) or string_value(args.phone_use_serial)
+    if not args.phone_use_allow_real_device:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        summary_path = output_dir / "summary.json"
+        write_json(
+            summary_path,
+            {
+                "schema": "harvis_mobilecode_phone_use_real_device_smoke.v1",
+                "ok": False,
+                "blocked": True,
+                "blocked_reason": "missing_allow_real_device",
+                "boundary": "Worker requires --phone-use-allow-real-device before invoking real-device runner.",
+            },
+        )
+        return action_evidence(
+            handoff,
+            ok=False,
+            summary="MobileCode phone-use real-device handoff was blocked before runner launch.",
+            observations=[
+                {
+                    "kind": "phone_use_real_device",
+                    "status": "failed",
+                    "message": "worker refused to invoke real-device runner",
+                },
+                {
+                    "kind": "phone_use_blocked",
+                    "status": "failed",
+                    "message": "missing_allow_real_device",
+                },
+            ],
+            artifacts=[
+                {
+                    "kind": "json",
+                    "label": "phone_use_summary",
+                    "ref": display_path(summary_path, workspace_root),
+                }
+            ],
+        )
+
+    script = Path(args.phone_use_real_device_script)
+    if not script.is_absolute():
+        script = workspace_root / script
+    if not script.exists():
+        return action_evidence(
+            handoff,
+            ok=False,
+            summary="MobileCode phone-use real-device script is missing.",
+            observations=[
+                {
+                    "kind": "phone_use_real_device",
+                    "status": "failed",
+                    "message": "phone-use real-device script is missing",
+                }
+            ],
+            artifacts=[],
+        )
+
+    command = [
+        sys.executable,
+        str(script),
+        "--serial",
+        serial,
+        "--output",
+        str(output_dir),
+        "--text",
+        text,
+    ]
+    package_name = string_value(handoff.input.get("package")) or args.phone_use_package
+    if package_name:
+        command.extend(["--package", package_name])
+    activity = string_value(handoff.input.get("activity")) or args.phone_use_activity
+    if activity:
+        command.extend(["--activity", activity])
+    apk = string_value(handoff.input.get("apk")) or args.phone_use_apk
+    if apk:
+        command.extend(["--apk", apk])
+    if handoff.input.get("skip_install") is True or args.phone_use_skip_install:
+        command.append("--skip-install")
+    command.append("--allow-real-device")
+
+    completed = subprocess.run(
+        command,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    summary_path = output_dir / "summary.json"
+    summary = read_optional_summary(summary_path)
+    ok = completed.returncode == 0 and summary.get("ok") is True
+    blocked_reason = string_value(summary.get("blocked_reason"))
+    observations = [
+        {
+            "kind": "phone_use_real_device",
+            "status": "passed" if ok else "failed",
+            "message": "physical Android observe -> tap -> type -> assert UI completed"
+            if ok
+            else "phone-use real-device primitive failed",
+        },
+        {
+            "kind": "phone_use_command",
+            "status": "passed" if completed.returncode == 0 else "failed",
+            "message": f"exit_code={completed.returncode}",
+        },
+    ]
+    if blocked_reason:
+        observations.append(
+            {
+                "kind": "phone_use_blocked",
+                "status": "failed",
+                "message": blocked_reason,
+            }
+        )
+    checks = summary.get("checks")
+    if isinstance(checks, dict):
+        for key, value in checks.items():
+            observations.append(
+                {
+                    "kind": f"phone_use_check:{key}",
+                    "status": "passed" if value is True else "failed",
+                    "message": f"{key}={value}",
+                }
+            )
+
+    artifacts = [
+        {
+            "kind": "json",
+            "label": "phone_use_summary",
+            "ref": display_path(summary_path, workspace_root),
+        },
+        {
+            "kind": "screenshot",
+            "label": "observe_after",
+            "ref": display_path(output_dir / "observe-after.png", workspace_root),
+        },
+        {
+            "kind": "xml",
+            "label": "window_after",
+            "ref": display_path(output_dir / "window-after.xml", workspace_root),
+        },
+        {
+            "kind": "log",
+            "label": "logcat",
+            "ref": display_path(output_dir / "logcat.txt", workspace_root),
+        },
+    ]
+    return action_evidence(
+        handoff,
+        ok=ok,
+        summary="MobileCode phone-use real-device handoff passed."
+        if ok
+        else "MobileCode phone-use real-device handoff failed or was blocked.",
         observations=observations,
         artifacts=artifacts,
     )
@@ -650,12 +842,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--phone-use-script",
         default=str(mobile_agent_dir / "tooling" / "harvis_mobilecode_phone_use_emulator_smoke.sh"),
     )
+    parser.add_argument(
+        "--phone-use-real-device-script",
+        default=str(mobile_agent_dir / "tooling" / "harvis_mobilecode_phone_use_real_device_smoke.py"),
+    )
     parser.add_argument("--phone-use-serial", default="")
     parser.add_argument("--phone-use-apk", default="")
     parser.add_argument("--phone-use-package", default="com.mobilecode.app")
     parser.add_argument("--phone-use-activity", default=".MainActivity")
     parser.add_argument("--phone-use-skip-install", action="store_true")
     parser.add_argument("--phone-use-build-debug", action="store_true")
+    parser.add_argument("--phone-use-allow-real-device", action="store_true")
     return parser.parse_args(argv)
 
 

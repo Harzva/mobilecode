@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Any
 
 
-ALLOWED_ACTIONS = {"project_check", "validate"}
+ALLOWED_ACTIONS = {"project_check", "validate", "phone_use_emulator"}
+P4_ACTIONS = {"project_check", "validate"}
 LOCAL_PATH_MARKERS = ("/Users/", "/Volumes/", "/private/", "/var/folders/")
 
 
@@ -103,7 +104,7 @@ def parse_handoff(payload: dict[str, Any]) -> Handoff:
 
     action = string_value(payload.get("action"))
     if action not in ALLOWED_ACTIONS:
-        errors.append("action must be project_check or validate.")
+        errors.append("action must be project_check, validate, or phone_use_emulator.")
 
     approval = map_value(payload.get("approval"))
     if approval.get("required") is not True:
@@ -118,11 +119,16 @@ def parse_handoff(payload: dict[str, Any]) -> Handoff:
 
     target = map_value(payload.get("target"))
     selector = map_value(target.get("device_selector"))
-    if selector.get("required") is True:
+    if action in P4_ACTIONS and selector.get("required") is True:
         errors.append("P4 worker handoff cannot require a device.")
     selector_kind = string_value(selector.get("kind"))
-    if selector_kind and selector_kind != "none":
+    if action in P4_ACTIONS and selector_kind and selector_kind != "none":
         errors.append("P4 worker device_selector.kind must be none.")
+    if action == "phone_use_emulator":
+        if selector.get("required") is not True:
+            errors.append("P5 phone_use_emulator requires target.device_selector.required=true.")
+        if selector_kind != "android_emulator":
+            errors.append("P5 phone_use_emulator requires target.device_selector.kind=android_emulator.")
 
     contract = map_value(payload.get("evidence_contract"))
     expected = contract.get("expected_types")
@@ -164,8 +170,14 @@ def build_status(handoff: Handoff, state: str, summary: str) -> dict[str, Any]:
         "phase": handoff.action,
         "summary": summary,
         "progress": {"completed": 0, "total": 1, "current": state},
-        "capabilities": ["handoff_ack", "project_check", "validate", "evidence_export"],
-        "device": {"kind": "none", "required": False, "status": "not_required"},
+        "capabilities": [
+            "handoff_ack",
+            "project_check",
+            "validate",
+            "phone_use_emulator",
+            "evidence_export",
+        ],
+        "device": device_status_for(handoff),
         "approval": {
             "required": True,
             "approval_id": handoff.approval_id,
@@ -176,10 +188,18 @@ def build_status(handoff: Handoff, state: str, summary: str) -> dict[str, Any]:
     }
 
 
-def execute_handoff(handoff: Handoff, workspace_root: Path) -> dict[str, Any]:
+def device_status_for(handoff: Handoff) -> dict[str, Any]:
+    if handoff.action == "phone_use_emulator":
+        return {"kind": "android_emulator", "required": True, "status": "required"}
+    return {"kind": "none", "required": False, "status": "not_required"}
+
+
+def execute_handoff(handoff: Handoff, workspace_root: Path, args: argparse.Namespace) -> dict[str, Any]:
     if handoff.action == "project_check":
         return run_project_check(handoff, workspace_root)
-    return run_validate(handoff, workspace_root)
+    if handoff.action == "validate":
+        return run_validate(handoff, workspace_root)
+    return run_phone_use_emulator(handoff, workspace_root, args)
 
 
 def run_project_check(handoff: Handoff, workspace_root: Path) -> dict[str, Any]:
@@ -287,6 +307,119 @@ def run_validate(handoff: Handoff, workspace_root: Path) -> dict[str, Any]:
     )
 
 
+def run_phone_use_emulator(
+    handoff: Handoff,
+    workspace_root: Path,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    script = Path(args.phone_use_script)
+    if not script.is_absolute():
+        script = workspace_root / script
+    if not script.exists():
+        return action_evidence(
+            handoff,
+            ok=False,
+            summary="MobileCode phone-use emulator script is missing.",
+            observations=[
+                {
+                    "kind": "phone_use_emulator",
+                    "status": "failed",
+                    "message": "phone-use emulator script is missing",
+                }
+            ],
+            artifacts=[],
+        )
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    output_dir = workspace_root / "mobile_agent" / "qa-output" / f"harvis-mobilecode-phone-use-handoff-{stamp}"
+    text = safe_adb_text(string_value(handoff.input.get("text")) or f"HarvisP5Handoff{stamp}")
+    command = [
+        str(script),
+        "--output",
+        str(output_dir),
+        "--text",
+        text,
+    ]
+    serial = string_value(handoff.input.get("serial")) or string_value(args.phone_use_serial)
+    if serial:
+        command.extend(["--serial", serial])
+    package_name = string_value(handoff.input.get("package")) or args.phone_use_package
+    if package_name:
+        command.extend(["--package", package_name])
+    activity = string_value(handoff.input.get("activity")) or args.phone_use_activity
+    if activity:
+        command.extend(["--activity", activity])
+    apk = string_value(handoff.input.get("apk")) or args.phone_use_apk
+    if apk:
+        command.extend(["--apk", apk])
+    if handoff.input.get("skip_install") is True or args.phone_use_skip_install:
+        command.append("--skip-install")
+    if handoff.input.get("build_debug") is True or args.phone_use_build_debug:
+        command.append("--build-debug")
+
+    completed = subprocess.run(
+        command,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    summary_path = output_dir / "summary.json"
+    summary = read_optional_summary(summary_path)
+    ok = completed.returncode == 0 and summary.get("ok") is True
+    observations = [
+        {
+            "kind": "phone_use_emulator",
+            "status": "passed" if ok else "failed",
+            "message": "observe -> tap -> type -> assert UI completed"
+            if ok
+            else "phone-use emulator primitive failed",
+        },
+        {
+            "kind": "phone_use_command",
+            "status": "passed" if completed.returncode == 0 else "failed",
+            "message": f"exit_code={completed.returncode}",
+        },
+    ]
+    checks = summary.get("checks")
+    if isinstance(checks, dict):
+        for key, value in checks.items():
+            observations.append(
+                {
+                    "kind": f"phone_use_check:{key}",
+                    "status": "passed" if value is True else "failed",
+                    "message": f"{key}={value}",
+                }
+            )
+
+    artifacts = [
+        {
+            "kind": "json",
+            "label": "phone_use_summary",
+            "ref": display_path(summary_path, workspace_root),
+        },
+        {
+            "kind": "screenshot",
+            "label": "observe_after",
+            "ref": display_path(output_dir / "observe-after.png", workspace_root),
+        },
+        {
+            "kind": "xml",
+            "label": "window_after",
+            "ref": display_path(output_dir / "window-after.xml", workspace_root),
+        },
+    ]
+    return action_evidence(
+        handoff,
+        ok=ok,
+        summary="MobileCode phone-use emulator handoff passed."
+        if ok
+        else "MobileCode phone-use emulator handoff failed.",
+        observations=observations,
+        artifacts=artifacts,
+    )
+
+
 def action_evidence(
     handoff: Handoff,
     *,
@@ -316,13 +449,18 @@ def action_evidence(
 
 
 def wrap_lark_event(payload: dict[str, Any], *, chat_id: str, sender_id: str) -> dict[str, Any]:
-    event_id = f"evt_{payload['type'].replace('.', '_')}_{payload['task_id']}"
+    event_suffix = event_safe_token(
+        string_value(payload.get("created_at"))
+        or string_value(payload.get("updated_at"))
+        or utc_now()
+    )
+    event_id = f"evt_{payload['type'].replace('.', '_')}_{payload['task_id']}_{event_suffix}"
     return {
         "event_id": event_id,
-        "request_id": f"req_{payload['task_id']}",
+        "request_id": f"req_{payload['task_id']}_{event_suffix}",
         "chat_id": chat_id,
         "sender_id": sender_id,
-        "message_id": f"om_{payload['type'].replace('.', '_')}_{payload['task_id']}",
+        "message_id": f"om_{payload['type'].replace('.', '_')}_{payload['task_id']}_{event_suffix}",
         "message_type": "text",
         "content": json.dumps({"text": f"[mobilecode] {json.dumps(payload, separators=(',', ':'))}"}),
     }
@@ -379,7 +517,7 @@ def process_file(path: Path, args: argparse.Namespace) -> dict[str, Any]:
         wrap_lark_event(ack, chat_id=args.chat_id, sender_id=args.sender_id),
     )
 
-    evidence = execute_handoff(handoff, args.workspace_root)
+    evidence = execute_handoff(handoff, args.workspace_root, args)
     evidence_payload_path = args.outbox / f"{prefix}.action-evidence.json"
     evidence_event_path = args.outbox / f"{prefix}.action-evidence-event.json"
     write_json(evidence_payload_path, evidence)
@@ -423,6 +561,31 @@ def safe_workspace_path(workspace_root: Path, requested_path: str) -> Path | Non
     except ValueError:
         return None
     return target
+
+
+def display_path(path: Path, workspace_root: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(workspace_root.resolve()))
+    except ValueError:
+        return str(path)
+
+
+def read_optional_summary(path: Path) -> dict[str, Any]:
+    try:
+        decoded = json.loads(path.read_text(encoding="utf-8"))
+        return decoded if isinstance(decoded, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def safe_adb_text(value: str) -> str:
+    cleaned = "".join(char for char in value if char.isalnum() or char in "._-")
+    return cleaned[:80] or "HarvisP5Handoff"
+
+
+def event_safe_token(value: str) -> str:
+    token = "".join(char if char.isalnum() else "_" for char in value)
+    return token.strip("_")[:80] or "event"
 
 
 def redact(value: Any) -> Any:
@@ -483,6 +646,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--relay-config")
     parser.add_argument("--chat-id", default="oc_mobilecode_remote_worker")
     parser.add_argument("--sender-id", default="ou_mobilecode_remote_worker")
+    parser.add_argument(
+        "--phone-use-script",
+        default=str(mobile_agent_dir / "tooling" / "harvis_mobilecode_phone_use_emulator_smoke.sh"),
+    )
+    parser.add_argument("--phone-use-serial", default="")
+    parser.add_argument("--phone-use-apk", default="")
+    parser.add_argument("--phone-use-package", default="com.mobilecode.app")
+    parser.add_argument("--phone-use-activity", default=".MainActivity")
+    parser.add_argument("--phone-use-skip-install", action="store_true")
+    parser.add_argument("--phone-use-build-debug", action="store_true")
     return parser.parse_args(argv)
 
 

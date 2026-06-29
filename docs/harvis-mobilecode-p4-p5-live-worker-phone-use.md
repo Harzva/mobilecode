@@ -16,7 +16,9 @@ Boundary:
 - MobileCode does not store Lark tokens, Harvis secrets, cookies, or `.env`
   values.
 - The worker only accepts approved `mobilecode.handoff.v1` tasks.
-- Actions are limited to `project_check` and `validate`.
+- P4 actions are limited to `project_check` and `validate`.
+- P5 adds a separate `phone_use_emulator` action. It must target
+  `android_emulator` and still refuses physical devices.
 - P4 still rejects phone/emulator/simulator-required handoffs.
 
 Run once with the checked-in fixture:
@@ -57,6 +59,10 @@ Expected files:
 Validate handoff fixture:
 
 `mobile_agent/test/fixtures/harvis_mobilecode_handoff.validate.json`
+
+Phone-use handoff fixture:
+
+`mobile_agent/test/fixtures/harvis_mobilecode_handoff.phone_use_emulator.json`
 
 ## P5 Android Emulator Phone-Use Primitive
 
@@ -113,10 +119,10 @@ Required pass checks in `summary.json`:
 - `assert_ui_ok`
 - `logcat_clean`
 
-This P5 lane is the bridge from simple MobileCode APK smoke to controlled
-phone-use primitives. The next step after this passes is to expose the same
-primitive through an approval-gated MobileCode handoff action, then rerun on a
-real device only with an explicit target and evidence contract.
+The same primitive is also exposed through the P5 `phone_use_emulator`
+approval-gated handoff action in `mobilecode_remote_worker.py`. Real-device
+proof remains a separate follow-up with an explicit target and evidence
+contract.
 
 ## Evidence Runs
 
@@ -171,3 +177,48 @@ real device only with an explicit target and evidence contract.
   typed marker in the focused input field.
 - Boundary: emulator-only phone-use primitive; not a real-device proof and not
   Accessibility-service proof.
+
+### 2026-06-30 P5 Phone-Use Handoff Fixture
+
+- Input:
+  `mobile_agent/test/fixtures/harvis_mobilecode_handoff.phone_use_emulator.json`.
+- Worker action: `phone_use_emulator`.
+- Safety gate: approval id `appr_phone_use_emulator_001`; target selector must
+  be `android_emulator` with `required=true`.
+- Execution: worker calls
+  `mobile_agent/tooling/harvis_mobilecode_phone_use_emulator_smoke.sh`.
+- Unit evidence: `test_mobilecode_remote_worker.py` uses a fake phone-use
+  runner to verify ACK generation, `mobilecode.action_evidence.v1` writeback,
+  and `phone_use_check:*` observations without requiring an emulator.
+- Runtime evidence: live Android Emulator handoff passed on 2026-06-30.
+
+### 2026-06-30 P5 Phone-Use Handoff Live Route
+
+- Input:
+  `mobile_agent/test/fixtures/harvis_mobilecode_handoff.phone_use_emulator.json`.
+- Evidence directory:
+  `mobile_agent/qa-output/harvis-mobilecode-phone-use-handoff-20260629-163319/`
+- Emulator: `emulator-5554`.
+- Worker result: `ok=true`, task `hm_task_phone_use_emulator_001`, action
+  `phone_use_emulator`.
+- Phone-use summary: `summary.json` reports `ok=true`.
+- Checks:
+  - `install_ok=true`
+  - `launch_ok=true`
+  - `observe_before_ok=true`
+  - `tap_ok=true`
+  - `type_ok=true`
+  - `assert_ui_ok=true`
+  - `logcat_clean=true`
+- Harvis route: ACK and ActionEvidence were passed to
+  `lark-relay route-file --no-reply` with live localhost Harvis routing enabled.
+- Harvis result: `routerMessage.ok=true`, `agentRoomMessage.ok=true`, and
+  `taskStatus.ok=true` for both ACK and ActionEvidence.
+- UI evidence: `window-after.xml` contains `HarvisP5HandoffFixture` in the
+  MobileCode `EditText`; `window-focus.txt` shows
+  `com.mobilecode.app/.MainActivity`.
+- Screenshot evidence: `observe-after.png` shows the MobileCode UI with the
+  typed handoff marker in the focused input field.
+- Regression fixed: worker-generated Lark event ids now include
+  `created_at`/`updated_at` so repeated handoff runs do not collide with
+  earlier `route-file` state.

@@ -12,6 +12,9 @@ REPO_ROOT = MOBILE_AGENT.parent
 WORKER = MOBILE_AGENT / "tooling" / "mobilecode_remote_worker.py"
 FIXTURE = MOBILE_AGENT / "test" / "fixtures" / "harvis_mobilecode_handoff.project_check.json"
 VALIDATE_FIXTURE = MOBILE_AGENT / "test" / "fixtures" / "harvis_mobilecode_handoff.validate.json"
+PHONE_USE_FIXTURE = (
+    MOBILE_AGENT / "test" / "fixtures" / "harvis_mobilecode_handoff.phone_use_emulator.json"
+)
 
 
 class MobileCodeRemoteWorkerTest(unittest.TestCase):
@@ -116,6 +119,85 @@ class MobileCodeRemoteWorkerTest(unittest.TestCase):
             self.assertIn('"action":"validate"', evidence_text)
             self.assertIn('"status":"verified"', evidence_text)
             self.assertIn("valid JSON", evidence_text)
+
+    def test_once_processes_phone_use_emulator_handoff(self):
+        with tempfile.TemporaryDirectory(prefix="mobilecode-worker-phone-use-") as raw:
+            root = Path(raw)
+            inbox = root / "inbox"
+            outbox = root / "outbox"
+            processed = root / "processed"
+            failed = root / "failed"
+            fake_script = root / "fake_phone_use.py"
+            fake_script.write_text(
+                """#!/usr/bin/env python3
+import json
+import pathlib
+import sys
+
+args = sys.argv[1:]
+output = pathlib.Path(args[args.index("--output") + 1])
+text = args[args.index("--text") + 1]
+output.mkdir(parents=True, exist_ok=True)
+(output / "observe-after.png").write_bytes(b"png")
+(output / "window-after.xml").write_text(f"<node text='{text}' />", encoding="utf-8")
+(output / "summary.json").write_text(json.dumps({
+    "schema": "harvis_mobilecode_phone_use_emulator_smoke.v1",
+    "ok": True,
+    "input_text": text,
+    "checks": {
+        "observe_before_ok": True,
+        "tap_ok": True,
+        "type_ok": True,
+        "assert_ui_ok": True,
+        "logcat_clean": True
+    }
+}, indent=2), encoding="utf-8")
+""",
+                encoding="utf-8",
+            )
+            fake_script.chmod(0o755)
+            inbox.mkdir()
+            shutil.copy(PHONE_USE_FIXTURE, inbox / "phone-use.json")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(WORKER),
+                    "--once",
+                    "--inbox",
+                    str(inbox),
+                    "--outbox",
+                    str(outbox),
+                    "--processed-dir",
+                    str(processed),
+                    "--failed-dir",
+                    str(failed),
+                    "--workspace-root",
+                    str(REPO_ROOT),
+                    "--phone-use-script",
+                    str(fake_script),
+                    "--phone-use-skip-install",
+                ],
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            report = json.loads(completed.stdout)
+            self.assertTrue(report["ok"])
+            self.assertEqual(report["task_id"], "hm_task_phone_use_emulator_001")
+            self.assertEqual(report["action"], "phone_use_emulator")
+
+            evidence_events = sorted(outbox.glob("*.action-evidence-event.json"))
+            self.assertEqual(len(evidence_events), 1)
+            evidence = json.loads(evidence_events[0].read_text(encoding="utf-8"))
+            evidence_text = json.loads(evidence["content"])["text"]
+
+            self.assertIn('"action":"phone_use_emulator"', evidence_text)
+            self.assertIn('"status":"verified"', evidence_text)
+            self.assertIn("phone_use_check:assert_ui_ok", evidence_text)
 
     def test_rejects_handoff_without_approval(self):
         with tempfile.TemporaryDirectory(prefix="mobilecode-worker-bad-") as raw:

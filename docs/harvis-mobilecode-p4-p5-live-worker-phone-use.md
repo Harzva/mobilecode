@@ -48,6 +48,37 @@ python3 mobile_agent/tooling/mobilecode_remote_worker.py \
   --sender-id mobilecode-remote-worker
 ```
 
+Run as a resident macOS LaunchAgent only through an explicit operator command.
+The helper writes a local plist and keeps secrets/config paths outside the
+repository:
+
+```bash
+python3 mobile_agent/tooling/mobilecode_remote_worker_service.py render-plist \
+  --route \
+  --lark-relay-bin /path/to/lark-relay/src/cli.js \
+  --relay-config /path/to/lark-relay.config.json \
+  --chat-id <allowed-chat-id> \
+  --sender-id mobilecode-remote-worker
+```
+
+Install or inspect the resident worker:
+
+```bash
+python3 mobile_agent/tooling/mobilecode_remote_worker_service.py install \
+  --route \
+  --lark-relay-bin /path/to/lark-relay/src/cli.js \
+  --relay-config /path/to/lark-relay.config.json \
+  --chat-id <allowed-chat-id> \
+  --sender-id mobilecode-remote-worker
+
+python3 mobile_agent/tooling/mobilecode_remote_worker_service.py status
+python3 mobile_agent/tooling/mobilecode_remote_worker_service.py uninstall
+```
+
+The generated LaunchAgent omits `--once`, so the worker continuously polls the
+inbox. It does not include `--phone-use-allow-real-device` unless that flag is
+passed explicitly during plist generation or install.
+
 Evidence files are written under:
 
 `mobile_agent/.harvis-mobilecode/outbox/`
@@ -210,6 +241,18 @@ Required pass checks in `summary.json`:
   `taskStatus.ok=true` for both ACK and ActionEvidence.
 - Boundary: Lark reply was dry-run; no Lark message was sent by this
   verification.
+
+### 2026-06-30 P4 Resident Worker LaunchAgent Helper
+
+- Script: `mobile_agent/tooling/mobilecode_remote_worker_service.py`.
+- Purpose: render, install, inspect, or uninstall the resident
+  `mobilecode_remote_worker.py` macOS LaunchAgent.
+- Safety: local relay config paths are operator-provided and not committed.
+- Safety: the generated plist does not include `--phone-use-allow-real-device`
+  unless the operator explicitly passes it.
+- Runtime shape: LaunchAgent `ProgramArguments` omit `--once`, so the worker
+  polls `mobile_agent/.harvis-mobilecode/inbox/` and keeps ACK/evidence files
+  under `mobile_agent/.harvis-mobilecode/outbox/`.
 
 ### 2026-06-30 P4 Validate Live Harvis Route
 

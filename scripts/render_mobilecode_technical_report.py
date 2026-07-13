@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
+    Image,
     KeepTogether,
     ListFlowable,
     ListItem,
@@ -39,6 +41,7 @@ GREEN = colors.HexColor("#0B9B7E")
 AMBER = colors.HexColor("#D9822B")
 RED = colors.HexColor("#C43B3B")
 RULE = colors.HexColor("#D8DEEA")
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def register_fonts() -> None:
@@ -232,6 +235,46 @@ def architecture_figure() -> Drawing:
     return d
 
 
+def navigation_figure() -> Drawing:
+    d = Drawing(470, 254)
+    d.add(Rect(0, 0, 470, 254, rx=8, ry=8, fillColor=colors.white, strokeColor=RULE))
+
+    def box(x, y, w, h, label, fill=colors.white, stroke=RULE, size=8):
+        d.add(Rect(x, y, w, h, rx=5, ry=5, fillColor=fill, strokeColor=stroke, strokeWidth=1))
+        lines = label.split("\n")
+        for idx, line in enumerate(lines):
+            d.add(String(
+                x + w / 2,
+                y + h / 2 + 4 - idx * 11,
+                line,
+                textAnchor="middle",
+                fontName="Helvetica-Bold" if idx == 0 else "Helvetica",
+                fontSize=size,
+                fillColor=INK,
+            ))
+
+    box(160, 205, 150, 31, "Home / Agent Chat", PALE, BLUE, 9)
+    box(160, 151, 150, 31, "Navigation Drawer", colors.HexColor("#F6F8FC"), MUTED, 9)
+    box(12, 83, 125, 43, "Capability Center\nRuntime | CLI | Accounts | Security", colors.HexColor("#EAF8F4"), GREEN, 7.5)
+    box(172, 83, 125, 43, "Build & Release\nAPK | Release | Logs | Checks", colors.HexColor("#FFF4E5"), AMBER, 7.5)
+    box(332, 83, 125, 43, "Models & Settings\nProvider | Model | Theme | Workspace", colors.HexColor("#F3EDFF"), colors.HexColor("#7653C6"), 7.2)
+    box(12, 19, 96, 34, "Typed action\npreview + approval", PALE, BLUE, 7.2)
+    box(129, 19, 96, 34, "Selected runtime\nHelper | Alpine | Cloud", colors.HexColor("#EAF8F4"), GREEN, 7.0)
+    box(246, 19, 96, 34, "Evidence\nstatus + logs + recovery", colors.HexColor("#F3EDFF"), colors.HexColor("#7653C6"), 7.2)
+    box(363, 19, 94, 34, "Artifact\nHTML | PNG | PDF | MP4", colors.HexColor("#FFF4E5"), AMBER, 7.0)
+
+    d.add(Line(235, 205, 235, 182, strokeColor=MUTED, strokeWidth=1.2))
+    d.add(Line(235, 151, 235, 139, strokeColor=MUTED, strokeWidth=1.2))
+    d.add(Line(74, 139, 395, 139, strokeColor=MUTED, strokeWidth=1))
+    for x in (74, 234, 395):
+        d.add(Line(x, 139, x, 126, strokeColor=MUTED, strokeWidth=1))
+    d.add(Line(74, 83, 74, 66, strokeColor=GREEN, strokeWidth=1))
+    d.add(Line(60, 66, 410, 66, strokeColor=MUTED, strokeWidth=1))
+    for x in (60, 177, 294, 410):
+        d.add(Line(x, 66, x, 53, strokeColor=MUTED, strokeWidth=1))
+    return d
+
+
 def evidence_figure() -> Drawing:
     d = Drawing(470, 150)
     d.add(Rect(0, 0, 470, 150, rx=8, ry=8, fillColor=colors.white, strokeColor=RULE))
@@ -259,9 +302,9 @@ def beta_figure() -> Drawing:
     d = Drawing(470, 120)
     d.add(Rect(0, 0, 470, 120, rx=8, ry=8, fillColor=colors.white, strokeColor=RULE))
     labels = [
-        ("Worktree", "not closed", RED),
-        ("Current CI", "blocked", RED),
-        ("Android emulator", "focused pass", GREEN),
+        ("Repository", "converged", GREEN),
+        ("Current CI", "passed", GREEN),
+        ("Android emulator", "current pass", GREEN),
         ("Physical device", "pending", AMBER),
         ("Provider truth", "partial", AMBER),
     ]
@@ -274,6 +317,97 @@ def beta_figure() -> Drawing:
     d.add(String(235, 99, "BETA READINESS IS THE INTERSECTION OF ALL GATES", textAnchor="middle", fontName="Helvetica-Bold", fontSize=9, fillColor=INK))
     d.add(String(235, 20, "A strong feature proof does not waive repository, CI, security, or device evidence.", textAnchor="middle", fontName="Helvetica-Oblique", fontSize=8, fillColor=MUTED))
     return d
+
+
+GALLERIES = {
+    "current-shell": [
+        ("docs/technical-report/assets/mobilecode-android-home-20260714.png", "Android Emulator · current home · 2026-07-14"),
+        ("docs/technical-report/assets/mobilecode-android-navigation-20260714.png", "Android Emulator · feature navigation · 2026-07-14"),
+        ("docs/technical-report/assets/mobilecode-capability-runtime-20260714.png", "Android Emulator · runtime capability truth · 2026-07-14"),
+        ("docs/technical-report/assets/mobilecode-ios-home-20260714.png", "iOS Simulator · current home · 2026-07-14"),
+    ],
+    "capability-tabs": [
+        ("docs/technical-report/assets/mobilecode-extension-center-20260714.png", "Extension Center / CLI Hub"),
+        ("docs/technical-report/assets/mobilecode-subscriptions-20260714.png", "Accounts and subscriptions"),
+        ("docs/technical-report/assets/mobilecode-security-20260714.png", "Security, permissions, vault, redaction"),
+    ],
+    "product-flows": [
+        ("mobile_agent/qa-output/android-devharness-closeout-20260627-022350/07-cli-hub-top.png", "CLI Hub catalog · Android Emulator · 2026-06-27"),
+        ("docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/04-action-probe.png", "Phone Use action probe · Android Emulator · 2026-06-21"),
+        ("docs/assets/qa/mobilecode-20260619/03-snake-playable-webview.png", "Editable HTML game in app-owned WebView · Android Emulator · 2026-06-19"),
+    ],
+    "pptx-effect": [
+        ("docs/technical-report/assets/mobilecode-pptx-effect-20260714.png", "Rendered from a real 16:9 PPTX produced by MobileCode's HTML-to-PPTX worker · 2026-07-14"),
+    ],
+}
+
+
+def screenshot_gallery(key: str, st):
+    entries = GALLERIES[key]
+    count = len(entries)
+    col_width = 162 * mm / count
+    max_width = (158 if count == 1 else 35 if count == 4 else 45) * mm
+    max_height = (89 if count == 1 else 68 if count == 4 else 82) * mm
+    images = []
+    captions = []
+    for relative_path, caption in entries:
+        image = Image(str(REPO_ROOT / relative_path))
+        scale = min(max_width / image.imageWidth, max_height / image.imageHeight)
+        image.drawWidth = image.imageWidth * scale
+        image.drawHeight = image.imageHeight * scale
+        images.append(image)
+        captions.append(Paragraph(inline_markup(caption), st["caption"]))
+    table = Table([images, captions], colWidths=[col_width] * count, hAlign="CENTER")
+    table.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, 0), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 3),
+        ("BOX", (0, 0), (-1, -1), 0.45, RULE),
+        ("INNERGRID", (0, 0), (-1, -1), 0.35, RULE),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#FAFBFD")),
+    ]))
+    return table
+
+
+def cli_matrix_table(st):
+    manifest_path = REPO_ROOT / "cli-hub/catalog/mobilecode-cli-hub.manifest.json"
+    entries = json.loads(manifest_path.read_text(encoding="utf-8"))["entries"]
+    headers = ["CLI", "Stage", "Install", "Probe", "Auth", "Read", "Mutate", "Credential / risk"]
+    rows = [[Paragraph(inline_markup(cell), st["table"]) for cell in headers]]
+    for entry in entries:
+        auth = entry.get("auth", {})
+        install = entry.get("install", {})
+        values = [
+            entry.get("title", entry["id"]),
+            entry.get("supportLevel", "-"),
+            install.get("strategy", "-"),
+            "Yes" if entry.get("probe") else "-",
+            "Required" if auth.get("required") else "No",
+            str(len(entry.get("readOnlyTasks", []))) or "0",
+            str(len(entry.get("mutationTasks", []))) or "0",
+            f'{entry.get("credentialPolicy", "-")} / {entry.get("riskLevel", "-")}',
+        ]
+        rows.append([Paragraph(inline_markup(str(cell)), st["table"]) for cell in values])
+    widths = [28, 17, 25, 12, 18, 12, 14, 40]
+    table = Table(rows, colWidths=[value * mm for value in widths], repeatRows=1, hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#DDE5FF")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), INK),
+        ("GRID", (0, 0), (-1, -1), 0.35, RULE),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#FAFBFD")]),
+        ("TEXTCOLOR", (1, 1), (1, 2), GREEN),
+        ("TEXTCOLOR", (1, 3), (1, 7), AMBER),
+        ("TEXTCOLOR", (1, 8), (1, -1), MUTED),
+    ]))
+    return table
 
 
 def parse_markdown(path: Path):
@@ -327,8 +461,21 @@ def markdown_flowables(lines, st):
         if line.startswith("<!-- FIGURE:"):
             flush_paragraph(); flush_lists()
             key = line.split(":", 1)[1].split("-->", 1)[0].strip()
-            figure = {"architecture": architecture_figure, "evidence": evidence_figure, "beta": beta_figure}[key]()
+            figure = {"architecture": architecture_figure, "navigation": navigation_figure, "evidence": evidence_figure, "beta": beta_figure}[key]()
             story.append(KeepTogether([Spacer(1, 2 * mm), figure, Spacer(1, 2 * mm)]))
+            i += 1
+            continue
+        if line.startswith("<!-- GALLERY:"):
+            flush_paragraph(); flush_lists()
+            key = line.split(":", 1)[1].split("-->", 1)[0].strip()
+            story.append(screenshot_gallery(key, st))
+            story.append(Spacer(1, 3 * mm))
+            i += 1
+            continue
+        if line.strip() == "<!-- CLI_MATRIX -->":
+            flush_paragraph(); flush_lists()
+            story.append(cli_matrix_table(st))
+            story.append(Spacer(1, 3 * mm))
             i += 1
             continue
         if line.strip() == "<!-- PAGEBREAK -->":
@@ -374,7 +521,7 @@ def markdown_flowables(lines, st):
             numbered.append(re.sub(r"^\d+\. ", "", line).strip()); i += 1; continue
         if not line.strip():
             flush_paragraph(); flush_lists(); i += 1; continue
-        if line.startswith("Figure "):
+        if line.startswith(("Figure ", "Table ")):
             flush_paragraph(); flush_lists(); story.append(Paragraph(inline_markup(line), st["caption"])); i += 1; continue
         paragraph.append(line.strip()); i += 1
 
@@ -418,7 +565,7 @@ def build(input_path: Path, output_path: Path) -> None:
     story.append(Table(
         [[Paragraph("STATUS", st["table"]), Paragraph("Advanced Beta candidate - physical-device closure pending", st["table"])],
          [Paragraph("PRIMARY TARGET", st["table"]), Paragraph("Android and iOS control plane; Android Dev Harness execution", st["table"])],
-         [Paragraph("EVIDENCE DATE", st["table"]), Paragraph("2026-07-13", st["table"])]],
+         [Paragraph("EVIDENCE DATE", st["table"]), Paragraph("2026-07-14", st["table"])]],
         colWidths=[34 * mm, 126 * mm],
         style=TableStyle([
             ("BACKGROUND", (0, 0), (0, -1), PALE),

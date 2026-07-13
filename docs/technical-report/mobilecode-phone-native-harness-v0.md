@@ -1,7 +1,7 @@
 # MobileCode: A Phone-Native Harness for Verifiable Agentic Software Work
 
 Harzva MobileCode Project
-Technical Report v0 - Evidence snapshot: 2026-07-13
+Technical Report v0 - Evidence snapshot: 2026-07-14
 Repository: https://github.com/Harzva/mobilecode
 
 ## Abstract
@@ -10,7 +10,7 @@ AI coding agents are normally operated from desktop shells, remote integrated de
 
 This report presents the current MobileCode architecture as a verifiable mobile harness rather than a remote-IDE skin. The system separates a Flutter control plane, a capability-aware runtime plane, and an evidence plane. RuntimeProvider exposes multiple backends, including a built-in Android Helper, an Alpine Linux sandbox, an external Termux fallback, a bounded embedded-lite path, cloud placeholders, and WebView-only degradation. ActionRunner accepts structured actions, blocks undeclared shell payloads, requests approval for mutation, and emits redacted ActionEvidence records. A CLI Hub catalog describes install, probe, authentication, read-only, and mutation tasks as typed contracts. Native WebView/WKWebView rendering handles low-cost PNG and PDF output, while an approved HyperFrames task provides local MP4 rendering when Node.js, Chromium, and FFmpeg are present.
 
-The evidence snapshot records a July 13 full Flutter regression with 502 passing tests, a static-analysis result with zero errors and documented warning debt, and an Android emulator closeout for editable HTML, PNG/PDF export, HyperFrames lint/check/render inside an Alpine/PRoot guest, and authenticated Helper startup. The remote Helper 401 was traced to CI process scope: the emulator action executed adjacent script lines in separate shells, so a header stored in one line's local variable was absent from later curl requests even though Android had received the expected 15-character synthetic token. The workflow now sends the header explicitly in every request. Related hardening adds a shell-safe intent alias, a volatile per-request service credential snapshot, presence-only logging, explicit non-sticky startup, and bounded retries. Physical-device CLI login and business-task evidence remain incomplete, and provider-supported subscription quota refresh is not yet available. MobileCode is therefore presented as an advanced Beta candidate with a concrete release gate, not as a finished production system.
+The evidence snapshot records a July 13 full Flutter regression with 502 passing tests, a static-analysis result with zero errors and documented warning debt, and an Android emulator closeout for editable HTML, PNG/PDF export, HyperFrames lint/check/render inside an Alpine/PRoot guest, and authenticated Helper startup. The remote Helper 401 was traced to CI process scope: the emulator action executed adjacent script lines in separate shells, so a header stored in one line's local variable was absent from later curl requests even though Android had received the expected 15-character synthetic token. The workflow now sends the header explicitly in every request. Related hardening adds a shell-safe intent alias, a volatile per-request service credential snapshot, presence-only logging, explicit non-sticky startup, and bounded retries. On July 14, the current application was relaunched on Android API 36 and iOS simulators and its navigation, runtime, extension, account, and security surfaces were captured directly from the running build. These visual demonstrations are labeled by evidence tier and are not presented as physical-device proof. Physical-device CLI login and business-task evidence remain incomplete, and provider-supported subscription quota refresh is not yet available. MobileCode is therefore presented as an advanced Beta candidate with a concrete release gate, not as a finished production system.
 
 ## 1. Introduction
 
@@ -75,15 +75,57 @@ The evidence record is the boundary between a runtime effect and a product claim
 
 Figure 1. MobileCode's three-plane architecture. The phone owns the control and evidence planes. Execution can remain local, use an external mobile runtime, or delegate a heavy build to a remote service while preserving the same typed contract.
 
-## 4. Architecture
+## 4. Product Navigation and Running Demonstration
 
-### 4.1 Control plane
+MobileCode already contains several module-level visual assets: the three-plane architecture, preview-first evidence lifecycle, Beta gate, README product overview, Android capability-center closeout, Phone Use probe sequence, and editable artifact flow. The missing piece was a single navigation map that connected these modules to the running product. Figure 2 adds that map and the following galleries bind it to screenshots captured from executable builds.
+
+<!-- FIGURE:navigation -->
+
+Figure 2. Product navigation and execution path. The navigation drawer exposes three product domains. Capability Center then separates runtime truth, CLI extensions, accounts, and security, while every executable flow converges on typed action, selected runtime, evidence, and artifact stages.
+
+### 4.1 Current runnable shell
+
+The July 14 capture used the current Pure debug APK on an Android API 36 emulator and the current signed simulator build on an iPhone 17 Pro simulator. The Android sequence verifies cold launch, the home shell, drawer navigation, and capability-state rendering. The iOS capture verifies that the same Flutter control surface launches after initialization. These screenshots prove visible application state only; runtime behavior is supported separately by tests, Helper probes, and artifact evidence.
+
+<!-- GALLERY:current-shell -->
+
+Figure 3. Current application surfaces captured from running Android and iOS simulator builds. The platform and date are stated in every caption so simulator evidence cannot be mistaken for physical-device evidence.
+
+### 4.2 Functional module navigation
+
+Capability Center is the main operational navigation surface. Its four tabs answer different product questions: what can execute, what bounded extensions are installed, which provider account path is available, and which permissions or redaction controls remain incomplete. The following captures come from the same July 14 Android session.
+
+<!-- GALLERY:capability-tabs -->
+
+Figure 4. Three capability modules from the current Android build: Extension Center / CLI Hub, Accounts and Subscriptions, and Security and Permissions. Runtime status is shown in Figure 3.
+
+<!-- PAGEBREAK -->
+
+### 4.3 Executable task and artifact demonstrations
+
+The navigation surfaces are backed by earlier runnable demonstrations. CLI Hub exposes catalog entries and typed tasks; Phone Use performs a preview/action probe through the harness; the artifact pipeline keeps generated HTML editable and opens it inside an app-owned WebView. All three images below were recorded on Android emulators. The directory name of the Phone Use benchmark contains `real-device-lane`, but its recorded ADB evidence identifies `emulator-5554`; this report therefore classifies it as emulator evidence.
+
+<!-- GALLERY:product-flows -->
+
+Figure 5. Functional demonstrations already present in the repository: CLI Hub catalog, Phone Use action probe, and an editable HTML game rendered in MobileCode.
+
+| Evidence tier | Current result | What it establishes | Remaining boundary |
+| --- | --- | --- | --- |
+| Android Emulator / current APK | Passed launch and six-screen navigation capture on 2026-07-14 | Current UI, drawer, runtime, extension, account, and security state | Does not establish vendor battery, accessibility, or external-app behavior |
+| iOS Simulator / current build | Passed launch and initialized home capture on 2026-07-14 | Current iOS control surface starts without a fatal launch signature | Does not establish signing, install, background, or physical-device behavior |
+| Remote Android Actions | Passed current PR head; visual artifact was black and excluded from this report | Repository-side build, Helper auth, typed command, and launch checks | Remote screenshot is not accepted as visual proof until capture timing is corrected |
+| Physical iPhone | Blocked: paired iPhone 11 remained locked and CoreDevice tunnel disconnected | Device discovery only | Unlock, reconnect tunnel, install, launch, and capture |
+| Physical Android | Not attached | No current claim | Attach handset and run permission, background, login, and artifact acceptance |
+
+## 5. Architecture
+
+### 5.1 Control plane
 
 The Flutter application provides the conversation, file workspace, settings, capability center, extension center, build preview, subscription usage surface, task trace, recovery cards, and artifact preview. AgentLoopController converts model tool calls into structured MobileCode actions. ActionRunner validates the action and produces ActionEvidence. Approval and progress are visible in the same trace that initiated the task.
 
 The control plane intentionally contains product policy. It decides which actions are exposed to the model, which require approval, which runtime family is eligible, how much output may return, and which recovery action the user should see. These decisions do not belong inside a provider-specific shell script.
 
-### 4.2 Runtime plane
+### 5.2 Runtime plane
 
 RuntimeProvider is the common contract. It exposes initialization, capability reporting, health, command execution, streaming, workspace synchronization, web/APK build requests, install/launch operations, and task cancellation. Optional interfaces add task monitoring and typed task execution.
 
@@ -100,15 +142,15 @@ The current provider order is:
 
 RuntimeManager initializes providers, records health, selects the first ready provider for general execution, and can explicitly route CLI Hub tasks to the Linux sandbox. Selection is therefore capability-aware and observable. A failed health check becomes a RuntimeHealth result with missing dependencies and recovery actions.
 
-### 4.3 Evidence plane
+### 5.3 Evidence plane
 
 ActionEvidence unifies runtime, Git, collaboration, and release observations. The record includes timestamps, success, logs, failure category, recovery actions, changed files, metadata, and a redaction flag. Evidence is stored separately from the UI widgets that render it. This permits the same record to support task recovery, approval history, diagnostics, release QA, and future benchmark traces.
 
 <!-- FIGURE:evidence -->
 
-Figure 2. Preview-first action lifecycle. A mutation is not started until the approved replay is received. Runtime output is normalized and redacted before it becomes evidence or model context.
+Figure 6. Preview-first action lifecycle. A mutation is not started until the approved replay is received. Runtime output is normalized and redacted before it becomes evidence or model context.
 
-## 5. Typed Actions and CLI Hub
+## 6. Typed Actions and CLI Hub
 
 CLI Hub is a local catalog and schema for bounded command-line capabilities. An entry declares identity, source, support level, risk, credential policy, install profile, health probe, authentication tasks, and business tasks. The schema rejects duplicate identifiers, missing safety fields, undeclared raw shell, and credential-like payload fields.
 
@@ -127,7 +169,17 @@ The task payload contains identifiers and bounded scalar data rather than a shel
 
 This design limits flexibility by intent. MobileCode prefers a smaller set of inspectable actions over a universal agent shell. Full access can exist as a separately governed expert mode, but it is not the default contract for a model-generated action.
 
-## 6. Runtime Capability Routing
+<!-- PAGEBREAK -->
+
+### 6.1 CLI capability matrix
+
+The current manifest contains 14 entries: two supported foundations, five preview integrations, and seven planned cloud/deployment CLIs. Table 1 separates installation strategy, health probe, authentication requirement, declared read-only tasks, mutation tasks, credential boundary, and risk. A catalog row is not a claim that provider login has passed on a physical device; `supported`, `preview`, and `planned` remain distinct product states.
+
+<!-- CLI_MATRIX -->
+
+Table 1. CLI Hub manifest matrix rendered directly from `cli-hub/catalog/mobilecode-cli-hub.manifest.json`. Counts refer to explicitly declared read-only and mutation task identifiers, not arbitrary shell capability.
+
+## 7. Runtime Capability Routing
 
 MobileCode runtime routing differs from model routing. It does not decide which language model should answer a prompt; it decides which execution substrate can satisfy a typed action while preserving policy. The router is currently deterministic and health-driven rather than learned.
 
@@ -146,7 +198,7 @@ The current runtime decision policy can be summarized as:
 | APK or heavy build | GitHub Actions / capable external runtime | Never claim Embedded Lite support |
 | Heavy VLM inference | Remote/provider-native model path | Alpine is not treated as inference enablement |
 
-## 7. Artifact Pipeline
+## 8. Artifact Pipeline
 
 MobileCode treats artifacts as first-class outputs. An HTML file remains editable source rather than a screenshot-only result. The native renderer can preview it and produce app-owned PNG or PDF files. The output record includes path, size, dimensions or page count when available, backend identity, and SHA-256.
 
@@ -154,7 +206,7 @@ For video, the HyperFrames CLI is exposed through typed tasks: probe, lint, chec
 
 PPTX is a separate worker boundary. The current visual mode captures each HTML slide and places it as a full-slide image for fidelity. Editable-text mode is reserved but fails explicitly because a faithful general HTML-to-editable-PPTX conversion is not yet implemented. This is an example of capability honesty: unsupported editability is not represented as a successful visual export.
 
-### 7.1 July 13 evidence
+### 8.1 July 13 evidence
 
 | Evidence item | Result | Scope |
 | --- | --- | --- |
@@ -169,7 +221,17 @@ PPTX is a separate worker boundary. The current visual mode captures each HTML s
 
 The package mutation log still contains a known Alpine `apk` database permission warning. Runtime postconditions verify the installed binaries, but the warning remains a release-quality defect until the underlying write path is clean.
 
-## 8. Security and Privacy Model
+<!-- PAGEBREAK -->
+
+### 8.2 PPTX visual export demonstration
+
+On July 14, the repository's HTML-to-PPTX worker generated a real one-slide, 16:9 PowerPoint artifact through the `mobilecode.html-render.v1` contract. The worker used Playwright/Chrome to capture the source frame and `pptxgenjs` to place it into the deck. The resulting PPTX was rendered back to PNG and passed the presentation overflow check. This proves the current visual export path and slide fidelity; it does not claim editable text, because editable-text mode still fails explicitly.
+
+<!-- GALLERY:pptx-effect -->
+
+Figure 7. Presentation effect rendered from the generated PPTX. The slide visualizes a MobileCode-Lark bidirectional agent channel with approvals, typed action envelopes, and shared evidence.
+
+## 9. Security and Privacy Model
 
 MobileCode assumes model output, external catalogs, runtime stdout, authentication flows, workspace files, and remote provider responses can all contain untrusted or sensitive material.
 
@@ -187,27 +249,27 @@ The current controls include:
 
 These controls reduce but do not eliminate risk. A mobile app with broad file or accessibility permission remains sensitive. Local evidence can expose project names or task intent if redaction rules are incomplete. A signed extension can still be malicious if the signing key is compromised. A Helper token prevents accidental localhost access but does not replace Android sandboxing or user approval.
 
-## 9. Evaluation Methodology
+## 10. Evaluation Methodology
 
 MobileCode uses layered evaluation because no single test establishes product readiness.
 
-### 9.1 Contract tests
+### 10.1 Contract tests
 
 Flutter unit and widget tests cover action mapping, evidence serialization, approval behavior, runtime selection, CLI catalog validation, trusted keys, usage state, capability screens, recovery cards, and output redaction. Python and Kotlin focused tests cover helper-side typed tasks and native runners.
 
-### 9.2 Static gates
+### 10.2 Static gates
 
 Analyzer coverage is gradually expanded from a legacy quarantine. `git diff --check`, schema validation, changed-file secret scanning, and path/credential pattern checks serve as pre-commit gates. A passing analyzer with quarantined paths is recorded as such; it is not equivalent to complete historical code cleanup.
 
-### 9.3 Build and emulator gates
+### 10.3 Build and emulator gates
 
 Pure and Dev Harness APKs are built separately. Emulator QA installs and launches the APK, probes Helper health, exercises selected feature flows, captures UI hierarchy and screenshots, and scans logcat for crash signatures. Instrumented tests verify native channels and generated artifacts.
 
-### 9.4 Remote and physical-device gates
+### 10.4 Remote and physical-device gates
 
 GitHub Actions is the repository-side source of truth for pull-request build and test status. Physical-device QA is a distinct gate for Android permissions, external apps, official login, background behavior, and performance. iOS requires simulator and physical-device evidence appropriate to Xcode signing and CoreDevice state.
 
-### 9.5 Evidence snapshot
+### 10.5 Evidence snapshot
 
 | Date | Gate | Recorded result | Interpretation |
 | --- | --- | --- | --- |
@@ -220,12 +282,18 @@ GitHub Actions is the repository-side source of truth for pull-request build and
 | 2026-07-13 | Android native artifact tests | 2 of 2 passed on Dev Harness | Instrumented WebView PNG and PDF generation passed on API 36 emulator |
 | 2026-07-13 | iOS simulator launch | Passed on iPhone 17 Pro simulator | Signed simulator build launched with no fatal Runner log signatures |
 | 2026-07-13 | Physical iPhone install | Blocked by locked device | Paired iPhone 11 was visible, but CoreDevice tunnel was disconnected and install returned lock errors 10003/1016 |
+| 2026-07-14 | Current Android visual navigation | Passed six-screen capture on API 36 emulator | Current home, drawer, runtime, extension, account, and security surfaces rendered from the current APK |
+| 2026-07-14 | Current iOS visual launch | Passed initialized-home capture on iPhone 17 Pro simulator | Current Flutter control surface launches; this is not physical-device evidence |
+| 2026-07-14 | Current PR Actions | Passed on feature head `de09510` | Mobile Runtime CI run 29270100084 and Android Smoke run 29270099968 are green; the smoke screenshot artifact was black and excluded as visual evidence |
+| 2026-07-14 | PPTX visual export | Passed one-slide 16:9 generation, re-render, and overflow check | Visual fidelity path is verified; editable-text PPTX remains unsupported |
 
-## 10. Beta Release Gate
+## 11. Beta Release Gate
 
 The roadmap contains 28 task documents. At this snapshot, 26 are closed or accepted and two remain in progress: T26 Subscription Login and Usage Hub, and T27 Chat CLI Hub Agent Tool Calling. This ratio is useful for planning but is not itself a release percentage; several closed roadmap items intentionally preserve deferred production work.
 
 <!-- FIGURE:beta -->
+
+Figure 8. Current Beta gate state. Repository convergence and CI are green; physical-device and provider-supported account closure remain release blockers.
 
 The Beta gate requires all of the following:
 
@@ -237,19 +305,19 @@ The Beta gate requires all of the following:
 6. Provider truthfulness: manual API-key flows remain separate from consumer subscription login; quota cards remain labeled mock until an official source is verified.
 7. Known limitations: Alpine package warning, catalog trust-chain gaps, editable PPTX absence, and deferred marketplace behavior remain documented.
 
-## 11. Limitations and Threats to Validity
+## 12. Limitations and Threats to Validity
 
 First, most July execution evidence comes from an Android emulator rather than a physical phone. Emulator filesystem, networking, memory pressure, battery policy, and vendor behavior differ from real devices. Second, the 502-test regression covers the Flutter layer; focused Android compile, service, and instrumented tests provide the native-layer evidence. These layers are complementary rather than interchangeable. Third, several runtime capabilities depend on downloaded packages and public mirrors whose availability can vary. The July run used a local mirror cache to avoid transfer stalls; that cache is not shipped in the APK.
 
 Fourth, typed actions limit injection risk but do not prove semantic safety. A declared task can still cause undesirable effects if its implementation or approval copy is wrong. Fifth, extension signature verification depends on key distribution, rotation, and revocation governance that is not fully closed. Sixth, subscription providers expose different official authentication and quota boundaries; a manual API key validation does not imply consumer subscription reuse. Finally, roadmap completion is not a controlled benchmark and should not be treated as a product-quality score.
 
-## 12. Future Work
+## 13. Future Work
 
 The immediate work after repository convergence is physical-device closure: unlock and reconnect the paired iPhone for install/launch evidence, attach an Android handset for permission and background checks, and capture real CLI login plus one bounded business task. T26 should then complete only the provider-supported login and quota paths that can be implemented without cookie scraping or private session import. T27 should close true Android CLI login and business-task flows, marketplace persistence, and the remaining catalog trust chain.
 
 Longer-term research can build on the evidence plane. Every typed action already produces state, runtime choice, outcome, recovery, duration, and artifact metadata. With privacy-preserving governance, these records can support capability routing, failure clustering, verifier improvement, and MobileHarnessBench evaluation. The goal is not to collect raw user logs. The useful corpus is a structured, redacted set of execution outcomes whose provenance and consent are explicit.
 
-## 13. Conclusion
+## 14. Conclusion
 
 MobileCode demonstrates that phone-native agentic software work is not primarily a problem of fitting a desktop toolchain into a small screen. It is a harness problem. The phone must own control, approval, state, artifacts, and evidence while selecting the smallest runtime that can truthfully perform the next action. Typed tasks, capability-aware runtime routing, native artifact paths, and redacted evidence provide a practical architecture for that goal.
 
@@ -268,6 +336,9 @@ The current implementation has crossed the prototype boundary: it contains real 
 | Native HTML rendering | `mobile_agent/lib/services/html_render_provider.dart`, Android/iOS runners |
 | HyperFrames boundary | `docs/hyperframes-cli-compatibility.md` |
 | July Android evidence | `mobile_agent/qa-output/android-hyperframes-closeout-20260713/RESULT.md` |
+| July 14 current UI captures | `docs/technical-report/assets/` |
+| Navigation and PDF renderer | `scripts/render_mobilecode_technical_report.py` |
+| PPTX visual export artifact | `output/pptx/mobilecode-lark-channel-demo.pptx` |
 | Roadmap state | `roadmp.md`, `roadmap/tasks/T26-*`, `roadmap/tasks/T27-*` |
 | Remote CI | `.github/workflows/mobile-runtime-ci.yml`, `.github/workflows/android-app-test.yml` |
 

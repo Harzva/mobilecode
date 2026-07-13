@@ -991,7 +991,8 @@ class TeamService {
         onError: (dynamic e) {
           debugPrint('[TeamService] Message stream error: $e');
           if (!controller.isClosed) {
-            controller.addError(e);
+            final Object error = e is Object ? e : 'Unknown stream error';
+            controller.addError(error);
           }
         },
         onDone: () {

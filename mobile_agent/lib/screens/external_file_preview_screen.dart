@@ -1,8 +1,15 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../services/external_file_preview_service.dart';
+import '../services/html_render_provider.dart';
 import '../themes/app_theme.dart';
 import 'editor_screen.dart';
 
@@ -17,15 +24,17 @@ class ExternalFilePreviewScreen extends StatefulWidget {
   final ExternalPreviewFile file;
 
   @override
-  State<ExternalFilePreviewScreen> createState() => _ExternalFilePreviewScreenState();
+  State<ExternalFilePreviewScreen> createState() =>
+      _ExternalFilePreviewScreenState();
 }
 
 class _ExternalFilePreviewScreenState extends State<ExternalFilePreviewScreen> {
   _PreviewMode _mode = _PreviewMode.rendered;
-  late final Future<String> _textFuture;
+  late Future<String> _textFuture;
   WebViewController? _htmlController;
   bool _htmlLoading = false;
   String? _htmlError;
+  bool _isExporting = false;
 
   @override
   void initState() {
@@ -75,17 +84,32 @@ class _ExternalFilePreviewScreenState extends State<ExternalFilePreviewScreen> {
     }
   }
 
-  void _openInEditor() {
-    Navigator.of(context).push(
+  Future<void> _openInEditor() async {
+    await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => EditorScreen(
           initialFilePath: widget.file.path,
           fileName: widget.file.displayName,
           language: _editorLanguage(widget.file.kind),
-          readOnly: true,
         ),
       ),
     );
+    if (!mounted || widget.file.kind != ExternalPreviewKind.html) return;
+    await _reloadHtmlPreview();
+  }
+
+  Future<void> _reloadHtmlPreview() async {
+    _textFuture = widget.file.readText();
+    if (mounted) {
+      setState(() {
+        _htmlLoading = true;
+        _htmlError = null;
+      });
+    }
+    final controller = _htmlController;
+    if (controller != null) {
+      await controller.loadFile(widget.file.path);
+    }
   }
 
   String _editorLanguage(ExternalPreviewKind kind) {
@@ -112,9 +136,25 @@ class _ExternalFilePreviewScreenState extends State<ExternalFilePreviewScreen> {
           onPressed: () => Navigator.of(context).maybePop(),
         ),
         actions: [
+          if (widget.file.kind == ExternalPreviewKind.html) ...[
+            IconButton(
+              tooltip: _isExporting ? '正在导出 PNG' : '导出 PNG',
+              onPressed:
+                  _isExporting ? null : () => _exportHtml(HtmlRenderFormat.png),
+              icon: const Icon(Icons.image_outlined),
+            ),
+            IconButton(
+              tooltip: _isExporting ? '正在导出 PDF' : '导出 PDF',
+              onPressed:
+                  _isExporting ? null : () => _exportHtml(HtmlRenderFormat.pdf),
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+            ),
+          ],
           IconButton(
-            tooltip: '用代码编辑器查看',
-            onPressed: widget.file.isTextReadable ? _openInEditor : null,
+            tooltip: widget.file.isTextReadable ? '编辑源码' : '查看源码',
+            onPressed: widget.file.isTextReadable
+                ? () => unawaited(_openInEditor())
+                : null,
             icon: const Icon(Icons.code_rounded),
           ),
         ],
@@ -131,8 +171,53 @@ class _ExternalFilePreviewScreenState extends State<ExternalFilePreviewScreen> {
     );
   }
 
+  Future<void> _exportHtml(HtmlRenderFormat format) async {
+    if (_isExporting || widget.file.kind != ExternalPreviewKind.html) return;
+    setState(() => _isExporting = true);
+    try {
+      final artifact = await const PlatformHtmlRenderProvider().render(
+        HtmlRenderRequest(
+          sourceUrl: Uri.file(widget.file.path).toString(),
+          viewportWidth: 1920,
+          viewportHeight: 1080,
+          deviceScaleFactor: 1,
+          format: format,
+          suggestedName: p.basenameWithoutExtension(widget.file.displayName),
+        ),
+      );
+      final documents = await getApplicationDocumentsDirectory();
+      final stored = await const HtmlArtifactStore().materialize(
+        artifact,
+        directory: Directory(p.join(documents.path, 'exports', 'html')),
+        fileName:
+            '${p.basenameWithoutExtension(widget.file.displayName)}-${DateTime.now().millisecondsSinceEpoch}.${format.extension}',
+      );
+      await Share.shareXFiles(
+        [XFile(stored.path, mimeType: stored.mimeType)],
+        subject: 'MobileCode HTML ${format.id} export',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('${format.id.toUpperCase()} 已导出 · ${stored.bytes} bytes'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${format.id.toUpperCase()} 导出失败：$error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
+  }
+
   bool _supportsRenderedAndSource(ExternalPreviewKind kind) {
-    return kind == ExternalPreviewKind.html || kind == ExternalPreviewKind.markdown;
+    return kind == ExternalPreviewKind.html ||
+        kind == ExternalPreviewKind.markdown;
   }
 
   Widget _modeSwitch() {
@@ -153,11 +238,13 @@ class _ExternalFilePreviewScreenState extends State<ExternalFilePreviewScreen> {
           ),
         ],
         selected: {_mode},
-        onSelectionChanged: (selected) => setState(() => _mode = selected.first),
+        onSelectionChanged: (selected) =>
+            setState(() => _mode = selected.first),
         showSelectedIcon: false,
         style: ButtonStyle(
           visualDensity: VisualDensity.compact,
-          side: WidgetStateProperty.all(const BorderSide(color: AppTheme.auroraBorder)),
+          side: WidgetStateProperty.all(
+              const BorderSide(color: AppTheme.auroraBorder)),
         ),
       ),
     );
@@ -227,9 +314,16 @@ class _ExternalFilePreviewScreenState extends State<ExternalFilePreviewScreen> {
           selectable: true,
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
           styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
-            h1: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: AppTheme.auroraText),
-            h2: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.auroraText),
-            p: const TextStyle(fontSize: 15, height: 1.62, color: AppTheme.auroraText),
+            h1: const TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.auroraText),
+            h2: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.auroraText),
+            p: const TextStyle(
+                fontSize: 15, height: 1.62, color: AppTheme.auroraText),
             code: const TextStyle(
               fontFamily: AppTheme.fontCode,
               fontSize: 13,
@@ -279,7 +373,8 @@ class _ExternalFilePreviewScreenState extends State<ExternalFilePreviewScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.article_outlined, size: 16, color: Color(0xFF9CA3AF)),
+                    const Icon(Icons.article_outlined,
+                        size: 16, color: Color(0xFF9CA3AF)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(

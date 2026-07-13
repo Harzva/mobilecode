@@ -475,7 +475,7 @@ class NavigationController {
       return () {};
     }
 
-    showDialog(
+    showAdaptiveDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => PopScope(

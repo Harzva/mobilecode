@@ -24,6 +24,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/error_handler.dart';
+import '../models/self_use_session.dart';
 import '../services/foreground_service.dart';
 import '../services/notification_manager.dart';
 import '../services/deep_dive_service.dart';

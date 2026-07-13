@@ -32,7 +32,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../core/theme.dart';
 import 'editor_controller.dart';
 import 'terminal_controller.dart';
 import 'navigation_controller.dart';
@@ -718,12 +717,12 @@ class SelfInvocationService {
       final message = params['message'] as String?;
       if (message == null) throw ArgumentError('Missing "message" parameter');
       // Delegates to NavigationController for UI feedback, then executes
-      await NavigationController.showToast('Git committing: $message');
+      NavigationController.showToast('Git committing: $message');
       return {'committed': true, 'message': message};
     });
 
     _actionHandlers['git.push'] = _CallbackHandler((params) async {
-      await NavigationController.showToast('Git pushing...');
+      NavigationController.showToast('Git pushing...');
       return {'pushed': true};
     });
 
@@ -764,7 +763,7 @@ class SelfInvocationService {
       if (name == null || type == null) {
         throw ArgumentError('Missing "name" or "type" parameter');
       }
-      await NavigationController.showToast('Creating project: $name ($type)');
+      NavigationController.showToast('Creating project: $name ($type)');
       return {'name': name, 'type': type, 'created': true};
     });
 
@@ -773,7 +772,7 @@ class SelfInvocationService {
     _actionHandlers['github.createRepo'] = _CallbackHandler((params) async {
       final name = params['name'] as String?;
       if (name == null) throw ArgumentError('Missing "name" parameter');
-      await NavigationController.showToast('Creating GitHub repo: $name');
+      NavigationController.showToast('Creating GitHub repo: $name');
       return {'repo': name, 'created': true};
     });
 
@@ -851,7 +850,7 @@ class SelfAction {
   /// When this action was created.
   final DateTime createdAt;
 
-  const SelfAction({
+  SelfAction({
     required this.type,
     required this.params,
     required this.description,
@@ -1256,7 +1255,7 @@ class WidgetMetadata {
   /// When the widget was registered.
   final DateTime registeredAt;
 
-  const WidgetMetadata({
+  WidgetMetadata({
     required this.id,
     required this.capabilities,
     required this.widgetType,

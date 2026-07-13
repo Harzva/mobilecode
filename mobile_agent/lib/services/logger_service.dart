@@ -81,18 +81,18 @@ class LogEntry {
 
   /// Formatted string for console output.
   String get formatted {
-    final time = '${timestamp.hour.toString().padLeft(2, '0')}:''
-        '${timestamp.minute.toString().padLeft(2, '0')}:''
-        '${timestamp.second.toString().padLeft(2, '0')}.'''
+    final time = '${timestamp.hour.toString().padLeft(2, '0')}:'
+        '${timestamp.minute.toString().padLeft(2, '0')}:'
+        '${timestamp.second.toString().padLeft(2, '0')}.'
         '${timestamp.millisecond.toString().padLeft(3, '0')}';
     final levelStr = level.name.toUpperCase().padLeft(7);
     final tagStr = tag.padRight(12);
-    var line = '\$time \$levelStr \$tagStr \$message';
+    var line = '$time $levelStr $tagStr $message';
     if (error != null) {
-      line += ' | ERROR: \${error.toString().replaceAll(RegExp(r'\s+'), ' ')}';
+      line += ' | ERROR: ${error.toString().replaceAll(RegExp(r'\s+'), ' ')}';
     }
     if (operationDuration != null) {
-      line += ' (\${operationDuration!.inMilliseconds}ms)';
+      line += ' (${operationDuration!.inMilliseconds}ms)';
     }
     return line;
   }

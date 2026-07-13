@@ -29,9 +29,7 @@
 // ignore_for_file: avoid_print
 
 import 'dart:async';
-import 'dart:isolate';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../core/error_handler.dart';
@@ -149,31 +147,14 @@ class ForegroundService with ErrorLogging {
           enableVibration: false,
           showBadge: false,
           showWhen: true,
-          visibility: NotificationVisibility.public,
-          iconData: const NotificationIconData(
-            resType: ResourceType.mipmap,
-            resPrefix: ResourcePrefix.ic,
-            name: 'launcher',
-          ),
-          // Buttons shown on the notification.
-          buttons: const [
-            NotificationButton(
-              id: 'open_app',
-              text: 'Open',
-            ),
-            NotificationButton(
-              id: 'cancel_all',
-              text: 'Cancel All',
-            ),
-          ],
+          visibility: NotificationVisibility.VISIBILITY_PUBLIC,
         ),
         iosNotificationOptions: const IOSNotificationOptions(
           showNotification: true,
           playSound: false,
         ),
-        foregroundTaskOptions: const ForegroundTaskOptions(
-          // Run the service task every 5 seconds.
-          interval: 5000,
+        foregroundTaskOptions: ForegroundTaskOptions(
+          eventAction: ForegroundTaskEventAction.repeat(5000),
           // Allow auto-run on boot.
           autoRunOnBoot: true,
           // Allow wake lock to keep CPU running during tasks.
@@ -257,6 +238,10 @@ class ForegroundService with ErrorLogging {
         notificationTitle: title,
         notificationText: body,
         notificationIcon: null,
+        notificationButtons: const [
+          NotificationButton(id: 'open_app', text: 'Open'),
+          NotificationButton(id: 'cancel_all', text: 'Cancel All'),
+        ],
         callback: _startCallback,
       );
 
@@ -333,6 +318,10 @@ class ForegroundService with ErrorLogging {
       await FlutterForegroundTask.updateService(
         notificationTitle: _currentTitle,
         notificationText: _currentBody,
+        notificationButtons: const [
+          NotificationButton(id: 'open_app', text: 'Open'),
+          NotificationButton(id: 'cancel_all', text: 'Cancel All'),
+        ],
       );
     } catch (e) {
       logWarning('Failed to update foreground notification: $e');
@@ -524,7 +513,7 @@ class _DeepDiveModeTaskHandler extends TaskHandler {
   Timer? _heartbeatTimer;
 
   @override
-  Future<void> onStart(DateTime timestamp, SendPort? sendPort) async {
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     // Called when the foreground service starts.
     _heartbeatTimer = Timer.periodic(
       const Duration(seconds: 10),
@@ -539,7 +528,7 @@ class _DeepDiveModeTaskHandler extends TaskHandler {
   }
 
   @override
-  Future<void> onEvent(DateTime timestamp, SendPort? sendPort) async {
+  void onRepeatEvent(DateTime timestamp) {
     // Called periodically based on the interval configured in
     // [ForegroundTaskOptions]. We use this to request status updates
     // from the main thread.
@@ -550,13 +539,13 @@ class _DeepDiveModeTaskHandler extends TaskHandler {
   }
 
   @override
-  Future<void> onDestroy(DateTime timestamp, SendPort? sendPort) async {
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
     // Called when the foreground service is destroyed.
     _heartbeatTimer?.cancel();
   }
 
   @override
-  void onButtonPressed(String id) {
+  void onNotificationButtonPressed(String id) {
     // Called when a notification button is pressed.
     FlutterForegroundTask.sendDataToMain(<String, dynamic>{
       'type': 'button_tap',

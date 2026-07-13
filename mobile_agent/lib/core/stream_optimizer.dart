@@ -213,9 +213,7 @@ extension StreamOptimizerX<T> on Stream<T> {
   Stream<List<T>> buffer(Duration duration, {int maxSize = 100}) {
     final buffer = <T>[];
     Timer? timer;
-    bool isDone = false;
-
-    void flush(StreamSink<List<T>> sink) {
+    void flush(EventSink<List<T>> sink) {
       if (buffer.isNotEmpty) {
         sink.add(List<T>.unmodifiable(buffer));
         buffer.clear();
@@ -365,10 +363,10 @@ extension StreamOptimizerX<T> on Stream<T> {
   }
 
   /// Filter and map in a single pass to avoid intermediate allocations.
-  Stream<R> filterMap<R>(R? Function(T event) transform) {
+  Stream<R> filterMap<R>(R? Function(T event) mapper) {
     return transform(StreamTransformer<T, R>.fromHandlers(
       handleData: (event, sink) {
-        final result = transform(event);
+        final result = mapper(event);
         if (result != null) {
           sink.add(result);
         }

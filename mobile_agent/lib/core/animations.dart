@@ -6,7 +6,8 @@
 // active theme's animation personality (duration, curve).
 // ============================================================
 
-import 'dart:math' show pi, sin, cos;
+import 'dart:math' show pi, sin;
+import 'dart:ui' show lerpDouble;
 import 'package:flutter/material.dart';
 import 'theme_manager.dart';
 
@@ -121,12 +122,14 @@ class FadePageRoute<T> extends PageRouteBuilder<T> {
           pageBuilder: (context, animation, secondaryAnimation) => child,
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             final fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-              CurvedAnimation(parent: animation, curve: AnimationCurves.pageEnter),
+              CurvedAnimation(
+                  parent: animation, curve: AnimationCurves.pageEnter),
             );
             final slideAnim = Tween<Offset>(
               begin: const Offset(0, 0.08),
               end: Offset.zero,
-            ).animate(CurvedAnimation(parent: animation, curve: AnimationCurves.pageEnter));
+            ).animate(CurvedAnimation(
+                parent: animation, curve: AnimationCurves.pageEnter));
             return FadeTransition(
               opacity: fadeAnim,
               child: SlideTransition(position: slideAnim, child: child),
@@ -153,10 +156,12 @@ class ScalePageRoute<T> extends PageRouteBuilder<T> {
           pageBuilder: (context, animation, secondaryAnimation) => child,
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             final scaleAnim = Tween<double>(begin: 0.92, end: 1.0).animate(
-              CurvedAnimation(parent: animation, curve: AnimationCurves.elementBounce),
+              CurvedAnimation(
+                  parent: animation, curve: AnimationCurves.elementBounce),
             );
             final fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-              CurvedAnimation(parent: animation, curve: AnimationCurves.pageEnter),
+              CurvedAnimation(
+                  parent: animation, curve: AnimationCurves.pageEnter),
             );
             return FadeTransition(
               opacity: fadeAnim,
@@ -230,7 +235,8 @@ class SharedAxisTransition extends StatelessWidget {
     Widget result = child;
 
     if (transitionType == SharedAxisTransitionType.scaled) {
-      final scaleEnter = Tween<double>(begin: 0.88, end: 1.0).animate(enterAnim);
+      final scaleEnter =
+          Tween<double>(begin: 0.88, end: 1.0).animate(enterAnim);
       final scaleExit = Tween<double>(begin: 1.0, end: 0.88).animate(exitAnim);
       final fadeEnter = Tween<double>(begin: 0.0, end: 1.0).animate(enterAnim);
       final fadeExit = Tween<double>(begin: 1.0, end: 0.0).animate(exitAnim);
@@ -246,7 +252,8 @@ class SharedAxisTransition extends StatelessWidget {
         ),
       );
     } else {
-      final isHorizontal = transitionType == SharedAxisTransitionType.horizontal;
+      final isHorizontal =
+          transitionType == SharedAxisTransitionType.horizontal;
       final slideEnter = Tween<Offset>(
         begin: isHorizontal ? const Offset(0.3, 0) : const Offset(0, 0.3),
         end: Offset.zero,
@@ -1104,11 +1111,9 @@ class _ThemeFadeTransitionState extends State<ThemeFadeTransition>
   void didUpdateWidget(ThemeFadeTransition oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.theme.id != widget.theme.id) {
-      _controller
-          .reverse()
-          .then((_) {
-            if (mounted) _controller.forward();
-          });
+      _controller.reverse().then((_) {
+        if (mounted) _controller.forward();
+      });
     }
   }
 
@@ -1316,7 +1321,9 @@ class _SlideInAnimationState extends State<SlideInAnimation>
       end: Offset.zero,
     ).animate(CurvedAnimation(parent: _controller, curve: widget.curve));
     _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0, 0.6, curve: Curves.easeOut)),
+      CurvedAnimation(
+          parent: _controller,
+          curve: const Interval(0, 0.6, curve: Curves.easeOut)),
     );
     Future.delayed(widget.delay, () {
       if (mounted) _controller.forward();

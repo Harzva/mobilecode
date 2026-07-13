@@ -22,11 +22,11 @@ class KnowledgeArticle {
   final String authorInitials;
   final String category;
   final List<String> tags;
-  final int viewCount;
-  final int likeCount;
-  final int commentCount;
+  int viewCount;
+  int likeCount;
+  int commentCount;
   final DateTime createdAt;
-  final bool isPinned;
+  bool isPinned;
   bool isBookmarked;
   bool isLiked;
 

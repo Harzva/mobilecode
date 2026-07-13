@@ -388,7 +388,8 @@ class _GitHubPrReviewScreenState extends State<GitHubPrReviewScreen> {
             ],
             onSelected: (v) {
               if (v == 'link') {
-                final url = _pr?['html_url'] ?? 'https://github.com/${widget.owner}/${widget.repo}/pull/${widget.pullNumber}';
+                final url = (_pr?['html_url'] as String?) ??
+                    'https://github.com/${widget.owner}/${widget.repo}/pull/${widget.pullNumber}';
                 Clipboard.setData(ClipboardData(text: url));
                 _toast('Link copied');
               }
@@ -543,7 +544,7 @@ class _GitHubPrReviewScreenState extends State<GitHubPrReviewScreen> {
           const SizedBox(height: 8),
           Row(
             children: [
-              _buildAuthorChip(_pr!['user']?['login'] ?? 'unknown'),
+              _buildAuthorChip(_pr!['user']?['login'] as String? ?? 'unknown'),
               const SizedBox(width: 12),
               Text('wants to merge',
                 style: TextStyle(fontSize: 12, color: AppTheme.textTertiary)),
@@ -554,7 +555,7 @@ class _GitHubPrReviewScreenState extends State<GitHubPrReviewScreen> {
                   color: AppTheme.accent.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text(_pr!['head']?['ref'] ?? 'head',
+                child: Text(_pr!['head']?['ref'] as String? ?? 'head',
                   style: const TextStyle(fontSize: 11, color: AppTheme.accent, fontFamily: AppTheme.fontCode)),
               ),
               const SizedBox(width: 6),
@@ -566,7 +567,7 @@ class _GitHubPrReviewScreenState extends State<GitHubPrReviewScreen> {
                   color: AppTheme.surfaceHover,
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: Text(_pr!['base']?['ref'] ?? 'base',
+                child: Text(_pr!['base']?['ref'] as String? ?? 'base',
                   style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary, fontFamily: AppTheme.fontCode)),
               ),
             ],
@@ -960,9 +961,9 @@ class _GitHubPrReviewScreenState extends State<GitHubPrReviewScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(c['user']?['login'] ?? '',
+                    Text(c['user']?['login'] as String? ?? '',
                       style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                    Text(c['body'] ?? '',
+                    Text(c['body'] as String? ?? '',
                       style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.4)),
                   ],
                 ),

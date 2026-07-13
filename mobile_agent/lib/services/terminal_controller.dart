@@ -598,7 +598,7 @@ class TerminalResult {
   /// When the command completed.
   final DateTime timestamp;
 
-  const TerminalResult({
+  TerminalResult({
     required this.command,
     required this.exitCode,
     required this.stdout,

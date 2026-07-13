@@ -539,7 +539,7 @@ class FeedbackLearningService {
     final successByType = await getSuccessRateByType();
 
     // Get learned preferences (for default user).
-    UserPreferences learnedPreferences = const UserPreferences();
+    var learnedPreferences = UserPreferences();
     try {
       learnedPreferences = await learnPreferences('default_user');
     } catch (e) {
@@ -632,7 +632,9 @@ class FeedbackLearningService {
 
     final existing = await _storage.getSetting<String>(dayKey);
     var metric = existing != null
-        ? _DailyMetricAccumulator.fromJson(jsonDecode(existing))
+        ? _DailyMetricAccumulator.fromJson(
+            jsonDecode(existing) as Map<String, dynamic>,
+          )
         : _DailyMetricAccumulator(date: day, interactions: 0, successes: 0);
 
     metric.interactions++;
@@ -1122,7 +1124,7 @@ class UserPreferences {
   /// When these preferences were learned.
   final DateTime learnedAt;
 
-  const UserPreferences({
+  UserPreferences({
     this.namingConvention = NamingConvention.camelCase,
     this.commentStyle = CommentStyle.chinese,
     this.errorHandling = ErrorHandling.tryCatch,
@@ -1132,7 +1134,7 @@ class UserPreferences {
     this.prefersTrailingCommas = true,
     this.customPreferences = const {},
     DateTime? learnedAt,
-  }) : learnedAt = learnedAt ?? learnedAt;
+  }) : learnedAt = learnedAt ?? DateTime.now();
 
   /// Convert preferences to a prompt context string.
   ///

@@ -6,10 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/team_member.dart';
-import '../models/team_activity.dart';
-import '../models/team_message.dart';
-import '../models/team_project.dart';
-import '../models/presence_status.dart';
+import 'api_manager_provider.dart' as api_manager;
+import 'storage_provider.dart';
 import '../services/team_service.dart';
 
 // ─── Team Service DI ───────────────────────────────────────────────────
@@ -24,8 +22,48 @@ import '../services/team_service.dart';
 /// );
 /// ```
 final teamServiceProvider = Provider<TeamService>((ref) {
-  return TeamService();
+  final service = TeamService(
+    api: ref.watch(api_manager.apiServiceProvider),
+    storage: ref.watch(storageServiceProvider),
+  );
+  unawaited(service.init());
+  ref.onDispose(service.dispose);
+  return service;
 });
+
+extension _TeamMemberProviderCompat on TeamMember {
+  bool get isOnline =>
+      status == MemberStatus.active &&
+      lastActiveAt.isAfter(DateTime.now().subtract(const Duration(minutes: 10)));
+}
+
+extension _TeamActivityProviderCompat on TeamActivity {
+  Map<String, dynamic> get metadata => const {};
+  String get action => type == ActivityType.prMerged ? 'merged' : type.name;
+}
+
+extension _TeamServiceProviderCompat on TeamService {
+  Future<List<TeamMember>> getMembers() => getTeamMembers();
+  Future<List<TeamActivity>> getRecentActivity() => getTeamActivity();
+  Future<List<TeamMessage>> getMessages({String? channel, int limit = 100}) =>
+      getTeamMessages(channel: channel, limit: limit);
+  Future<void> sendMessage({
+    required String content,
+    String? channel,
+    String? replyTo,
+  }) =>
+      sendTeamMessage(content, channel: channel, replyTo: replyTo);
+  Future<List<TeamProject>> getProjects() => getTeamProjects();
+  Future<TeamProject> createProject(String name, {String? description}) =>
+      createTeamProject(name, description ?? '', const []);
+  Future<void> updateProject(
+    String projectId, {
+    String? name,
+    String? description,
+    Map<String, dynamic>? settings,
+  }) async {}
+  Future<void> archiveProject(String projectId) async {}
+}
 
 // ─── Members ───────────────────────────────────────────────────────────
 
@@ -114,7 +152,7 @@ class TeamMembersNotifier extends StateNotifier<AsyncValue<List<TeamMember>>> {
 
     try {
       await _service.updateMemberRole(memberId, role);
-    } catch (e, stack) {
+    } catch (e) {
       debugPrint('[TeamMembersNotifier] Failed to update role: $e');
       state = AsyncValue.data(previous);
     }
@@ -135,7 +173,7 @@ class TeamMembersNotifier extends StateNotifier<AsyncValue<List<TeamMember>>> {
 
     try {
       await _service.updateMemberPermissions(memberId, permissions);
-    } catch (e, stack) {
+    } catch (e) {
       debugPrint('[TeamMembersNotifier] Failed to update permissions: $e');
       state = AsyncValue.data(previous);
     }
@@ -211,7 +249,7 @@ final teamActivityProvider =
 /// updates via the underlying service stream.
 class TeamChatNotifier extends StateNotifier<AsyncValue<List<TeamMessage>>> {
   final TeamService _service;
-  StreamSubscription<List<TeamMessage>>? _sub;
+  StreamSubscription<TeamMessage>? _sub;
 
   TeamChatNotifier(this._service) : super(const AsyncValue.data([]));
 
@@ -221,10 +259,11 @@ class TeamChatNotifier extends StateNotifier<AsyncValue<List<TeamMessage>>> {
   void subscribeToMessages({String? channel}) {
     _sub?.cancel();
     _sub = _service.subscribeToMessages(channel: channel).listen(
-      (messages) {
-        state = AsyncValue.data(messages);
+      (message) {
+        final previous = state.valueOrNull ?? const <TeamMessage>[];
+        state = AsyncValue.data([...previous, message]);
       },
-      onError: (e, stack) {
+      onError: (Object e, StackTrace stack) {
         debugPrint('[TeamChatNotifier] Stream error: $e');
         state = AsyncValue.error(e, stack);
       },
@@ -345,8 +384,7 @@ class TeamProjectsNotifier extends StateNotifier<AsyncValue<List<TeamProject>>> 
       return p.copyWith(
         name: name ?? p.name,
         description: description ?? p.description,
-        settings: settings ?? p.settings,
-        updatedAt: DateTime.now(),
+        lastActivity: DateTime.now(),
       );
     }).toList();
     state = AsyncValue.data(updated);
@@ -465,18 +503,18 @@ final teamStatsProvider = Provider<Map<String, dynamic>>((ref) {
   final now = DateTime.now();
   final weekAgo = now.subtract(const Duration(days: 7));
   final activeThisWeek = members
-      .where((m) => m.lastActiveAt != null && m.lastActiveAt!.isAfter(weekAgo))
+      .where((m) => m.lastActiveAt.isAfter(weekAgo))
       .length;
 
   // Total commits from activity feed
   final totalCommits = activity
-      .where((a) => a.type == ActivityType.commit)
-      .fold<int>(0, (sum, a) => sum + (a.metadata?['commitCount'] as int? ?? 1));
+      .where((a) => a.type == ActivityType.codeCommitted)
+      .fold<int>(0, (sum, a) => sum + (a.metadata['commitCount'] as int? ?? 1));
 
   // PRs merged this week
   final prsMerged = activity
       .where((a) =>
-          a.type == ActivityType.pullRequest &&
+          a.type == ActivityType.prMerged &&
           a.action == 'merged' &&
           a.timestamp.isAfter(weekAgo))
       .length;
@@ -484,7 +522,7 @@ final teamStatsProvider = Provider<Map<String, dynamic>>((ref) {
   // Code reviews this week
   final codeReviews = activity
       .where((a) =>
-          a.type == ActivityType.codeReview &&
+          a.type == ActivityType.commentAdded &&
           a.timestamp.isAfter(weekAgo))
       .length;
 

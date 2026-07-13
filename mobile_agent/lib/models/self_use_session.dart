@@ -262,6 +262,15 @@ class SessionLogEntry {
     );
   }
 
+  factory SessionLogEntry.warning(String message, {String? actionId}) {
+    return SessionLogEntry(
+      timestamp: DateTime.now(),
+      level: LogLevel.warning,
+      message: message,
+      actionId: actionId,
+    );
+  }
+
   @override
   String toString() =>
       '[${timestamp.toIso8601String()}] ${level.name.toUpperCase()}: $message';

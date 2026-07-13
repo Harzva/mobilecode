@@ -602,7 +602,7 @@ class CodeSimilarityService {
   static Set<String> _extractImports(String code) {
     final imports = <String>{};
 
-    final pattern = RegExp(r"import\s+['\"]([^'\"]+)['\"]");
+    final pattern = RegExp(r'''import\s+['"]([^'"]+)['"]''');
     for (final match in pattern.allMatches(code)) {
       final imp = match.group(1);
       if (imp != null) imports.add(imp);

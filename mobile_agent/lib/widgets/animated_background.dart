@@ -11,6 +11,7 @@
 
 import 'dart:math' show Random, pi, sin, cos, atan2, sqrt, Point;
 import 'dart:typed_data';
+import 'dart:ui' show PointMode;
 import 'package:flutter/material.dart';
 import '../core/theme_manager.dart';
 

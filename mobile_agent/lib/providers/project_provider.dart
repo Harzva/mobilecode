@@ -1,6 +1,5 @@
 // lib/providers/project_provider.dart
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/file_item.dart';
@@ -45,7 +44,7 @@ class ProjectNotifier extends StateNotifier<AsyncValue<List<Project>>> {
     String? description,
     String? colorTag,
   }) async {
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now();
     final project = Project(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
@@ -53,8 +52,10 @@ class ProjectNotifier extends StateNotifier<AsyncValue<List<Project>>> {
       language: language,
       createdAt: now,
       updatedAt: now,
-      description: description,
+      description: description ?? '',
       colorTag: colorTag,
+      files: const [],
+      isFavorite: false,
     );
 
     await _storage.saveProject(project);

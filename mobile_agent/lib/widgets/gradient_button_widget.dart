@@ -74,48 +74,49 @@ class _GradientButtonWidgetState extends State<GradientButtonWidget>
           onTapCancel: _isActive
               ? () => setState(() => _isPressed = false)
               : null,
-          child: AnimatedContainer(
-            duration: AppTheme.animFast,
-            width: widget.width,
-            height: widget.height,
-            padding: widget.padding ??
-                const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            decoration: BoxDecoration(
-              gradient: widget.isDisabled
-                  ? LinearGradient(
-                      colors: [
-                        AppTheme.textTertiary.withOpacity(0.3),
-                        AppTheme.textTertiary.withOpacity(0.2),
-                      ],
-                    )
-                  : LinearGradient(
-                      colors: colors,
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      stops: const [0.0, 0.5, 1.0],
-                    ),
-              borderRadius: BorderRadius.circular(widget.borderRadius),
-              boxShadow: _isActive && !widget.isLoading
-                  ? [
-                      BoxShadow(
-                        color: AppTheme.violetGlow.withOpacity(glowOpacity),
-                        blurRadius: 12 + (_glowController.value * 8),
-                        spreadRadius: 1,
+          child: Transform.scale(
+            scale: _isPressed ? 0.97 : 1,
+            child: AnimatedContainer(
+              duration: AppTheme.animFast,
+              width: widget.width,
+              height: widget.height,
+              padding: widget.padding ??
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              decoration: BoxDecoration(
+                gradient: widget.isDisabled
+                    ? LinearGradient(
+                        colors: [
+                          AppTheme.textTertiary.withOpacity(0.3),
+                          AppTheme.textTertiary.withOpacity(0.2),
+                        ],
+                      )
+                    : LinearGradient(
+                        colors: colors,
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        stops: const [0.0, 0.5, 1.0],
                       ),
-                      BoxShadow(
-                        color: AppTheme.cyanGlow.withOpacity(glowOpacity * 0.5),
-                        blurRadius: 8,
-                        spreadRadius: 0,
-                      ),
-                    ]
-                  : null,
-              transform: _isPressed
-                  ? (Matrix4.identity()..scale(0.97))
-                  : null,
+                borderRadius: BorderRadius.circular(widget.borderRadius),
+                boxShadow: _isActive && !widget.isLoading
+                    ? [
+                        BoxShadow(
+                          color: AppTheme.violetGlow.withOpacity(glowOpacity),
+                          blurRadius: 12 + (_glowController.value * 8),
+                          spreadRadius: 1,
+                        ),
+                        BoxShadow(
+                          color:
+                              AppTheme.cyanGlow.withOpacity(glowOpacity * 0.5),
+                          blurRadius: 8,
+                          spreadRadius: 0,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: widget.isLoading
+                  ? _buildLoadingIndicator()
+                  : _buildButtonContent(),
             ),
-            child: widget.isLoading
-                ? _buildLoadingIndicator()
-                : _buildButtonContent(),
           ),
         );
       },

@@ -270,7 +270,7 @@ class _GitHubDeployScreenState extends State<GitHubDeployScreen> {
 
                   // Section: Repository Selection.
                   _SectionHeader(
-                    icon: Icons.repository_outlined,
+                    icon: Icons.source_outlined,
                     title: '2. Target Repository',
                   ),
                   const SizedBox(height: 8),

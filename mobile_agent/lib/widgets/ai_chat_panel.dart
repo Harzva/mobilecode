@@ -147,7 +147,9 @@ class _AiChatPanelState extends State<AiChatPanel> {
                   final isUser = msg['role'] == 'user';
                   final isSystem = msg['role'] == 'system';
 
-                  if (isSystem) return _buildSystemMessage(msg['content']);
+                  if (isSystem) {
+                    return _buildSystemMessage(msg['content'].toString());
+                  }
                   return _buildMessageBubble(msg, isUser);
                 },
               ),

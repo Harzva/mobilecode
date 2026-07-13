@@ -93,6 +93,33 @@ class FileItem {
     );
   }
 
+  /// Backward-compatible alias used by older GitHub/file services.
+  factory FileItem.file({
+    required String name,
+    required String path,
+    String? content,
+    int? size,
+    String? modifiedAt,
+  }) =>
+      FileItem.createFile(
+        name: name,
+        path: path,
+        content: content,
+      );
+
+  /// Backward-compatible alias used by older GitHub/file services.
+  factory FileItem.directory({
+    required String name,
+    required String path,
+    String? parentPath,
+    List<FileItem>? children,
+  }) =>
+      FileItem.createDirectory(
+        name: name,
+        path: path,
+        children: children,
+      );
+
   /// Creates a [FileItem] from a JSON map.
   factory FileItem.fromJson(Map<String, dynamic> json) {
     return FileItem(
@@ -184,6 +211,27 @@ class FileItem {
     if (isDirectory) return null;
     final dotIndex = name.lastIndexOf('.');
     return dotIndex > 0 ? name.substring(dotIndex + 1) : null;
+  }
+
+  /// Editor language id derived from the file extension.
+  String get language {
+    return switch (extension?.toLowerCase()) {
+      'dart' => 'dart',
+      'js' || 'jsx' => 'javascript',
+      'ts' || 'tsx' => 'typescript',
+      'py' => 'python',
+      'java' => 'java',
+      'kt' => 'kotlin',
+      'swift' => 'swift',
+      'go' => 'go',
+      'rs' => 'rust',
+      'html' => 'html',
+      'css' => 'css',
+      'json' => 'json',
+      'md' => 'markdown',
+      'yaml' || 'yml' => 'yaml',
+      _ => 'text',
+    };
   }
 
   /// File name without extension (e.g., 'main.dart' -> 'main').

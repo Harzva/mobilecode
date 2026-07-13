@@ -10,11 +10,16 @@
 // - Loading states and error handling
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../core/theme.dart';
+import '../services/html_render_provider.dart';
 import '../services/preview_service.dart';
 import '../widgets/webview_preview.dart';
 
@@ -64,6 +69,17 @@ class PreviewScreen extends StatefulWidget {
   /// Child widget for split view (e.g., editor panel).
   final Widget? splitViewChild;
 
+  /// Renderer used by the export actions and preview evidence lane.
+  final HtmlRenderProvider renderProvider;
+
+  /// HyperFrames/Helper renderer. MP4 rendering needs Node.js, Chromium and
+  /// FFmpeg outside the APK; callers can override its endpoint when needed.
+  final HtmlRenderProvider? videoRenderProvider;
+
+  /// HTML-to-PPTX worker. The default mode preserves the rendered slide as a
+  /// full-slide image for pixel fidelity.
+  final HtmlRenderProvider? pptxRenderProvider;
+
   const PreviewScreen({
     super.key,
     required this.projectPath,
@@ -72,6 +88,9 @@ class PreviewScreen extends StatefulWidget {
     this.initialDeviceName,
     this.startInSplitView = false,
     this.splitViewChild,
+    this.renderProvider = const PlatformHtmlRenderProvider(),
+    this.videoRenderProvider,
+    this.pptxRenderProvider,
   });
 
   @override
@@ -93,6 +112,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
       PreviewService.devicePresets[_selectedDeviceName]!;
 
   bool _isFullScreen = false;
+  bool _isExporting = false;
+  late final HtmlRenderProvider _videoRenderProvider;
+  late final HtmlRenderProvider _pptxRenderProvider;
 
   @override
   void initState() {
@@ -100,6 +122,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
     _previewService = PreviewService();
     _selectedDeviceName = widget.initialDeviceName ?? 'iPhone 14';
     _isSplitView = widget.startInSplitView;
+    _videoRenderProvider =
+        widget.videoRenderProvider ?? HyperFramesHtmlRenderProvider();
+    _pptxRenderProvider =
+        widget.pptxRenderProvider ?? HtmlPptxRenderProvider();
 
     if (widget.initialUrl != null) {
       _previewUrl = widget.initialUrl;
@@ -109,12 +135,21 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   Future<void> _startServer() async {
-    setState(() { _isServerStarting = true; _serverError = null; });
+    setState(() {
+      _isServerStarting = true;
+      _serverError = null;
+    });
     try {
       final url = await _previewService.startPreview(widget.projectPath);
-      setState(() { _previewUrl = url; _isServerStarting = false; });
+      setState(() {
+        _previewUrl = url;
+        _isServerStarting = false;
+      });
     } catch (e) {
-      setState(() { _serverError = e.toString(); _isServerStarting = false; });
+      setState(() {
+        _serverError = e.toString();
+        _isServerStarting = false;
+      });
     }
   }
 
@@ -139,8 +174,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   void _onSplitDragUpdate(DragUpdateDetails d, double totalW) {
-    setState(() => _splitRatio =
-      (_splitRatio + d.delta.dx / totalW).clamp(0.2, 0.8));
+    setState(() =>
+        _splitRatio = (_splitRatio + d.delta.dx / totalW).clamp(0.2, 0.8));
   }
 
   @override
@@ -157,16 +192,21 @@ class _PreviewScreenState extends State<PreviewScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isFullScreen) {
-      return Scaffold(backgroundColor: AppTheme.background,
-        body: SafeArea(child: Stack(children: [
+      return Scaffold(
+        backgroundColor: AppTheme.background,
+        body: SafeArea(
+            child: Stack(children: [
           _buildPreviewContent(),
-          Positioned(top: 12, right: 12,
-            child: _floatingBtn(Icons.fullscreen_exit,
-              'Exit Fullscreen', _toggleFullScreen)),
+          Positioned(
+              top: 12,
+              right: 12,
+              child: _floatingBtn(
+                  Icons.fullscreen_exit, 'Exit Fullscreen', _toggleFullScreen)),
         ])),
       );
     }
-    return Scaffold(backgroundColor: AppTheme.background,
+    return Scaffold(
+      backgroundColor: AppTheme.background,
       appBar: _buildAppBar(),
       body: SafeArea(child: _buildBody()),
     );
@@ -177,26 +217,35 @@ class _PreviewScreenState extends State<PreviewScreen> {
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: AppTheme.backgroundElevated,
-      foregroundColor: AppTheme.textPrimary, elevation: 0,
+      foregroundColor: AppTheme.textPrimary,
+      elevation: 0,
       scrolledUnderElevation: 0,
-      leading: IconButton(icon: const Icon(Icons.arrow_back, size: 20),
-        onPressed: () => Navigator.of(context).pop(), tooltip: 'Back'),
+      leading: IconButton(
+          icon: const Icon(Icons.arrow_back, size: 20),
+          onPressed: () => Navigator.of(context).pop(),
+          tooltip: 'Back'),
       title: Row(mainAxisSize: MainAxisSize.min, children: [
         const Icon(Icons.preview, size: 18, color: AppTheme.primary),
         const SizedBox(width: 8),
-        const Text('Preview', style: TextStyle(
-          fontSize: 16, fontWeight: FontWeight.w600)),
+        const Text('Preview',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
         if (_previewUrl != null) ...[
           const SizedBox(width: 12),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(color: AppTheme.success.withOpacity(0.15),
+          Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                  color: AppTheme.success.withOpacity(0.15),
               borderRadius: BorderRadius.circular(4)),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Container(width: 6, height: 6,
+                Container(
+                    width: 6,
+                    height: 6,
                 decoration: const BoxDecoration(
                   color: AppTheme.success, shape: BoxShape.circle)),
               const SizedBox(width: 6),
-              Text('Live', style: TextStyle(fontSize: 10,
+                Text('Live',
+                    style: TextStyle(
+                        fontSize: 10,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.success.withOpacity(0.9),
                 fontFamily: AppTheme.fontCode)),
@@ -204,11 +253,36 @@ class _PreviewScreenState extends State<PreviewScreen> {
         ],
       ]),
       actions: [
-        _buildDeviceMenu(), const SizedBox(width: 4),
-        _ABtn(icon: _isSplitView ? Icons.view_agenda : Icons.vertical_split,
+        _buildDeviceMenu(),
+        const SizedBox(width: 4),
+        _ABtn(
+          icon: Icons.image_outlined,
+          tip: _isExporting ? 'Exporting PNG' : 'Export PNG',
+          onPressed: _isExporting ? null : () => _export(HtmlRenderFormat.png),
+        ),
+        _ABtn(
+          icon: Icons.picture_as_pdf_outlined,
+          tip: _isExporting ? 'Exporting PDF' : 'Export PDF',
+          onPressed: _isExporting ? null : () => _export(HtmlRenderFormat.pdf),
+        ),
+        _ABtn(
+          icon: Icons.movie_creation_outlined,
+          tip: _isExporting ? 'Exporting MP4' : 'Export MP4',
+          onPressed: _isExporting ? null : _exportVideo,
+        ),
+        _ABtn(
+          icon: Icons.slideshow_outlined,
+          tip: _isExporting ? 'Exporting PPTX' : 'Export PPTX',
+          onPressed: _isExporting ? null : _exportPptx,
+        ),
+        _ABtn(
+            icon: _isSplitView ? Icons.view_agenda : Icons.vertical_split,
           tip: _isSplitView ? 'Close Split' : 'Split View',
-          onPressed: _toggleSplitView, active: _isSplitView),
-        _ABtn(icon: Icons.fullscreen, tip: 'Fullscreen',
+            onPressed: _toggleSplitView,
+            active: _isSplitView),
+        _ABtn(
+            icon: Icons.fullscreen,
+            tip: 'Fullscreen',
           onPressed: _toggleFullScreen),
         const SizedBox(width: 8),
       ],
@@ -216,6 +290,64 @@ class _PreviewScreenState extends State<PreviewScreen> {
         preferredSize: Size.fromHeight(1),
         child: Divider(height: 1, color: AppTheme.divider)),
     );
+  }
+
+  Future<void> _export(HtmlRenderFormat format) async {
+    await _exportWithProvider(format, widget.renderProvider);
+  }
+
+  Future<void> _exportVideo() async {
+    await _exportWithProvider(HtmlRenderFormat.mp4, _videoRenderProvider);
+  }
+
+  Future<void> _exportPptx() async {
+    await _exportWithProvider(HtmlRenderFormat.pptx, _pptxRenderProvider);
+  }
+
+  Future<void> _exportWithProvider(
+    HtmlRenderFormat format,
+    HtmlRenderProvider provider,
+  ) async {
+    final url = _previewUrl;
+    if (url == null || _isExporting) return;
+    setState(() => _isExporting = true);
+    try {
+      final viewport = _selectedDevice;
+      final artifact = await provider.render(
+        HtmlRenderRequest(
+          sourceUrl: url,
+          viewportWidth: viewport.width.toInt(),
+          viewportHeight: viewport.height.toInt(),
+          deviceScaleFactor: viewport.devicePixelRatio,
+          format: format,
+          suggestedName: 'mobilecode-preview',
+        ),
+      );
+      final documents = await getApplicationDocumentsDirectory();
+      final stored = await const HtmlArtifactStore().materialize(
+        artifact,
+        directory: Directory(p.join(documents.path, 'exports', 'html')),
+        fileName:
+            'mobilecode-preview-${DateTime.now().millisecondsSinceEpoch}.${format.extension}',
+      );
+      await Share.shareXFiles(
+        [XFile(stored.path, mimeType: stored.mimeType)],
+        subject: 'MobileCode HTML ${format.id} preview',
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${format.id.toUpperCase()} exported - ${stored.bytes} bytes')),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${format.id.toUpperCase()} export failed: $error')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
   }
 
   Widget _buildDeviceMenu() {
@@ -226,14 +358,19 @@ class _PreviewScreenState extends State<PreviewScreen> {
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: AppTheme.border)),
       offset: const Offset(0, 40),
-      child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(_devIcon(_selectedDevice), size: 16, color: AppTheme.primary),
           const SizedBox(width: 6),
-          Text(_selectedDeviceName, style: const TextStyle(
-            fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+            Text(_selectedDeviceName,
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: AppTheme.textPrimary)),
           const SizedBox(width: 4),
-          const Icon(Icons.arrow_drop_down, size: 18, color: AppTheme.textSecondary),
+            const Icon(Icons.arrow_drop_down,
+                size: 18, color: AppTheme.textSecondary),
         ])),
       itemBuilder: (ctx) => _deviceMenuItems(),
       onSelected: _onDeviceSelected,
@@ -242,45 +379,71 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
   List<PopupMenuEntry<String>> _deviceMenuItems() {
     final entries = <PopupMenuEntry<String>>[];
-    void addCat(String label) => entries.add(
-      const PopupMenuDivider(height: 8));
-    void addDevices(Iterable<bool> Function(DeviceViewport) filter) =>
+    void addCat(String label) => entries.add(const PopupMenuDivider(height: 8));
+    void addDevices(bool Function(DeviceViewport) filter) =>
       entries.addAll(PreviewService.devicePresets.entries
         .where((e) => filter(e.value))
         .map((e) => _devItem(e.key, e.value)));
 
-    entries.add(const PopupMenuItem<String>(enabled: false, height: 32,
-      child: Text('PHONES', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-        color: AppTheme.textTertiary, letterSpacing: 1))));
+    entries.add(const PopupMenuItem<String>(
+        enabled: false,
+        height: 32,
+        child: Text('PHONES',
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textTertiary,
+                letterSpacing: 1))));
     addDevices((v) => v.isPhone);
     addCat('TABLETS');
-    entries.add(const PopupMenuItem<String>(enabled: false, height: 32,
-      child: Text('TABLETS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-        color: AppTheme.textTertiary, letterSpacing: 1))));
+    entries.add(const PopupMenuItem<String>(
+        enabled: false,
+        height: 32,
+        child: Text('TABLETS',
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textTertiary,
+                letterSpacing: 1))));
     addDevices((v) => v.isTablet);
     addCat('DESKTOP');
-    entries.add(const PopupMenuItem<String>(enabled: false, height: 32,
-      child: Text('DESKTOP', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700,
-        color: AppTheme.textTertiary, letterSpacing: 1))));
+    entries.add(const PopupMenuItem<String>(
+        enabled: false,
+        height: 32,
+        child: Text('DESKTOP',
+            style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textTertiary,
+                letterSpacing: 1))));
     addDevices((v) => v.isDesktop);
     return entries;
   }
 
   PopupMenuItem<String> _devItem(String name, DeviceViewport vp) {
     final sel = name == _selectedDeviceName;
-    return PopupMenuItem<String>(value: name, height: 40,
+    return PopupMenuItem<String>(
+        value: name,
+        height: 40,
       child: Row(children: [
-        Icon(_devIcon(vp), size: 16,
-          color: sel ? AppTheme.primary : AppTheme.textSecondary),
+          Icon(_devIcon(vp),
+              size: 16, color: sel ? AppTheme.primary : AppTheme.textSecondary),
         const SizedBox(width: 10),
-        Expanded(child: Text(name, style: TextStyle(fontSize: 13,
+          Expanded(
+              child: Text(name,
+                  style: TextStyle(
+                      fontSize: 13,
           fontWeight: sel ? FontWeight.w600 : FontWeight.w400,
           color: sel ? AppTheme.primary : AppTheme.textPrimary))),
         Text('${vp.width.toInt()}x${vp.height.toInt()}',
-          style: const TextStyle(fontSize: 11, color: AppTheme.textTertiary,
+              style: const TextStyle(
+                  fontSize: 11,
+                  color: AppTheme.textTertiary,
             fontFamily: AppTheme.fontCode)),
-        if (sel) ...[const SizedBox(width: 8),
-          const Icon(Icons.check, size: 16, color: AppTheme.primary)],
+          if (sel) ...[
+            const SizedBox(width: 8),
+            const Icon(Icons.check, size: 16, color: AppTheme.primary)
+          ],
       ]));
   }
 
@@ -299,41 +462,63 @@ class _PreviewScreenState extends State<PreviewScreen> {
     previewUrl: _previewUrl!,
     reloadStream: widget.reloadStream ?? _previewService.onFileChange,
     initialDevice: _selectedDevice,
-    debuggingEnabled: true,
   );
 
   Widget _buildSplit() => LayoutBuilder(
-    builder: (ctx, c) => Row(children: [
-      SizedBox(width: c.maxWidth * _splitRatio,
-        child: widget.splitViewChild),
+        builder: (ctx, c) => Row(
+          children: [
+            SizedBox(
+              width: c.maxWidth * _splitRatio,
+              child: widget.splitViewChild,
+            ),
       GestureDetector(
         onHorizontalDragUpdate: (d) => _onSplitDragUpdate(d, c.maxWidth),
-        child: MouseRegion(cursor: SystemMouseCursors.resizeColumn,
-          child: Container(width: 8,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.resizeColumn,
+                child: Container(
+                  width: 8,
             color: AppTheme.divider.withOpacity(0.3),
-            child: Center(child: Container(width: 2, height: 32,
+                  child: Center(
+                    child: Container(
+                      width: 2,
+                      height: 32,
               decoration: BoxDecoration(
                 color: AppTheme.textTertiary.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(1)))))),
+                        borderRadius: BorderRadius.circular(1),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
       Expanded(child: _buildPreviewContent()),
-    ]),
+          ],
+        ),
   );
 
   // ── Loading State ────────────────────────────────────────────────
 
-  Widget _buildLoading() => Center(child: Column(
-    mainAxisSize: MainAxisSize.min, children: [
-      SizedBox(width: 48, height: 48,
-        child: CircularProgressIndicator(strokeWidth: 2,
-          valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.primary),
+  Widget _buildLoading() => Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor:
+                    const AlwaysStoppedAnimation<Color>(AppTheme.primary),
           backgroundColor: AppTheme.primary.withOpacity(0.1))),
       const SizedBox(height: 24),
       Text('Starting Preview Server...',
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: AppTheme.textPrimary)),
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(color: AppTheme.textPrimary)),
       const SizedBox(height: 8),
       Text('Serving: ${widget.projectPath}',
-        style: const TextStyle(fontSize: 12, color: AppTheme.textTertiary,
+            style: const TextStyle(
+                fontSize: 12,
+                color: AppTheme.textTertiary,
           fontFamily: AppTheme.fontCode)),
       const SizedBox(height: 24),
       _LoadingDots(),
@@ -341,56 +526,72 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
   // ── Error State ──────────────────────────────────────────────────
 
-  Widget _buildError() => Center(child: Container(
+  Widget _buildError() => Center(
+      child: Container(
     constraints: const BoxConstraints(maxWidth: 400),
     padding: const EdgeInsets.all(24),
     child: Column(mainAxisSize: MainAxisSize.min, children: [
-      Container(padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: AppTheme.error.withOpacity(0.1),
+            Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                    color: AppTheme.error.withOpacity(0.1),
           shape: BoxShape.circle),
-        child: Icon(Icons.error_outline, size: 48,
-          color: AppTheme.error.withOpacity(0.7))),
+                child: Icon(Icons.error_outline,
+                    size: 48, color: AppTheme.error.withOpacity(0.7))),
       const SizedBox(height: 20),
       Text('Server Error',
-        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-          color: AppTheme.error)),
+                style: Theme.of(context)
+                    .textTheme
+                    .titleLarge
+                    ?.copyWith(color: AppTheme.error)),
       const SizedBox(height: 8),
-      Text(_serverError!, textAlign: TextAlign.center,
-        style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+            Text(_serverError!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 13, color: AppTheme.textSecondary)),
       const SizedBox(height: 24),
-      ElevatedButton.icon(onPressed: _startServer,
-        icon: const Icon(Icons.refresh, size: 16), label: const Text('Retry')),
+            ElevatedButton.icon(
+                onPressed: _startServer,
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Retry')),
       const SizedBox(height: 8),
-      TextButton(onPressed: () => Navigator.of(context).pop(),
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(),
         child: const Text('Go Back')),
     ])));
 
   // ── No Preview State ─────────────────────────────────────────────
 
-  Widget _buildNoPreview() => Center(child: Column(
-    mainAxisSize: MainAxisSize.min, children: [
-      Icon(Icons.preview_outlined, size: 64,
-        color: AppTheme.textTertiary.withOpacity(0.4)),
+  Widget _buildNoPreview() => Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.preview_outlined,
+            size: 64, color: AppTheme.textTertiary.withOpacity(0.4)),
       const SizedBox(height: 16),
       Text('No Preview Available',
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: AppTheme.textSecondary)),
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(color: AppTheme.textSecondary)),
       const SizedBox(height: 8),
       Text('Open an HTML project to start previewing',
-        style: TextStyle(fontSize: 13,
-          color: AppTheme.textTertiary.withOpacity(0.7))),
+            style: TextStyle(
+                fontSize: 13, color: AppTheme.textTertiary.withOpacity(0.7))),
       const SizedBox(height: 24),
-      ElevatedButton.icon(onPressed: _startServer,
+        ElevatedButton.icon(
+            onPressed: _startServer,
         icon: const Icon(Icons.play_arrow, size: 16),
         label: const Text('Start Preview')),
     ]));
 
   // ── Helpers ──────────────────────────────────────────────────────
 
-  Widget _floatingBtn(IconData icon, String tip, VoidCallback fn) =>
-    Material(color: Colors.transparent,
-      child: InkWell(onTap: fn, borderRadius: BorderRadius.circular(8),
-        child: Container(padding: const EdgeInsets.all(10),
+  Widget _floatingBtn(IconData icon, String tip, VoidCallback fn) => Material(
+      color: Colors.transparent,
+      child: InkWell(
+          onTap: fn,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+              padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: AppTheme.surface.withOpacity(0.8),
             borderRadius: BorderRadius.circular(8),
@@ -409,23 +610,40 @@ class _PreviewScreenState extends State<PreviewScreen> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _ABtn extends StatelessWidget {
-  final IconData icon; final String tip; final VoidCallback onPressed;
+  final IconData icon;
+  final String tip;
+  final VoidCallback? onPressed;
   final bool active;
-  const _ABtn({required this.icon, required this.tip,
-    required this.onPressed, this.active = false});
+  const _ABtn(
+      {required this.icon,
+      required this.tip,
+      required this.onPressed,
+      this.active = false});
 
   @override
-  Widget build(BuildContext context) => Tooltip(message: tip,
-    child: Material(color: Colors.transparent,
-      child: InkWell(onTap: onPressed, borderRadius: BorderRadius.circular(8),
-        child: Container(width: 40, height: 40,
+  Widget build(BuildContext context) => Tooltip(
+      message: tip,
+      child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                  width: 40,
+                  height: 40,
           margin: const EdgeInsets.symmetric(horizontal: 2),
-          decoration: active ? BoxDecoration(
+                  decoration: active
+                      ? BoxDecoration(
             color: AppTheme.primary.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(8)) : null,
+                          borderRadius: BorderRadius.circular(8))
+                      : null,
           alignment: Alignment.center,
-          child: Icon(icon, size: 20,
-            color: active ? AppTheme.primary : AppTheme.textSecondary)))));
+                  child: Icon(icon,
+                      size: 20,
+                      color: active
+                          ? AppTheme.primary
+                          : AppTheme.textSecondary)))));
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Animated Loading Dots
@@ -444,7 +662,9 @@ class _LoadingDotsState extends State<_LoadingDots>
   @override
   void initState() {
     super.initState();
-    _ctrls = List.generate(3, (i) => AnimationController(
+    _ctrls = List.generate(
+        3,
+        (i) => AnimationController(
       vsync: this, duration: const Duration(milliseconds: 400))
       ..addStatusListener((s) {
         if (s == AnimationStatus.completed) {
@@ -457,8 +677,9 @@ class _LoadingDotsState extends State<_LoadingDots>
           });
         }
       }));
-    _anims = _ctrls.map((c) =>
-      Tween<double>(begin: 0.3, end: 1.0).animate(c)).toList();
+    _anims = _ctrls
+        .map((c) => Tween<double>(begin: 0.3, end: 1.0).animate(c))
+        .toList();
     for (var i = 0; i < _ctrls.length; i++) {
       Future.delayed(Duration(milliseconds: i * 150), () {
         if (mounted) _ctrls[i].forward();
@@ -467,15 +688,24 @@ class _LoadingDotsState extends State<_LoadingDots>
   }
 
   @override
-  void dispose() { for (final c in _ctrls) { c.dispose(); } super.dispose(); }
+  void dispose() {
+    for (final c in _ctrls) {
+      c.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => Row(
     mainAxisSize: MainAxisSize.min,
-    children: List.generate(3, (i) => AnimatedBuilder(
+        children: List.generate(
+            3,
+            (i) => AnimatedBuilder(
       animation: _anims[i],
       builder: (ctx, ch) => Container(
-        width: 8, height: 8, margin: const EdgeInsets.symmetric(horizontal: 4),
+                      width: 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
         decoration: BoxDecoration(
           color: AppTheme.primary.withOpacity(_anims[i].value),
           shape: BoxShape.circle),

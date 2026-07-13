@@ -42,12 +42,12 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Recreate Android platform project
+      - name: Verify checked-in Android project
         working-directory: mobile_agent
         run: |
-          rm -rf android
-          flutter create --platforms=android --project-name mobile_agent --org com.mobilecode .
-          python3 tooling/prepare_android_project.py
+          python3 -m py_compile tooling/prepare_android_project.py
+          test -f android/app/src/main/kotlin/com/mobilecode/app/MobileCodeHelperService.kt
+          test -f android/app/src/main/kotlin/com/mobilecode/app/MobileCodeHelperLauncherActivity.kt
 
       - name: Resolve Flutter dependencies
         working-directory: mobile_agent
@@ -59,7 +59,10 @@ jobs:
 
       - name: Build debug APK for emulator
         working-directory: mobile_agent
-        run: flutter build apk --debug --target lib/main.dart
+        run: >-
+          flutter build apk --debug --flavor pure
+          --dart-define=MOBILECODE_BUILD_CHANNEL=pure
+          --target lib/main.dart
 
       - name: Run APK on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -73,12 +76,14 @@ jobs:
             set -eux
             mkdir -p artifacts
             adb wait-for-device
-            installed=0; for attempt in 1 2 3; do if adb install -r mobile_agent/build/app/outputs/flutter-apk/app-debug.apk; then installed=1; break; fi; adb kill-server; adb start-server; adb wait-for-device; sleep 20; done; test "$installed" = 1
+            installed=0; for attempt in 1 2 3; do if adb install -r mobile_agent/build/app/outputs/flutter-apk/app-pure-debug.apk; then installed=1; break; fi; adb kill-server; adb start-server; adb wait-for-device; sleep 20; done; test "$installed" = 1
             auth_header='X-MobileCode-Token: ci-helper-token'
-            adb shell am start -n com.mobilecode.app/.MobileCodeHelperLauncherActivity --es com.mobilecode.app.extra.AUTH_TOKEN ci-helper-token
+            adb shell am force-stop com.mobilecode.app
+            adb forward --remove tcp:18765 || true
             adb forward tcp:18765 tcp:8765
-            helper_ready=0; for attempt in $(seq 1 20); do if curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then helper_ready=1; break; fi; sleep 1; done; if [ "$helper_ready" != 1 ]; then adb shell dumpsys activity services com.mobilecode.app > artifacts/helper-services.txt || true; adb logcat -d -t 1500 > artifacts/android-logcat.txt || true; exit 1; fi
+            helper_ready=0; for attempt in $(seq 1 20); do adb shell am start -W -n com.mobilecode.app/.MobileCodeHelperLauncherActivity --es com.mobilecode.app.extra.AUTH_TOKEN ci-helper-token > artifacts/helper-launch.txt 2>&1 || true; if curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then helper_ready=1; break; fi; sleep 1; done; if [ "$helper_ready" != 1 ]; then adb shell dumpsys activity services com.mobilecode.app > artifacts/helper-services.txt || true; adb logcat -d -t 1500 > artifacts/android-logcat.txt || true; exit 1; fi
             curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health | tee artifacts/android-helper-health.json
+            test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-MobileCode-Token: wrong-token' http://127.0.0.1:18765/v1/health)" = 401
             curl -fsS -H "$auth_header" -H 'Content-Type: application/json' -X POST http://127.0.0.1:18765/v1/execute -d '{"command":"pwd","timeoutMs":10000}' | tee artifacts/android-helper-execute.json
             curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/tasks/current | tee artifacts/android-helper-task.json
             grep '"name":"MobileCode Helper Service"' artifacts/android-helper-health.json

@@ -1,15 +1,12 @@
 // lib/providers/api_usage_provider.dart
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../models/quota_status.dart';
-import '../models/api_usage_stats.dart';
-import '../models/daily_usage.dart';
-import '../models/provider_usage.dart';
-import '../models/usage_projection.dart';
-import '../models/optimization_tip.dart';
-import '../models/usage_alert.dart';
+import 'api_manager_provider.dart' as api_manager;
+import 'storage_provider.dart';
 import '../services/api_usage_service.dart';
 
 // ─── Service DI ────────────────────────────────────────────────────────
@@ -23,8 +20,39 @@ import '../services/api_usage_service.dart';
 /// );
 /// ```
 final apiUsageServiceProvider = Provider<ApiUsageService>((ref) {
-  return ApiUsageService();
+  final service = ApiUsageService(
+    api: ref.watch(api_manager.apiServiceProvider),
+    storage: ref.watch(storageServiceProvider),
+  );
+  unawaited(service.init());
+  return service;
 });
+
+extension _QuotaStatusProviderCompat on QuotaStatus {
+  int get total => monthlyQuota;
+  int get consumed => usedThisMonth;
+}
+
+extension _ApiUsageStatsProviderCompat on ApiUsageStats {
+  int get totalTokens => totalTokensUsed;
+}
+
+extension _ApiUsageServiceProviderCompat on ApiUsageService {
+  Future<void> setQuota(int quota) => setMonthlyQuota(quota);
+
+  Future<List<UsageAlert>> getUsageAlerts() async => const [];
+
+  Future<void> acknowledgeAlerts(List<String> alertIds) async {
+    for (final id in alertIds) {
+      await dismissAlert(id);
+    }
+  }
+
+  Future<double> getEstimatedCost() async {
+    final stats = await getUsageStats();
+    return stats.estimatedCost / 100.0;
+  }
+}
 
 // ─── Quota Status ──────────────────────────────────────────────────────
 
@@ -86,8 +114,13 @@ class ApiQuotaNotifier extends StateNotifier<AsyncValue<QuotaStatus>> {
   void incrementConsumed(int tokens) {
     final current = state.valueOrNull;
     if (current == null) return;
+    final consumed = current.usedThisMonth + tokens;
     state = AsyncValue.data(current.copyWith(
-      consumed: current.consumed + tokens,
+      usedThisMonth: consumed,
+      remaining: (current.monthlyQuota - consumed).clamp(0, current.monthlyQuota),
+      usagePercent: current.monthlyQuota > 0
+          ? consumed / current.monthlyQuota * 100
+          : current.usagePercent,
     ));
   }
 }

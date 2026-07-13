@@ -19,6 +19,54 @@ import '../core/theme.dart';
 import '../models/self_use_session.dart';
 import '../models/agent_task.dart';
 
+extension _SelfUseSessionMiniBarUi on SelfUseSession {
+  Color get statusColor {
+    switch (status) {
+      case SessionStatus.pending:
+      case SessionStatus.planning:
+        return AppTheme.warning;
+      case SessionStatus.executing:
+        return AppTheme.accent;
+      case SessionStatus.paused:
+        return AppTheme.textTertiary;
+      case SessionStatus.completed:
+        return AppTheme.success;
+      case SessionStatus.failed:
+        return AppTheme.error;
+    }
+  }
+
+  String get statusLabel {
+    switch (status) {
+      case SessionStatus.pending:
+        return '等待中';
+      case SessionStatus.planning:
+        return '规划中';
+      case SessionStatus.executing:
+        return '执行中';
+      case SessionStatus.paused:
+        return '已暂停';
+      case SessionStatus.completed:
+        return '已完成';
+      case SessionStatus.failed:
+        return '失败';
+    }
+  }
+
+  int get completedActionsCount => completedSteps;
+  int get failedActionsCount => failedSteps;
+  int get totalActions => plannedActions.length;
+
+  String get elapsedTimeFormatted {
+    final elapsed = elapsedTime;
+    if (elapsed.inMinutes < 1) return '${elapsed.inSeconds}s';
+    if (elapsed.inHours < 1) {
+      return '${elapsed.inMinutes}m ${elapsed.inSeconds.remainder(60)}s';
+    }
+    return '${elapsed.inHours}h ${elapsed.inMinutes.remainder(60)}m';
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Self-Use Mini Bar
 // ═══════════════════════════════════════════════════════════════════════════

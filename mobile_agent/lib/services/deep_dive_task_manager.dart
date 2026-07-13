@@ -16,6 +16,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -226,7 +227,7 @@ class DeepDiveTaskManager with ErrorLogging {
     await _processQueue();
   }
 
-  void _processQueue() async {
+  Future<void> _processQueue() async {
     if (_queue.isEmpty) return;
 
     // Check if we have capacity to start more tasks.

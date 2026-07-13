@@ -1,4 +1,4 @@
-package com.mobilecode.mobile_agent
+package com.mobilecode.app
 
 import android.app.ActivityManager
 import android.content.Context
@@ -14,6 +14,7 @@ import android.os.Environment
 import android.os.PowerManager
 import android.os.StatFs
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -72,7 +73,8 @@ class MainActivity : FlutterActivity() {
                     result.success(rootProbe())
                 }
                 "startHelperService" -> {
-                    result.success(startHelperService())
+                    val authToken = call.argument<String>("authToken") ?: ""
+                    result.success(startHelperService(authToken))
                 }
                 "stopHelperService" -> {
                     stopService(Intent(this, MobileCodeHelperService::class.java).setAction(MobileCodeHelperService.ACTION_STOP))
@@ -80,6 +82,26 @@ class MainActivity : FlutterActivity() {
                 }
                 "helperServiceStatus" -> {
                     result.success(MobileCodeHelperService.status())
+                }
+                "getPhoneUseAccessibilityStatus" -> {
+                    result.success(PhoneUseAccessibilityService.status(this))
+                }
+                "openPhoneUseAccessibilitySettings" -> {
+                    result.success(openPhoneUseAccessibilitySettings())
+                }
+                "openAppSettings" -> {
+                    result.success(openAppSettings())
+                }
+                "openBatteryOptimizationSettings" -> {
+                    result.success(openBatteryOptimizationSettings())
+                }
+                "runPhoneUseDryProbe" -> {
+                    result.success(PhoneUseAccessibilityService.dryProbe(this))
+                }
+                "performPhoneUseAction" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val action = call.argument<Map<String, Any?>>("action") ?: emptyMap()
+                    result.success(PhoneUseAccessibilityService.performPhoneUseAction(this, action))
                 }
                 "getDeviceTelemetry" -> {
                     result.success(deviceTelemetry())
@@ -94,6 +116,16 @@ class MainActivity : FlutterActivity() {
                     pendingSharedFile = null
                     result.success(shared)
                 }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mobile_coding/platform").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getBuildTags" -> result.success(Build.TAGS ?: "")
+                "getInstallerPackage" -> result.success(installerPackage())
+                "isAppStoreBuild" -> result.success(false)
+                "verifySignature" -> result.success(true)
                 else -> result.notImplemented()
             }
         }
@@ -148,9 +180,12 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun startHelperService(): Boolean {
+    private fun startHelperService(authToken: String = ""): Boolean {
         return try {
             val intent = Intent(this, MobileCodeHelperService::class.java)
+            if (authToken.isNotBlank()) {
+                intent.putExtra(MobileCodeHelperService.EXTRA_AUTH_TOKEN, authToken)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(intent)
             } else {
@@ -161,6 +196,50 @@ class MainActivity : FlutterActivity() {
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to request MobileCode helper service start", error)
             false
+        }
+    }
+
+    private fun openPhoneUseAccessibilitySettings(): Boolean {
+        return try {
+            val settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(settingsIntent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun openAppSettings(): Boolean {
+        return try {
+            val settingsIntent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(settingsIntent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun openBatteryOptimizationSettings(): Boolean {
+        return try {
+            val settingsIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(settingsIntent)
+            true
+        } catch (_: Exception) {
+            openAppSettings()
+        }
+    }
+
+    private fun installerPackage(): String? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            packageManager.getInstallSourceInfo(packageName).installingPackageName
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getInstallerPackageName(packageName)
         }
     }
 
@@ -252,7 +331,9 @@ class MainActivity : FlutterActivity() {
     private fun maybeStartHelperFromIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_START_HELPER, false) == true) {
             Log.i(TAG, "mobilecode_start_helper intent received")
-            startHelperService()
+            startHelperService(
+                intent.getStringExtra(MobileCodeHelperService.EXTRA_AUTH_TOKEN) ?: ""
+            )
         }
     }
 

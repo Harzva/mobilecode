@@ -23,6 +23,18 @@ import 'package:flutter/foundation.dart';
 import '../core/agent_paradigm.dart';
 import 'secure_storage_service.dart';
 
+String _jsonString(Object? value, [String fallback = '']) =>
+    value?.toString() ?? fallback;
+
+String? _jsonStringOrNull(Object? value) => value?.toString();
+
+int _jsonInt(Object? value, [int fallback = 0]) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? fallback;
+  return fallback;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Exceptions
 // ═══════════════════════════════════════════════════════════════════════════
@@ -152,14 +164,14 @@ class WeChatArticle {
   factory WeChatArticle.fromJson(Map<String, dynamic> json) {
     return WeChatArticle(
       msgId: json['msg_id']?.toString() ?? json['msg_data_id']?.toString() ?? '',
-      title: json['title'] ?? '',
-      url: json['url'] ?? json['content_url'],
+      title: _jsonString(json['title']),
+      url: _jsonStringOrNull(json['url'] ?? json['content_url']),
       publishTime: json['publish_time'] != null
           ? DateTime.fromMillisecondsSinceEpoch(
-              (json['publish_time'] as int) * 1000)
+              _jsonInt(json['publish_time']) * 1000)
           : DateTime.now(),
-      readCount: json['read_count'] ?? 0,
-      likeCount: json['like_count'] ?? 0,
+      readCount: _jsonInt(json['read_count']),
+      likeCount: _jsonInt(json['like_count']),
     );
   }
 
@@ -241,11 +253,11 @@ class ArticleStats {
 
   factory ArticleStats.fromJson(Map<String, dynamic> json) {
     return ArticleStats(
-      readCount: json['int_page_read_user'] ?? json['read_count'] ?? 0,
-      likeCount: json['like_user'] ?? json['like_count'] ?? 0,
-      shareCount: json['share_user'] ?? json['share_count'] ?? 0,
-      commentCount: json['comment_count'] ?? 0,
-      forwardCount: json['add_to_fav_user'] ?? json['forward_count'] ?? 0,
+      readCount: _jsonInt(json['int_page_read_user'] ?? json['read_count']),
+      likeCount: _jsonInt(json['like_user'] ?? json['like_count']),
+      shareCount: _jsonInt(json['share_user'] ?? json['share_count']),
+      commentCount: _jsonInt(json['comment_count']),
+      forwardCount: _jsonInt(json['add_to_fav_user'] ?? json['forward_count']),
     );
   }
 
@@ -624,21 +636,21 @@ class WeChatPublishService {
 
         return WeChatDraft(
           mediaId: item['media_id']?.toString() ?? '',
-          title: newsItem?['title'] ?? '',
-          content: newsItem?['content'] ?? '',
-          author: newsItem?['author'],
-          digest: newsItem?['digest'],
+          title: _jsonString(newsItem?['title']),
+          content: _jsonString(newsItem?['content']),
+          author: _jsonStringOrNull(newsItem?['author']),
+          digest: _jsonStringOrNull(newsItem?['digest']),
           createTime: item['update_time'] != null
               ? DateTime.fromMillisecondsSinceEpoch(
-                  (item['update_time'] as int) * 1000)
+                  _jsonInt(item['update_time']) * 1000)
               : DateTime.now(),
           updateTime: item['update_time'] != null
               ? DateTime.fromMillisecondsSinceEpoch(
-                  (item['update_time'] as int) * 1000)
+                  _jsonInt(item['update_time']) * 1000)
               : DateTime.now(),
-          thumbUrl: newsItem?['thumb_media_id'],
-          needOpenComment: newsItem?['need_open_comment'] ?? 0,
-          onlyFansCanComment: newsItem?['only_fans_can_comment'] ?? 0,
+          thumbUrl: _jsonStringOrNull(newsItem?['thumb_media_id']),
+          needOpenComment: _jsonInt(newsItem?['need_open_comment']),
+          onlyFansCanComment: _jsonInt(newsItem?['only_fans_can_comment']),
         );
       }).toList();
 
@@ -698,8 +710,8 @@ class WeChatPublishService {
     final mediaId = response.data?['media_id'] as String?;
     if (mediaId == null || mediaId.isEmpty) {
       throw WeChatApiException(
-        errcode: response.data?['errcode'] ?? -1,
-        errmsg: response.data?['errmsg'] ?? 'Upload failed',
+        errcode: _jsonInt(response.data?['errcode'], -1),
+        errmsg: _jsonString(response.data?['errmsg'], 'Upload failed'),
         operation: 'uploadImage',
       );
     }
@@ -739,7 +751,7 @@ class WeChatPublishService {
     }
 
     return WeChatPublishResult.failure(
-      response.data?['errmsg'] ?? 'Unknown publish error',
+      _jsonString(response.data?['errmsg'], 'Unknown publish error'),
     );
   }
 
@@ -806,11 +818,11 @@ class WeChatPublishService {
 
         return WeChatArticle(
           msgId: item['msg_data_id']?.toString() ?? '',
-          title: newsItem?['title'] ?? '',
-          url: newsItem?['url'],
+          title: _jsonString(newsItem?['title']),
+          url: _jsonStringOrNull(newsItem?['url']),
           publishTime: item['update_time'] != null
               ? DateTime.fromMillisecondsSinceEpoch(
-                  (item['update_time'] as int) * 1000)
+                  _jsonInt(item['update_time']) * 1000)
               : DateTime.now(),
         );
       }).toList();

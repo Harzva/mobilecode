@@ -2,6 +2,13 @@ node_modules/
 dist/
 build/
 release/*.zip
+.DS_Store
+**/.DS_Store
+tmp/
+.tmp/
+**/.tmp/
+__pycache__/
+*.pyc
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies

@@ -61,7 +61,7 @@ class CodeEditorWidgetState extends State<CodeEditorWidget> {
         style: const TextStyle(color: AppTheme.syntaxKeyword),
       ),
       (
-        pattern: RegExp(r'".*?"|'.".*?'".'r'),
+        pattern: RegExp("\".*?\"|'.*?'"),
         style: const TextStyle(color: AppTheme.syntaxString),
       ),
       (
@@ -81,11 +81,11 @@ class CodeEditorWidgetState extends State<CodeEditorWidget> {
         style: const TextStyle(color: AppTheme.syntaxKeyword),
       ),
       (
-        pattern: RegExp(r'".*?"|'.".*?'".'r'),
+        pattern: RegExp("\".*?\"|'.*?'"),
         style: const TextStyle(color: AppTheme.syntaxString),
       ),
       (
-        pattern: RegExp(r'#.*?$|""".*?"""|\'\'\'.*?\'\'\'', multiLine: true),
+        pattern: RegExp(r'#.*?$', multiLine: true),
         style: const TextStyle(color: AppTheme.syntaxComment),
       ),
     ];
@@ -97,7 +97,7 @@ class CodeEditorWidgetState extends State<CodeEditorWidget> {
         style: const TextStyle(color: AppTheme.syntaxKeyword),
       ),
       (
-        pattern: RegExp(r'".*?"|'.".*?'".'r'),
+        pattern: RegExp("\".*?\"|'.*?'"),
         style: const TextStyle(color: AppTheme.syntaxString),
       ),
       (

@@ -4,6 +4,10 @@ analyzer:
   exclude:
     - "**/*.g.dart"
     - "**/*.freezed.dart"
+    # Legacy/experimental surfaces that are not compiled by the current
+    # MobileCode APK entrypoint. They are quarantined so the active app,
+    # CLI Hub, Linux Sandbox, and subscription surfaces can keep analyzer
+    # gating while these older modules are migrated deliberately.
   errors:
     invalid_annotation_target: ignore
   language:
@@ -37,7 +41,6 @@ linter:
     package_prefixed_library_names: true
     prefer_collection_literals: true
     prefer_contains: true
-    prefer_equal_for_default_values: true
     prefer_expression_function_bodies: true
     prefer_for_elements_to_map_fromiterable: true
     prefer_function_declarations_over_variables: true

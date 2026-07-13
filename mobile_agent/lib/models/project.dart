@@ -33,6 +33,9 @@ class Project {
   /// Primary programming language (e.g., 'dart', 'python')
   final String language;
 
+  /// Local project root path for legacy project surfaces.
+  final String rootPath;
+
   /// When the project was created
   final DateTime createdAt;
 
@@ -44,6 +47,12 @@ class Project {
 
   /// Whether the project is marked as favorite
   final bool isFavorite;
+
+  /// Optional UI color tag for legacy project surfaces.
+  final String? colorTag;
+
+  /// Last opened file path for restore flows.
+  final String? lastOpenedFilePath;
 
   /// Creates a [Project] with all fields specified.
   ///
@@ -58,6 +67,9 @@ class Project {
     required this.updatedAt,
     required this.files,
     required this.isFavorite,
+    this.rootPath = '',
+    this.colorTag,
+    this.lastOpenedFilePath,
   });
 
   /// Factory for creating a new project with auto-generated values.
@@ -79,6 +91,7 @@ class Project {
       updatedAt: now,
       files: files ?? [],
       isFavorite: false,
+      rootPath: '',
     );
   }
 
@@ -96,6 +109,9 @@ class Project {
               .toList() ??
           [],
       isFavorite: json['isFavorite'] as bool? ?? false,
+      rootPath: json['rootPath'] as String? ?? '',
+      colorTag: json['colorTag'] as String?,
+      lastOpenedFilePath: json['lastOpenedFilePath'] as String?,
     );
   }
 
@@ -110,6 +126,9 @@ class Project {
       'updatedAt': updatedAt.toIso8601String(),
       'files': files.map((f) => f.toJson()).toList(),
       'isFavorite': isFavorite,
+      'rootPath': rootPath,
+      'colorTag': colorTag,
+      'lastOpenedFilePath': lastOpenedFilePath,
     };
   }
 
@@ -123,6 +142,9 @@ class Project {
     DateTime? updatedAt,
     List<FileItem>? files,
     bool? isFavorite,
+    String? rootPath,
+    String? colorTag,
+    String? lastOpenedFilePath,
   }) {
     return Project(
       id: id ?? this.id,
@@ -133,6 +155,9 @@ class Project {
       updatedAt: updatedAt ?? this.updatedAt,
       files: files ?? this.files,
       isFavorite: isFavorite ?? this.isFavorite,
+      rootPath: rootPath ?? this.rootPath,
+      colorTag: colorTag ?? this.colorTag,
+      lastOpenedFilePath: lastOpenedFilePath ?? this.lastOpenedFilePath,
     );
   }
 

@@ -188,7 +188,7 @@ class _LoginPanelState extends ConsumerState<_LoginPanel> {
     return Center(
       child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        child: GlassCard(
+        child: GlassCardWidget(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(

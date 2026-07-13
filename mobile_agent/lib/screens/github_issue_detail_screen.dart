@@ -815,9 +815,9 @@ class _GitHubIssueDetailScreenState extends State<GitHubIssueDetailScreen> {
         )),
         const Spacer(),
         // Reaction counts
-        if ((reactions['+1'] ?? 0) > 0)
+        if (((reactions['+1'] as int?) ?? 0) > 0)
           _reactionChip('\u{1F44D}', '${reactions['+1']}'),
-        if ((reactions['heart'] ?? 0) > 0)
+        if (((reactions['heart'] as int?) ?? 0) > 0)
           _reactionChip('\u2764', '${reactions['heart']}'),
       ],
     );

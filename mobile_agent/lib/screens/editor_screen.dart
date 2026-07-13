@@ -938,40 +938,41 @@ class _EditorScreenState extends State<EditorScreen> {
         color: AppTheme.accent.withOpacity(0.1),
         child: Text('Matching bracket at line $_bracketLine',
           style: TextStyle(fontSize: 10, color: AppTheme.accent.withOpacity(0.8), fontFamily: AppTheme.fontCode))),
-      Expanded(child: SingleChildScrollView(controller: _editorScroll,
-        child: SingleChildScrollView(scrollDirection: Axis.horizontal,
-          child: Container(constraints: BoxConstraints(minWidth: _editorWidth()),
-            child: TextField(
-              controller: tab.controller, focusNode: tab.focusNode, maxLines: null,
-              keyboardType: TextInputType.multiline, textInputAction: TextInputAction.newline,
-              readOnly: tab.readOnly,
-              style: TextStyle(fontSize: _fontSize, fontFamily: AppTheme.fontCode,
-                color: AppTheme.textPrimary, height: 1.65, letterSpacing: 0.3),
-              cursorColor: AppTheme.editorCursor, cursorWidth: 2, cursorRadius: const Radius.circular(1),
-              decoration: const InputDecoration(border: InputBorder.none,
-                contentPadding: EdgeInsets.only(left: 12, right: 12, top: 4, bottom: 4), isDense: true),
-              onChanged: (_) { _updateCursor(tab); _bracketMatch(); },
-              enableInteractiveSelection: true,
-              selectionControls: materialTextSelectionControls,
-              contextMenuBuilder: (ctx, es) => AdaptiveTextSelectionToolbar.buttonItems(
-                anchors: es.contextMenuAnchors,
-                buttonItems: [...es.contextMenuButtonItems,
-                  ContextMenuButtonItem(label: 'Format Selection',
-                    onPressed: () { es.hideToolbar(); _format(); }),
-                  ContextMenuButtonItem(label: 'Ask AI',
-                    onPressed: () { es.hideToolbar(); if (!_showAi) setState(() => _showAi = true); }),
-                ]),
-            ),
-          ),
+      Expanded(
+        child: TextField(
+          controller: tab.controller,
+          focusNode: tab.focusNode,
+          scrollController: _editorScroll,
+          expands: true,
+          maxLines: null,
+          minLines: null,
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.newline,
+          readOnly: tab.readOnly,
+          style: TextStyle(fontSize: _fontSize, fontFamily: AppTheme.fontCode,
+            color: AppTheme.textPrimary, height: 1.65, letterSpacing: 0.3),
+          textAlignVertical: TextAlignVertical.top,
+          cursorColor: AppTheme.editorCursor, cursorWidth: 2, cursorRadius: const Radius.circular(1),
+          decoration: const InputDecoration(
+            filled: true,
+            fillColor: AppTheme.editorBackground,
+            border: InputBorder.none,
+            contentPadding: EdgeInsets.only(left: 12, right: 12, top: 4, bottom: 4), isDense: true),
+          onChanged: (_) { _updateCursor(tab); _bracketMatch(); },
+          enableInteractiveSelection: true,
+          selectionControls: materialTextSelectionControls,
+          contextMenuBuilder: (ctx, es) => AdaptiveTextSelectionToolbar.buttonItems(
+            anchors: es.contextMenuAnchors,
+            buttonItems: [...es.contextMenuButtonItems,
+              ContextMenuButtonItem(label: 'Format Selection',
+                onPressed: () { es.hideToolbar(); _format(); }),
+              ContextMenuButtonItem(label: 'Ask AI',
+                onPressed: () { es.hideToolbar(); if (!_showAi) setState(() => _showAi = true); }),
+            ]),
         ),
-      )),
+      ),
     ]),
   );
-
-  double _editorWidth() {
-    final w = MediaQuery.of(context).size.width;
-    return w - (_showLineNumbers ? 49 : 0) - (_showAi ? w * 0.6 : 0);
-  }
 
   // ── Status Bar ──────────────────────────────────────────────────────
 

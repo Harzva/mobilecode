@@ -5,7 +5,9 @@
 // for remote hosts, and exposes the SshService to the UI.
 
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 

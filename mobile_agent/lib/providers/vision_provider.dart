@@ -148,46 +148,52 @@ class GeneratedScreen extends StatelessWidget {
 // ── Selection Providers ──────────────────────────────────────────
 
 /// Whether an image is currently selected
-final hasImageProvider = Provider<bool>((ref) => ref.watch(visionProvider).imageBase64 != null);
+final hasImageProvider =
+    Provider<bool>((ref) => ref.watch(visionNotifierProvider).imageBase64 != null);
 
 /// Confidence score of the current result (0.0 - 1.0)
 final confidenceProvider = Provider<double>((ref) {
-  final result = ref.watch(visionProvider).result;
+  final result = ref.watch(visionNotifierProvider).result;
   return result?.confidence ?? 0.0;
 });
 
 /// Color palette of the current result
 final colorPaletteProvider = Provider<Map<String, String>>((ref) {
-  final result = ref.watch(visionProvider).result;
+  final result = ref.watch(visionNotifierProvider).result;
   return result?.colorPalette ?? const {};
 });
 
 /// Components list of the current result
 final componentsProvider = Provider<List<String>>((ref) {
-  final result = ref.watch(visionProvider).result;
+  final result = ref.watch(visionNotifierProvider).result;
   return result?.components ?? const [];
 });
 
 /// Generated code from current result
 final generatedCodeProvider = Provider<String>((ref) {
-  final result = ref.watch(visionProvider).result;
+  final result = ref.watch(visionNotifierProvider).result;
   return result?.code ?? '';
 });
 
 /// Current step in the vision flow
-final visionStepProvider = Provider<VisionFlowStep>((ref) => ref.watch(visionProvider).step);
+final visionStepProvider =
+    Provider<VisionFlowStep>((ref) => ref.watch(visionNotifierProvider).step);
 
 /// Selected framework
-final visionFrameworkProvider = Provider<TargetFramework>((ref) => ref.watch(visionProvider).framework);
+final visionFrameworkProvider =
+    Provider<TargetFramework>((ref) => ref.watch(visionNotifierProvider).framework);
 
 /// Current result
-final visionResultProvider = Provider<CodeConversionResult?>((ref) => ref.watch(visionProvider).result);
+final visionResultProvider = Provider<CodeConversionResult?>(
+    (ref) => ref.watch(visionNotifierProvider).result);
 
 /// Whether processing is in progress
-final visionProcessingProvider = Provider<bool>((ref) => ref.watch(visionProvider).isProcessing);
+final visionProcessingProvider =
+    Provider<bool>((ref) => ref.watch(visionNotifierProvider).isProcessing);
 
 /// Current error message
-final visionErrorProvider = Provider<String?>((ref) => ref.watch(visionProvider).errorMessage);
+final visionErrorProvider =
+    Provider<String?>((ref) => ref.watch(visionNotifierProvider).errorMessage);
 
 // ── Service Providers ─────────────────────────────────────────────
 

@@ -416,7 +416,7 @@ class CrashRecoveryService with ErrorLogging {
     _debounceTimer = null;
 
     // Mark as clean shutdown (no crash).
-    await _clearCrashState();
+    await clearCrashState();
 
     _currentProjectId = null;
     _currentFilePath = null;

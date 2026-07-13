@@ -137,7 +137,10 @@ GoRouter _createRouter() {
         name: 'project-detail',
         builder: (context, state) {
           final projectId = state.pathParameters['id']!;
-          return ProjectDetailScreen(projectId: projectId);
+          return ProjectDetailScreen(
+            projectName: projectId,
+            language: state.uri.queryParameters['language'] ?? 'dart',
+          );
         },
       ),
 
@@ -154,7 +157,7 @@ GoRouter _createRouter() {
         name: 'snippet-editor',
         builder: (context, state) {
           final snippetId = state.uri.queryParameters['id'];
-          return SnippetEditorScreen(snippetId: snippetId);
+          return SnippetEditorScreen(snippetSource: snippetId);
         },
       ),
 
@@ -172,7 +175,7 @@ GoRouter _createRouter() {
         builder: (context, state) {
           final owner = state.uri.queryParameters['owner']!;
           final repo = state.uri.queryParameters['repo']!;
-          return GitHubRepoScreen(owner: owner, repo: repo);
+          return GitHubRepoScreen(owner: owner, repoName: repo);
         },
       ),
 
@@ -182,7 +185,7 @@ GoRouter _createRouter() {
         name: 'ai-chat',
         builder: (context, state) {
           final codeContext = state.uri.queryParameters['code'];
-          return AiChatScreen(initialCodeContext: codeContext);
+          return AiChatScreen(initialCode: codeContext);
         },
       ),
 

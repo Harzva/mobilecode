@@ -24,6 +24,9 @@ enum SyncPriority { low, normal, high, critical }
 /// Resolution strategies when a conflict is detected between local and remote.
 enum ConflictResolution { useLocal, useRemote, merge, manual }
 
+/// Internal result of attempting one queued sync operation.
+enum _OpResult { success, conflict, failure }
+
 // ─── Models ───────────────────────────────────────────────────────────
 
 /// A single operation queued for synchronization with the remote server.
@@ -578,9 +581,6 @@ class OfflineManager {
   }
 
   // ── Private Execution ───────────────────────────────────────────────
-
-  /// Internal result of attempting one operation.
-  enum _OpResult { success, conflict, failure }
 
   Future<_OpResult> _executeOperation(SyncOperation op) async {
     switch (op.type) {

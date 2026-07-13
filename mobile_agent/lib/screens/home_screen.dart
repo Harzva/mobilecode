@@ -18,9 +18,11 @@ import '../core/evidence/evidence_model.dart';
 import 'agent_dashboard_screen.dart';
 import 'api_usage_screen.dart';
 import 'benchmark_lab_screen.dart';
+import 'capability_center_screen.dart';
 import 'device_telemetry_screen.dart';
 import 'downloads_shared_folders_screen.dart';
 import 'editor_screen.dart';
+import 'external_file_preview_screen.dart';
 import 'github_repo_hub_screen.dart';
 import 'github_screen.dart';
 import 'hook_registry_screen.dart';
@@ -32,8 +34,12 @@ import '../services/feature_flags_service.dart';
 import '../services/github_deep_service.dart';
 import '../services/github_pages_service.dart';
 import '../services/github_repo_hub_service.dart';
+import '../services/harness_permission_service.dart';
 import '../services/html_publish_readiness_service.dart';
+import '../services/html_render_provider.dart';
 import '../services/lark_api_service.dart';
+import '../services/cli_hub_runtime_events.dart';
+import '../services/mobile_code_helper_auth.dart';
 import '../services/mobilecode_local_model_manifest_service.dart';
 import '../services/mobilecode_update_service.dart';
 import '../services/model_provider_preset_service.dart';
@@ -44,13 +50,18 @@ import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
 import '../services/agent_loop_controller.dart';
 import '../services/device_telemetry_service.dart';
+import '../services/external_file_preview_service.dart';
 import '../services/skill_manager_service.dart';
 import '../services/termux_service.dart';
 import '../services/token_usage_service.dart';
 import '../services/tool_call_adapter.dart';
+import '../services/tuima_provider_service.dart';
 import '../services/voice_service.dart';
+import '../themes/app_theme.dart';
 import '../widgets/phone_use_mode_card.dart';
 import '../widgets/strategy_mode_card.dart';
+import '../widgets/agent_trace_progress_box.dart';
+import '../widgets/agent_trace_recovery_box.dart';
 
 enum _ApiFlavor { openAi, anthropic }
 
@@ -515,6 +526,7 @@ class _AgentTraceStep {
     this.avatarAsset,
     this.toolName,
     this.details = const {},
+    this.evidenceMetadata = const {},
     this.traceAction = MobileCodeAction.traceParseInstruction,
     String? evidenceId,
     this.state = _AgentStepState.queued,
@@ -529,6 +541,7 @@ class _AgentTraceStep {
   final String? avatarAsset;
   final String? toolName;
   final Map<String, String> details;
+  final Map<String, dynamic> evidenceMetadata;
   final MobileCodeAction traceAction;
   final String evidenceId;
   final _AgentStepState state;
@@ -543,6 +556,7 @@ class _AgentTraceStep {
     String? avatarAsset,
     String? toolName,
     Map<String, String>? details,
+    Map<String, dynamic>? evidenceMetadata,
     MobileCodeAction? traceAction,
     String? evidenceId,
     _AgentStepState? state,
@@ -557,6 +571,7 @@ class _AgentTraceStep {
       avatarAsset: avatarAsset ?? this.avatarAsset,
       toolName: toolName ?? this.toolName,
       details: details ?? this.details,
+      evidenceMetadata: evidenceMetadata ?? this.evidenceMetadata,
       traceAction: traceAction ?? this.traceAction,
       evidenceId: evidenceId ?? this.evidenceId,
       state: state ?? this.state,
@@ -936,7 +951,7 @@ const _providerNativeToolSpecs = [
   _LocalToolSpec(
     name: 'preview_snapshot',
     description:
-        'Record preview metadata/DOM evidence; this is not a native bitmap screenshot.',
+        'Capture preview evidence; native renderer produces a PNG artifact, otherwise metadata-only status is reported.',
     surface: 'ActionEvidence',
     icon: Icons.photo_camera_back_outlined,
     color: _cyan,
@@ -1089,7 +1104,8 @@ const _androidCommandSpecs = [
     commands: 'browser open, screenshot-like check',
     support: 'Supported',
     mobileCodePath: 'preview_html / preview_snapshot',
-    note: 'Snapshot is metadata/DOM evidence, not a native bitmap screenshot.',
+    note:
+        'Snapshot records a real PNG when the platform renderer is available and never claims one when it is not.',
     color: _mint,
     icon: Icons.preview_outlined,
   ),
@@ -1803,7 +1819,9 @@ Future<_RootProbeResult?> _probeRootAvailability() async {
 
 Future<bool?> _startMobileCodeHelperService() async {
   try {
-    return await _systemToolsChannel.invokeMethod<bool>('startHelperService');
+    return await _systemToolsChannel.invokeMethod<bool>('startHelperService', {
+      'authToken': MobileCodeHelperAuth.token,
+    });
   } on MissingPluginException {
     return null;
   } on PlatformException {
@@ -2260,22 +2278,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String get _runtimeDrawerLabel {
     final runtime = _bestRuntimeHealth;
-    final capabilityLabel = _runtimeCapabilityLabel(_runtimeCapabilities);
-    final fallback = <String>[
-      if (_termuxInstalled == true)
-        _termuxApiInstalled == true
-            ? 'External Termux API fallback'
-            : 'External Termux fallback',
-      if (_rootAvailable == true) 'root keepalive',
-    ];
     if (runtime == null) {
-      return fallback.isEmpty
-          ? 'Runtime discovery pending'
-          : fallback.join(' · ');
+      return '运行环境检测中';
     }
-    return fallback.isEmpty
-        ? '${runtime.name} · $capabilityLabel'
-        : '${runtime.name} · $capabilityLabel · ${fallback.join(' · ')}';
+    final role = switch (runtime.type) {
+      RuntimeProviderType.mobileCodeHelper => '默认本地 runtime',
+      RuntimeProviderType.linuxSandbox => '内置 Linux Sandbox',
+      RuntimeProviderType.embeddedLite => '轻量内置模式',
+      RuntimeProviderType.externalTermux => '高级 fallback',
+      RuntimeProviderType.cloud => 'Cloud runtime',
+      RuntimeProviderType.webViewOnly => 'WebView only',
+    };
+    return '$role · ${runtime.ready ? '可用' : '待配置'}';
   }
 
   @override
@@ -2446,23 +2460,33 @@ class _HomeScreenState extends State<HomeScreen> {
     if (presetModel.isNotEmpty) {
       await prefs.setString(_modelKey, presetModel);
     }
+    if (preset == _ProviderPreset.tuimaLocal) {
+      await prefs.setString(
+        _apiKeyKey,
+        ModelProviderPresetService.tuimaLocalToken,
+      );
+    }
     if (!mounted) return;
     setState(() {
       _customProviderOverride = true;
       _customProviderPreset = preset;
       if (presetBaseUrl.isNotEmpty) _baseUrlController.text = presetBaseUrl;
       if (presetModel.isNotEmpty) _modelController.text = presetModel;
-      _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
+      _apiKeyController.text = preset == _ProviderPreset.tuimaLocal
+          ? ModelProviderPresetService.tuimaLocalToken
+          : prefs.getString(_apiKeyKey) ?? '';
     });
     _addLog(
       '${_providerPresetLabel(preset)} custom profile selected',
       preset == _ProviderPreset.custom
           ? 'Custom provider keeps the saved Base URL, model, and local key.'
-          : preset == _ProviderPreset.deepSeekAuto
-              ? 'DeepSeek Auto fills DeepSeek Base URL and starts with Flash; MobileCode can later route hard steps to Pro.'
-              : preset == _ProviderPreset.tierFlowAuto
-                  ? 'TierFlow Auto fills Base URL and model=auto; paste your TierFlow key if needed.'
-                  : 'No bundled key is active for this profile; paste a key in Models & Provider if needed.',
+          : preset == _ProviderPreset.tuimaLocal
+              ? 'TuiMa uses the on-device MobileCore OpenAI-compatible API. Prompts stay on this phone.'
+              : preset == _ProviderPreset.deepSeekAuto
+                  ? 'DeepSeek Auto fills DeepSeek Base URL and starts with Flash; MobileCode can later route hard steps to Pro.'
+                  : preset == _ProviderPreset.tierFlowAuto
+                      ? 'TierFlow Auto fills Base URL and model=auto; paste your TierFlow key if needed.'
+                      : 'No bundled key is active for this profile; paste a key in Models & Provider if needed.',
       Icons.tune_outlined,
       _cyan,
     );
@@ -2610,17 +2634,22 @@ class _HomeScreenState extends State<HomeScreen> {
       if (presetModel.isNotEmpty) {
         _modelController.text = presetModel;
       }
+      if (preset == _ProviderPreset.tuimaLocal) {
+        _apiKeyController.text = ModelProviderPresetService.tuimaLocalToken;
+      }
     });
     final label = _providerPresetLabel(preset);
     _addLog(
       '$label provider selected',
       preset == _ProviderPreset.custom
           ? 'Custom mode keeps your current Base URL/model so you can edit them directly.'
-          : preset == _ProviderPreset.deepSeekAuto
-              ? 'DeepSeek Auto fills DeepSeek Base URL and Flash/Pro routing metadata.'
-              : preset == _ProviderPreset.tierFlowAuto
-                  ? 'TierFlow Auto fills Base URL and model=auto for provider-side routing.'
-                  : 'Base URL and model filled. API key stays private.',
+          : preset == _ProviderPreset.tuimaLocal
+              ? 'TuiMa Local routes chat to 127.0.0.1:8080. No cloud credential is required.'
+              : preset == _ProviderPreset.deepSeekAuto
+                  ? 'DeepSeek Auto fills DeepSeek Base URL and Flash/Pro routing metadata.'
+                  : preset == _ProviderPreset.tierFlowAuto
+                      ? 'TierFlow Auto fills Base URL and model=auto for provider-side routing.'
+                      : 'Base URL and model filled. API key stays private.',
       Icons.tune_outlined,
       preset == _ProviderPreset.custom || preset == _ProviderPreset.tierFlowAuto
           ? _cyan
@@ -3758,20 +3787,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildCommandsTab() {
     final commands = [
       _CommandShortcut(
-        icon: Icons.videogame_asset_outlined,
-        title: '帮我做一个贪吃蛇游戏',
-        subtitle: '填入提示词，Run Agent 后展示写代码、写文件、预览流程。',
-        color: _mint,
-        action: _ModuleAction.aiChat,
-      ),
-      _CommandShortcut(
-        icon: Icons.grid_4x4_outlined,
-        title: '做 2048 网页小游戏',
-        subtitle: '生成本地 HTML/CSS/JS，并一键进入 Android WebView 预览。',
-        color: _cyan,
-        action: _ModuleAction.webDemo,
-      ),
-      _CommandShortcut(
         icon: Icons.edit_note_outlined,
         title: '做一个最小日记 App',
         subtitle: '验证 APK 内本地写入、读取、列表和空状态体验。',
@@ -4092,7 +4107,6 @@ class _HomeScreenState extends State<HomeScreen> {
           onSave: _saveConfig,
           onHealth: _checkHealth,
         ),
-        const SizedBox(height: 12),
         _HealthCard(
           state: _healthState,
           message: _healthMessage,
@@ -4218,6 +4232,14 @@ class _HomeScreenState extends State<HomeScreen> {
         onNewChat: _newChatFromDrawer,
         onSelectSession: _selectChatFromDrawer,
         onPrompt: _usePromptShortcut,
+        onOpenCapabilityCenter: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const CapabilityCenterScreen(),
+            ),
+          );
+        },
         onOpenSettings: () {
           Navigator.of(context).pop();
           _setTab(_HomeTab.guard);
@@ -4590,6 +4612,7 @@ class _MobileCodeDrawer extends StatelessWidget {
     required this.onNewChat,
     required this.onSelectSession,
     required this.onPrompt,
+    required this.onOpenCapabilityCenter,
     required this.onOpenSettings,
     required this.onOpenTools,
   });
@@ -4601,6 +4624,7 @@ class _MobileCodeDrawer extends StatelessWidget {
   final VoidCallback onNewChat;
   final ValueChanged<String> onSelectSession;
   final Future<void> Function(String prompt, {bool runAgent}) onPrompt;
+  final VoidCallback onOpenCapabilityCenter;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenTools;
 
@@ -4623,6 +4647,9 @@ class _MobileCodeDrawer extends StatelessWidget {
                         style: TextStyle(
                             color: _text,
                             fontSize: 24,
+                            fontFamily: AppTheme.fontDisplay,
+                            fontFamilyFallback: AppTheme.fontFallback,
+                            letterSpacing: 0,
                             fontWeight: FontWeight.w900)),
                   ),
                   IconButton.filledTonal(
@@ -4645,44 +4672,59 @@ class _MobileCodeDrawer extends StatelessWidget {
                     Expanded(
                       child: Text(runtimeLabel,
                           style: const TextStyle(
-                              color: _muted, fontSize: 12, height: 1.3)),
+                            color: _muted,
+                            fontFamily: AppTheme.fontBody,
+                            fontFamilyFallback: AppTheme.fontFallback,
+                            fontSize: 12,
+                            height: 1.34,
+                          )),
                     ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 12),
+            const _DrawerSectionLabel('主入口'),
             _DrawerAction(
-              icon: Icons.add_comment_outlined,
-              label: '新会话',
-              onTap: onNewChat,
+              icon: Icons.dashboard_customize_outlined,
+              label: '能力中心',
+              subtitle: '运行环境、CLI 扩展、账号订阅、权限安全',
+              onTap: onOpenCapabilityCenter,
             ),
+            const _DrawerSectionLabel('工作区'),
             _DrawerAction(
-              icon: Icons.videogame_asset_outlined,
-              label: '帮我做贪吃蛇游戏',
-              onTap: () => onPrompt(
-                  '帮我在手机端创建一个可运行的贪吃蛇网页小游戏，生成 index.html、展示写代码过程，并用 WebView 预览。',
-                  runAgent: true),
-            ),
-            _DrawerAction(
-              icon: Icons.handyman_outlined,
-              label: '工具与权限',
+              icon: Icons.rocket_launch_outlined,
+              label: '构建与发布',
+              subtitle: 'APK、Release、日志与发布检查',
               onTap: onOpenTools,
             ),
             _DrawerAction(
               icon: Icons.tune_outlined,
               label: '模型与设置',
+              subtitle: '模型、Provider、主题、工作区偏好',
               onTap: onOpenSettings,
             ),
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(18, 18, 18, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Recent chats',
-                    style: TextStyle(
-                        color: _faint,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900)),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('Recent chats',
+                        style: TextStyle(
+                            color: _faint,
+                            fontFamily: AppTheme.fontBody,
+                            fontFamilyFallback: AppTheme.fontFallback,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                  IconButton(
+                    tooltip: '新会话',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onNewChat,
+                    icon: const Icon(Icons.add_circle_outline,
+                        color: _muted, size: 20),
+                  ),
+                ],
               ),
             ),
             Expanded(
@@ -4693,7 +4735,11 @@ class _MobileCodeDrawer extends StatelessWidget {
                         activeSessionId == null
                             ? 'Loading chat history...'
                             : 'No chat history yet',
-                        style: const TextStyle(color: _muted),
+                        style: const TextStyle(
+                          color: _muted,
+                          fontFamily: AppTheme.fontBody,
+                          fontFamilyFallback: AppTheme.fontFallback,
+                        ),
                       ),
                     )
                   : ListView.builder(
@@ -4725,12 +4771,10 @@ class _MobileCodeDrawer extends StatelessWidget {
                   const Expanded(
                     child: Text('Local user',
                         style: TextStyle(
-                            color: _text, fontWeight: FontWeight.w800)),
-                  ),
-                  IconButton(
-                    tooltip: 'Settings',
-                    onPressed: onOpenSettings,
-                    icon: const Icon(Icons.settings_outlined, color: _muted),
+                            color: _text,
+                            fontFamily: AppTheme.fontBody,
+                            fontFamilyFallback: AppTheme.fontFallback,
+                            fontWeight: FontWeight.w700)),
                   ),
                 ],
               ),
@@ -4747,20 +4791,67 @@ class _DrawerAction extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.subtitle,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
       leading: Icon(icon, color: _text),
-      title: Text(label,
-          style: const TextStyle(color: _text, fontWeight: FontWeight.w800)),
+      title: Text(
+        label,
+        style: AppTheme.zhTitleMedium.copyWith(
+          color: _text,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      subtitle: subtitle == null
+          ? null
+          : Text(
+              subtitle!,
+              style: const TextStyle(
+                color: _muted,
+                fontFamily: AppTheme.fontBody,
+                fontFamilyFallback: AppTheme.fontFallback,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                height: 1.32,
+              ),
+            ),
       onTap: onTap,
       minLeadingWidth: 26,
+    );
+  }
+}
+
+class _DrawerSectionLabel extends StatelessWidget {
+  const _DrawerSectionLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: _faint,
+            fontFamily: AppTheme.fontBody,
+            fontFamilyFallback: AppTheme.fontFallback,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -4793,10 +4884,20 @@ class _DrawerSessionTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-            color: selected ? _text : _muted, fontWeight: FontWeight.w800),
+          color: selected ? _text : _muted,
+          fontFamily: AppTheme.fontBody,
+          fontFamilyFallback: AppTheme.fontFallback,
+          fontWeight: FontWeight.w700,
+        ),
       ),
       subtitle: Text(_sessionTurnLabel(session),
-          style: const TextStyle(color: _faint, fontSize: 11)),
+          style: const TextStyle(
+            color: _faint,
+            fontFamily: AppTheme.fontBody,
+            fontFamilyFallback: AppTheme.fontFallback,
+            fontSize: 11,
+            height: 1.28,
+          )),
       onTap: onTap,
     );
   }
@@ -5775,9 +5876,9 @@ class _LocalModelRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.24)),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -12003,7 +12104,7 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'External Termux remains a fallback. MobileCode should prefer Helper, Embedded Lite, or Cloud providers through RuntimeManager whenever possible.',
+            'MobileCode prefers the app Helper foreground service, then the External Termux daemon for shell and git work. Embedded Lite stays behind those providers until controlled task support is ready.',
             style: TextStyle(color: _muted, fontSize: 12, height: 1.4),
           ),
         ],
@@ -12036,7 +12137,7 @@ class _RuntimeActionsSheet extends StatefulWidget {
 
 class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
   final _projectPath = TextEditingController(
-      text: '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime');
+      text: '/data/data/com.mobilecode.app/files/mobilecode_runtime');
   final _message = TextEditingController(text: 'mobile runtime update');
   final List<String> _lines = ['No runtime action has run yet.'];
   bool _running = false;
@@ -12435,7 +12536,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
                 disabled: _running,
                 onTap: () {
                   _projectPath.text =
-                      '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime';
+                      '/data/data/com.mobilecode.app/files/mobilecode_runtime';
                   setState(() => _lines.insert(
                       0, 'Project path reset to helper workspace default.'));
                 },
@@ -13808,6 +13909,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   final _promptController = TextEditingController();
   final _chatScrollController = ScrollController();
   final _voiceService = VoiceService();
+  late final TuimaProviderService _tuimaProviderService;
   final List<_ChatSession> _sessions = [];
   Future<void>? _sessionLoadFuture;
   String? _activeSessionId;
@@ -13819,6 +13921,8 @@ class _ChatPanelState extends State<_ChatPanel> {
   bool _agentModeEnabled = false;
   AgentExecutionMode _agentExecutionMode = AgentExecutionMode.singleShot;
   AgentPreset _agentPreset = AgentPreset.autoAgent;
+  HarnessPermissionMode _harnessPermissionMode =
+      HarnessPermissionMode.approveSafeTypedTasks;
   bool _followChatBottom = true;
   bool _showJumpToBottom = false;
   bool _autoScrollScheduled = false;
@@ -13839,10 +13943,15 @@ class _ChatPanelState extends State<_ChatPanel> {
   final Map<String, int> _agentProviderLiveProcessKeys = {};
   final Map<String, int> _agentStreamTraceIndexes = {};
   final ActionEvidenceStore _agentEvidenceStore = ActionEvidenceStore.shared;
+  final Set<String> _approvedCliHubPreviewEvidenceIds = {};
   final Map<String, GlobalKey> _turnKeys = {};
   Timer? _navPreviewTimer;
+  Timer? _tuimaHealthTimer;
   _ChatNavPreview? _navPreview;
   int? _lastNavActiveIndex;
+  TuimaHealth _tuimaHealth = TuimaHealth.unavailable('Not checked');
+  bool _tuimaHealthChecking = false;
+  bool _offlineFallbackActive = false;
 
   _ChatSession? get _activeSession {
     if (_sessions.isEmpty) return null;
@@ -13857,8 +13966,15 @@ class _ChatPanelState extends State<_ChatPanel> {
   @override
   void initState() {
     super.initState();
+    _tuimaProviderService = TuimaProviderService();
     _chatScrollController.addListener(_handleChatScroll);
     RoleLibraryService.instance.addListener(_handleRoleLibraryChanged);
+    HarnessPermissionStore.instance
+        .addListener(_handleHarnessPermissionChanged);
+    unawaited(HarnessPermissionStore.instance.load().then((mode) {
+      if (!mounted) return;
+      setState(() => _harnessPermissionMode = mode);
+    }));
     unawaited(RoleLibraryService.instance.initialize().then((_) {
       if (!mounted) return;
       setState(() =>
@@ -13867,12 +13983,29 @@ class _ChatPanelState extends State<_ChatPanel> {
     unawaited(TokenUsageService.instance.initialize());
     _sessionLoadFuture = _loadSessions();
     _initVoiceInput();
+    unawaited(_refreshTuimaHealth());
+    _tuimaHealthTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => unawaited(_refreshTuimaHealth()),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.providerPreset != widget.providerPreset) {
+      unawaited(_refreshTuimaHealth());
+    }
   }
 
   @override
   void dispose() {
     _agentProviderClient?.close(force: true);
+    _tuimaHealthTimer?.cancel();
+    _tuimaProviderService.close();
     RoleLibraryService.instance.removeListener(_handleRoleLibraryChanged);
+    HarnessPermissionStore.instance
+        .removeListener(_handleHarnessPermissionChanged);
     _voiceTranscriptSub?.cancel();
     _voiceStateSub?.cancel();
     _navPreviewTimer?.cancel();
@@ -13882,10 +14015,116 @@ class _ChatPanelState extends State<_ChatPanel> {
     super.dispose();
   }
 
+  Future<TuimaHealth> _refreshTuimaHealth() async {
+    if (_tuimaHealthChecking) return _tuimaHealth;
+    if (mounted) setState(() => _tuimaHealthChecking = true);
+    final previousState = _tuimaHealth.state;
+    final health = await _tuimaProviderService.probe();
+    if (!mounted) return health;
+    setState(() {
+      _tuimaHealth = health;
+      _tuimaHealthChecking = false;
+      if (health.state != TuimaConnectionState.modelReady) {
+        _offlineFallbackActive = false;
+      }
+    });
+    if (previousState != health.state) {
+      final detail = switch (health.state) {
+        TuimaConnectionState.modelReady =>
+          'MobileCore ${health.version} is ready with ${health.activeModel ?? 'a local model'}.',
+        TuimaConnectionState.serviceReady =>
+          'MobileCore ${health.version} is running, but no model is loaded.',
+        TuimaConnectionState.unavailable =>
+          'MobileCore is not reachable at 127.0.0.1:8080.',
+      };
+      widget.onLog(
+        'TuiMa status changed',
+        detail,
+        health.canInfer
+            ? Icons.offline_bolt_outlined
+            : Icons.portable_wifi_off_outlined,
+        health.canInfer ? _mint : _amber,
+      );
+    }
+    return health;
+  }
+
+  List<Map<String, dynamic>> _tuimaMessages(
+    List<_ChatTurn> history,
+    String systemPrompt,
+  ) =>
+      [
+        {'role': 'system', 'content': systemPrompt},
+        ..._providerMessages(history),
+      ];
+
+  ModelRouteDecision _tuimaRouteDecision({
+    required ModelRouteEndpoint endpoint,
+    required int maxTokens,
+    required List<_ChatTurn> history,
+    required String systemPrompt,
+  }) =>
+      ModelRoutingService.decide(
+        preset: _ProviderPreset.tuimaLocal,
+        configuredModel: ModelProviderPresetService.tuimaModel,
+        endpoint: endpoint,
+        maxTokens: maxTokens,
+        inputCharacters: _tokenInputChars(history, systemPrompt),
+        userText: _routeUserText(history),
+      );
+
+  Future<TuimaHealth> _requireTuimaReady() async {
+    final health = await _refreshTuimaHealth();
+    if (health.state == TuimaConnectionState.modelReady) return health;
+    if (health.state == TuimaConnectionState.serviceReady) {
+      throw Exception(
+          'TuiMa is running but no model is loaded. Open TuiMa and load the benchmark model first.');
+    }
+    throw Exception(
+        'TuiMa is offline. Open TuiMa, start the local API, and load a model.');
+  }
+
+  bool _isCloudTransportFailure(Object error) =>
+      error is SocketException ||
+      error is TimeoutException ||
+      error is HttpException;
+
+  Future<bool> _canFallbackToTuima({
+    required Object cloudError,
+    required bool emittedCloudText,
+  }) async {
+    if (widget.providerPreset == _ProviderPreset.tuimaLocal ||
+        !_isCloudTransportFailure(cloudError)) {
+      return false;
+    }
+    final health = await _refreshTuimaHealth();
+    final decision = TuimaProviderService.fallbackAfterCloudFailure(
+      localState: health.state,
+      emittedCloudText: emittedCloudText,
+    );
+    return decision.target == HybridModelTarget.tuimaLocal;
+  }
+
+  void _recordOfflineFallback() {
+    if (mounted) setState(() => _offlineFallbackActive = true);
+    widget.onLog(
+      'Cloud offline fallback',
+      'The cloud transport failed before returning text. This request was rerouted to the ready TuiMa model on this phone.',
+      Icons.offline_bolt_outlined,
+      _mint,
+    );
+  }
+
   void _handleRoleLibraryChanged() {
     if (!mounted) return;
     setState(
         () => _roleRecruitRoles = RoleLibraryService.instance.recruitmentRoles);
+  }
+
+  void _handleHarnessPermissionChanged() {
+    if (!mounted) return;
+    setState(
+        () => _harnessPermissionMode = HarnessPermissionStore.instance.mode);
   }
 
   Future<void> _initVoiceInput() async {
@@ -14469,6 +14708,27 @@ class _ChatPanelState extends State<_ChatPanel> {
     ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
     void Function(ModelRouteDecision decision)? onRoute,
   }) async {
+    if (widget.providerPreset == _ProviderPreset.tuimaLocal) {
+      await _requireTuimaReady();
+      final decision = _tuimaRouteDecision(
+        endpoint: endpoint,
+        maxTokens: maxTokens,
+        history: history,
+        systemPrompt: systemPrompt,
+      );
+      onRoute?.call(decision);
+      _recordProviderRouteEvidence(
+        decision,
+        maxTokens: maxTokens,
+        inputCharacters: _tokenInputChars(history, systemPrompt),
+      );
+      return _tuimaProviderService.completeChat(
+        messages: _tuimaMessages(history, systemPrompt),
+        model: decision.model,
+        maxTokens: maxTokens,
+        timeout: responseTimeout,
+      );
+    }
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
     }
@@ -14561,6 +14821,30 @@ class _ChatPanelState extends State<_ChatPanel> {
           announceRoute(routeDecision);
           continue;
         }
+        if (await _canFallbackToTuima(
+          cloudError: error,
+          emittedCloudText: false,
+        )) {
+          final localDecision = _tuimaRouteDecision(
+            endpoint: endpoint,
+            maxTokens: maxTokens,
+            history: history,
+            systemPrompt: systemPrompt,
+          );
+          onRoute?.call(localDecision);
+          _recordProviderRouteEvidence(
+            localDecision,
+            maxTokens: maxTokens,
+            inputCharacters: inputCharacters,
+          );
+          _recordOfflineFallback();
+          return _tuimaProviderService.completeChat(
+            messages: _tuimaMessages(history, systemPrompt),
+            model: localDecision.model,
+            maxTokens: maxTokens,
+            timeout: responseTimeout,
+          );
+        }
         throw Exception(message);
       } finally {
         if (identical(_agentProviderClient, client)) {
@@ -14582,6 +14866,28 @@ class _ChatPanelState extends State<_ChatPanel> {
     ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
     void Function(ModelRouteDecision decision)? onRoute,
   }) async* {
+    if (widget.providerPreset == _ProviderPreset.tuimaLocal) {
+      await _requireTuimaReady();
+      final decision = _tuimaRouteDecision(
+        endpoint: endpoint,
+        maxTokens: maxTokens,
+        history: history,
+        systemPrompt: systemPrompt,
+      );
+      onRoute?.call(decision);
+      _recordProviderRouteEvidence(
+        decision,
+        maxTokens: maxTokens,
+        inputCharacters: _tokenInputChars(history, systemPrompt),
+      );
+      yield* _tuimaProviderService.streamChat(
+        messages: _tuimaMessages(history, systemPrompt),
+        model: decision.model,
+        maxTokens: maxTokens,
+        timeout: responseTimeout,
+      );
+      return;
+    }
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
     }
@@ -14708,6 +15014,31 @@ class _ChatPanelState extends State<_ChatPanel> {
           routeDecision = retry;
           announceRoute(routeDecision);
           continue;
+        }
+        if (await _canFallbackToTuima(
+          cloudError: error,
+          emittedCloudText: emittedText,
+        )) {
+          final localDecision = _tuimaRouteDecision(
+            endpoint: endpoint,
+            maxTokens: maxTokens,
+            history: history,
+            systemPrompt: systemPrompt,
+          );
+          onRoute?.call(localDecision);
+          _recordProviderRouteEvidence(
+            localDecision,
+            maxTokens: maxTokens,
+            inputCharacters: inputCharacters,
+          );
+          _recordOfflineFallback();
+          yield* _tuimaProviderService.streamChat(
+            messages: _tuimaMessages(history, systemPrompt),
+            model: localDecision.model,
+            maxTokens: maxTokens,
+            timeout: responseTimeout,
+          );
+          return;
         }
         throw Exception(message);
       } finally {
@@ -14944,6 +15275,9 @@ class _ChatPanelState extends State<_ChatPanel> {
     final rootDirectory = await _mobileCodeProjectsRootDirectory();
     final supportsRuntimeTermuxTask =
         widget.runtimeManager.activeProvider is RuntimeTypedTaskRunner;
+    final supportsCliHubTask = widget.runtimeManager.providers.any((provider) =>
+        provider.type == RuntimeProviderType.linuxSandbox &&
+        provider is RuntimeTypedTaskRunner);
     final actionRunner = ActionRunner(
       workspaceRootPath: rootDirectory.path,
       evidenceStore: _agentEvidenceStore,
@@ -14952,6 +15286,11 @@ class _ChatPanelState extends State<_ChatPanel> {
           ? (taskKind, payload) =>
               widget.runtimeManager.startTermuxTask(taskKind, payload)
           : null,
+      cliHubTaskInvoker: supportsCliHubTask
+          ? (taskKind, payload) =>
+              widget.runtimeManager.startCliHubTask(taskKind, payload)
+          : null,
+      htmlRenderProvider: const PlatformHtmlRenderProvider(),
     );
     final messages = _providerMessages(history)
         .map((message) => Map<String, dynamic>.from(message))
@@ -14960,6 +15299,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       adapter: adapter,
       actionRunner: actionRunner,
       preset: preset,
+      permissionMode: _harnessPermissionMode,
       maxRounds: 6,
     );
 
@@ -15061,6 +15401,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         ..clear()
         ..addAll(_agentRunTraceTemplate(prompt));
       _agentTraceEventKeys.clear();
+      _approvedCliHubPreviewEvidenceIds.clear();
       _agentProviderLiveProcess.clear();
       _agentProviderLiveProcessKeys.clear();
       _agentStreamTraceIndexes.clear();
@@ -15495,6 +15836,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       AgentLoopEventType.failed => Icons.error_outline,
     };
     final round = event.round == null ? '' : 'Round ${event.round}: ';
+    final eventDetails = _agentLoopTraceDetails(event);
     final step = _AgentTraceStep(
       title: title,
       detail: '$round${event.message}',
@@ -15503,7 +15845,9 @@ class _ChatPanelState extends State<_ChatPanel> {
       details: {
         if (event.roleName != null) 'Role': event.roleName!,
         if (event.evidenceId != null) 'Evidence ID': event.evidenceId!,
+        ...eventDetails,
       },
+      evidenceMetadata: event.evidenceMetadata,
       traceAction: action,
       state: state,
       startedAt: event.createdAt,
@@ -15514,6 +15858,177 @@ class _ChatPanelState extends State<_ChatPanel> {
       _agentTrace.add(_withStepEvidence(step, state));
     });
     _scrollConversationToEnd();
+  }
+
+  Map<String, String> _agentLoopTraceDetails(AgentLoopEvent event) {
+    final metadata = event.evidenceMetadata;
+    if (metadata.isEmpty) return const {};
+    final details = <String, String>{};
+    final isCliHubPreview = metadata['previewOnly'] == true ||
+        metadata['status'] == 'approvalRequired';
+    if (event.toolName == 'cli_hub_task' && isCliHubPreview) {
+      void add(String label, Object? value) {
+        final text = value?.toString().trim() ?? '';
+        if (text.isNotEmpty) details[label] = text;
+      }
+
+      add('CLI Hub status', metadata['status']);
+      add(
+          'CLI',
+          [
+            metadata['cliTitle']?.toString() ?? '',
+            if ((metadata['cliId']?.toString() ?? '').isNotEmpty)
+              '(${metadata['cliId']})',
+          ].where((part) => part.trim().isNotEmpty).join(' '));
+      add('Task kind', metadata['taskKind']);
+      add('Runtime', metadata['runtime']);
+      add('Risk', metadata['riskLevel']);
+      add('Credential policy', metadata['credentialPolicy']);
+      add('Access', metadata['access']);
+      final packages = metadata['packages'];
+      if (packages is List && packages.isNotEmpty) {
+        details['Packages'] =
+            packages.map((item) => item.toString()).join(', ');
+      }
+      add(
+          'Estimated download',
+          metadata['estimatedDownloadMb'] == null
+              ? null
+              : '${metadata['estimatedDownloadMb']} MB');
+      add(
+          'Installed size',
+          metadata['installedSizeMb'] == null
+              ? null
+              : '${metadata['installedSizeMb']} MB');
+      details['Approval'] = 'Required; tap Confirm typed task to execute.';
+    }
+    return details;
+  }
+
+  Future<void> _approveCliHubPreviewStep(_AgentTraceStep step) async {
+    if (_approvedCliHubPreviewEvidenceIds.contains(step.evidenceId)) {
+      _showMessage('This CLI Hub preview was already submitted.');
+      return;
+    }
+    final metadata = step.evidenceMetadata;
+    if (!_isCliHubApprovalPreviewMetadata(metadata)) {
+      _showMessage('No CLI Hub approval preview is attached to this step.');
+      return;
+    }
+    final cliId = metadata['cliId']?.toString() ?? '';
+    final taskKind = metadata['taskKind']?.toString() ?? '';
+    if (cliId.isEmpty || taskKind.isEmpty) {
+      _showMessage('CLI Hub preview is missing cliId or taskKind.');
+      return;
+    }
+    final payloadPreview = metadata['payloadPreview'];
+    final payload = <String, dynamic>{
+      if (payloadPreview is Map) ...payloadPreview.cast<String, dynamic>(),
+      'approved': true,
+    };
+    final rootDirectory = await _mobileCodeProjectsRootDirectory();
+    final supportsCliHubTask = widget.runtimeManager.providers.any((provider) =>
+        provider.type == RuntimeProviderType.linuxSandbox &&
+        provider is RuntimeTypedTaskRunner);
+    final actionRunner = ActionRunner(
+      workspaceRootPath: rootDirectory.path,
+      evidenceStore: _agentEvidenceStore,
+      htmlRenderProvider: const PlatformHtmlRenderProvider(),
+      cliHubTaskInvoker: supportsCliHubTask
+          ? (taskKind, payload) =>
+              widget.runtimeManager.startCliHubTask(taskKind, payload)
+          : null,
+    );
+    final runningStartedAt = DateTime.now();
+    final runningStep = _AgentTraceStep(
+      title: 'Running approved CLI Hub task',
+      detail: 'cli_hub_task $cliId.$taskKind is executing in Linux Sandbox.',
+      icon: Icons.sync_outlined,
+      toolName: 'cli_hub_task',
+      details: {
+        'CLI': metadata['cliTitle']?.toString() ?? cliId,
+        'Task kind': taskKind,
+        'Runtime': metadata['runtime']?.toString() ?? 'linuxSandbox',
+        'Status': 'running',
+      },
+      evidenceMetadata: {
+        ...metadata,
+        'status': 'running',
+        'runtimeStatus': 'running',
+        'approved': true,
+      },
+      traceAction: MobileCodeAction.cliHubTaskStart,
+      state: _AgentStepState.running,
+      startedAt: runningStartedAt,
+    );
+    late final int runningIndex;
+    setState(() {
+      _approvedCliHubPreviewEvidenceIds.add(step.evidenceId);
+      _agentTrace.add(_withStepEvidence(runningStep, _AgentStepState.running));
+      runningIndex = _agentTrace.length - 1;
+    });
+    final result = await actionRunner.run(ActionSchema(
+      actionName: MobileCodeAction.cliHubTaskStart,
+      paramsSummary: 'approved cli_hub_task $cliId.$taskKind from chat preview',
+      params: {
+        'cliId': cliId,
+        'taskKind': taskKind,
+        'payload': payload,
+        'reason': 'User approved CLI Hub typed task from chat preview.',
+      },
+    ));
+    if (!mounted) return;
+    CliHubRuntimeEvents.publish(CliHubRuntimeEvent(
+      cliId: cliId,
+      taskKind: taskKind,
+      status: result.evidence.metadata['status']?.toString() ??
+          (result.success ? 'completed' : 'failed'),
+      success: result.success,
+      profileId: result.evidence.metadata['profileId']?.toString(),
+    ));
+    final color = result.success ? _mint : _rose;
+    final approvedStep = _AgentTraceStep(
+      title: result.success
+          ? 'Approved CLI Hub task completed'
+          : 'Approved CLI Hub task failed',
+      detail: result.evidence.logs.isEmpty
+          ? 'cli_hub_task $cliId.$taskKind finished.'
+          : result.evidence.logs.join(' '),
+      icon: result.success ? Icons.verified_outlined : Icons.error_outline,
+      toolName: 'cli_hub_task',
+      details: {
+        'CLI': metadata['cliTitle']?.toString() ?? cliId,
+        'Task kind': taskKind,
+        'Evidence ID': result.evidence.evidenceId,
+        'Status': result.success
+            ? 'success'
+            : (result.evidence.failureKind ?? 'failed'),
+      },
+      evidenceMetadata: result.evidence.metadata,
+      traceAction: MobileCodeAction.cliHubTaskStart,
+      state: result.success ? _AgentStepState.done : _AgentStepState.failed,
+      startedAt: runningStartedAt,
+      finishedAt: result.evidence.endedAt,
+    );
+    setState(() {
+      if (runningIndex >= 0 && runningIndex < _agentTrace.length) {
+        _agentTrace[runningIndex] = approvedStep..evidence = result.evidence;
+      } else {
+        _agentTrace.add(approvedStep..evidence = result.evidence);
+      }
+    });
+    _showMessage(result.success
+        ? 'CLI Hub typed task completed.'
+        : 'CLI Hub typed task failed: ${result.evidence.failureKind ?? 'failed'}');
+    widget.onLog(
+      result.success
+          ? 'CLI Hub typed task completed'
+          : 'CLI Hub typed task failed',
+      '$cliId.$taskKind',
+      result.success ? Icons.verified_outlined : Icons.error_outline,
+      color,
+    );
+    _scrollConversationToEnd(force: true);
   }
 
   void _appendAgentLoopStreamTraceEvent(int round, String detail) {
@@ -16016,12 +16531,20 @@ class _ChatPanelState extends State<_ChatPanel> {
     await projectDirectory.create(recursive: true);
     final supportsRuntimeTermuxTask =
         widget.runtimeManager.activeProvider is RuntimeTypedTaskRunner;
+    final supportsCliHubTask = widget.runtimeManager.providers.any((provider) =>
+        provider.type == RuntimeProviderType.linuxSandbox &&
+        provider is RuntimeTypedTaskRunner);
     final actionRunner = ActionRunner(
       workspaceRootPath: rootDirectory.path,
       evidenceStore: _agentEvidenceStore,
+      htmlRenderProvider: const PlatformHtmlRenderProvider(),
       termuxTaskInvoker: supportsRuntimeTermuxTask
           ? (taskKind, payload) =>
               widget.runtimeManager.startTermuxTask(taskKind, payload)
+          : null,
+      cliHubTaskInvoker: supportsCliHubTask
+          ? (taskKind, payload) =>
+              widget.runtimeManager.startCliHubTask(taskKind, payload)
           : null,
     );
 
@@ -16489,18 +17012,20 @@ class _ChatPanelState extends State<_ChatPanel> {
         _showMessage('Generated web file was not found on this phone.');
         return;
       }
-      final html = await file.readAsString();
+      final sizeBytes = await file.length();
       if (!mounted) return;
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: _panel,
-        shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
-        builder: (context) => _WebPreviewSheet(
-          title: 'Generated web preview',
-          subtitle: path,
-          html: html,
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ExternalFilePreviewScreen(
+            file: ExternalPreviewFile(
+              path: path,
+              displayName: p.basename(path),
+              mimeType: 'text/html',
+              sizeBytes: sizeBytes,
+              source: 'mobilecode_generated_artifact',
+              kind: ExternalPreviewKind.html,
+            ),
+          ),
         ),
       );
     } on Object catch (error) {
@@ -16663,6 +17188,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     var selectedMode = _agentExecutionMode;
     var selectedPreset = _agentPreset;
     var rrEnabled = _agentModeEnabled;
+    var selectedPermissionMode = _harnessPermissionMode;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: _panel,
@@ -16674,6 +17200,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           mode: selectedMode,
           preset: selectedPreset,
           rrEnabled: rrEnabled,
+          permissionMode: selectedPermissionMode,
           running: _agentRunning || _sending,
           onModeChanged: (mode) {
             setState(() => _agentExecutionMode = mode);
@@ -16686,6 +17213,11 @@ class _ChatPanelState extends State<_ChatPanel> {
           onRrChanged: (value) {
             setState(() => _agentModeEnabled = value);
             modalSetState(() => rrEnabled = value);
+          },
+          onPermissionModeChanged: (mode) {
+            setState(() => _harnessPermissionMode = mode);
+            modalSetState(() => selectedPermissionMode = mode);
+            unawaited(HarnessPermissionStore.instance.setMode(mode));
           },
         ),
       ),
@@ -16774,6 +17306,16 @@ class _ChatPanelState extends State<_ChatPanel> {
             title:
                 _agentRunning ? 'Agent is writing code' : 'Last agent process',
             steps: _agentTrace,
+            approvedCliHubPreviewEvidenceIds: _approvedCliHubPreviewEvidenceIds,
+            onApproveCliHubPreview: (step) =>
+                unawaited(_approveCliHubPreviewStep(step)),
+            onOpenCapabilityCenter: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const CapabilityCenterScreen(),
+                ),
+              );
+            },
           ),
         ],
         if (!_agentRunning &&
@@ -16866,6 +17408,15 @@ class _ChatPanelState extends State<_ChatPanel> {
                     onTap: _sending || _agentRunning
                         ? null
                         : _openModelSelectionSheet,
+                  ),
+                  const SizedBox(width: 8),
+                  _TuimaStatusButton(
+                    health: _tuimaHealth,
+                    checking: _tuimaHealthChecking,
+                    fallbackActive: _offlineFallbackActive,
+                    onTap: _tuimaHealthChecking
+                        ? null
+                        : () => unawaited(_refreshTuimaHealth()),
                   ),
                   const SizedBox(width: 8),
                   _AgentModeSummaryButton(
@@ -18384,19 +18935,23 @@ class _AgentModeSheet extends StatelessWidget {
     required this.mode,
     required this.preset,
     required this.rrEnabled,
+    required this.permissionMode,
     required this.running,
     required this.onModeChanged,
     required this.onPresetChanged,
     required this.onRrChanged,
+    required this.onPermissionModeChanged,
   });
 
   final AgentExecutionMode mode;
   final AgentPreset preset;
   final bool rrEnabled;
+  final HarnessPermissionMode permissionMode;
   final bool running;
   final ValueChanged<AgentExecutionMode> onModeChanged;
   final ValueChanged<AgentPreset> onPresetChanged;
   final ValueChanged<bool> onRrChanged;
+  final ValueChanged<HarnessPermissionMode> onPermissionModeChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -18471,6 +19026,41 @@ class _AgentModeSheet extends StatelessWidget {
             ),
             const SizedBox(height: 10),
           ],
+          const SizedBox(height: 10),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.verified_user_outlined, color: _amber, size: 18),
+                    SizedBox(width: 7),
+                    Expanded(
+                      child: Text('Harness 权限',
+                          style: TextStyle(
+                              color: _text,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  permissionMode.description,
+                  style: const TextStyle(
+                      color: _muted, fontSize: 12, height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                _HarnessPermissionModeSegment(
+                  mode: permissionMode,
+                  running: running,
+                  onChanged: onPermissionModeChanged,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
           _Panel(
             padding: const EdgeInsets.all(12),
             child: Row(
@@ -18585,6 +19175,93 @@ class _AgentExecutionModeChip extends StatelessWidget {
             color: selected ? _text : _muted,
             fontSize: 11.5,
             fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HarnessPermissionModeSegment extends StatelessWidget {
+  const _HarnessPermissionModeSegment({
+    required this.mode,
+    required this.running,
+    required this.onChanged,
+  });
+
+  final HarnessPermissionMode mode;
+  final bool running;
+  final ValueChanged<HarnessPermissionMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 7,
+      runSpacing: 7,
+      children: [
+        for (final item in HarnessPermissionMode.values)
+          _HarnessPermissionModeChip(
+            mode: item,
+            selected: mode == item,
+            enabled: !running,
+            onTap: () => onChanged(item),
+          ),
+      ],
+    );
+  }
+}
+
+class _HarnessPermissionModeChip extends StatelessWidget {
+  const _HarnessPermissionModeChip({
+    required this.mode,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final HarnessPermissionMode mode;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = mode == HarnessPermissionMode.fullAccess ? _amber : _violet;
+    return Tooltip(
+      message: mode.description,
+      child: InkWell(
+        onTap: enabled && !selected ? onTap : null,
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: selected ? color.withOpacity(0.16) : _panelSoft,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? color.withOpacity(0.55) : _line,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                mode == HarnessPermissionMode.fullAccess
+                    ? Icons.security_outlined
+                    : Icons.verified_user_outlined,
+                color: selected ? color : _muted,
+                size: 14,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                mode.shortLabel,
+                style: TextStyle(
+                  color: selected ? _text : _muted,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -18918,22 +19595,6 @@ List<_PromptTaskSectionData> _taskDispatchSections() {
       title: '快速生成',
       subtitle: '检查写文件、读回验证和 WebView 预览链路。',
       tasks: [
-        _PromptTaskData(
-          icon: Icons.videogame_asset_outlined,
-          title: '贪吃蛇游戏',
-          subtitle: '生成 index.html，展示写代码过程，并用 WebView 预览。',
-          meta: ['Builder', 'write/read/preview'],
-          color: _mint,
-          prompt: '帮我在手机端创建一个可运行的贪吃蛇网页小游戏，生成 index.html、展示写代码过程，并用 WebView 预览。',
-        ),
-        _PromptTaskData(
-          icon: Icons.grid_4x4_outlined,
-          title: '2048 Demo',
-          subtitle: '生成单文件 2048 小游戏，适合回归 artifact 保存。',
-          meta: ['Builder', 'index.html'],
-          color: _cyan,
-          prompt: '帮我创建一个 2048 网页小游戏，保存为 index.html，并打开本地 WebView 预览。',
-        ),
         _PromptTaskData(
           icon: Icons.edit_note_outlined,
           title: '日记 App',
@@ -19383,6 +20044,98 @@ class _ComposerModelButton extends StatelessWidget {
   }
 }
 
+class _TuimaStatusButton extends StatelessWidget {
+  const _TuimaStatusButton({
+    required this.health,
+    required this.checking,
+    required this.fallbackActive,
+    required this.onTap,
+  });
+
+  final TuimaHealth health;
+  final bool checking;
+  final bool fallbackActive;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = health.state == TuimaConnectionState.modelReady;
+    final serviceOnly = health.state == TuimaConnectionState.serviceReady;
+    final color = ready
+        ? _mint
+        : serviceOnly
+            ? _amber
+            : _muted;
+    final label = checking
+        ? '检测 TuiMa'
+        : fallbackActive
+            ? '本地降级中'
+            : ready
+                ? 'TuiMa 就绪'
+                : serviceOnly
+                    ? '待加载模型'
+                    : 'TuiMa 离线';
+    final detail = ready
+        ? 'MobileCore ${health.version} · ${health.activeModel ?? 'model ready'}'
+        : serviceOnly
+            ? 'MobileCore 服务已运行，但尚未加载模型'
+            : '点按重新检测 127.0.0.1:8080';
+    return Tooltip(
+      message: detail,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          height: 42,
+          constraints: const BoxConstraints(minWidth: 86, maxWidth: 116),
+          padding: const EdgeInsets.symmetric(horizontal: 9),
+          decoration: BoxDecoration(
+            color: color.withOpacity(ready ? 0.13 : 0.07),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(ready ? 0.36 : 0.20)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (checking)
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.8,
+                    color: color,
+                  ),
+                )
+              else
+                Icon(
+                  fallbackActive
+                      ? Icons.offline_bolt_outlined
+                      : ready
+                          ? Icons.memory_outlined
+                          : Icons.portable_wifi_off_outlined,
+                  color: color,
+                  size: 15,
+                ),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ModelSelectionSheet extends StatelessWidget {
   const _ModelSelectionSheet({
     required this.selected,
@@ -19471,10 +20224,14 @@ class _ModelSelectionRow extends StatelessWidget {
             ? _violet
             : preset == _ProviderPreset.tierFlowAuto
                 ? _cyan
-                : preset == _ProviderPreset.mimo
+                : preset == _ProviderPreset.tuimaLocal
                     ? _mint
-                    : _blue;
+                    : preset == _ProviderPreset.mimo
+                        ? _mint
+                        : _blue;
     final subtitle = switch (preset) {
+      _ProviderPreset.tuimaLocal =>
+        '本机 TuiMa/MobileCore · 断网可用 · 127.0.0.1 OpenAI-compatible',
       _ProviderPreset.mimo =>
         managed ? '内置体验模型，稳定聊天与中文移动开发任务' : '需要构建时配置 Mimo managed key',
       _ProviderPreset.deepSeek => managed
@@ -19501,13 +20258,15 @@ class _ModelSelectionRow extends StatelessWidget {
             Icon(
               preset == _ProviderPreset.custom
                   ? Icons.tune_outlined
-                  : preset == _ProviderPreset.deepSeek
-                      ? Icons.psychology_alt_outlined
-                      : preset == _ProviderPreset.deepSeekAuto
-                          ? Icons.alt_route_outlined
-                          : preset == _ProviderPreset.tierFlowAuto
-                              ? Icons.route_outlined
-                              : Icons.auto_awesome_outlined,
+                  : preset == _ProviderPreset.tuimaLocal
+                      ? Icons.memory_outlined
+                      : preset == _ProviderPreset.deepSeek
+                          ? Icons.psychology_alt_outlined
+                          : preset == _ProviderPreset.deepSeekAuto
+                              ? Icons.alt_route_outlined
+                              : preset == _ProviderPreset.tierFlowAuto
+                                  ? Icons.route_outlined
+                                  : Icons.auto_awesome_outlined,
               color: color,
               size: 20,
             ),
@@ -19530,6 +20289,10 @@ class _ModelSelectionRow extends StatelessWidget {
                       if (managed) ...[
                         const SizedBox(width: 8),
                         _TinyBadge(label: 'Managed', color: color),
+                      ],
+                      if (preset == _ProviderPreset.tuimaLocal) ...[
+                        const SizedBox(width: 6),
+                        const _TinyBadge(label: 'On-device', color: _mint),
                       ],
                       if (preset == _ProviderPreset.deepSeek) ...[
                         const SizedBox(width: 6),
@@ -21601,10 +22364,16 @@ class _AgentTracePanel extends StatelessWidget {
   const _AgentTracePanel({
     required this.title,
     required this.steps,
+    required this.approvedCliHubPreviewEvidenceIds,
+    required this.onApproveCliHubPreview,
+    required this.onOpenCapabilityCenter,
   });
 
   final String title;
   final List<_AgentTraceStep> steps;
+  final Set<String> approvedCliHubPreviewEvidenceIds;
+  final ValueChanged<_AgentTraceStep> onApproveCliHubPreview;
+  final VoidCallback onOpenCapabilityCenter;
 
   @override
   Widget build(BuildContext context) {
@@ -21649,6 +22418,11 @@ class _AgentTracePanel extends StatelessWidget {
               step: steps[index],
               index: index,
               isLast: index == steps.length - 1,
+              cliHubPreviewApproved: approvedCliHubPreviewEvidenceIds.contains(
+                steps[index].evidenceId,
+              ),
+              onApproveCliHubPreview: onApproveCliHubPreview,
+              onOpenCapabilityCenter: onOpenCapabilityCenter,
             ),
           ],
           const SizedBox(height: 12),
@@ -21674,6 +22448,13 @@ _AgentTraceStep? _latestAgentTraceStatusStep(List<_AgentTraceStep> steps) {
   }
   return steps.isEmpty ? null : steps.first;
 }
+
+bool _isCliHubApprovalPreviewStep(_AgentTraceStep step) =>
+    step.toolName == 'cli_hub_task' &&
+    _isCliHubApprovalPreviewMetadata(step.evidenceMetadata);
+
+bool _isCliHubApprovalPreviewMetadata(Map<String, dynamic> metadata) =>
+    metadata['previewOnly'] == true || metadata['status'] == 'approvalRequired';
 
 class _AgentTraceLiveStatus extends StatelessWidget {
   const _AgentTraceLiveStatus({required this.step});
@@ -21819,16 +22600,27 @@ class _AgentTraceRow extends StatelessWidget {
     required this.step,
     required this.index,
     required this.isLast,
+    required this.cliHubPreviewApproved,
+    required this.onApproveCliHubPreview,
+    required this.onOpenCapabilityCenter,
   });
 
   final _AgentTraceStep step;
   final int index;
   final bool isLast;
+  final bool cliHubPreviewApproved;
+  final ValueChanged<_AgentTraceStep> onApproveCliHubPreview;
+  final VoidCallback onOpenCapabilityCenter;
 
   @override
   Widget build(BuildContext context) {
     final color = _agentStepColor(step.state);
     final icon = _agentStepStatusIcon(step.state);
+    final recoveryActions = _agentTraceRecoveryActions(step);
+    final showProgress = step.toolName == 'cli_hub_task' &&
+        (step.state == _AgentStepState.running ||
+            agentTraceProgressSummary(step.evidenceMetadata) != null) &&
+        !_isCliHubApprovalPreviewStep(step);
     return Padding(
       padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
       child: InkWell(
@@ -21929,6 +22721,45 @@ class _AgentTraceRow extends StatelessWidget {
                         initiallyExpanded: false,
                       ),
                     ],
+                    if (_isCliHubApprovalPreviewStep(step)) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: cliHubPreviewApproved
+                                  ? null
+                                  : () => onApproveCliHubPreview(step),
+                              icon: Icon(
+                                cliHubPreviewApproved
+                                    ? Icons.check_circle_outline
+                                    : Icons.verified_user_outlined,
+                                size: 16,
+                              ),
+                              label: Text(cliHubPreviewApproved
+                                  ? 'Typed task submitted'
+                                  : 'Confirm typed task'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (showProgress) ...[
+                      const SizedBox(height: 10),
+                      AgentTraceProgressBox(
+                        metadata: step.evidenceMetadata,
+                        color: color,
+                        running: step.state == _AgentStepState.running,
+                      ),
+                    ],
+                    if (recoveryActions.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      AgentTraceRecoveryBox(
+                        actions: recoveryActions,
+                        color: color,
+                        onOpenCapabilityCenter: onOpenCapabilityCenter,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -22026,6 +22857,42 @@ class _AgentTraceInlineDetailsState extends State<_AgentTraceInlineDetails> {
       ),
     );
   }
+}
+
+List<String> _agentTraceRecoveryActions(_AgentTraceStep step) {
+  final evidenceActions = step.evidence?.recoveryActions ?? const <String>[];
+  if (evidenceActions.isNotEmpty) {
+    return evidenceActions
+        .where((item) => item.trim().isNotEmpty)
+        .toList(growable: false);
+  }
+
+  final metadata = step.evidenceMetadata;
+  for (final key in const [
+    'recoveryActions',
+    'recovery',
+    'recoveryHints',
+  ]) {
+    final value = metadata[key];
+    if (value is List) {
+      final actions = value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList(growable: false);
+      if (actions.isNotEmpty) return actions;
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      return [value.trim()];
+    }
+  }
+
+  final status = metadata['status']?.toString().toLowerCase() ?? '';
+  if (status == 'needssetup' || status == 'needsetup') {
+    return const [
+      'Open Capability Center, install Alpine Runtime or the required CLI profile, then retry this typed task.'
+    ];
+  }
+  return const [];
 }
 
 class _AgentTraceAvatar extends StatelessWidget {
@@ -22365,6 +23232,9 @@ class _ActionEvidenceCenterItem extends StatelessWidget {
 }
 
 String _recoveryEvidenceSubtitle(ActionEvidence evidence) {
+  final cliHubPreview = _cliHubPreviewSubtitle(evidence);
+  if (cliHubPreview.isNotEmpty) return cliHubPreview;
+
   final metadata = evidence.metadata;
   switch (evidence.actionName) {
     case MobileCodeAction.saveSnapshot:
@@ -22404,6 +23274,94 @@ String _recoveryEvidenceSubtitle(ActionEvidence evidence) {
   }
 }
 
+String _cliHubPreviewSubtitle(ActionEvidence evidence) {
+  if (evidence.actionName != MobileCodeAction.cliHubTaskStart) return '';
+  final metadata = evidence.metadata;
+  if (metadata['previewOnly'] != true &&
+      metadata['status'] != 'approvalRequired') {
+    return '';
+  }
+  final cliTitle = metadata['cliTitle']?.toString();
+  final cliId = metadata['cliId']?.toString();
+  final taskKind = metadata['taskKind']?.toString();
+  final risk = metadata['riskLevel']?.toString();
+  final credentialPolicy = metadata['credentialPolicy']?.toString();
+  final packages = metadata['packages'];
+  final packageCount = packages is List ? packages.length : null;
+  return [
+    'CLI Hub preview',
+    if (cliTitle != null && cliTitle.isNotEmpty) cliTitle,
+    if ((cliTitle == null || cliTitle.isEmpty) &&
+        cliId != null &&
+        cliId.isNotEmpty)
+      cliId,
+    if (taskKind != null && taskKind.isNotEmpty) taskKind,
+    if (risk != null && risk.isNotEmpty) 'risk:$risk',
+    if (credentialPolicy != null && credentialPolicy.isNotEmpty)
+      'credential:$credentialPolicy',
+    if (packageCount != null) 'packages:$packageCount',
+  ].join(' · ');
+}
+
+List<_EvidenceInfoRow> _cliHubPreviewRows(ActionEvidence evidence) {
+  if (evidence.actionName != MobileCodeAction.cliHubTaskStart) return const [];
+  final metadata = evidence.metadata;
+  if (metadata['previewOnly'] != true &&
+      metadata['status'] != 'approvalRequired') {
+    return const [];
+  }
+  String value(String key) => metadata[key]?.toString() ?? '';
+  String listValue(String key) {
+    final raw = metadata[key];
+    if (raw is List) return raw.map((item) => item.toString()).join(', ');
+    return raw?.toString() ?? '';
+  }
+
+  final payloadPreview = metadata['payloadPreview'];
+  final payloadPreviewText = payloadPreview == null
+      ? ''
+      : const JsonEncoder.withIndent('  ').convert(payloadPreview);
+  final approval = metadata['approval'];
+  final approvalText = approval == null
+      ? ''
+      : const JsonEncoder.withIndent('  ').convert(approval);
+
+  return [
+    _EvidenceInfoRow(label: 'CLI Hub status', value: value('status')),
+    _EvidenceInfoRow(
+        label: 'CLI',
+        value: [
+          value('cliTitle'),
+          if (value('cliId').isNotEmpty) '(${value('cliId')})',
+        ].where((part) => part.isNotEmpty).join(' ')),
+    _EvidenceInfoRow(label: 'Task kind', value: value('taskKind')),
+    _EvidenceInfoRow(label: 'Runtime', value: value('runtime')),
+    _EvidenceInfoRow(label: 'Access', value: value('access')),
+    _EvidenceInfoRow(label: 'Risk', value: value('riskLevel')),
+    _EvidenceInfoRow(
+        label: 'Credential policy', value: value('credentialPolicy')),
+    if (value('profileId').isNotEmpty)
+      _EvidenceInfoRow(label: 'Install profile', value: value('profileId')),
+    if (listValue('packages').isNotEmpty)
+      _EvidenceInfoRow(label: 'Packages', value: listValue('packages')),
+    if (value('estimatedDownloadMb').isNotEmpty)
+      _EvidenceInfoRow(
+          label: 'Estimated download',
+          value: '${value('estimatedDownloadMb')} MB'),
+    if (value('installedSizeMb').isNotEmpty)
+      _EvidenceInfoRow(
+          label: 'Installed size', value: '${value('installedSizeMb')} MB'),
+    if (approvalText.isNotEmpty)
+      _EvidenceInfoRow(
+          label: 'Approval preview', value: approvalText, monospace: true),
+    if (payloadPreviewText.isNotEmpty)
+      _EvidenceInfoRow(
+          label: 'Typed payload preview',
+          value: payloadPreviewText,
+          monospace: true),
+  ].where((row) => row.value.trim().isNotEmpty).toList(growable: false);
+}
+
 void _showActionEvidenceSheet(BuildContext context, ActionEvidence evidence) {
   showModalBottomSheet<void>(
     context: context,
@@ -22413,6 +23371,7 @@ void _showActionEvidenceSheet(BuildContext context, ActionEvidence evidence) {
     builder: (context) {
       final evidenceDurationLabel =
           _durationLabel(Duration(milliseconds: evidence.durationMs));
+      final cliHubPreviewRows = _cliHubPreviewRows(evidence);
       return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
@@ -22467,6 +23426,15 @@ void _showActionEvidenceSheet(BuildContext context, ActionEvidence evidence) {
                 if (evidence.failureKind != null)
                   _EvidenceInfoRow(
                       label: 'Failure kind', value: evidence.failureKind!),
+                if (cliHubPreviewRows.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'CLI Hub Preview',
+                    style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 10),
+                  ...cliHubPreviewRows,
+                ],
                 if (evidence.paramsSummary.isNotEmpty)
                   _EvidenceInfoRow(
                       label: 'Params', value: evidence.paramsSummary),
@@ -22888,7 +23856,7 @@ final List<_CapabilityLayer> _capabilityLayers = [
   _CapabilityLayer(
     name: 'AI Core',
     subtitle:
-        'Model gateway, multimodal input, local AI, API operations, and prompt templates.',
+        'Model gateway, multimodal input, API operations, and prompt templates.',
     icon: Icons.auto_awesome_outlined,
     color: _mint,
     capabilities: [
@@ -22948,30 +23916,12 @@ final List<_CapabilityLayer> _capabilityLayers = [
         ],
         primaryAction: _ModuleAction.apiConfig,
       ),
-      _Capability(
-        title: 'Local AI',
-        subtitle:
-            'On-device inference surface for offline or privacy-sensitive coding workflows.',
-        icon: Icons.memory_outlined,
-        status: _CapabilityStatus.local,
-        services: [
-          'local_ai_service.dart',
-          'offline_manager.dart',
-          'device_perf_service.dart'
-        ],
-        actions: [
-          'Inspect device readiness',
-          'Prefer local model when offline',
-          'Monitor memory and heat limits'
-        ],
-        primaryAction: _ModuleAction.inspect,
-      ),
     ],
   ),
   _CapabilityLayer(
     name: 'Agents',
     subtitle:
-        'Supervisor-worker orchestration, ReAct actions, Deep Dive Solo, and self-use automation.',
+        'Supervisor-worker orchestration, ReAct actions, and Deep Dive Solo.',
     icon: Icons.psychology_alt_outlined,
     color: _violet,
     capabilities: [
@@ -23011,30 +23961,12 @@ final List<_CapabilityLayer> _capabilityLayers = [
         ],
         primaryAction: _ModuleAction.deepDive,
       ),
-      _Capability(
-        title: 'Self-Use Actions',
-        subtitle:
-            'App-level action registry for navigation, file, editor, terminal, and workflow automation.',
-        icon: Icons.touch_app_outlined,
-        status: _CapabilityStatus.preview,
-        services: [
-          'self_invocation_service.dart',
-          'self_action_registry.dart',
-          'navigation_controller.dart'
-        ],
-        actions: [
-          'Inspect 52 registered actions',
-          'Trigger UI-aware workflow',
-          'Audit action metadata'
-        ],
-        primaryAction: _ModuleAction.inspect,
-      ),
     ],
   ),
   _CapabilityLayer(
     name: 'Code',
     subtitle:
-        'Editor, LSP-like controls, code index, context injection, similarity, snippets, and terminal.',
+        'Editor, LSP-like controls, code index, context injection, similarity, and snippets.',
     icon: Icons.code_outlined,
     color: _cyan,
     capabilities: [
@@ -23088,51 +24020,15 @@ final List<_CapabilityLayer> _capabilityLayers = [
         actions: ['Save snippet', 'Prepare quick paste', 'Queue offline sync'],
         primaryAction: _ModuleAction.snippet,
       ),
-      _Capability(
-        title: 'Terminal',
-        subtitle:
-            'Local shell state, command history, autocomplete, and streaming output surfaces.',
-        icon: Icons.terminal_outlined,
-        status: _CapabilityStatus.preview,
-        services: [
-          'terminal_service.dart',
-          'terminal_controller.dart',
-          'terminal_provider.dart'
-        ],
-        actions: [
-          'Prepare command session',
-          'Inspect output stream',
-          'Bridge to SSH or Runtime'
-        ],
-        primaryAction: _ModuleAction.terminal,
-      ),
     ],
   ),
   _CapabilityLayer(
     name: 'Remote',
     subtitle:
-        'SSH, Runtime, build orchestration, previews, GitHub, Gist, Pages, and WeChat publishing.',
+        'Runtime, build orchestration, previews, GitHub, Gist, and Pages.',
     icon: Icons.cloud_sync_outlined,
     color: _amber,
     capabilities: [
-      _Capability(
-        title: 'Remote Dev',
-        subtitle:
-            'SSH, SFTP, port forwarding, Runtime commands, and mobile Linux workflows.',
-        icon: Icons.dns_outlined,
-        status: _CapabilityStatus.needsConfig,
-        services: [
-          'ssh_service.dart',
-          'termux_service.dart',
-          'ssh_provider.dart'
-        ],
-        actions: [
-          'Attach host',
-          'Run remote command',
-          'Sync files through SFTP'
-        ],
-        primaryAction: _ModuleAction.terminal,
-      ),
       _Capability(
         title: 'Build Orchestrator',
         subtitle:
@@ -23170,24 +24066,6 @@ final List<_CapabilityLayer> _capabilityLayers = [
           'Publish Gist or Pages site'
         ],
         primaryAction: _ModuleAction.project,
-      ),
-      _Capability(
-        title: 'WeChat Publish',
-        subtitle:
-            'Mini-program upload and release pipeline surfaced beside GitHub and build flows.',
-        icon: Icons.send_to_mobile_outlined,
-        status: _CapabilityStatus.preview,
-        services: [
-          'wechat_publish_service.dart',
-          'build_orchestrator.dart',
-          'logger_service.dart'
-        ],
-        actions: [
-          'Prepare upload',
-          'Validate project metadata',
-          'Track publish log'
-        ],
-        primaryAction: _ModuleAction.build,
       ),
     ],
   ),
@@ -23352,7 +24230,7 @@ final List<_CapabilityLayer> _capabilityLayers = [
         services: [
           'skill_manager_service.dart',
           'remote_skill_service.dart',
-          'self_action_registry.dart'
+          'agent_action_system.dart'
         ],
         actions: [
           'Import skill from GitHub',
@@ -23424,51 +24302,6 @@ final List<_CapabilityLayer> _capabilityLayers = [
           'Tune interaction density'
         ],
         primaryAction: _ModuleAction.inspect,
-      ),
-    ],
-  ),
-  _CapabilityLayer(
-    name: 'Team',
-    subtitle:
-        'Team members, shared knowledge, collaboration surfaces, and foreground execution.',
-    icon: Icons.groups_outlined,
-    color: _amber,
-    capabilities: [
-      _Capability(
-        title: 'Team Hub',
-        subtitle:
-            'Members, permissions, shared projects, knowledge, and collaborative task views.',
-        icon: Icons.groups_outlined,
-        status: _CapabilityStatus.preview,
-        services: [
-          'team_service.dart',
-          'team_provider.dart',
-          'team_knowledge_screen.dart'
-        ],
-        actions: [
-          'Inspect members',
-          'Share project knowledge',
-          'Prepare collaboration backend endpoint'
-        ],
-        primaryAction: _ModuleAction.inspect,
-      ),
-      _Capability(
-        title: 'Foreground Runs',
-        subtitle:
-            'Keep Deep Dive and long-running build tasks visible during background execution.',
-        icon: Icons.notifications_active_outlined,
-        status: _CapabilityStatus.preview,
-        services: [
-          'foreground_service.dart',
-          'notification_manager.dart',
-          'deep_dive_task_manager.dart'
-        ],
-        actions: [
-          'Publish progress notification',
-          'Keep background task alive',
-          'Resume from notification tap'
-        ],
-        primaryAction: _ModuleAction.deepDive,
       ),
     ],
   ),

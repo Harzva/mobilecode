@@ -7,10 +7,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/api_config.dart';
-import '../services/api_service.dart';
+import '../services/llm_service.dart';
 import '../services/multimodal_llm_service.dart';
+import 'api_manager_provider.dart' show apiServiceProvider;
 import 'api_config_provider.dart';
-import 'llm_service_provider.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Service Provider

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844" role="img" aria-label="Reference R1: command card with built-in Linux Sandbox task handoff">
+  <rect width="390" height="844" fill="#111111"/>
+  <text x="26" y="46" fill="#f3efe6" font-family="monospace" font-size="20">Command Template</text>
+  <rect x="24" y="82" width="342" height="278" rx="18" fill="#19191f" stroke="#303039" stroke-width="1.5"/>
+  <text x="156" y="224" fill="#77777f" font-family="monospace" font-size="18">Loading...</text>
+  <text x="24" y="420" fill="#f3efe6" font-family="monospace" font-size="22" font-weight="700">Commands</text>
+  <rect x="24" y="446" width="342" height="150" rx="12" fill="#11161d" stroke="#2c3b43" stroke-width="1.5"/>
+  <circle cx="48" cy="470" r="6" fill="#ff5f57"/>
+  <circle cx="66" cy="470" r="6" fill="#ffbd2e"/>
+  <circle cx="84" cy="470" r="6" fill="#28c840"/>
+  <rect x="42" y="492" width="294" height="66" rx="8" fill="#191d25"/>
+  <text x="52" y="522" fill="#33d17a" font-family="monospace" font-size="20">$</text>
+  <text x="75" y="522" fill="#d9d9dc" font-family="monospace" font-size="16">sandbox install dev-basic</text>
+  <text x="52" y="570" fill="#d79a72" font-family="monospace" font-size="16">Tap to expand</text>
+  <rect x="24" y="616" width="342" height="54" rx="12" fill="#df9b72"/>
+  <rect x="122" y="637" width="18" height="14" rx="2" fill="none" stroke="#161616" stroke-width="2"/>
+  <text x="120" y="652" fill="#161616" font-family="monospace" font-size="18" font-weight="700">Run in Linux Sandbox</text>
+  <text x="24" y="724" fill="#f3efe6" font-family="monospace" font-size="22" font-weight="700">Tags</text>
+  <rect x="24" y="750" width="112" height="32" rx="10" fill="#25252a"/>
+  <text x="44" y="772" fill="#77777f" font-family="monospace" font-size="14">template</text>
+  <rect x="148" y="750" width="92" height="32" rx="10" fill="#25252a"/>
+  <text x="168" y="772" fill="#77777f" font-family="monospace" font-size="14">runtime</text>
+</svg>

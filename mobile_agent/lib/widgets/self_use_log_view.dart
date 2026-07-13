@@ -25,6 +25,93 @@ import '../core/theme.dart';
 import '../models/self_use_session.dart';
 import '../models/agent_task.dart';
 
+/// Visual category for a self-use log entry.
+enum SelfActionEntryType {
+  plan('PLAN'),
+  action('ACTION'),
+  result('RESULT'),
+  error('ERROR'),
+  system('SYSTEM');
+
+  const SelfActionEntryType(this.label);
+
+  final String label;
+}
+
+/// UI-facing log entry used by the legacy self-use log surface.
+class SelfActionEntry {
+  final String id;
+  final SelfActionEntryType type;
+  final String description;
+  final String? detail;
+  final String? result;
+  final String? error;
+  final DateTime startedAt;
+  final DateTime? completedAt;
+  final bool isRunning;
+
+  const SelfActionEntry({
+    required this.id,
+    required this.type,
+    required this.description,
+    this.detail,
+    this.result,
+    this.error,
+    required this.startedAt,
+    this.completedAt,
+    this.isRunning = false,
+  });
+
+  bool get isDone => completedAt != null || error != null || result != null;
+
+  Duration? get duration =>
+      completedAt == null ? null : completedAt!.difference(startedAt);
+
+  String get formattedTime {
+    final h = startedAt.hour.toString().padLeft(2, '0');
+    final m = startedAt.minute.toString().padLeft(2, '0');
+    final s = startedAt.second.toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
+  String get durationFormatted {
+    final elapsed = duration;
+    if (elapsed == null) return '';
+    if (elapsed.inSeconds < 1) return '${elapsed.inMilliseconds}ms';
+    if (elapsed.inMinutes < 1) return '${elapsed.inSeconds}s';
+    return '${elapsed.inMinutes}m ${elapsed.inSeconds.remainder(60)}s';
+  }
+
+  String get statusEmoji {
+    if (error != null) return '!';
+    if (isRunning) return '...';
+    if (isDone) return 'OK';
+    return '-';
+  }
+
+  Color get statusColor {
+    if (error != null) return AppTheme.error;
+    if (isRunning) return AppTheme.accent;
+    if (isDone) return AppTheme.success;
+    return AppTheme.textTertiary;
+  }
+
+  Color get typeColor {
+    switch (type) {
+      case SelfActionEntryType.plan:
+        return AppTheme.primary;
+      case SelfActionEntryType.action:
+        return AppTheme.accent;
+      case SelfActionEntryType.result:
+        return AppTheme.success;
+      case SelfActionEntryType.error:
+        return AppTheme.error;
+      case SelfActionEntryType.system:
+        return AppTheme.textSecondary;
+    }
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Self-Use Log View
 // ═══════════════════════════════════════════════════════════════════════════

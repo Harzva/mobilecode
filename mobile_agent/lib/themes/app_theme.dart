@@ -92,34 +92,99 @@ class AppTheme {
 
   // ── Typography ───────────────────────────────────────────────
   static const String fontCode = 'JetBrainsMono';
-  static const String fontDisplay = 'Inter';
+  static const String fontBody = 'sans-serif';
+  static const String fontDisplay = 'sans-serif';
+  static const List<String> fontFallback = [
+    'PingFang SC',
+    'Noto Sans CJK SC',
+    'Noto Sans SC',
+    'MiSans',
+    'HarmonyOS Sans SC',
+    'Roboto',
+    'sans-serif',
+  ];
+
+  static const TextStyle zhTitleLarge = TextStyle(
+    fontFamily: fontDisplay,
+    fontFamilyFallback: fontFallback,
+    fontSize: 24,
+    fontWeight: FontWeight.w800,
+    letterSpacing: 0,
+    height: 1.16,
+  );
+
+  static const TextStyle zhTitleMedium = TextStyle(
+    fontFamily: fontBody,
+    fontFamilyFallback: fontFallback,
+    fontSize: 18,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 0,
+    height: 1.22,
+  );
+
+  static const TextStyle zhBody = TextStyle(
+    fontFamily: fontBody,
+    fontFamilyFallback: fontFallback,
+    fontSize: 14,
+    fontWeight: FontWeight.w400,
+    letterSpacing: 0,
+    height: 1.35,
+  );
 
   static TextTheme get textTheme => const TextTheme(
         displayLarge: TextStyle(
+          fontFamily: fontDisplay,
+          fontFamilyFallback: fontFallback,
           fontSize: 32,
           fontWeight: FontWeight.bold,
           color: textPrimary,
           letterSpacing: 0,
         ),
         displayMedium: TextStyle(
+          fontFamily: fontDisplay,
+          fontFamilyFallback: fontFallback,
           fontSize: 24,
           fontWeight: FontWeight.bold,
           color: textPrimary,
         ),
         titleLarge: TextStyle(
+          fontFamily: fontBody,
+          fontFamilyFallback: fontFallback,
           fontSize: 20,
           fontWeight: FontWeight.w600,
           color: textPrimary,
         ),
         titleMedium: TextStyle(
+          fontFamily: fontBody,
+          fontFamilyFallback: fontFallback,
           fontSize: 16,
           fontWeight: FontWeight.w600,
           color: textPrimary,
         ),
-        bodyLarge: TextStyle(fontSize: 16, color: textPrimary),
-        bodyMedium: TextStyle(fontSize: 14, color: textSecondary),
-        bodySmall: TextStyle(fontSize: 12, color: textTertiary),
+        bodyLarge: TextStyle(
+          fontFamily: fontBody,
+          fontFamilyFallback: fontFallback,
+          fontSize: 16,
+          color: textPrimary,
+          height: 1.35,
+        ),
+        bodyMedium: TextStyle(
+          fontFamily: fontBody,
+          fontFamilyFallback: fontFallback,
+          fontSize: 14,
+          color: textSecondary,
+          height: 1.35,
+        ),
+        bodySmall: TextStyle(
+          fontFamily: fontBody,
+          fontFamilyFallback: fontFallback,
+          fontSize: 12,
+          color: textTertiary,
+          height: 1.35,
+        ),
         labelLarge: TextStyle(
+          fontFamily: fontBody,
+          fontFamilyFallback: fontFallback,
           fontSize: 14,
           fontWeight: FontWeight.w500,
           color: textPrimary,
@@ -145,14 +210,75 @@ class AppTheme {
           outline: auroraBorder,
         ),
         textTheme: const TextTheme(
-          displayLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: auroraText, letterSpacing: 0),
-          displayMedium: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: auroraText),
-          titleLarge: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: auroraText),
-          titleMedium: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: auroraText),
-          bodyLarge: TextStyle(fontSize: 16, color: auroraText),
-          bodyMedium: TextStyle(fontSize: 14, color: auroraTextMuted),
-          bodySmall: TextStyle(fontSize: 12, color: auroraTextFaint),
-          labelLarge: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: auroraText),
+          displayLarge: TextStyle(
+            fontFamily: fontDisplay,
+            fontFamilyFallback: fontFallback,
+            fontSize: 32,
+            fontWeight: FontWeight.w800,
+            color: auroraText,
+            letterSpacing: 0,
+            height: 1.12,
+          ),
+          displayMedium: TextStyle(
+            fontFamily: fontDisplay,
+            fontFamilyFallback: fontFallback,
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            color: auroraText,
+            letterSpacing: 0,
+            height: 1.16,
+          ),
+          titleLarge: TextStyle(
+            fontFamily: fontBody,
+            fontFamilyFallback: fontFallback,
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: auroraText,
+            letterSpacing: 0,
+            height: 1.22,
+          ),
+          titleMedium: TextStyle(
+            fontFamily: fontBody,
+            fontFamilyFallback: fontFallback,
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: auroraText,
+            letterSpacing: 0,
+            height: 1.28,
+          ),
+          bodyLarge: TextStyle(
+            fontFamily: fontBody,
+            fontFamilyFallback: fontFallback,
+            fontSize: 16,
+            color: auroraText,
+            letterSpacing: 0,
+            height: 1.35,
+          ),
+          bodyMedium: TextStyle(
+            fontFamily: fontBody,
+            fontFamilyFallback: fontFallback,
+            fontSize: 14,
+            color: auroraTextMuted,
+            letterSpacing: 0,
+            height: 1.35,
+          ),
+          bodySmall: TextStyle(
+            fontFamily: fontBody,
+            fontFamilyFallback: fontFallback,
+            fontSize: 12,
+            color: auroraTextFaint,
+            letterSpacing: 0,
+            height: 1.35,
+          ),
+          labelLarge: TextStyle(
+            fontFamily: fontBody,
+            fontFamilyFallback: fontFallback,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: auroraText,
+            letterSpacing: 0,
+            height: 1.25,
+          ),
         ),
         appBarTheme: const AppBarTheme(
           backgroundColor: auroraSurface,
@@ -170,14 +296,20 @@ class AppTheme {
           indicatorColor: auroraBlue.withOpacity(0.10),
           labelTextStyle: WidgetStateProperty.resolveWith(
             (states) => TextStyle(
-              color: states.contains(WidgetState.selected) ? auroraBlue : auroraTextFaint,
+              color: states.contains(WidgetState.selected)
+                  ? auroraBlue
+                  : auroraTextFaint,
               fontSize: 11,
-              fontWeight: states.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w600,
+              fontWeight: states.contains(WidgetState.selected)
+                  ? FontWeight.w800
+                  : FontWeight.w600,
             ),
           ),
           iconTheme: WidgetStateProperty.resolveWith(
             (states) => IconThemeData(
-              color: states.contains(WidgetState.selected) ? auroraBlue : auroraTextFaint,
+              color: states.contains(WidgetState.selected)
+                  ? auroraBlue
+                  : auroraTextFaint,
             ),
           ),
         ),
@@ -209,7 +341,8 @@ class AppTheme {
             borderRadius: BorderRadius.circular(16),
             borderSide: const BorderSide(color: auroraBlue, width: 1.6),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           labelStyle: const TextStyle(color: auroraTextMuted),
           hintStyle: const TextStyle(color: auroraTextFaint),
         ),
@@ -217,7 +350,8 @@ class AppTheme {
           style: FilledButton.styleFrom(
             backgroundColor: auroraBlue,
             foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
           ),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
@@ -226,7 +360,8 @@ class AppTheme {
             foregroundColor: Colors.white,
             elevation: 0,
             padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           ),
         ),
         iconButtonTheme: IconButtonThemeData(
@@ -245,17 +380,22 @@ class AppTheme {
         chipTheme: ChipThemeData(
           backgroundColor: auroraSurface,
           selectedColor: auroraBlue.withOpacity(0.12),
-          labelStyle: const TextStyle(color: auroraTextMuted, fontSize: 12, fontWeight: FontWeight.w700),
+          labelStyle: const TextStyle(
+              color: auroraTextMuted,
+              fontSize: 12,
+              fontWeight: FontWeight.w700),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(999),
             side: const BorderSide(color: auroraBorder),
           ),
         ),
-        dividerTheme: const DividerThemeData(color: auroraBorder, thickness: 1, space: 1),
+        dividerTheme:
+            const DividerThemeData(color: auroraBorder, thickness: 1, space: 1),
         snackBarTheme: SnackBarThemeData(
           backgroundColor: auroraText,
           contentTextStyle: const TextStyle(color: Colors.white),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           behavior: SnackBarBehavior.floating,
         ),
         tooltipTheme: TooltipThemeData(
@@ -302,14 +442,20 @@ class AppTheme {
         indicatorColor: claudeAmber.withOpacity(0.12),
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
-            color: states.contains(WidgetState.selected) ? claudeAmber : claudeTextFaint,
+            color: states.contains(WidgetState.selected)
+                ? claudeAmber
+                : claudeTextFaint,
             fontSize: 11,
-            fontWeight: states.contains(WidgetState.selected) ? FontWeight.w800 : FontWeight.w600,
+            fontWeight: states.contains(WidgetState.selected)
+                ? FontWeight.w800
+                : FontWeight.w600,
           ),
         ),
         iconTheme: WidgetStateProperty.resolveWith(
           (states) => IconThemeData(
-            color: states.contains(WidgetState.selected) ? claudeAmber : claudeTextFaint,
+            color: states.contains(WidgetState.selected)
+                ? claudeAmber
+                : claudeTextFaint,
           ),
         ),
       ),
@@ -333,7 +479,8 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
           borderSide: const BorderSide(color: claudeAmber, width: 1.6),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         labelStyle: const TextStyle(color: claudeTextMuted),
         hintStyle: const TextStyle(color: claudeTextFaint),
       ),
@@ -341,7 +488,8 @@ class AppTheme {
         style: FilledButton.styleFrom(
           backgroundColor: claudeAmber,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -350,7 +498,8 @@ class AppTheme {
           foregroundColor: Colors.white,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 13),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
       ),
       textButtonTheme: TextButtonThemeData(
@@ -369,7 +518,8 @@ class AppTheme {
           side: const BorderSide(color: claudeBorder),
         ),
       ),
-      dividerTheme: const DividerThemeData(color: claudeBorder, thickness: 1, space: 1),
+      dividerTheme:
+          const DividerThemeData(color: claudeBorder, thickness: 1, space: 1),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: claudeText,
         contentTextStyle: const TextStyle(color: Colors.white),
@@ -413,7 +563,8 @@ class AppTheme {
           unselectedItemColor: textTertiary,
           type: BottomNavigationBarType.fixed,
           elevation: 8,
-          selectedLabelStyle: TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+          selectedLabelStyle:
+              TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
           unselectedLabelStyle: TextStyle(fontSize: 11),
         ),
         floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -443,7 +594,8 @@ class AppTheme {
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: violet, width: 2),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           hintStyle: const TextStyle(color: textTertiary),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(

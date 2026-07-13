@@ -3,6 +3,22 @@ import 'package:mobile_agent/services/model_provider_preset_service.dart';
 
 void main() {
   group('ModelProviderPresetService', () {
+    test('defines and detects the local TuiMa OpenAI-compatible provider', () {
+      expect(ModelProviderPresetService.label(ModelProviderPreset.tuimaLocal),
+          'TuiMa Local');
+      expect(
+        ModelProviderPresetService.baseUrl(ModelProviderPreset.tuimaLocal),
+        'http://127.0.0.1:8080/v1',
+      );
+      expect(
+        ModelProviderPresetService.detect(
+          baseUrl: 'http://127.0.0.1:8080/v1',
+          model: 'qwen2.5-0.5b-instruct-q4_k_m',
+        ),
+        ModelProviderPreset.tuimaLocal,
+      );
+    });
+
     test('defines TierFlow auto as an OpenAI-compatible routing preset', () {
       const preset = ModelProviderPreset.tierFlowAuto;
 

@@ -31,13 +31,13 @@ class LLMException implements Exception {
 class SystemPrompts {
   const SystemPrompts._();
 
-  static const String codeCompletion = '''
+  static final String codeCompletion = '''
 You are an expert code completion assistant. Given a code snippet and its programming language, 
 provide ONLY the completion/ccontinuation code. Do not wrap in markdown code blocks unless 
 the code itself requires it. Output only the code that should come next, nothing else.
 '''.trim();
 
-  static const String codeExplanation = '''
+  static final String codeExplanation = '''
 You are an expert programming tutor. Explain the provided code clearly and concisely.
 Cover:
 1. What the code does at a high level
@@ -47,7 +47,7 @@ Cover:
 Be educational but concise. Use markdown formatting for readability.
 '''.trim();
 
-  static const String codeFix = '''
+  static final String codeFix = '''
 You are an expert debugger. Given code that contains errors and the error message,
 provide the corrected version. 
 
@@ -57,7 +57,7 @@ Rules:
 3. Preserve the original structure and style as much as possible
 '''.trim();
 
-  static const String generalAssistant = '''
+  static final String generalAssistant = '''
 You are Mobile Agent, an AI coding assistant integrated into a mobile code editor.
 You help with:
 - Writing and editing code

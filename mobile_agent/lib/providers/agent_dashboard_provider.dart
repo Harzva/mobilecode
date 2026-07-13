@@ -128,7 +128,7 @@ class AgentRuntimeStats {
     this.totalApiCalls = 0,
     this.totalTokensUsed = 0,
     this.tasksCompleted = 0,
-    selfCorrections = 0,
+    int selfCorrections = 0,
     this.uptime = Duration.zero,
   }) : selfCorrections = selfCorrections;
 

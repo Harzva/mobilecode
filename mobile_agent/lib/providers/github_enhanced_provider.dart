@@ -16,9 +16,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/github_repo.dart';
-import '../services/github_cache_service.dart';
+import '../services/github_cache_service.dart' hide RateLimit;
 import '../services/github_deep_service.dart';
-import 'github_provider.dart';
 
 // =============================================================================
 // ENUMS
@@ -318,8 +317,9 @@ class GitHubReposNotifier extends StateNotifier<GitHubReposState> {
     RepoSort? sort,
     RepoFilter? filter,
   }) async {
-    final effectiveSort = sort ?? _ref.read(githubReposSortProvider);
-    final effectiveFilter = filter ?? _ref.read(githubReposFilterProvider);
+    final RepoSort effectiveSort = sort ?? _ref.read(githubReposSortProvider);
+    final RepoFilter effectiveFilter =
+        filter ?? _ref.read(githubReposFilterProvider);
     final perPage = _ref.read(githubReposPerPageProvider);
 
     state = state.copyWith(isLoading: true, error: null);
@@ -498,7 +498,8 @@ class GitHubIssuesNotifier extends StateNotifier<GitHubIssuesState> {
     String repo, {
     IssueStateFilter? stateFilter,
   }) async {
-    final filter = stateFilter ?? _ref.read(githubIssuesFilterProvider);
+    final IssueStateFilter filter =
+        stateFilter ?? _ref.read(githubIssuesFilterProvider);
 
     state = state.copyWith(isLoading: true, error: null);
 
@@ -626,7 +627,8 @@ class GitHubPrsNotifier extends StateNotifier<GitHubPrsState> {
     String repo, {
     IssueStateFilter? stateFilter,
   }) async {
-    final filter = stateFilter ?? _ref.read(githubPrsFilterProvider);
+    final IssueStateFilter filter =
+        stateFilter ?? _ref.read(githubPrsFilterProvider);
 
     state = state.copyWith(isLoading: true, error: null);
 

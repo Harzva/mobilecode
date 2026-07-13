@@ -206,6 +206,14 @@ class FeatureFlag {
 /// await flags.setEnabled('terminal', true);
 /// ```
 class FeatureFlagsService extends ChangeNotifier {
+  static const Set<String> _suspendedFeatureIds = {
+    'offline_ai',
+    'team_collaboration',
+    'live_collaboration',
+    'voice_to_code',
+    'wechat_publish',
+  };
+
   // ── Feature Definitions ─────────────────────────
 
   /// All available features with their metadata.
@@ -213,10 +221,10 @@ class FeatureFlagsService extends ChangeNotifier {
     // ── Experimental Features ─────────────────────
     'voice_to_code': FeatureFlag(
       id: 'voice_to_code',
-      name: '语音转代码',
-      description: '通过语音输入生成代码，说出你的想法即可生成代码',
+      name: '语音转代码（暂停）',
+      description: '语音输入暂时不作为主入口；等移动端权限、转写和 QA 证据完整后再启用。',
       category: FeatureCategory.experimental,
-      defaultValue: true,
+      defaultValue: false,
       requiresPermission: true,
       permissionType: 'microphone',
     ),
@@ -231,8 +239,8 @@ class FeatureFlagsService extends ChangeNotifier {
     ),
     'offline_ai': FeatureFlag(
       id: 'offline_ai',
-      name: '离线AI',
-      description: '使用本地AI模型进行代码生成（需提前下载模型）',
+      name: '离线AI（暂停）',
+      description: '本地模型推理暂时关闭；当前优先 Native Helper、Linux Sandbox 和 CLI Hub。',
       category: FeatureCategory.experimental,
       defaultValue: false,
       supportedPlatforms: ['android'],
@@ -246,8 +254,8 @@ class FeatureFlagsService extends ChangeNotifier {
     ),
     'wechat_publish': FeatureFlag(
       id: 'wechat_publish',
-      name: '微信发布',
-      description: '自动发布文章到微信公众号，支持Markdown转公众号格式',
+      name: '微信发布（暂停）',
+      description: '公众号发布能力暂时关闭；后续如进入发布中心再重新启用。',
       category: FeatureCategory.experimental,
       defaultValue: false,
     ),
@@ -296,15 +304,15 @@ class FeatureFlagsService extends ChangeNotifier {
     // ── Team Features ─────────────────────────────
     'team_collaboration': FeatureFlag(
       id: 'team_collaboration',
-      name: '团队协作',
-      description: '团队成员协作功能，包括代码审查和任务分配',
+      name: '团队协作（暂停）',
+      description: '多人协作后端和权限模型暂未进入主线，暂时关闭。',
       category: FeatureCategory.team,
       defaultValue: false,
     ),
     'live_collaboration': FeatureFlag(
       id: 'live_collaboration',
-      name: '实时协作',
-      description: '多人实时编辑同一文件，类似Google Docs',
+      name: '实时协作（暂停）',
+      description: '实时多人编辑暂未验证，暂时关闭。',
       category: FeatureCategory.team,
       defaultValue: false,
     ),
@@ -434,6 +442,7 @@ class FeatureFlagsService extends ChangeNotifier {
       debugPrint('[FeatureFlags] Unknown feature: $featureId');
       return false;
     }
+    if (_suspendedFeatureIds.contains(featureId)) return false;
 
     // Core features are always enabled
     if (feature.isCore) return true;
@@ -448,6 +457,7 @@ class FeatureFlagsService extends ChangeNotifier {
     if (!_initialized) return allFeatures[featureId]?.defaultValue ?? false;
 
     final feature = allFeatures[featureId];
+    if (_suspendedFeatureIds.contains(featureId)) return false;
     if (feature?.isCore ?? false) return true;
 
     return _featureStates[featureId] ?? feature?.defaultValue ?? false;
@@ -460,6 +470,10 @@ class FeatureFlagsService extends ChangeNotifier {
     final feature = allFeatures[featureId];
     if (feature == null) {
       throw ArgumentError('Unknown feature: $featureId');
+    }
+    if (_suspendedFeatureIds.contains(featureId) && enabled) {
+      debugPrint('[FeatureFlags] Suspended feature cannot be enabled: $featureId');
+      return;
     }
 
     // Core features cannot be disabled

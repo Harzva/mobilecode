@@ -33,6 +33,7 @@ import 'package:flutter/services.dart';
 
 import '../core/error_handler.dart';
 import '../models/self_use_session.dart';
+import 'self_invocation_service.dart' as self_invocation_service;
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Solo Mode Service
@@ -457,7 +458,7 @@ class DeepDiveModeService with ErrorLogging {
     final stopwatch = Stopwatch()..start();
     try {
       // Import here to avoid circular dependency issues at the top level.
-      final service = SelfInvocationService();
+      final service = self_invocation_service.SelfInvocationService();
 
       // Build a SelfAction compatible with SelfInvocationService.
       // The service's SelfAction uses 'type' field; our model uses 'action'.

@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:path/path.dart' as p;
 
 import '../../services/lark_api_service.dart';
+import '../../services/cli_hub_catalog_service.dart';
+import '../../services/html_render_provider.dart';
 import 'action_evidence_store.dart';
 import 'evidence_model.dart';
 
@@ -14,6 +16,11 @@ typedef ActionRunnerWebToolInvoker = Future<Map<String, dynamic>> Function(
 );
 
 typedef ActionRunnerTermuxTaskInvoker = Future<Map<String, dynamic>> Function(
+  String taskKind,
+  Map<String, dynamic> payload,
+);
+
+typedef ActionRunnerCliHubTaskInvoker = Future<Map<String, dynamic>> Function(
   String taskKind,
   Map<String, dynamic> payload,
 );
@@ -64,17 +71,23 @@ class ActionRunner {
     ActionEvidenceStore? evidenceStore,
     ActionRunnerWebToolInvoker? webToolInvoker,
     ActionRunnerTermuxTaskInvoker? termuxTaskInvoker,
+    ActionRunnerCliHubTaskInvoker? cliHubTaskInvoker,
+    HtmlRenderProvider? htmlRenderProvider,
     LarkApiService? larkApiService,
   })  : workspaceRootPath = p.normalize(p.absolute(workspaceRootPath)),
         evidenceStore = evidenceStore ?? ActionEvidenceStore.shared,
         webToolInvoker = webToolInvoker,
         termuxTaskInvoker = termuxTaskInvoker,
+        cliHubTaskInvoker = cliHubTaskInvoker,
+        htmlRenderProvider = htmlRenderProvider,
         larkApiService = larkApiService ?? LarkApiService();
 
   final String workspaceRootPath;
   final ActionEvidenceStore evidenceStore;
   final ActionRunnerWebToolInvoker? webToolInvoker;
   final ActionRunnerTermuxTaskInvoker? termuxTaskInvoker;
+  final ActionRunnerCliHubTaskInvoker? cliHubTaskInvoker;
+  final HtmlRenderProvider? htmlRenderProvider;
   final LarkApiService larkApiService;
 
   Future<ActionRunnerResult> run(ActionSchema schema) async {
@@ -118,6 +131,8 @@ class ActionRunner {
         MobileCodeAction.applyPatch => await _applyPatch(schema, startedAt),
         MobileCodeAction.termuxTaskStart =>
           await _termuxTaskStart(schema, startedAt),
+        MobileCodeAction.cliHubTaskStart =>
+          await _cliHubTaskStart(schema, startedAt),
         MobileCodeAction.previewHtml => await _previewHtml(schema, startedAt),
         MobileCodeAction.webSearch => await _webSearch(schema, startedAt),
         MobileCodeAction.fetchUrl => await _fetchUrl(schema, startedAt),
@@ -2335,13 +2350,21 @@ class ActionRunner {
       'flutter_analyze',
       'flutter_test',
       'npm_build',
+      'package_install',
+      'git_version',
+      'node_version',
+      'hyperframes_cli_probe',
+      'hyperframes_lint',
+      'hyperframes_check',
+      'hyperframes_compositions',
+      'hyperframes_render',
     };
     if (!allowedKinds.contains(taskKind)) {
       throw _ActionRunnerFailure(
         'termux_task_start only accepts typed task kinds, not raw shell: $taskKind',
         failureKind: ActionFailureKind.commandBlocked,
         recoveryActions: const [
-          'Choose one of project_check, validate, build_preview, flutter_analyze, flutter_test, or npm_build.'
+          'Choose one of the declared typed task kinds, including HyperFrames lint, check, compositions, or render.'
         ],
       );
     }
@@ -2453,12 +2476,17 @@ class ActionRunner {
     final success = normalizedStatus == 'succeeded' ||
         normalizedStatus == 'completed' ||
         normalizedStatus == 'success' ||
-        (status == null && (raw['success'] == true || exitCode == 0));
+        normalizedStatus == 'installed' ||
+        raw['success'] == true ||
+        (status == null && exitCode == 0);
     final returnedTaskId = _stringValue(raw['taskId']).isEmpty
         ? generatedTaskId
         : _stringValue(raw['taskId']);
-    final resolvedStatus =
-        status == null ? (success ? 'completed' : 'failed') : status;
+    final resolvedStatus = _cliHubResolvedStatus(
+      rawStatus: status,
+      normalizedStatus: normalizedStatus,
+      success: success,
+    );
     final String? failureKind;
     if (success) {
       failureKind = null;
@@ -2513,6 +2541,308 @@ class ActionRunner {
     );
     evidenceStore.add(evidence);
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
+  }
+
+  Future<ActionRunnerResult> _cliHubTaskStart(
+      ActionSchema schema, DateTime startedAt) async {
+    final cliId = _requiredString(schema, 'cliId');
+    final taskKind = _requiredString(schema, 'taskKind');
+    final reason = _stringParam(schema, 'reason');
+    final maxOutputBytes = _boundedIntParam(schema, 'maxOutputBytes',
+        defaultValue: 32 * 1024, min: 1024, max: 128 * 1024);
+    final payload = _mapParam(schema, 'payload');
+
+    final catalog = await const CliHubCatalogService().loadBundledCatalog();
+    CliHubEntry? entry;
+    for (final item in catalog.entries) {
+      if (item.id == cliId) {
+        entry = item;
+        break;
+      }
+    }
+    if (entry == null) {
+      throw _ActionRunnerFailure(
+        'Unknown CLI Hub entry: $cliId.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const [
+          'Choose a CLI id from the bundled CLI Hub catalog.'
+        ],
+      );
+    }
+
+    final descriptor = _catalogTaskDescriptor(entry, taskKind);
+    if (descriptor == null) {
+      throw _ActionRunnerFailure(
+        'CLI Hub task $taskKind is not declared for $cliId.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const [
+          'Use only probe, auth, read-only, or mutation tasks declared by the CLI Hub catalog.'
+        ],
+      );
+    }
+    final unsafe = _firstUnsafeCliPayload(payload);
+    if (unsafe != null) {
+      throw _ActionRunnerFailure(
+        'cli_hub_task payload is typed data only and must not include shell or credential fields: $unsafe.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const [
+          'Remove command/cmd/shell and credential-like fields from payload.',
+          'Use the catalog taskKind and typed payload shape instead.',
+        ],
+      );
+    }
+
+    final mergedPayload = <String, dynamic>{
+      ...descriptor.payload,
+      ...payload,
+      'cliId': cliId,
+      'taskKind': taskKind,
+      if (descriptor.installProfileId != null)
+        'profileId': descriptor.installProfileId,
+      if (reason.isNotEmpty) 'reason': reason,
+      'access': descriptor.access,
+      'requiresApproval': descriptor.requiresApproval,
+      'credentialPolicy': entry.credentialPolicy.name,
+      'riskLevel': entry.riskLevel.name,
+    };
+    final readOnlyPaging = _cliHubReadOnlyPaging(mergedPayload, descriptor);
+    mergedPayload.addAll(readOnlyPaging.payload);
+
+    final invoker = cliHubTaskInvoker;
+    if (invoker == null) {
+      final text =
+          'CLI Hub task route is not connected. cliId=$cliId, taskKind=$taskKind. No raw shell was executed.';
+      final evidence = ActionEvidence(
+        evidenceId: schema.requestId ?? generateEvidenceId(),
+        actionName: MobileCodeAction.cliHubTaskStart,
+        paramsSummary: schema.paramsSummary.isEmpty
+            ? 'cli_hub_task $cliId.$taskKind'
+            : schema.paramsSummary,
+        startedAt: startedAt,
+        success: false,
+        logs: [
+          text,
+          'Install or enable Alpine Linux Runtime before running CLI Hub typed tasks.',
+        ],
+        failureKind: ActionFailureKind.dependencyMissing,
+        recoveryActions: const [
+          'Open Extension Center and install or verify Alpine Linux Runtime.',
+          'Install the matching CLI profile before retrying the task.',
+        ],
+        metadata: {
+          'status': 'needsSetup',
+          'runtime': 'linuxSandbox',
+          'cliId': cliId,
+          'taskKind': taskKind,
+          'access': descriptor.access,
+          'requiresApproval': descriptor.requiresApproval,
+          'credentialPolicy': entry.credentialPolicy.name,
+          'riskLevel': entry.riskLevel.name,
+          if (descriptor.installProfileId != null)
+            'profileId': descriptor.installProfileId,
+          'stdout': '',
+          'stderr': 'CLI Hub runtime unavailable',
+        },
+      );
+      evidenceStore.add(evidence);
+      return ActionRunnerResult(evidence: evidence, text: text);
+    }
+
+    if (descriptor.requiresApproval &&
+        !_cliHubPayloadApproved(payload) &&
+        !_cliHubPayloadCancelled(payload)) {
+      final text =
+          'CLI Hub task $cliId.$taskKind requires approval before execution. No runtime task was started.';
+      final evidence = ActionEvidence(
+        evidenceId: schema.requestId ?? generateEvidenceId(),
+        actionName: MobileCodeAction.cliHubTaskStart,
+        paramsSummary: schema.paramsSummary.isEmpty
+            ? 'cli_hub_task $cliId.$taskKind'
+            : schema.paramsSummary,
+        startedAt: startedAt,
+        endedAt: DateTime.now(),
+        success: false,
+        logs: [
+          text,
+          'Preview only: review the typed payload, package profile, risk, and credential policy before approving.',
+        ],
+        failureKind: 'approvalRequired',
+        recoveryActions: _cliHubRecoveryActions(
+          failureKind: 'approvalRequired',
+          cliTitle: entry.title,
+          taskKind: taskKind,
+        ),
+        metadata: {
+          'status': 'approvalRequired',
+          'previewOnly': true,
+          'runtime': 'linuxSandbox',
+          'cliId': cliId,
+          'cliTitle': entry.title,
+          'taskKind': taskKind,
+          'access': descriptor.access,
+          'requiresApproval': descriptor.requiresApproval,
+          'credentialPolicy': entry.credentialPolicy.name,
+          'riskLevel': entry.riskLevel.name,
+          if (descriptor.installProfileId != null)
+            'profileId': descriptor.installProfileId,
+          'installStrategy': entry.install.strategy.name,
+          'packages': entry.install.packages,
+          'estimatedDownloadMb':
+              _estimatedCliHubDownloadMb(entry.install.packages),
+          'installedSizeMb':
+              _estimatedCliHubInstalledMb(entry.install.packages),
+          'approval': {
+            'required': true,
+            'approved': false,
+            'confirmPayload': {'approved': true},
+          },
+          'payloadPreview': _redactCliHubValue(mergedPayload),
+          'stdout': '',
+          'stderr': '',
+        },
+      );
+      evidenceStore.add(evidence);
+      return ActionRunnerResult(evidence: evidence, text: text);
+    }
+
+    if (descriptor.requiresApproval && _cliHubPayloadCancelled(payload)) {
+      final text =
+          'CLI Hub task $cliId.$taskKind was cancelled before execution. No runtime task was started.';
+      final evidence = ActionEvidence(
+        evidenceId: schema.requestId ?? generateEvidenceId(),
+        actionName: MobileCodeAction.cliHubTaskStart,
+        paramsSummary: schema.paramsSummary.isEmpty
+            ? 'cli_hub_task $cliId.$taskKind'
+            : schema.paramsSummary,
+        startedAt: startedAt,
+        endedAt: DateTime.now(),
+        success: false,
+        logs: [text],
+        failureKind: ActionFailureKind.cancelled,
+        recoveryActions: const [
+          'Open the typed task preview again if you want to run this CLI Hub task.'
+        ],
+        metadata: {
+          'status': 'cancelled',
+          'previewOnly': true,
+          'runtime': 'linuxSandbox',
+          'cliId': cliId,
+          'cliTitle': entry.title,
+          'taskKind': taskKind,
+          'access': descriptor.access,
+          'requiresApproval': descriptor.requiresApproval,
+          'credentialPolicy': entry.credentialPolicy.name,
+          'riskLevel': entry.riskLevel.name,
+          if (descriptor.installProfileId != null)
+            'profileId': descriptor.installProfileId,
+          'approval': {
+            'required': true,
+            'approved': false,
+            'cancelled': true,
+          },
+          'payloadPreview': _redactCliHubValue(mergedPayload),
+          'stdout': '',
+          'stderr': '',
+        },
+      );
+      evidenceStore.add(evidence);
+      return ActionRunnerResult(evidence: evidence, text: text);
+    }
+
+    final raw = await invoker(taskKind, mergedPayload);
+    final rawStatus = raw['status']?.toString();
+    final status = rawStatus != null && rawStatus.trim().isNotEmpty
+        ? rawStatus.toLowerCase()
+        : null;
+    final normalizedStatus = status?.replaceAll(RegExp(r'[^a-z]'), '');
+    final stdoutSource = _stringValue(raw['stdout']);
+    final stderrSource = _stringValue(raw['stderr']);
+    final stdoutTruncated = stdoutSource.length > maxOutputBytes;
+    final stderrTruncated = stderrSource.length > maxOutputBytes;
+    final rawStdout = _redactCliHubText(
+      _compact(stdoutSource, maxOutputBytes),
+    );
+    final rawStderr = _redactCliHubText(
+      _compact(stderrSource, maxOutputBytes),
+    );
+    final exitCodeRaw = raw['exitCode'];
+    final exitCode = exitCodeRaw is num ? exitCodeRaw.toInt() : null;
+    final success = normalizedStatus == 'succeeded' ||
+        normalizedStatus == 'completed' ||
+        normalizedStatus == 'success' ||
+        normalizedStatus == 'installed' ||
+        raw['success'] == true ||
+        (status == null && exitCode == 0);
+    final returnedTaskId = _stringValue(raw['taskId']).isEmpty
+        ? 'cli-hub-${DateTime.now().millisecondsSinceEpoch}'
+        : _stringValue(raw['taskId']);
+    final resolvedStatus = _cliHubResolvedStatus(
+      rawStatus: status,
+      normalizedStatus: normalizedStatus,
+      success: success,
+    );
+    final failureKind = success
+        ? null
+        : _cliHubFailureKind(raw['failureKind'], normalizedStatus);
+    final recoveryActions = success
+        ? const <String>[]
+        : _cliHubRecoveryActions(
+            failureKind: failureKind,
+            cliTitle: entry.title,
+            taskKind: taskKind,
+          );
+    final text = [
+      'CLI Hub task $cliId.$taskKind ${success ? 'completed' : 'failed'} with taskId=$returnedTaskId.',
+      if (rawStdout.isNotEmpty) 'stdout: $rawStdout',
+      if (rawStderr.isNotEmpty) 'stderr: $rawStderr',
+    ].join('\n');
+    final evidence = ActionEvidence(
+      evidenceId: schema.requestId ?? generateEvidenceId(),
+      actionName: MobileCodeAction.cliHubTaskStart,
+      paramsSummary: schema.paramsSummary.isEmpty
+          ? 'cli_hub_task $cliId.$taskKind'
+          : schema.paramsSummary,
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: success,
+      logs: [
+        'CLI Hub task $cliId.$taskKind returned taskId=$returnedTaskId.',
+        if (rawStdout.isNotEmpty) 'stdout: $rawStdout',
+        if (rawStderr.isNotEmpty) 'stderr: $rawStderr',
+      ],
+      exitCode: exitCode,
+      failureKind: failureKind,
+      recoveryActions: recoveryActions,
+      metadata: {
+        'status': resolvedStatus,
+        'runtime': 'linuxSandbox',
+        'cliId': cliId,
+        'taskKind': taskKind,
+        'taskId': returnedTaskId,
+        'runtimeStatus': resolvedStatus,
+        'access': descriptor.access,
+        'requiresApproval': descriptor.requiresApproval,
+        'credentialPolicy': entry.credentialPolicy.name,
+        'riskLevel': entry.riskLevel.name,
+        if (descriptor.installProfileId != null)
+          'profileId': descriptor.installProfileId,
+        if (_stringValue(mergedPayload['commandId']).isNotEmpty)
+          'commandId': _stringValue(mergedPayload['commandId']),
+        if (mergedPayload['limit'] != null) 'limit': mergedPayload['limit'],
+        if (mergedPayload['pageSize'] != null)
+          'pageSize': mergedPayload['pageSize'],
+        'stdout': rawStdout,
+        'stderr': rawStderr,
+        'outputLimitBytes': maxOutputBytes,
+        'stdoutTruncated': stdoutTruncated,
+        'stderrTruncated': stderrTruncated,
+        ...readOnlyPaging.metadata,
+        if (raw['metadata'] != null)
+          'runtimeMetadata': _redactCliHubValue(raw['metadata']),
+      },
+    );
+    evidenceStore.add(evidence);
+    return ActionRunnerResult(evidence: evidence, text: text);
   }
 
   Future<ActionRunnerResult> _previewHtml(
@@ -2853,7 +3183,7 @@ class ActionRunner {
       );
     }
 
-    final snapshot = {
+    final snapshot = <String, dynamic>{
       'snapshotType': 'evidence',
       'capturedAt': DateTime.now().toIso8601String(),
       'status': 'metadata_captured',
@@ -2874,6 +3204,52 @@ class ActionRunner {
         'bodyTextPreview': _extractBodyTextPreview(html),
       },
     };
+
+    String? bitmapPath;
+    if (htmlRenderProvider != null) {
+      try {
+        final artifact = await htmlRenderProvider!.render(
+          HtmlRenderRequest(
+            sourceUrl: previewUrl!,
+            viewportWidth: viewportWidth,
+            viewportHeight: viewportHeight,
+            suggestedName: 'preview_snapshot',
+          ),
+        );
+        bitmapPath = _resolveWorkspacePath(
+          '.mobilecode_preview_snapshots/bitmap_${DateTime.now().millisecondsSinceEpoch}.png',
+        );
+        final bitmapFile = File(bitmapPath);
+        await bitmapFile.parent.create(recursive: true);
+        await File(artifact.path).copy(bitmapPath);
+        final bitmapBytes = await bitmapFile.length();
+        if (bitmapBytes == 0) {
+          throw StateError('Native HTML renderer returned an empty PNG.');
+        }
+        snapshot.addAll({
+          'status': 'bitmap_captured',
+          'captureMode': artifact.backend,
+          'artifactType': 'png',
+          'bitmapCaptured': true,
+          'bitmapPath': _relative(bitmapPath),
+          'bitmapMimeType': artifact.mimeType,
+          'bitmapBytes': bitmapBytes,
+          'bitmapSha256': artifact.sha256,
+          'renderBackend': artifact.backend,
+          'renderedAt': artifact.createdAt.toIso8601String(),
+        });
+      } catch (error) {
+        throw _ActionRunnerFailure(
+          'Native HTML bitmap capture failed: ${_compact(error.toString(), 360)}',
+          failureKind: ActionFailureKind.processFailed,
+          recoveryActions: const [
+            'Check that the preview URL is reachable by the platform WebView.',
+            'Retry after the HTML preview finishes loading.',
+          ],
+        );
+      }
+    }
+
     final snapshotPath = _resolveWorkspacePath(
       '.mobilecode_preview_snapshots/snapshot_${DateTime.now().millisecondsSinceEpoch}.json',
     );
@@ -2894,12 +3270,17 @@ class ActionRunner {
       success: true,
       artifactPaths: [
         if (target != null) target,
+        if (bitmapPath != null) bitmapPath,
         snapshotPath,
       ],
       urls: [previewUrl],
       logs: [
-        'Saved metadata/DOM evidence snapshot for ${target == null ? previewUrl : _relative(target)}.',
-        'No native bitmap screenshot was captured for this action.',
+        if (bitmapPath != null)
+          'Captured native HTML bitmap for ${target == null ? previewUrl : _relative(target)}.',
+        if (bitmapPath == null)
+          'Saved metadata/DOM evidence snapshot for ${target == null ? previewUrl : _relative(target)}.',
+        if (bitmapPath == null)
+          'No native bitmap screenshot was captured for this action.',
         'Snapshot metadata file: ${_relative(snapshotPath)}.',
       ],
       metadata: snapshot,
@@ -3139,6 +3520,13 @@ class ActionRunner {
     return value is String ? value.trim() : '';
   }
 
+  Map<String, dynamic> _mapParam(ActionSchema schema, String key) {
+    final value = schema.params[key];
+    if (value is Map<String, dynamic>) return value;
+    if (value is Map) return Map<String, dynamic>.from(value);
+    return const {};
+  }
+
   String _requiredString(ActionSchema schema, String key) {
     final value = schema.params[key];
     if (value is String && value.trim().isNotEmpty) return value;
@@ -3167,6 +3555,345 @@ class ActionRunner {
   }) {
     final raw = _intParam(schema, key, defaultValue: defaultValue);
     return math.min(math.max(raw, min), max).toInt();
+  }
+
+  _CliHubTaskDescriptor? _catalogTaskDescriptor(
+    CliHubEntry entry,
+    String taskKind,
+  ) {
+    final probeKind = entry.probe.taskKind;
+    if (probeKind != null && probeKind == taskKind) {
+      return _CliHubTaskDescriptor(
+        access: 'probe',
+        payload: const {},
+        requiresApproval: false,
+        installProfileId: entry.install.profileId,
+      );
+    }
+    if (taskKind == 'package_install') {
+      return _CliHubTaskDescriptor(
+        access: 'mutation',
+        payload: {
+          if (entry.install.profileId != null)
+            'profileId': entry.install.profileId,
+          'packages': entry.install.packages,
+          'approved': false,
+        },
+        requiresApproval: true,
+        installProfileId: entry.install.profileId,
+      );
+    }
+    for (final task in entry.tasks) {
+      if (task.taskKind != taskKind) continue;
+      return _CliHubTaskDescriptor(
+        access:
+            entry.mutationTaskIds.contains(task.id) ? 'mutation' : 'readOnly',
+        payload: task.payload,
+        requiresApproval:
+            task.requiresApproval || entry.mutationTaskIds.contains(task.id),
+        installProfileId: entry.install.profileId,
+      );
+    }
+    return null;
+  }
+
+  String? _firstUnsafeCliPayload(Object? value, [String path = 'payload']) {
+    if (value is Map) {
+      for (final entry in value.entries) {
+        final key = entry.key.toString();
+        final normalizedKey = key.trim().toLowerCase();
+        final childPath = '$path.$key';
+        if (_isUnsafeCliPayloadKey(normalizedKey)) return childPath;
+        final nested = _firstUnsafeCliPayload(entry.value, childPath);
+        if (nested != null) return nested;
+      }
+    } else if (value is List) {
+      for (var i = 0; i < value.length; i++) {
+        final nested = _firstUnsafeCliPayload(value[i], '$path[$i]');
+        if (nested != null) return nested;
+      }
+    } else if (value is String) {
+      final normalizedValue = value.toLowerCase();
+      if (_looksLikeCredentialValue(normalizedValue)) return path;
+    }
+    return null;
+  }
+
+  bool _cliHubPayloadApproved(Map<String, dynamic> payload) {
+    final raw = payload['approved'];
+    if (raw is bool) return raw;
+    if (raw is String) {
+      final normalized = raw.trim().toLowerCase();
+      return normalized == 'true' ||
+          normalized == 'yes' ||
+          normalized == 'approved';
+    }
+    return false;
+  }
+
+  bool _cliHubPayloadCancelled(Map<String, dynamic> payload) {
+    final raw = payload['cancelled'] ?? payload['canceled'];
+    if (raw is bool) return raw;
+    if (raw is String) {
+      final normalized = raw.trim().toLowerCase();
+      return normalized == 'true' ||
+          normalized == 'yes' ||
+          normalized == 'cancelled' ||
+          normalized == 'canceled';
+    }
+    return false;
+  }
+
+  int _estimatedCliHubDownloadMb(List<String> packages) {
+    if (packages.isEmpty) return 0;
+    var total = 0;
+    for (final package in packages) {
+      total += _estimatedCliHubPackageDownloadMb(package);
+    }
+    return total;
+  }
+
+  int _estimatedCliHubInstalledMb(List<String> packages) {
+    if (packages.isEmpty) return 0;
+    var total = 0;
+    for (final package in packages) {
+      total += _estimatedCliHubPackageInstalledMb(package);
+    }
+    return total;
+  }
+
+  int _estimatedCliHubPackageDownloadMb(String package) {
+    final normalized = package.toLowerCase();
+    if (normalized.contains('github-cli')) return 14;
+    if (normalized.contains('nodejs')) return 22;
+    if (normalized == 'npm') return 8;
+    if (normalized == 'git') return 12;
+    if (normalized == 'curl' || normalized == 'ca-certificates') return 2;
+    if (normalized.startsWith('@')) return 10;
+    return 6;
+  }
+
+  int _estimatedCliHubPackageInstalledMb(String package) {
+    final normalized = package.toLowerCase();
+    if (normalized.contains('github-cli')) return 48;
+    if (normalized.contains('nodejs')) return 70;
+    if (normalized == 'npm') return 24;
+    if (normalized == 'git') return 42;
+    if (normalized == 'curl' || normalized == 'ca-certificates') return 6;
+    if (normalized.startsWith('@')) return 36;
+    return 18;
+  }
+
+  bool _isUnsafeCliPayloadKey(String key) {
+    const exact = {
+      'command',
+      'cmd',
+      'shell',
+      'token',
+      'cookie',
+      'secret',
+      '.env',
+      'oauth_code',
+      'oauthcode',
+      'password',
+      'passwd',
+      'credential',
+      'credentials',
+    };
+    if (exact.contains(key)) return true;
+    return key.contains('shell') ||
+        key.contains('token') ||
+        key.contains('cookie') ||
+        key.contains('secret') ||
+        key.contains('credential') ||
+        key.contains('password');
+  }
+
+  bool _looksLikeCredentialValue(String value) {
+    if (value.contains('.env') ||
+        value.contains('gh auth token') ||
+        value.contains('cookie:') ||
+        value.contains('authorization: bearer')) {
+      return true;
+    }
+    return RegExp(r'\b(ghp|github_pat|sk-|xox[baprs]-)[a-z0-9_\-]{8,}',
+            caseSensitive: false)
+        .hasMatch(value);
+  }
+
+  String _cliHubFailureKind(Object? rawFailureKind, String? normalizedStatus) {
+    final raw = rawFailureKind?.toString();
+    if (raw != null && raw.trim().isNotEmpty) return raw.trim();
+    return switch (normalizedStatus) {
+      'needssetup' || 'needsetup' => ActionFailureKind.dependencyMissing,
+      'dependencymissing' => ActionFailureKind.dependencyMissing,
+      'commandblocked' => ActionFailureKind.commandBlocked,
+      'approvalrequired' => 'approvalRequired',
+      'authfailed' => ActionFailureKind.authFailed,
+      'timeout' || 'timedout' => ActionFailureKind.timeout,
+      'cancelled' => ActionFailureKind.cancelled,
+      _ => ActionFailureKind.processFailed,
+    };
+  }
+
+  String _cliHubResolvedStatus({
+    required String? rawStatus,
+    required String? normalizedStatus,
+    required bool success,
+  }) {
+    if (normalizedStatus == 'needssetup' || normalizedStatus == 'needsetup') {
+      return 'needsSetup';
+    }
+    return rawStatus == null ? (success ? 'completed' : 'failed') : rawStatus;
+  }
+
+  List<String> _cliHubRecoveryActions({
+    required String? failureKind,
+    required String cliTitle,
+    required String taskKind,
+  }) {
+    if (failureKind == ActionFailureKind.dependencyMissing) {
+      return [
+        'Open Extension Center and install or verify Alpine Linux Runtime.',
+        'Install the $cliTitle profile, then rerun $taskKind.',
+      ];
+    }
+    if (failureKind == 'approvalRequired') {
+      return [
+        'Review the typed task preview and approve it before execution.',
+        'Do not paste credentials into chat or CLI Hub payloads.',
+      ];
+    }
+    if (failureKind == ActionFailureKind.commandBlocked) {
+      return [
+        'Use only catalog-declared CLI Hub task kinds and typed payload fields.'
+      ];
+    }
+    if (failureKind == ActionFailureKind.authFailed) {
+      return [
+        'Run the official login task for $cliTitle, then retry $taskKind.'
+      ];
+    }
+    return [
+      'Inspect redacted stdout/stderr and retry a narrower CLI Hub task.'
+    ];
+  }
+
+  _CliHubReadOnlyPaging _cliHubReadOnlyPaging(
+    Map<String, dynamic> payload,
+    _CliHubTaskDescriptor descriptor,
+  ) {
+    if (descriptor.access != 'readOnly') {
+      return const _CliHubReadOnlyPaging(payload: {}, metadata: {});
+    }
+    final commandId = payload['commandId']?.toString() ?? '';
+    const businessCommandIds = {
+      'repo_list',
+      'drive_files_list',
+      'message_list',
+      'wiki_space_list',
+    };
+    if (!businessCommandIds.contains(commandId)) {
+      return const _CliHubReadOnlyPaging(payload: {}, metadata: {});
+    }
+    final rawLimit = payload['limit'] ?? payload['pageSize'];
+    final limit = _boundedCliHubPayloadInt(
+      rawLimit,
+      defaultValue: 10,
+      min: 1,
+      max: 50,
+    );
+    final pageToken = payload['pageToken']?.toString().trim();
+    final pagingPayload = <String, dynamic>{};
+    if (commandId == 'repo_list' || commandId == 'message_list') {
+      pagingPayload['limit'] = limit;
+    } else {
+      pagingPayload['pageSize'] = limit;
+    }
+    if (pageToken != null && pageToken.isNotEmpty) {
+      pagingPayload['pageToken'] = _redactCliHubText(pageToken);
+    }
+    return _CliHubReadOnlyPaging(
+      payload: pagingPayload,
+      metadata: {
+        'pagination': {
+          'commandId': commandId,
+          'pageSize': limit,
+          'hasPageToken': pageToken != null && pageToken.isNotEmpty,
+        },
+        'piiRedaction': 'basic-email-phone',
+      },
+    );
+  }
+
+  int _boundedCliHubPayloadInt(
+    Object? value, {
+    required int defaultValue,
+    required int min,
+    required int max,
+  }) {
+    if (value is num && value.isFinite) {
+      return math.min(math.max(value.toInt(), min), max).toInt();
+    }
+    if (value is String) {
+      final parsed = int.tryParse(value.trim());
+      if (parsed != null) {
+        return math.min(math.max(parsed, min), max).toInt();
+      }
+    }
+    return defaultValue;
+  }
+
+  Object? _redactCliHubValue(Object? value) {
+    if (value is String) return _redactCliHubText(value);
+    if (value is List) return value.map(_redactCliHubValue).toList();
+    if (value is Map) {
+      return {
+        for (final entry in value.entries)
+          entry.key.toString():
+              _isUnsafeCliPayloadKey(entry.key.toString().trim().toLowerCase())
+                  ? '[REDACTED]'
+                  : _redactCliHubValue(entry.value),
+      };
+    }
+    return value;
+  }
+
+  String _redactCliHubText(String value) {
+    var text = value;
+    final patterns = [
+      RegExp(
+        r'(token|cookie|secret|password|authorization)\s*[:=]\s*\S+',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'\b(ghp|github_pat|sk-|xox[baprs]-)[a-z0-9_\-]{8,}',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'oauth[_ -]?code\s*[:=]\s*\S+',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'(?:(?:^|\s)[^\s]*\.env(?:\.[^\s]+)?|\.env)',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'(?<!\d)(?:\+?\d[\d .-]{7,}\d)(?!\d)',
+        caseSensitive: false,
+      ),
+    ];
+    text = text.replaceAll(patterns[0], '[REDACTED]');
+    text = text.replaceAll(patterns[1], '[REDACTED]');
+    text = text.replaceAll(patterns[2], '[REDACTED]');
+    text = text.replaceAll(patterns[3], '[REDACTED_ENV]');
+    text = text.replaceAll(patterns[4], '[REDACTED_EMAIL]');
+    text = text.replaceAll(patterns[5], '[REDACTED_PHONE]');
+    return text;
   }
 
   RegExp _globToRegExp(String glob) {
@@ -3450,6 +4177,30 @@ class _UnifiedFilePatch {
   String get targetPath => newPath.isNotEmpty ? newPath : oldPath;
   String get displayPath => targetPath.isEmpty ? oldPath : targetPath;
   bool get isDelete => newPath.isEmpty && oldPath.isNotEmpty;
+}
+
+class _CliHubTaskDescriptor {
+  const _CliHubTaskDescriptor({
+    required this.access,
+    required this.payload,
+    required this.requiresApproval,
+    required this.installProfileId,
+  });
+
+  final String access;
+  final Map<String, dynamic> payload;
+  final bool requiresApproval;
+  final String? installProfileId;
+}
+
+class _CliHubReadOnlyPaging {
+  const _CliHubReadOnlyPaging({
+    required this.payload,
+    required this.metadata,
+  });
+
+  final Map<String, dynamic> payload;
+  final Map<String, dynamic> metadata;
 }
 
 class _UnifiedHunk {

@@ -3,8 +3,6 @@
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
-part 'code_snippet.g.dart';
-
 /// A reusable code snippet stored locally by the user.
 ///
 /// Snippets can be tagged, searched, and quickly inserted into
@@ -131,4 +129,63 @@ class CodeSnippet extends HiveObject {
   @override
   String toString() =>
       'CodeSnippet(id: $id, title: $title, language: $language, tags: $tags)';
+}
+
+/// Manual Hive adapter for [CodeSnippet].
+///
+/// This keeps the legacy snippet model analyzable without requiring the old
+/// generated `code_snippet.g.dart` artifact to be present in source control.
+class CodeSnippetAdapter extends TypeAdapter<CodeSnippet> {
+  @override
+  final int typeId = 5;
+
+  @override
+  CodeSnippet read(BinaryReader reader) {
+    final numberOfFields = reader.readByte();
+    final fields = <int, dynamic>{
+      for (var i = 0; i < numberOfFields; i++) reader.readByte(): reader.read(),
+    };
+
+    return CodeSnippet(
+      id: fields[0] as String,
+      title: fields[1] as String,
+      code: fields[2] as String,
+      language: fields[3] as String,
+      tags: (fields[4] as List?)?.cast<String>() ?? const <String>[],
+      createdAt: fields[5] as String,
+      updatedAt: fields[6] as String,
+      description: fields[7] as String?,
+      isFavorite: fields[8] as bool? ?? false,
+      usageCount: fields[9] as int? ?? 0,
+      source: fields[10] as String?,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, CodeSnippet obj) {
+    writer
+      ..writeByte(11)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.title)
+      ..writeByte(2)
+      ..write(obj.code)
+      ..writeByte(3)
+      ..write(obj.language)
+      ..writeByte(4)
+      ..write(obj.tags)
+      ..writeByte(5)
+      ..write(obj.createdAt)
+      ..writeByte(6)
+      ..write(obj.updatedAt)
+      ..writeByte(7)
+      ..write(obj.description)
+      ..writeByte(8)
+      ..write(obj.isFavorite)
+      ..writeByte(9)
+      ..write(obj.usageCount)
+      ..writeByte(10)
+      ..write(obj.source);
+  }
 }

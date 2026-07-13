@@ -44,8 +44,7 @@ String generateCodePrompt({
     buffer.write('\n\n**Existing Code**:\n```$language\n$existingCode\n```');
   }
   if (includeTests) {
-    buffer.write(
-        '\n\nAlso include unit tests for the generated code.');
+    buffer.write('\n\nAlso include unit tests for the generated code.');
   }
   buffer.write(_outputFormat);
   return buffer.toString();
@@ -80,7 +79,7 @@ String explainCodePrompt({
   buffer.write('Explain the following $language code. ');
   buffer.write('\n\n**Code**:\n```$language\n$code\n```');
   buffer.write('\n**Explanation Level**: ${detailLevel ?? "detailed"}');
-  buffer.write(\n\nProvide a clear explanation covering:\n' );
+  buffer.write('\n\nProvide a clear explanation covering:\n');
   buffer.write('- What the code does\n');
   buffer.write('- Key patterns and concepts used\n');
   buffer.write('- Potential improvements or caveats\n');
@@ -114,15 +113,14 @@ String screenshotToFlutterPrompt({
   final buffer = StringBuffer();
   buffer.write(_persona);
   buffer.write('Convert the following UI description into Flutter code. ');
-  buffer.write(
-      '\n\n**Framework**: ${framework ?? "Flutter"}');
+  buffer.write('\n\n**Framework**: ${framework ?? "Flutter"}');
   buffer.write('\n**UI Description**: $imageDescription');
   if (includeResponsive) {
     buffer.write(
         '\n\nMake the layout responsive and adapt to different screen sizes. ');
   }
-  buffer.write(
-      '\n\nGenerate clean, production-ready Flutter code with proper ');
+  buffer
+      .write('\n\nGenerate clean, production-ready Flutter code with proper ');
   buffer.write('widget structure, theming, and best practices. ');
   buffer.write(_outputFormat);
   return buffer.toString();
@@ -136,7 +134,8 @@ String taskPlanningPrompt({
 }) {
   final buffer = StringBuffer();
   buffer.write(_persona);
-  buffer.write('Create a detailed implementation plan for the following task. ');
+  buffer
+      .write('Create a detailed implementation plan for the following task. ');
   buffer.write('\n\n**Task**: $taskDescription');
   buffer.write('\n**Project Context**: $projectContext');
   if (existingFiles != null && existingFiles.isNotEmpty) {
@@ -146,7 +145,7 @@ String taskPlanningPrompt({
   if (dependencies != null && dependencies.isNotEmpty) {
     buffer.write('\n\n**Dependencies**: ${dependencies.join(", ")}');
   }
-  buffer.write(\n\nProvide a step-by-step plan with:\n' );
+  buffer.write('\n\nProvide a step-by-step plan with:\n');
   buffer.write('1. File structure changes\n');
   buffer.write('2. Implementation steps in order\n');
   buffer.write('3. Testing approach\n');
@@ -163,8 +162,7 @@ String reviewCodePrompt({
   buffer.write(_persona);
   buffer.write('Review the following $language code. ');
   buffer.write('\n\n**Code**:\n```$language\n$code\n```');
-  buffer.write(
-      '\n**Review Focus**: ${reviewFocus ?? "comprehensive"}');
+  buffer.write('\n**Review Focus**: ${reviewFocus ?? "comprehensive"}');
   buffer.write('\n\nProvide a structured review with:\n');
   buffer.write('- **Issues**: Bugs, anti-patterns, or concerns\n');
   buffer.write('- **Suggestions**: Specific improvements\n');
@@ -230,7 +228,8 @@ void main() {
       expect(containsCodeBlock(prompt), isTrue);
     });
 
-    test('generateCodePrompt includes test request when includeTests is true', () {
+    test('generateCodePrompt includes test request when includeTests is true',
+        () {
       final prompt = generateCodePrompt(
         description: 'Create a calculator',
         language: 'dart',
@@ -276,7 +275,7 @@ void main() {
 
       expect(prompt.contains(code), isTrue);
       expect(prompt.contains('dart'), isTrue);
-      expect(prompt.contains('explain'), isTrue);
+      expect(prompt.toLowerCase().contains('explain'), isTrue);
       expect(containsCodeBlock(prompt), isTrue);
     });
 
@@ -445,8 +444,7 @@ void main() {
         explainCodePrompt(code: code, language: 'dart'),
         fixCodePrompt(code: code, error: error),
         screenshotToFlutterPrompt(imageDescription: 'test'),
-        taskPlanningPrompt(
-            taskDescription: 'test', projectContext: 'test'),
+        taskPlanningPrompt(taskDescription: 'test', projectContext: 'test'),
         reviewCodePrompt(code: code, language: 'dart'),
       ];
 
@@ -454,8 +452,8 @@ void main() {
         expect(
           containsPersona(prompt),
           isTrue,
-          reason: 'Prompt should contain developer persona: ${prompt.substring(
-              0, prompt.length > 50 ? 50 : prompt.length)}...',
+          reason:
+              'Prompt should contain developer persona: ${prompt.substring(0, prompt.length > 50 ? 50 : prompt.length)}...',
         );
       }
     });
@@ -470,8 +468,7 @@ void main() {
         explainCodePrompt(code: code, language: 'dart'),
         fixCodePrompt(code: code, error: error),
         screenshotToFlutterPrompt(imageDescription: 'test'),
-        taskPlanningPrompt(
-            taskDescription: 'test', projectContext: 'test'),
+        taskPlanningPrompt(taskDescription: 'test', projectContext: 'test'),
         reviewCodePrompt(code: code, language: 'dart'),
       ];
 

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844" role="img" aria-label="Reference R3: Alpine Linux Sandbox install card">
+  <rect width="390" height="844" fill="#eef8f7"/>
+  <path d="M36 66 L18 84 L36 102" fill="none" stroke="#0f1f20" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="24" y="154" fill="#087b73" font-family="sans-serif" font-size="18" font-weight="700">通用</text>
+  <text x="94" y="154" fill="#087b73" font-family="sans-serif" font-size="18" font-weight="700">代理</text>
+  <text x="164" y="154" fill="#087b73" font-family="sans-serif" font-size="18" font-weight="700">服务</text>
+  <text x="236" y="154" fill="#087b73" font-family="sans-serif" font-size="18" font-weight="700">工具</text>
+  <rect x="282" y="126" width="94" height="42" rx="21" fill="#cde5e4"/>
+  <text x="304" y="153" fill="#087b73" font-family="sans-serif" font-size="17" font-weight="700">Linux</text>
+  <rect x="24" y="208" width="342" height="178" rx="16" fill="#e1eeec"/>
+  <text x="46" y="252" fill="#152122" font-family="sans-serif" font-size="26">Alpine Linux</text>
+  <text x="46" y="292" fill="#4c5555" font-family="sans-serif" font-size="15">安装轻量 Linux 环境，以便运行受控任务和工具。</text>
+  <text x="46" y="320" fill="#4c5555" font-family="sans-serif" font-size="15">初始下载小，后续包按需安装。</text>
+  <rect x="46" y="344" width="270" height="5" rx="2.5" fill="#c7d4d2"/>
+  <rect x="46" y="344" width="124" height="5" rx="2.5" fill="#008b83"/>
+  <circle cx="316" cy="346.5" r="4" fill="#008b83"/>
+  <text x="46" y="382" fill="#4c5555" font-family="monospace" font-size="17">Downloading rootfs...</text>
+  <text x="306" y="382" fill="#087b73" font-family="sans-serif" font-size="18" font-weight="700">取消</text>
+  <text x="62" y="442" fill="#263333" font-family="sans-serif" font-size="15">AI 可能会出错，请仔细核对，不要分享敏感信息。</text>
+  <text x="116" y="490" fill="#263333" font-family="sans-serif" font-size="18">版本：待选择</text>
+  <text x="234" y="490" fill="#087b73" font-family="sans-serif" font-size="18">文档</text>
+</svg>

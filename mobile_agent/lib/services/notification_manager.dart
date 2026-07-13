@@ -138,7 +138,7 @@ class NotificationManager with ErrorLogging {
 
       // ── Initialize Plugin ──
       await _plugin.initialize(
-        const InitializationSettings(
+        settings: const InitializationSettings(
           android: androidSettings,
           iOS: iosSettings,
           linux: linuxSettings,
@@ -225,10 +225,10 @@ class NotificationManager with ErrorLogging {
       );
 
       await _plugin.show(
-        id,
-        title,
-        body,
-        NotificationDetails(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: NotificationDetails(
           android: androidDetails,
           iOS: iosDetails,
         ),
@@ -390,7 +390,7 @@ class NotificationManager with ErrorLogging {
   Future<void> cancel(int id) async {
     if (!_initialized) return;
     try {
-      await _plugin.cancel(id);
+      await _plugin.cancel(id: id);
       _activeNotificationIds.removeWhere(
         (taskId) => _taskIdToNotificationId(taskId) == id,
       );
@@ -460,7 +460,7 @@ class NotificationManager with ErrorLogging {
     if (!_initialized) return false;
 
     if (Platform.isAndroid || Platform.isIOS) {
-      final settings = await _plugin
+      await _plugin
           .resolvePlatformSpecificImplementation<
               IOSFlutterLocalNotificationsPlugin>()
           ?.getActiveNotifications();
@@ -566,7 +566,6 @@ class NotificationManager with ErrorLogging {
     // TODO: Store in shared preferences for retrieval on app launch.
     // For now, log the tap for debugging.
     if (kDebugMode) {
-      // ignore: avoid_print
       print('[NotificationManager] Background tap: $payload');
     }
   }

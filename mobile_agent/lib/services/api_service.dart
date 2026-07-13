@@ -1,6 +1,7 @@
 // lib/services/api_service.dart
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -358,8 +359,9 @@ class ApiService {
         );
 
         final responseStream = response.data as ResponseBody;
-        final lines =
-            responseStream.stream.transform(const Utf8Decoder()).transform(const LineSplitter());
+        final lines = responseStream.stream
+            .map(utf8.decode)
+            .transform(const LineSplitter());
 
         await for (final line in lines) {
           if (streamController.isClosed) break;

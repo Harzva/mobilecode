@@ -1,4 +1,5 @@
 enum ModelProviderPreset {
+  tuimaLocal,
   mimo,
   deepSeek,
   deepSeekAuto,
@@ -18,8 +19,12 @@ class ModelProviderPresetService {
   static const tierFlowModel = 'auto';
   static const deepSeekFlashModel = 'deepseek-v4-flash';
   static const deepSeekProModel = 'deepseek-v4-pro';
+  static const tuimaBaseUrl = 'http://127.0.0.1:8080/v1';
+  static const tuimaModel = 'qwen2.5-0.5b-instruct-q4_k_m';
+  static const tuimaLocalToken = 'local';
 
   static String label(ModelProviderPreset preset) => switch (preset) {
+        ModelProviderPreset.tuimaLocal => 'TuiMa Local',
         ModelProviderPreset.mimo => 'Mimo',
         ModelProviderPreset.deepSeek => 'DeepSeek v4',
         ModelProviderPreset.deepSeekAuto => 'DeepSeek Auto',
@@ -30,6 +35,7 @@ class ModelProviderPresetService {
       };
 
   static String baseUrl(ModelProviderPreset preset) => switch (preset) {
+        ModelProviderPreset.tuimaLocal => tuimaBaseUrl,
         ModelProviderPreset.mimo => defaultBaseUrl,
         ModelProviderPreset.deepSeek => 'https://api.deepseek.com',
         ModelProviderPreset.deepSeekAuto => 'https://api.deepseek.com',
@@ -40,6 +46,7 @@ class ModelProviderPresetService {
       };
 
   static String model(ModelProviderPreset preset) => switch (preset) {
+        ModelProviderPreset.tuimaLocal => tuimaModel,
         ModelProviderPreset.mimo => defaultModel,
         ModelProviderPreset.deepSeek => deepSeekFlashModel,
         ModelProviderPreset.deepSeekAuto => deepSeekFlashModel,
@@ -69,6 +76,12 @@ class ModelProviderPresetService {
   }) {
     final probe = '$baseUrl $model'.toLowerCase();
     final normalizedModel = model.trim().toLowerCase();
+    if (probe.contains('127.0.0.1:8080') ||
+        probe.contains('localhost:8080') ||
+        probe.contains('tuima') ||
+        normalizedModel == tuimaModel) {
+      return ModelProviderPreset.tuimaLocal;
+    }
     if (probe.contains('tierflow') || normalizedModel == tierFlowModel) {
       return ModelProviderPreset.tierFlowAuto;
     }
@@ -91,6 +104,7 @@ class ModelProviderPresetService {
   }
 
   static List<ModelProviderPreset> get composerChoices => const [
+        ModelProviderPreset.tuimaLocal,
         ModelProviderPreset.mimo,
         ModelProviderPreset.deepSeek,
         ModelProviderPreset.deepSeekAuto,

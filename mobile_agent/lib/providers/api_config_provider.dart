@@ -116,7 +116,7 @@ class ApiConfigNotifier extends StateNotifier<List<ApiConfig>> {
       isDefault: true,
       maxTokens: 4096,
       temperature: 0.7,
-      createdAt: DateTime.now().toIso8601String(),
+      createdAt: DateTime.now(),
     );
 
     await addConfig(defaultConfig, setAsActive: true);

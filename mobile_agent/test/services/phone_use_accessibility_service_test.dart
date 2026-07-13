@@ -99,6 +99,31 @@ void main() {
     expect(result['countsAsExperiment'], isFalse);
   });
 
+  test('opens Android permission settings through method channel', () async {
+    final methods = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      methods.add(call.method);
+      return true;
+    });
+
+    final accessibilityOpened =
+        await PhoneUseAccessibilityService.instance.openAccessibilitySettings();
+    final appSettingsOpened =
+        await PhoneUseAccessibilityService.instance.openAppSettings();
+    final batterySettingsOpened = await PhoneUseAccessibilityService.instance
+        .openBatteryOptimizationSettings();
+
+    expect(accessibilityOpened, isTrue);
+    expect(appSettingsOpened, isTrue);
+    expect(batterySettingsOpened, isTrue);
+    expect(methods, [
+      'openPhoneUseAccessibilitySettings',
+      'openAppSettings',
+      'openBatteryOptimizationSettings',
+    ]);
+  });
+
   test('falls back when phone-use platform channel is unavailable', () async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {

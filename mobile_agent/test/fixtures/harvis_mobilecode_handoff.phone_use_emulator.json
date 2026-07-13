@@ -1,0 +1,46 @@
+{
+  "type": "mobilecode.handoff.v1",
+  "schema_version": "mobilecode.harvis.task.v1",
+  "task_id": "hm_task_phone_use_emulator_001",
+  "correlation_id": "corr_mobilecode_harvis_phone_use_001",
+  "action": "phone_use_emulator",
+  "approval": {
+    "required": true,
+    "approval_id": "appr_phone_use_emulator_001",
+    "risk": "medium",
+    "summary": "Run the minimal Android Emulator phone-use primitive."
+  },
+  "source": {
+    "system": "harvis",
+    "agent_room_topic_id": "topic_mobilecode_bridge_001"
+  },
+  "target": {
+    "runtime": "mobilecode",
+    "device_selector": {
+      "kind": "android_emulator",
+      "required": true
+    }
+  },
+  "task": {
+    "title": "Run Android Emulator phone-use primitive",
+    "input": {
+      "text": "HarvisP5HandoffFixture",
+      "package": "com.mobilecode.app",
+      "activity": ".MainActivity"
+    },
+    "timeout_ms": 120000
+  },
+  "evidence_contract": {
+    "expected_types": [
+      "mobilecode.status.v1",
+      "mobilecode.action_evidence.v1"
+    ],
+    "expected_artifacts": [
+      "summary.json",
+      "observe-after.png",
+      "window-after.xml",
+      "logcat.txt"
+    ],
+    "redaction": "public_safe"
+  }
+}

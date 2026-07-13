@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:archive/archive.dart';
+import 'package:flutter/material.dart' show IconData, Icons;
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -14,6 +15,25 @@ import '../core/constants.dart';
 import '../models/file_item.dart';
 import '../models/project.dart';
 import 'storage_service.dart';
+
+int _jsonInt(Object? value, [int fallback = 0]) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value) ?? fallback;
+  return fallback;
+}
+
+bool _jsonBool(Object? value, [bool fallback = false]) {
+  if (value is bool) return value;
+  if (value is String) return value.toLowerCase() == 'true';
+  return fallback;
+}
+
+DateTime _jsonDate(Object? value, DateTime fallback) {
+  if (value is DateTime) return value;
+  if (value is String) return DateTime.tryParse(value) ?? fallback;
+  return fallback;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Data Models for Stats
@@ -595,7 +615,7 @@ if __name__ == "__main__":
           FileItem.createFile(
             name: '.gitignore',
             path: '.gitignore',
-            content: '# Python\n__pycache__/\n*.py[cod]\n*$py.class\nvenv/\n.env\n',
+            content: '# Python\n__pycache__/\n*.py[cod]\n*\$py.class\nvenv/\n.env\n',
           ),
           FileItem.createFile(
             name: 'README.md',
@@ -977,13 +997,13 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
 
     return ProjectStats(
       projectId: id,
-      totalFiles: stats['files'] ?? 0,
-      totalDirectories: stats['dirs'] ?? 0,
-      totalLinesOfCode: stats['lines'] ?? 0,
-      totalComments: stats['comments'] ?? 0,
-      blankLines: stats['blank'] ?? 0,
+      totalFiles: _jsonInt(stats['files']),
+      totalDirectories: _jsonInt(stats['dirs']),
+      totalLinesOfCode: _jsonInt(stats['lines']),
+      totalComments: _jsonInt(stats['comments']),
+      blankLines: _jsonInt(stats['blank']),
       languageDistribution: (stats['langs'] as Map<String, int>?) ?? {},
-      avgFileSize: stats['avgSize'] ?? 0,
+      avgFileSize: _jsonInt(stats['avgSize']),
       currentBranch: meta['currentBranch'] as String?,
       modifiedFiles: meta['modifiedFiles'] as int? ?? 0,
       untrackedFiles: meta['untrackedFiles'] as int? ?? 0,
@@ -1009,9 +1029,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       final pMeta = meta[project.id] ?? {};
       final stats = _computeFileStats(project.files);
 
-      totalFiles += stats['files'] ?? 0;
-      totalLines += stats['lines'] ?? 0;
-      totalComments += stats['comments'] ?? 0;
+      totalFiles += _jsonInt(stats['files']);
+      totalLines += _jsonInt(stats['lines']);
+      totalComments += _jsonInt(stats['comments']);
 
       final langs = stats['langs'] as Map<String, int>? ?? {};
       for (final entry in langs.entries) {
@@ -1031,7 +1051,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     final streak = await _getStreakInfo();
 
     return GlobalStats(
-      totalProjects: projects.where((p) => !(meta[p.id]?['isArchived'] ?? false)).length,
+      totalProjects: projects
+          .where((p) => !_jsonBool(meta[p.id]?['isArchived']))
+          .length,
       totalFiles: totalFiles,
       totalLinesOfCode: totalLines,
       totalComments: totalComments,
@@ -1039,9 +1061,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       favoriteProjects: favoriteCount,
       archivedProjects: archivedCount,
       mostActiveProject: mostActive,
-      currentStreakDays: streak['current'] ?? 0,
-      longestStreakDays: streak['longest'] ?? 0,
-      lastActiveDate: streak['lastActive'] ?? DateTime.now(),
+      currentStreakDays: _jsonInt(streak['current']),
+      longestStreakDays: _jsonInt(streak['longest']),
+      lastActiveDate: _jsonDate(streak['lastActive'], DateTime.now()),
     );
   }
 
@@ -1463,5 +1485,3 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     };
   }
 }
-
-

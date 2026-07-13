@@ -9,6 +9,7 @@ import 'termux_service.dart';
 enum RuntimeProviderType {
   embeddedLite,
   mobileCodeHelper,
+  linuxSandbox,
   externalTermux,
   cloud,
   webViewOnly,
@@ -26,6 +27,13 @@ class RuntimeCapabilities {
   final bool backgroundService;
   final bool webViewPreview;
   final bool cloudBuild;
+  final bool packageManager;
+  final bool rootfsInstalled;
+  final List<String> packageProfiles;
+  final String networkPolicy;
+  final bool rawShellAllowed;
+  final bool rootfsVerified;
+  final List<String> writableMounts;
 
   const RuntimeCapabilities({
     this.shell = false,
@@ -38,6 +46,13 @@ class RuntimeCapabilities {
     this.backgroundService = false,
     this.webViewPreview = false,
     this.cloudBuild = false,
+    this.packageManager = false,
+    this.rootfsInstalled = false,
+    this.packageProfiles = const [],
+    this.networkPolicy = 'disabled',
+    this.rawShellAllowed = false,
+    this.rootfsVerified = false,
+    this.writableMounts = const [],
   });
 
   static const none = RuntimeCapabilities();
@@ -54,6 +69,20 @@ class RuntimeCapabilities {
       backgroundService: backgroundService || other.backgroundService,
       webViewPreview: webViewPreview || other.webViewPreview,
       cloudBuild: cloudBuild || other.cloudBuild,
+      packageManager: packageManager || other.packageManager,
+      rootfsInstalled: rootfsInstalled || other.rootfsInstalled,
+      packageProfiles: {
+        ...packageProfiles,
+        ...other.packageProfiles,
+      }.toList(growable: false),
+      networkPolicy:
+          networkPolicy != 'disabled' ? networkPolicy : other.networkPolicy,
+      rawShellAllowed: rawShellAllowed || other.rawShellAllowed,
+      rootfsVerified: rootfsVerified || other.rootfsVerified,
+      writableMounts: {
+        ...writableMounts,
+        ...other.writableMounts,
+      }.toList(growable: false),
     );
   }
 }
@@ -163,7 +192,8 @@ class RuntimeTaskSnapshot {
     this.failureKind = RuntimeTaskFailureKind.none,
   });
 
-  bool get running => status == RuntimeTaskStatus.running || status == RuntimeTaskStatus.queued;
+  bool get running =>
+      status == RuntimeTaskStatus.running || status == RuntimeTaskStatus.queued;
   bool get canCancel => running;
 
   RuntimeTaskSnapshot copyWith({
@@ -241,7 +271,8 @@ abstract class RuntimeProvider {
   });
 
   Future<BuildResult> buildWeb(String projectPath);
-  Future<BuildResult> buildApk(String projectPath, {BuildMode mode = BuildMode.debug});
+  Future<BuildResult> buildApk(String projectPath,
+      {BuildMode mode = BuildMode.debug});
   Future<InstallResult> installApk(String apkPath);
   Future<void> launchApp(String packageName);
   Future<void> uninstallApp(String packageName);
@@ -261,11 +292,21 @@ abstract class RuntimeTaskController {
   Future<void> stopTask(String taskId);
 }
 
-/// Optional extension for runtimes that expose a typed Termux-like task endpoint
-/// used by `termux_task_start`.
+/// Optional extension for runtimes that expose typed helper tasks.
+///
+/// The product path should be the built-in Android Helper APK or a
+/// provider-native adapter. Desktop helpers and external daemons are development
+/// or advanced fallback runtimes only.
 abstract class RuntimeTypedTaskRunner {
-  Future<Map<String, dynamic>> runTermuxTask({
+  Future<Map<String, dynamic>> runTypedTask({
     required String taskKind,
     required Map<String, dynamic> payload,
   });
+
+  Future<Map<String, dynamic>> runTermuxTask({
+    required String taskKind,
+    required Map<String, dynamic> payload,
+  }) {
+    return runTypedTask(taskKind: taskKind, payload: payload);
+  }
 }

@@ -4,6 +4,8 @@
 import 'dart:async';
 
 import 'external_termux_provider.dart';
+import 'linux_sandbox_provider.dart';
+import 'mobile_code_helper_auth.dart';
 import 'mobile_code_helper_provider.dart';
 import 'runtime_actions.dart';
 import 'runtime_placeholder_providers.dart';
@@ -30,10 +32,14 @@ class RuntimeManager {
   }) {
     return RuntimeManager(
       providers: [
-        EmbeddedLiteRuntimeProvider(),
+        MobileCodeHelperProvider(
+          baseUri: helperBaseUri,
+          authToken: MobileCodeHelperAuth.token,
+        ),
+        LinuxSandboxRuntimeProvider(),
         TermuxDaemonProvider(baseUri: helperBaseUri),
-        MobileCodeHelperProvider(baseUri: helperBaseUri),
         ExternalTermuxProvider(termux),
+        EmbeddedLiteRuntimeProvider(),
         CloudRuntimeProvider(),
         WebViewOnlyRuntimeProvider(),
       ],
@@ -233,10 +239,32 @@ class RuntimeManager {
     final provider = _activeProvider;
     if (provider == null || provider is! RuntimeTypedTaskRunner) {
       throw StateError(
-          'Active runtime provider does not expose a typed Termux task endpoint.');
+          'Active runtime provider does not expose a typed helper task endpoint.');
     }
     return (provider as RuntimeTypedTaskRunner)
-        .runTermuxTask(taskKind: taskKind, payload: payload);
+        .runTypedTask(taskKind: taskKind, payload: payload);
+  }
+
+  Future<Map<String, dynamic>> startCliHubTask(
+    String taskKind,
+    Map<String, dynamic> payload,
+  ) async {
+    await _ensureReady();
+    RuntimeProvider? provider;
+    for (final candidate in _providers) {
+      if (candidate.type == RuntimeProviderType.linuxSandbox &&
+          candidate is RuntimeTypedTaskRunner) {
+        provider = candidate;
+        break;
+      }
+    }
+    provider ??= _activeProvider;
+    if (provider == null || provider is! RuntimeTypedTaskRunner) {
+      throw StateError(
+          'No runtime provider exposes a CLI Hub typed task endpoint.');
+    }
+    return (provider as RuntimeTypedTaskRunner)
+        .runTypedTask(taskKind: taskKind, payload: payload);
   }
 
   Future<RuntimeProjectProfile> preflightProject(
@@ -246,6 +274,20 @@ class RuntimeManager {
     await _ensureReady();
     final provider = _activeProvider!;
     final caps = await provider.capabilities();
+    if (provider is RuntimeProjectInspector) {
+      try {
+        return await (provider as RuntimeProjectInspector).preflightProject(
+          projectPath,
+          packageManager: packageManager,
+        );
+      } on Object catch (error) {
+        return runtimeProjectPreflightFailure(
+          projectPath: projectPath,
+          summary: 'Project preflight failed: $error',
+        );
+      }
+    }
+
     if (!caps.shell) {
       return runtimeProjectPreflightFailure(
         projectPath: projectPath,
@@ -257,13 +299,6 @@ class RuntimeManager {
     }
 
     try {
-      if (provider is RuntimeProjectInspector) {
-        return await (provider as RuntimeProjectInspector).preflightProject(
-          projectPath,
-          packageManager: packageManager,
-        );
-      }
-
       final probe = await provider.execute(
         runtimeProjectProbeCommand,
         workingDir: projectPath,

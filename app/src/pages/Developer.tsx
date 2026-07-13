@@ -60,7 +60,7 @@ const solvedProblems = [
   },
   {
     title: '预览证据不能夸大',
-    text: 'preview_snapshot 明确标记 metadata_captured / captureMode=metadata / bitmapCaptured=false，除非真有图片 artifact，否则不声称截图。',
+    text: 'preview_snapshot 在平台 renderer 可用时记录真实 PNG artifact 与 SHA-256；不可用时仍明确标记 metadata-only，不夸大截图能力。',
     icon: ShieldCheck,
   },
   {
@@ -86,7 +86,7 @@ const hardProblems = [
   },
   {
     title: '预览验证从 metadata 走向视觉证据',
-    text: '当前 metadata/DOM/viewport 已经诚实记录；下一步是稳定生产真实 bitmap artifact，再做 screenshot-grade validation。',
+    text: '平台 WebView 已能稳定生产真实 PNG artifact；下一步是把 PDF 与 HyperFrames MP4 worker 接入同一份 artifact/evidence contract。',
   },
   {
     title: 'Sub-Agent Lite 的读写边界',
@@ -441,7 +441,7 @@ export default function Developer() {
             <article>
               <Layers3 size={20} />
               <h3>视觉预览证据</h3>
-              <p>从 metadata/DOM/viewport 走向真实 bitmap artifact，并建立 screenshot-grade verification。</p>
+              <p>平台 renderer 已生成真实 bitmap artifact；PDF 与 MP4 worker 继续复用同一套 verification。</p>
             </article>
             <article>
               <Boxes size={20} />

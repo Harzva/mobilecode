@@ -225,7 +225,7 @@ class ProjectLearningService {
     final allPaths = lowerFiles.join('\n');
 
     // Pattern detection heuristics.
-    var pattern = ArchitecturePattern.unknown;
+    var pattern = ArchitecturePatternType.unknown;
     var confidence = 0.0;
 
     // Check for Clean Architecture (layers).
@@ -235,7 +235,7 @@ class ProjectLearningService {
         lowerFiles.any((f) => f.contains('/presentation/') || f.contains('/ui/'));
 
     if (hasData && hasDomain && hasPresentation) {
-      pattern = ArchitecturePattern.clean;
+      pattern = ArchitecturePatternType.clean;
       confidence = 0.9;
     }
 
@@ -246,7 +246,7 @@ class ProjectLearningService {
         lowerFiles.any((f) => f.contains('/controllers/') || f.contains('/controller/'));
 
     if (hasModels && hasViews && hasControllers && confidence < 0.8) {
-      pattern = ArchitecturePattern.mvc;
+      pattern = ArchitecturePatternType.mvc;
       confidence = 0.8;
     }
 
@@ -254,7 +254,7 @@ class ProjectLearningService {
     final hasViewModels =
         lowerFiles.any((f) => f.contains('/viewmodels/') || f.contains('/view_model/'));
     if (hasModels && hasViews && hasViewModels && confidence < 0.8) {
-      pattern = ArchitecturePattern.mvvm;
+      pattern = ArchitecturePatternType.mvvm;
       confidence = 0.75;
     }
 
@@ -263,14 +263,14 @@ class ProjectLearningService {
     final hasEvents = lowerFiles.any((f) => f.contains('/event/') || f.contains('/events/'));
     final hasStates = lowerFiles.any((f) => f.contains('/state/') || f.contains('/states/'));
     if (hasBloc || (hasEvents && hasStates)) {
-      pattern = ArchitecturePattern.bloc;
+      pattern = ArchitecturePatternType.bloc;
       confidence = 0.85;
     }
 
     // Check for Provider / Riverpod (simpler structure).
     final hasProvider = allPaths.contains('provider') || allPaths.contains('riverpod');
     if (hasProvider && confidence < 0.5) {
-      pattern = ArchitecturePattern.provider;
+      pattern = ArchitecturePatternType.provider;
       confidence = 0.6;
     }
 
@@ -278,7 +278,7 @@ class ProjectLearningService {
     final hasFeatures = lowerFiles.any((f) => f.contains('/features/') || f.contains('/modules/'));
     if (hasFeatures) {
       if (confidence < 0.5) {
-        pattern = ArchitecturePattern.feature;
+        pattern = ArchitecturePatternType.feature;
         confidence = 0.7;
       } else {
         // Feature-based can combine with other patterns.
@@ -288,7 +288,7 @@ class ProjectLearningService {
 
     // Check for simple / no architecture.
     if (confidence < 0.3) {
-      pattern = ArchitecturePattern.simple;
+      pattern = ArchitecturePatternType.simple;
       confidence = 0.5;
     }
 

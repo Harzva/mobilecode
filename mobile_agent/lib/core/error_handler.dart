@@ -74,7 +74,7 @@ class AppException implements Exception {
   /// Optional HTTP status code if this came from an API call.
   final int? statusCode;
 
-  const AppException({
+  AppException({
     required this.code,
     required this.message,
     this.technicalDetails,
@@ -82,7 +82,7 @@ class AppException implements Exception {
     this.originalError,
     this.statusCode,
     DateTime? timestamp,
-  }) : timestamp = timestamp ?? null;
+  }) : timestamp = timestamp ?? DateTime.now();
 
   /// Create with automatic timestamp.
   factory AppException.now({
@@ -106,7 +106,8 @@ class AppException implements Exception {
 
   // -- Convenience factories for common error types --
 
-  factory AppException.networkTimeout({String? message, dynamic originalError}) {
+  factory AppException.networkTimeout(
+      {String? message, dynamic originalError}) {
     return AppException.now(
       code: 'NETWORK_TIMEOUT',
       message: message ?? 'Connection timed out. Please check your network.',
@@ -118,19 +119,25 @@ class AppException implements Exception {
   factory AppException.noInternet({String? message, dynamic originalError}) {
     return AppException.now(
       code: 'NO_INTERNET',
-      message: message ?? 'No internet connection. Please check your network and try again.',
+      message: message ??
+          'No internet connection. Please check your network and try again.',
       isRetryable: true,
       originalError: originalError,
     );
   }
 
-  factory AppException.apiError({required String message, int? statusCode, String? technicalDetails, dynamic originalError}) {
+  factory AppException.apiError(
+      {required String message,
+      int? statusCode,
+      String? technicalDetails,
+      dynamic originalError}) {
     return AppException.now(
       code: 'API_ERROR',
       message: message,
       statusCode: statusCode,
       technicalDetails: technicalDetails,
-      isRetryable: statusCode != null && (statusCode >= 500 || statusCode == 429),
+      isRetryable:
+          statusCode != null && (statusCode >= 500 || statusCode == 429),
       originalError: originalError,
     );
   }
@@ -138,13 +145,15 @@ class AppException implements Exception {
   factory AppException.rateLimited({String? message, dynamic originalError}) {
     return AppException.now(
       code: 'API_RATE_LIMIT',
-      message: message ?? 'Too many requests. Please wait a moment and try again.',
+      message:
+          message ?? 'Too many requests. Please wait a moment and try again.',
       isRetryable: true,
       originalError: originalError,
     );
   }
 
-  factory AppException.llmError({required String message, String? provider, dynamic originalError}) {
+  factory AppException.llmError(
+      {required String message, String? provider, dynamic originalError}) {
     return AppException.now(
       code: 'LLM_ERROR',
       message: message,
@@ -154,7 +163,8 @@ class AppException implements Exception {
     );
   }
 
-  factory AppException.validationError({required String message, String? field}) {
+  factory AppException.validationError(
+      {required String message, String? field}) {
     return AppException.now(
       code: 'VALIDATION_ERROR',
       message: message,
@@ -163,7 +173,10 @@ class AppException implements Exception {
     );
   }
 
-  factory AppException.unexpected({required String message, dynamic originalError, StackTrace? stackTrace}) {
+  factory AppException.unexpected(
+      {required String message,
+      dynamic originalError,
+      StackTrace? stackTrace}) {
     return AppException.now(
       code: 'UNEXPECTED_ERROR',
       message: message,
@@ -173,7 +186,8 @@ class AppException implements Exception {
     );
   }
 
-  factory AppException.fileSystem({required String message, String? path, dynamic originalError}) {
+  factory AppException.fileSystem(
+      {required String message, String? path, dynamic originalError}) {
     return AppException.now(
       code: 'FILESYSTEM_ERROR',
       message: message,
@@ -184,7 +198,8 @@ class AppException implements Exception {
   }
 
   @override
-  String toString() => 'AppException [$code${statusCode != null ? ' $statusCode' : ''}]: $message';
+  String toString() =>
+      'AppException [$code${statusCode != null ? ' $statusCode' : ''}]: $message';
 }
 
 // ---------------------------------------------------------------------------
@@ -238,7 +253,8 @@ class RetryPolicy {
 
   /// Calculate the delay before the [attempt]th retry (1-indexed).
   Duration delayForAttempt(int attempt) {
-    final exponential = baseDelay.inMilliseconds * pow(backoffMultiplier, attempt - 1).toInt();
+    final exponential =
+        baseDelay.inMilliseconds * pow(backoffMultiplier, attempt - 1).toInt();
     final jitter = (exponential * jitterFactor * _random.nextDouble()).toInt();
     final delayMs = (exponential + jitter).clamp(0, maxDelay.inMilliseconds);
     return Duration(milliseconds: delayMs);
@@ -288,7 +304,8 @@ class AppErrorHandler {
   static LoggerService? _logger;
 
   /// Fatal error callbacks registered by other services.
-  static final List<void Function(dynamic, StackTrace)> _fatalErrorCallbacks = [];
+  static final List<void Function(dynamic, StackTrace)> _fatalErrorCallbacks =
+      [];
 
   /// Tracks whether the app is currently handling a fatal error
   /// to prevent cascading error reports.
@@ -349,7 +366,7 @@ class AppErrorHandler {
         },
         zoneSpecification: ZoneSpecification(
           handleUncaughtError: (self, parent, zone, error, stackTrace) {
-            parent.handleUncaughtError(error, stackTrace);
+            parent.handleUncaughtError(zone, error, stackTrace);
           },
         ),
       );
@@ -381,9 +398,11 @@ class AppErrorHandler {
   }) {
     final logger = _logger;
     if (logger != null) {
-      _dispatchToLogger(logger, level, tag ?? 'App', message, error, stackTrace);
+      _dispatchToLogger(
+          logger, level, tag ?? 'App', message, error, stackTrace);
     } else {
-      _logInternal('[$level] ${tag != null ? '[$tag] ' : ''}$message${error != null ? ' | Error: $error' : ''}');
+      _logInternal(
+          '[$level] ${tag != null ? '[$tag] ' : ''}$message${error != null ? ' | Error: $error' : ''}');
     }
   }
 
@@ -408,7 +427,8 @@ class AppErrorHandler {
     void Function(AppException error, int attempt)? onRetry,
     bool Function(dynamic error)? shouldRetry,
   }) async {
-    var lastError = AppException.unexpected(message: 'Retry loop did not execute');
+    var lastError =
+        AppException.unexpected(message: 'Retry loop did not execute');
 
     for (var attempt = 0; attempt <= policy.maxRetries; attempt++) {
       try {
@@ -461,7 +481,8 @@ class AppErrorHandler {
   }) {
     final scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
     if (scaffoldMessenger == null) {
-      log('Cannot show error: no ScaffoldMessenger in context', level: LogLevel.warning);
+      log('Cannot show error: no ScaffoldMessenger in context',
+          level: LogLevel.warning);
       return;
     }
 
@@ -483,7 +504,8 @@ class AppErrorHandler {
                 Expanded(
                   child: Text(
                     userMessage,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                    style: const TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.w500),
                   ),
                 ),
               ],
@@ -522,7 +544,8 @@ class AppErrorHandler {
   }
 
   /// Show a non-error informational message to the user.
-  static void showInfo(BuildContext context, String message, {Duration duration = const Duration(seconds: 3)}) {
+  static void showInfo(BuildContext context, String message,
+      {Duration duration = const Duration(seconds: 3)}) {
     final scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
     if (scaffoldMessenger == null) return;
 
@@ -540,7 +563,8 @@ class AppErrorHandler {
             Expanded(
               child: Text(
                 message,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w500),
               ),
             ),
           ],
@@ -550,7 +574,8 @@ class AppErrorHandler {
   }
 
   /// Show a success message to the user.
-  static void showSuccess(BuildContext context, String message, {Duration duration = const Duration(seconds: 2)}) {
+  static void showSuccess(BuildContext context, String message,
+      {Duration duration = const Duration(seconds: 2)}) {
     final scaffoldMessenger = ScaffoldMessenger.maybeOf(context);
     if (scaffoldMessenger == null) return;
 
@@ -563,12 +588,14 @@ class AppErrorHandler {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         content: Row(
           children: [
-            const Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+            const Icon(Icons.check_circle_outline,
+                color: Colors.white, size: 20),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 message,
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w500),
               ),
             ),
           ],
@@ -581,12 +608,14 @@ class AppErrorHandler {
   ///
   /// Use this to integrate with crash reporting services (Firebase Crashlytics,
   /// Sentry, etc.) or to perform cleanup before the app terminates.
-  static void registerFatalErrorCallback(void Function(dynamic, StackTrace) callback) {
+  static void registerFatalErrorCallback(
+      void Function(dynamic, StackTrace) callback) {
     _fatalErrorCallbacks.add(callback);
   }
 
   /// Unregister a previously registered fatal error callback.
-  static void unregisterFatalErrorCallback(void Function(dynamic, StackTrace) callback) {
+  static void unregisterFatalErrorCallback(
+      void Function(dynamic, StackTrace) callback) {
     _fatalErrorCallbacks.remove(callback);
   }
 
@@ -768,15 +797,24 @@ mixin ErrorLogging {
   }
 
   void logWarning(String message, [dynamic error]) {
-    AppErrorHandler.log(message, level: LogLevel.warning, tag: logTag, error: error);
+    AppErrorHandler.log(message,
+        level: LogLevel.warning, tag: logTag, error: error);
   }
 
   void logError(String message, dynamic error, StackTrace stackTrace) {
-    AppErrorHandler.log(message, level: LogLevel.error, tag: logTag, error: error, stackTrace: stackTrace);
+    AppErrorHandler.log(message,
+        level: LogLevel.error,
+        tag: logTag,
+        error: error,
+        stackTrace: stackTrace);
   }
 
   void logFatal(String message, dynamic error, StackTrace stackTrace) {
-    AppErrorHandler.log(message, level: LogLevel.fatal, tag: logTag, error: error, stackTrace: stackTrace);
+    AppErrorHandler.log(message,
+        level: LogLevel.fatal,
+        tag: logTag,
+        error: error,
+        stackTrace: stackTrace);
   }
 
   /// Wrap an async operation with automatic error logging.
@@ -794,7 +832,8 @@ mixin ErrorLogging {
       return result;
     } catch (e, st) {
       sw.stop();
-      logError('$operationName failed after ${sw.elapsedMilliseconds}ms', e, st);
+      logError(
+          '$operationName failed after ${sw.elapsedMilliseconds}ms', e, st);
       if (rethrowError) rethrow;
       throw AppException.unexpected(
         message: '$operationName failed',

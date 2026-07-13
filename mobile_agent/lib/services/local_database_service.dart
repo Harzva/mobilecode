@@ -757,11 +757,11 @@ class LocalDatabaseService {
         'language': p['language'],
         'created_at': _iso(p['createdAt'] ?? p['created_at']),
         'updated_at': _iso(p['updatedAt'] ?? p['updated_at'] ?? DateTime.now()),
-        'is_favorite': (p['isFavorite'] ?? p['is_favorite'] ?? false) ? 1 : 0,
+        'is_favorite': _asBool(p['isFavorite'] ?? p['is_favorite']) ? 1 : 0,
         'file_count': p['fileCount'] ?? p['file_count'] ?? 0,
         'sync_version': p['syncVersion'] ?? p['sync_version'] ?? 1,
         'remote_id': p['remoteId'] ?? p['remote_id'],
-        'dirty': (p['dirty'] ?? true) ? 1 : 0,
+        'dirty': _asBool(p['dirty'], fallback: true) ? 1 : 0,
       };
 
   Map<String, dynamic> _deserializeProject(Map<String, dynamic> row) => {
@@ -783,12 +783,12 @@ class LocalDatabaseService {
         'project_id': f['projectId'] ?? f['project_id'],
         'name': f['name'],
         'path': f['path'],
-        'is_directory': (f['isDirectory'] ?? f['is_directory'] ?? false) ? 1 : 0,
+        'is_directory': _asBool(f['isDirectory'] ?? f['is_directory']) ? 1 : 0,
         'content': f['content'],
         'parent_path': f['parentPath'] ?? f['parent_path'],
         'modified_at': _iso(f['modifiedAt'] ?? f['modified_at'] ?? DateTime.now()),
         'sync_version': f['syncVersion'] ?? f['sync_version'] ?? 1,
-        'dirty': (f['dirty'] ?? true) ? 1 : 0,
+        'dirty': _asBool(f['dirty'], fallback: true) ? 1 : 0,
       };
 
   Map<String, dynamic> _deserializeFile(Map<String, dynamic> row) => {
@@ -813,10 +813,19 @@ class LocalDatabaseService {
         'tags': s['tags'] is List ? (s['tags'] as List).join(',') : (s['tags'] ?? ''),
         'created_at': _iso(s['createdAt'] ?? s['created_at'] ?? DateTime.now()),
         'updated_at': _iso(s['updatedAt'] ?? s['updated_at'] ?? DateTime.now()),
-        'is_favorite': (s['isFavorite'] ?? s['is_favorite'] ?? false) ? 1 : 0,
+        'is_favorite': _asBool(s['isFavorite'] ?? s['is_favorite']) ? 1 : 0,
         'sync_version': s['syncVersion'] ?? s['sync_version'] ?? 1,
-        'dirty': (s['dirty'] ?? true) ? 1 : 0,
+        'dirty': _asBool(s['dirty'], fallback: true) ? 1 : 0,
       };
+
+  bool _asBool(Object? value, {bool fallback = false}) {
+    return switch (value) {
+      bool v => v,
+      int v => v != 0,
+      String v => v == '1' || v.toLowerCase() == 'true',
+      _ => fallback,
+    };
+  }
 
   Map<String, dynamic> _deserializeSnippet(Map<String, dynamic> row) => {
         'id': row['id'],

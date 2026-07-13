@@ -25,7 +25,7 @@ import 'package:flutter/services.dart';
 import '../core/theme.dart';
 import '../models/self_use_session.dart';
 import '../models/agent_task.dart';
-import '../services/self_invocation_service.dart';
+import '../services/self_invocation_service.dart' hide SelfAction;
 import '../widgets/task_plan_sidebar.dart';
 import '../widgets/self_use_log_view.dart';
 import '../widgets/self_use_mini_bar.dart';
@@ -288,7 +288,7 @@ class _MobileUseScreenState extends State<MobileUseScreen>
           if (hasActive) ...[
             const SizedBox(width: 10),
             _StatusBadge(
-              status: status ?? SelfUseSessionStatus.idle,
+              status: status ?? SessionStatus.pending,
               color: _activeSession?.statusColor ?? AppTheme.textTertiary,
             ),
           ],
@@ -891,7 +891,7 @@ class _MobileUseScreenState extends State<MobileUseScreen>
                 Text(
                   current.isRunning
                       ? '\u6B63\u5728\u6267\u884C: ${current.type.label}'
-                      : current.description,
+                      : current.description ?? current.action,
                   style: TextStyle(
                     fontFamily: AppTheme.fontBody,
                     fontSize: 13,
@@ -901,7 +901,7 @@ class _MobileUseScreenState extends State<MobileUseScreen>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  current.description,
+                  current.description ?? current.action,
                   style: const TextStyle(
                     fontFamily: AppTheme.fontBody,
                     fontSize: 14,
@@ -1051,7 +1051,7 @@ class _QuickPromptChipState extends State<_QuickPromptChip> {
 // ═══════════════════════════════════════════════════════════════════════════
 
 class _StatusBadge extends StatelessWidget {
-  final SelfUseSessionStatus status;
+  final SessionStatus status;
   final Color color;
 
   const _StatusBadge({
@@ -1096,18 +1096,18 @@ class _StatusBadge extends StatelessWidget {
 
   String get _statusLabel {
     switch (status) {
-      case SelfUseSessionStatus.idle:
+      case SessionStatus.pending:
         return '\u7B49\u5F85\u4E2D';
-      case SelfUseSessionStatus.running:
+      case SessionStatus.planning:
+        return '规划中';
+      case SessionStatus.executing:
         return '\u6267\u884C\u4E2D';
-      case SelfUseSessionStatus.paused:
+      case SessionStatus.paused:
         return '\u5DF2\u6682\u505C';
-      case SelfUseSessionStatus.completed:
+      case SessionStatus.completed:
         return '\u5DF2\u5B8C\u6210';
-      case SelfUseSessionStatus.failed:
+      case SessionStatus.failed:
         return '\u5931\u8D25';
-      case SelfUseSessionStatus.cancelled:
-        return '\u5DF2\u53D6\u6D88';
     }
   }
 }
@@ -1236,4 +1236,129 @@ class _HistoryTile extends StatelessWidget {
     }
     return '${d.inSeconds}s';
   }
+}
+
+extension _PausedMobileUseServiceCompat on SelfInvocationService {
+  Stream<SelfUseSession?> get activeSessionStream =>
+      const Stream<SelfUseSession?>.empty();
+
+  Stream<List<SelfActionEntry>> get actionsStream =>
+      const Stream<List<SelfActionEntry>>.empty();
+
+  Stream<List<SelfUseSession>> get historyStream =>
+      const Stream<List<SelfUseSession>>.empty();
+
+  List<SelfUseSession> get history => const [];
+
+  void startSession(String request) {}
+
+  void pauseSession() {}
+
+  void resumeSession() {}
+
+  void cancelSession() {}
+}
+
+extension _SelfUseSessionUiCompat on SelfUseSession {
+  SessionStatus get taskStatus => status;
+
+  TaskPlan? get taskPlan => null;
+
+  Color get statusColor {
+    switch (status) {
+      case SessionStatus.pending:
+      case SessionStatus.planning:
+        return AppTheme.textSecondary;
+      case SessionStatus.executing:
+        return AppTheme.primary;
+      case SessionStatus.paused:
+        return AppTheme.warning;
+      case SessionStatus.completed:
+        return AppTheme.success;
+      case SessionStatus.failed:
+        return AppTheme.error;
+    }
+  }
+
+  String get statusEmoji {
+    switch (status) {
+      case SessionStatus.pending:
+      case SessionStatus.planning:
+        return '...';
+      case SessionStatus.executing:
+        return '>';
+      case SessionStatus.paused:
+        return '||';
+      case SessionStatus.completed:
+        return 'OK';
+      case SessionStatus.failed:
+        return '!';
+    }
+  }
+
+  String get statusLabel {
+    switch (status) {
+      case SessionStatus.pending:
+        return '等待中';
+      case SessionStatus.planning:
+        return '规划中';
+      case SessionStatus.executing:
+        return '执行中';
+      case SessionStatus.paused:
+        return '已暂停';
+      case SessionStatus.completed:
+        return '已完成';
+      case SessionStatus.failed:
+        return '失败';
+    }
+  }
+
+  String get elapsedTimeFormatted => _formatMobileUseDuration(elapsedTime);
+
+  int get completedActionsCount => completedSteps;
+
+  int get failedActionsCount => failedSteps;
+
+  int get totalActions => plannedActions.length;
+
+  Duration? get totalDuration => completedAt?.difference(createdAt);
+}
+
+extension _SelfActionUiCompat on SelfAction {
+  String get detail => params.isEmpty ? '' : params.keys.join(', ');
+
+  bool get isRunning => false;
+
+  StepStatus get status => StepStatus.pending;
+
+  IconData get icon => Icons.bolt_outlined;
+
+  _ActionTypeLabel get type => _ActionTypeLabel(category);
+
+  Color get typeColor {
+    switch (category) {
+      case 'editor':
+        return AppTheme.accent;
+      case 'terminal':
+        return AppTheme.warning;
+      case 'git':
+      case 'github':
+        return AppTheme.primary;
+      default:
+        return AppTheme.textSecondary;
+    }
+  }
+}
+
+class _ActionTypeLabel {
+  const _ActionTypeLabel(this.label);
+
+  final String label;
+}
+
+String _formatMobileUseDuration(Duration d) {
+  if (d.inMinutes > 0) {
+    return '${d.inMinutes}m ${(d.inSeconds % 60).toString().padLeft(2, '0')}s';
+  }
+  return '${d.inSeconds}s';
 }

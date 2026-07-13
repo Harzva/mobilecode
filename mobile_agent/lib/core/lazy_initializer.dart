@@ -3,6 +3,7 @@ import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/widgets.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // LAZY INITIALIZER

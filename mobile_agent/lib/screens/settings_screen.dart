@@ -2,16 +2,29 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import '../services/phone_use_accessibility_service.dart';
+import '../services/harness_permission_service.dart';
 import '../themes/app_theme.dart';
 import '../widgets/glass_card_widget.dart';
 import 'github_screen.dart';
 import 'api_config_screen.dart';
+import 'identity_naming_screen.dart';
+import 'linux_sandbox_screen.dart';
 import 'subscription_usage_hub_screen.dart';
+
+enum SettingsInitialSection {
+  top,
+  harnessPermission,
+}
 
 /// App Settings screen
 /// Editor settings, theme, AI assistant, GitHub, About, Data management
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  const SettingsScreen({
+    super.key,
+    this.initialSection = SettingsInitialSection.top,
+  });
+
+  final SettingsInitialSection initialSection;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -38,6 +51,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // System permissions
   PhoneUseAccessibilityStatus? _phoneUseStatus;
   bool _permissionChecking = false;
+  HarnessPermissionMode _harnessPermissionMode =
+      HarnessPermissionMode.approveSafeTypedTasks;
+  final GlobalKey _harnessPermissionSectionKey = GlobalKey();
 
   // App info
   final String _appVersion = '1.0.0';
@@ -56,6 +72,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     unawaited(_refreshPhoneUseStatus());
+    unawaited(_loadHarnessPermissionMode());
+    if (widget.initialSection == SettingsInitialSection.harnessPermission) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToHarnessPermissionMode();
+      });
+    }
+  }
+
+  void _scrollToHarnessPermissionMode() {
+    final context = _harnessPermissionSectionKey.currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutCubic,
+      alignment: 0.25,
+    );
   }
 
   @override
@@ -160,6 +193,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const Divider(color: AppTheme.divider, height: 1),
+                _buildNavigationSetting(
+                  icon: Icons.badge_outlined,
+                  title: 'Identity / 称呼',
+                  subtitle: '本地保存用户称呼、MobileCode 昵称和 assistant self-name',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => IdentityNamingScreen(),
+                    ),
+                  ),
+                ),
+                const Divider(color: AppTheme.divider, height: 1),
                 // Temperature slider
                 _buildSliderSetting(
                   icon: Icons.thermostat,
@@ -170,6 +215,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   max: 2.0,
                   divisions: 20,
                   onChanged: (v) => setState(() => _temperature = v),
+                ),
+              ]),
+            ),
+
+            // ── Runtime Section ──
+            _buildSectionHeader('运行时', Icons.terminal),
+            SliverToBoxAdapter(
+              child: _buildSettingCard([
+                _buildNavigationSetting(
+                  icon: Icons.developer_board,
+                  title: 'Linux Sandbox',
+                  subtitle: '内置 Alpine rootfs、包组与 typed task 边界',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => LinuxSandboxScreen(),
+                    ),
+                  ),
                 ),
               ]),
             ),
@@ -236,6 +299,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _buildSectionHeader('系统权限', Icons.admin_panel_settings_outlined),
             SliverToBoxAdapter(
               child: _buildSettingCard([
+                _buildHarnessPermissionSetting(),
+                const Divider(color: AppTheme.divider, height: 1),
                 _buildAccessibilitySetting(),
                 const Divider(color: AppTheme.divider, height: 1),
                 _buildBackgroundPermissionSetting(),
@@ -558,6 +623,127 @@ class _SettingsScreenState extends State<SettingsScreen> {
         size: 18,
       ),
       onTap: _showBackgroundPermissionGuide,
+    );
+  }
+
+  Widget _buildHarnessPermissionSetting() {
+    return KeyedSubtree(
+      key: _harnessPermissionSectionKey,
+      child: ListTile(
+        key: const ValueKey('settings.harnessPermissionMode'),
+        leading: Icon(
+          _harnessPermissionMode == HarnessPermissionMode.fullAccess
+              ? Icons.security_outlined
+              : Icons.verified_user_outlined,
+          color: _harnessPermissionMode == HarnessPermissionMode.fullAccess
+              ? AppTheme.warning
+              : AppTheme.success,
+          size: 20,
+        ),
+        title: const Text(
+          'Harness 权限模式',
+          style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+        ),
+        subtitle: Text(
+          _harnessPermissionMode.description,
+          style: const TextStyle(fontSize: 12, color: AppTheme.textTertiary),
+        ),
+        trailing: _PermissionStatePill(
+          label: _harnessPermissionMode.shortLabel,
+          color: _harnessPermissionMode == HarnessPermissionMode.fullAccess
+              ? AppTheme.warning
+              : AppTheme.success,
+        ),
+        onTap: _showHarnessPermissionModeSheet,
+      ),
+    );
+  }
+
+  Future<void> _loadHarnessPermissionMode() async {
+    final mode = await HarnessPermissionStore.instance.load();
+    if (!mounted) return;
+    setState(() => _harnessPermissionMode = mode);
+  }
+
+  Future<void> _setHarnessPermissionMode(HarnessPermissionMode mode) async {
+    await HarnessPermissionStore.instance.setMode(mode);
+    if (!mounted) return;
+    setState(() => _harnessPermissionMode = mode);
+  }
+
+  void _showHarnessPermissionModeSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppTheme.surfaceElevated,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 44,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 18),
+                  decoration: BoxDecoration(
+                    color: AppTheme.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Text(
+                  'Harness 权限模式',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'CLI Hub 仍走 typed task；只有 Full access 会把 raw_shell 暴露给模型，危险命令仍需二次确认。',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                for (final mode in HarnessPermissionMode.values)
+                  RadioListTile<HarnessPermissionMode>(
+                    value: mode,
+                    groupValue: _harnessPermissionMode,
+                    activeColor: AppTheme.violet,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      mode.label,
+                      style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: Text(
+                      mode.description,
+                      style: const TextStyle(
+                        color: AppTheme.textTertiary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      Navigator.pop(context);
+                      unawaited(_setHarnessPermissionMode(value));
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

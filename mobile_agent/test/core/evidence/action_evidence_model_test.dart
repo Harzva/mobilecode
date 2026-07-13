@@ -4,22 +4,55 @@ import 'package:mobile_agent/core/evidence/action_evidence_store.dart';
 
 void main() {
   group('MobileCodeAction enum', () {
-    test('contains all 41 canonical action names', () {
-      expect(MobileCodeAction.values.length, 41);
-      expect(MobileCodeAction.values.map((e) => e.name), containsAll([
-        'listFiles', 'findFiles', 'grepFiles', 'writeFile', 'readFile',
-        'copyFile', 'makeDirectory', 'deleteFile', 'moveFile',
-        'saveSnapshot', 'virtualDiff', 'restoreSnapshot', 'projectSummary',
-        'changeHistory', 'virtualStatus', 'detectProjectType',
-        'validateHtml', 'validateJson', 'validateMarkdown',
-        'applyPatch', 'termuxTaskStart', 'openFile', 'previewHtml',
-        'webSearch', 'fetchUrl', 'previewSnapshot',
-        'publishPages', 'runCommand', 'cloneRepo', 'linkRemoteRepo',
-        'commitFiles', 'triggerGitHubAction', 'inspectRelease',
-        'installSkill', 'registerMcp', 'openFolder',
-        'traceParseInstruction', 'traceSelectTool', 'traceCallProvider',
-        'traceWriteArtifact', 'traceReportChat',
-      ]));
+    test('contains all 43 canonical action names', () {
+      expect(MobileCodeAction.values.length, 43);
+      expect(
+          MobileCodeAction.values.map((e) => e.name),
+          containsAll([
+            'listFiles',
+            'findFiles',
+            'grepFiles',
+            'writeFile',
+            'readFile',
+            'copyFile',
+            'makeDirectory',
+            'deleteFile',
+            'moveFile',
+            'saveSnapshot',
+            'virtualDiff',
+            'restoreSnapshot',
+            'projectSummary',
+            'changeHistory',
+            'virtualStatus',
+            'detectProjectType',
+            'validateHtml',
+            'validateJson',
+            'validateMarkdown',
+            'applyPatch',
+            'termuxTaskStart',
+            'cliHubTaskStart',
+            'openFile',
+            'previewHtml',
+            'webSearch',
+            'fetchUrl',
+            'previewSnapshot',
+            'larkApi',
+            'publishPages',
+            'runCommand',
+            'cloneRepo',
+            'linkRemoteRepo',
+            'commitFiles',
+            'triggerGitHubAction',
+            'inspectRelease',
+            'installSkill',
+            'registerMcp',
+            'openFolder',
+            'traceParseInstruction',
+            'traceSelectTool',
+            'traceCallProvider',
+            'traceWriteArtifact',
+            'traceReportChat',
+          ]));
     });
   });
 

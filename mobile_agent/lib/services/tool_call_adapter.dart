@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../core/evidence/action_runner.dart';
 import '../core/evidence/evidence_model.dart';
+import 'cli_hub_catalog_service.dart';
 
 enum ToolChoiceMode {
   auto,
@@ -308,16 +309,22 @@ String? _extractDraftTargetPath(String arguments) {
 }
 
 class OpenAiCompatibleToolCallAdapter {
-  OpenAiCompatibleToolCallAdapter({required this.profile});
+  OpenAiCompatibleToolCallAdapter({
+    required this.profile,
+    this.cliHubCatalog,
+  });
 
   final ToolCallProviderProfile profile;
+  final CliHubCatalog? cliHubCatalog;
 
   String get systemInstruction => [
         'When a mobile coding request needs a file or preview, use the provided tools instead of only describing the result.',
-        'MobileCode tools may include list_files, find_files, grep_files, project_summary, detect_project_type, change_history, virtual_status, agent_open, agent_eval, agent_close, web_search, fetch_url, lark_readiness, lark_wiki_list_spaces, lark_docx_create, lark_docx_append_blocks, lark_sheets_append, lark_bitable_create_records, lark_drive_upload_preview, write_file, read_file, copy_file, mkdir, delete_file, move_file, save_snapshot, virtual_diff, restore_snapshot, validate_html, validate_json, validate_markdown, apply_patch, preview_html, preview_snapshot, termux_task_start, and report_result; only call tools exposed in the current request.',
+        'MobileCode tools may include list_files, find_files, grep_files, project_summary, detect_project_type, change_history, virtual_status, agent_open, agent_eval, agent_close, web_search, fetch_url, lark_readiness, lark_wiki_list_spaces, lark_docx_create, lark_docx_append_blocks, lark_sheets_append, lark_bitable_create_records, lark_drive_upload_preview, write_file, read_file, copy_file, mkdir, delete_file, move_file, save_snapshot, virtual_diff, restore_snapshot, validate_html, validate_json, validate_markdown, apply_patch, preview_html, preview_snapshot, termux_task_start, cli_hub_task, raw_shell, and report_result; only call tools exposed in the current request.',
         'Use web_search/fetch_url only for public reference gathering. Use preview_snapshot after preview_html when the user asks for a visible product check.',
-        'Use project_summary/detect_project_type/list_files/find_files instead of shell pwd/tree/ls/find, grep_files instead of shell grep/rg, change_history/virtual_status/save_snapshot/virtual_diff/restore_snapshot instead of shell git status/git log/diff/restore, copy_file instead of shell cp, mkdir instead of shell mkdir, move_file instead of shell mv, delete_file instead of shell rm, validate_html/validate_json/validate_markdown instead of ad-hoc validators, and apply_patch instead of shell patch/git apply. termux_task_start is a typed helper route only when exposed; never ask for raw Android or Termux shell commands.',
-        'Never request shell, Git push, publishing, remote logging, arbitrary commands, or arbitrary Lark HTTP. Use only typed Lark tools, preview before writes, and include confirm=true only after explicit user approval.',
+        'Use project_summary/detect_project_type/list_files/find_files instead of shell pwd/tree/ls/find, grep_files instead of shell grep/rg, change_history/virtual_status/save_snapshot/virtual_diff/restore_snapshot instead of shell git status/git log/diff/restore, copy_file instead of shell cp, mkdir instead of shell mkdir, move_file instead of shell mv, delete_file instead of shell rm, validate_html/validate_json/validate_markdown instead of ad-hoc validators, and apply_patch instead of shell patch/git apply. termux_task_start and cli_hub_task are typed helper routes only when exposed.',
+        'Use cli_hub_task for catalog-declared CLI Hub tasks such as github-cli.github_cli_auth_status; never pass command, cmd, shell, token, cookie, secret, .env, or credential-like fields in its payload. For install/auth/mutation tasks, request a preview first; only include payload.approved=true after the app has captured explicit user approval.',
+        'Do not request raw_shell unless raw_shell is exposed in the current request, which means the user selected Full access. raw_shell still needs a user-visible preview; destructive commands such as rm -rf, git clean -fdx, dd, find -delete, credential probes, or curl/wget piped into interpreters require explicit second approval.',
+        'Never request Git push, publishing, remote logging, arbitrary Lark HTTP, or credential extraction unless a matching typed tool is exposed and the user approved it. Use only typed Lark tools, preview before writes, and include confirm=true only after explicit user approval.',
         'Use paths relative to the MobileCode workspace. If writing one web artifact and no path is obvious, use index.html. Do not include secrets in arguments.',
         'For complex work, choose the smallest safe next tool yourself. You may open read-only Sub-Agent Lite explorer/reviewer sessions for isolated inspection, then agent_eval/agent_close them. You may summarize, list, find, grep, search, fetch, write, read, copy, mkdir, delete a confirmed workspace file, move, save/restore snapshots, inspect virtual diffs, validate HTML, patch, preview, snapshot, or report depending on the current observation.',
         'After tool observations, call report_result or answer with a concise final summary.',
@@ -338,13 +345,18 @@ class OpenAiCompatibleToolCallAdapter {
         .map((tool) => (tool['function'] as Map<String, dynamic>)['name'])
         .whereType<String>()
         .join(', ');
+    final cliHubContext = _cliHubToolContextInstruction(
+      allowedToolNames: allowedToolNames,
+      exposedToolNames: exposedToolNames,
+      catalog: cliHubCatalog,
+    );
     return {
       'model': model,
       'messages': [
         {
           'role': 'system',
           'content':
-              '$systemPrompt\n\n$systemInstruction\n\nCurrently exposed tools: $exposedToolNames.'
+              '$systemPrompt\n\n$systemInstruction\n\nCurrently exposed tools: $exposedToolNames.$cliHubContext'
         },
         ...messages,
       ],
@@ -803,6 +815,35 @@ class OpenAiCompatibleToolCallAdapter {
             'reason': _stringArg(args, 'reason'),
           },
         );
+      case 'cli_hub_task':
+        return ActionSchema(
+          actionName: MobileCodeAction.cliHubTaskStart,
+          requestId: call.id,
+          paramsSummary:
+              'provider-native cli_hub_task ${_stringArg(args, 'cliId')}.${_stringArg(args, 'taskKind')}',
+          params: {
+            'cliId': _stringArg(args, 'cliId'),
+            'taskKind': _stringArg(args, 'taskKind'),
+            'payload': _mapArg(args, 'payload'),
+            'reason': _stringArg(args, 'reason'),
+          },
+        );
+      case 'raw_shell':
+        return ActionSchema(
+          actionName: MobileCodeAction.runCommand,
+          requestId: call.id,
+          paramsSummary: 'provider-native raw_shell preview',
+          approvalRequired: true,
+          risk: ActionRisk.high,
+          params: {
+            'command': _stringArg(args, 'command'),
+            'cwd': _stringArg(args, 'cwd'),
+            'timeoutMs': _intArg(args, 'timeout_ms', defaultValue: 30000),
+            'reason': _stringArg(args, 'reason'),
+            'requiresSecondApproval':
+                _looksDangerousRawShell(_stringArg(args, 'command')),
+          },
+        );
       default:
         return null;
     }
@@ -847,6 +888,7 @@ class OpenAiCompatibleToolCallAdapter {
   static List<Map<String, dynamic>> toolDefinitions({
     bool strict = false,
     List<String>? allowedToolNames,
+    bool exposeRawShell = false,
   }) {
     Map<String, dynamic> functionTool({
       required String name,
@@ -1641,7 +1683,7 @@ class OpenAiCompatibleToolCallAdapter {
       functionTool(
         name: 'preview_snapshot',
         description:
-            'Create a lightweight evidence snapshot for a prepared WebView preview. This records metadata/DOM validation only and never claims a native bitmap screenshot unless an image artifact exists.',
+            'Capture evidence for a prepared WebView preview. When the native HTML renderer is available this produces a real PNG artifact plus metadata; otherwise it records metadata/DOM evidence and explicitly reports that no bitmap was captured.',
         properties: const {
           'path': {
             'type': 'string',
@@ -1718,6 +1760,60 @@ class OpenAiCompatibleToolCallAdapter {
         ],
       ),
       functionTool(
+        name: 'cli_hub_task',
+        description:
+            'Run a catalog-declared MobileCode CLI Hub typed task through the approved runtime. This is not raw shell and cannot accept arbitrary commands.',
+        properties: const {
+          'cliId': {
+            'type': 'string',
+            'description':
+                'CLI Hub catalog id, for example github-cli, google-workspace-cli, agent-mail-cli, or lark-cli.'
+          },
+          'taskKind': {
+            'type': 'string',
+            'description':
+                'Catalog-declared typed task kind, for example github_cli_auth_status, github_cli_probe, gws_cli_auth_status, agently_cli_me, or lark_cli_auth_status.'
+          },
+          'payload': {
+            'type': 'object',
+            'description':
+                'Typed payload declared by the CLI Hub catalog. Do not include command, cmd, shell, token, cookie, secret, .env, or credential-like values.'
+          },
+          'reason': {
+            'type': 'string',
+            'description': 'Short user-visible reason for running this task.'
+          },
+        },
+        required: const ['cliId', 'taskKind', 'payload', 'reason'],
+      ),
+      functionTool(
+        name: 'raw_shell',
+        description:
+            'Request a raw shell command only when the user selected Full access and MobileCode exposed this tool. The app must show a typed preview before execution; destructive commands require second approval.',
+        properties: const {
+          'command': {
+            'type': 'string',
+            'description':
+                'The exact shell command to preview. Do not include secrets, tokens, cookies, or credential dumps.'
+          },
+          'cwd': {
+            'type': 'string',
+            'description':
+                'Relative workspace directory, or "." for workspace root.'
+          },
+          'timeout_ms': {
+            'type': 'integer',
+            'description': 'Timeout in milliseconds, 1000 to 120000.'
+          },
+          'reason': {
+            'type': 'string',
+            'description':
+                'Short user-facing reason for why raw shell is needed instead of a typed task.'
+          },
+        },
+        required: const ['command', 'cwd', 'timeout_ms', 'reason'],
+      ),
+      functionTool(
         name: 'report_result',
         description:
             'Report the final result after tool observations. This does not execute device, shell, Git, or network actions.',
@@ -1739,9 +1835,18 @@ class OpenAiCompatibleToolCallAdapter {
         required: const ['status', 'summary', 'detail'],
       ),
     ];
-    if (allowedToolNames == null) return tools;
+    final rawShellAllowed =
+        exposeRawShell || (allowedToolNames?.contains('raw_shell') ?? false);
+    final visibleTools = rawShellAllowed
+        ? tools
+        : tools.where((tool) {
+            final function = tool['function'];
+            return function is Map<String, dynamic> &&
+                function['name'] != 'raw_shell';
+          }).toList();
+    if (allowedToolNames == null) return visibleTools;
     final allowed = allowedToolNames.toSet();
-    return tools.where((tool) {
+    return visibleTools.where((tool) {
       final function = tool['function'];
       if (function is! Map<String, dynamic>) return false;
       return allowed.contains(function['name']);
@@ -1767,6 +1872,83 @@ class OpenAiCompatibleToolCallAdapter {
         'recoveryActions': evidence.recoveryActions,
     };
   }
+}
+
+String _cliHubToolContextInstruction({
+  required List<String>? allowedToolNames,
+  required String exposedToolNames,
+  required CliHubCatalog? catalog,
+}) {
+  final exposed = allowedToolNames?.contains('cli_hub_task') == true ||
+      exposedToolNames.split(', ').contains('cli_hub_task');
+  if (!exposed) return '';
+  final catalogLines = catalog == null
+      ? _defaultCliHubContextLines()
+      : _catalogCliHubContextLines(catalog);
+  return [
+    '',
+    '',
+    'CLI Hub typed task context:',
+    '- Use cli_hub_task only for catalog-declared tasks; never pass arbitrary command strings.',
+    ...catalogLines,
+    '- If the runtime returns needsSetup/dependencyMissing, tell the user to install or verify Alpine Runtime and the relevant CLI profile in Extension Center.',
+  ].join('\n');
+}
+
+List<String> _defaultCliHubContextLines() {
+  return const [
+    '- V1 status/probe tasks: github-cli.github_cli_auth_status, github-cli.github_cli_probe, google-workspace-cli.gws_cli_auth_status, agent-mail-cli.agently_cli_me, lark-cli.lark_cli_auth_status.',
+    '- Install/profile tasks use taskKind package_install with the target cliId; first call without payload.approved to get approvalRequired preview, then rerun with payload.approved=true only after explicit app/user confirmation.',
+    '- Auth/login tasks such as github_cli_auth_login, gws_cli_auth_login, agently_cli_auth_start, and lark_cli_auth_start require approval and official provider recovery; do not self-approve them.',
+    '- Read-only business tasks use catalog commandId payloads only, such as github_cli_execute repo_list, gws_cli_execute drive_files_list, agently_cli_execute message_list, and lark_cli_execute wiki_space_list.',
+    '- Intent mapping examples: "帮我安装 GitHub CLI" -> cli_hub_task {cliId:"github-cli", taskKind:"package_install", payload:{profileId:"githubCli"}, reason:"install GitHub CLI"} without approved first; "帮我登录 GitHub CLI" -> cli_hub_task {cliId:"github-cli", taskKind:"github_cli_auth_login", payload:{}, reason:"login GitHub CLI"} without approved first.',
+    '- Business intent examples: "列出我的 GitHub repo" -> cli_hub_task {cliId:"github-cli", taskKind:"github_cli_execute", payload:{commandId:"repo_list", limit:10}, reason:"list GitHub repositories"}; "列出 Google Drive 文件" -> cli_hub_task {cliId:"google-workspace-cli", taskKind:"gws_cli_execute", payload:{commandId:"drive_files_list", pageSize:10}, reason:"list Google Drive files"}; "看最近邮件" -> cli_hub_task {cliId:"agent-mail-cli", taskKind:"agently_cli_execute", payload:{commandId:"message_list", limit:10}, reason:"list Agent Mail messages"}; "列出 Lark Wiki 空间" -> cli_hub_task {cliId:"lark-cli", taskKind:"lark_cli_execute", payload:{commandId:"wiki_space_list", limit:10}, reason:"list Lark Wiki spaces"}.',
+  ];
+}
+
+List<String> _catalogCliHubContextLines(CliHubCatalog catalog) {
+  final statusAndProbe = <String>[];
+  final installProfiles = <String>[];
+  final authTasks = <String>[];
+  final readOnlyTasks = <String>[];
+  final mutationTasks = <String>[];
+
+  for (final entry in catalog.entries.take(40)) {
+    if (entry.probe.taskKind != null) {
+      statusAndProbe.add('${entry.id}.${entry.probe.taskKind}');
+    }
+    if (entry.canInstallInSandbox) {
+      installProfiles.add('${entry.id}:profileId=${entry.install.profileId}');
+    }
+    for (final task in entry.tasks) {
+      final commandId = task.payload['commandId']?.toString();
+      final taskRef = commandId == null || commandId.isEmpty
+          ? '${entry.id}.${task.taskKind}'
+          : '${entry.id}.${task.taskKind} commandId:$commandId';
+      if (entry.readOnlyTaskIds.contains(task.id)) {
+        readOnlyTasks.add(taskRef);
+      } else if (entry.mutationTaskIds.contains(task.id)) {
+        mutationTasks.add(taskRef);
+      }
+      if (task.requiresApproval &&
+          (task.taskKind.contains('auth') || task.taskKind.contains('login'))) {
+        authTasks.add('${entry.id}.${task.taskKind}');
+      }
+    }
+  }
+
+  return [
+    if (statusAndProbe.isNotEmpty)
+      '- Catalog status/probe tasks: ${statusAndProbe.join(', ')}.',
+    if (installProfiles.isNotEmpty)
+      '- Install/profile tasks use taskKind package_install with catalog profile ids: ${installProfiles.join(', ')}. First call without payload.approved, then rerun with payload.approved=true only after explicit app/user confirmation.',
+    if (authTasks.isNotEmpty)
+      '- Auth/login tasks require approval and official provider recovery; do not self-approve them: ${authTasks.join(', ')}.',
+    if (readOnlyTasks.isNotEmpty)
+      '- Read-only business tasks use catalog payloads only: ${readOnlyTasks.join(', ')}.',
+    if (mutationTasks.isNotEmpty)
+      '- Mutation tasks require approval, evidence, and recovery: ${mutationTasks.join(', ')}.',
+  ];
 }
 
 enum OpenAiStreamEventKind { ignore, done, payload }
@@ -1980,6 +2162,38 @@ int _intArg(Map<String, dynamic> args, String key,
   if (value is int && value > 0) return value;
   if (value is num && value > 0) return value.toInt();
   return defaultValue;
+}
+
+Map<String, dynamic> _mapArg(Map<String, dynamic> args, String key) {
+  final value = args[key];
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) return Map<String, dynamic>.from(value);
+  return const {};
+}
+
+bool _looksDangerousRawShell(String command) {
+  final normalized =
+      command.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+  if (normalized.isEmpty) return true;
+  final patterns = [
+    RegExp(r'(^|[;&|]\s*)rm\s+[^;&|]*-[a-z]*r[a-z]*f?'),
+    RegExp(r'(^|[;&|]\s*)rm\s+[^;&|]*-[a-z]*f[a-z]*r'),
+    RegExp(r'(^|[;&|]\s*)find\s+.+\s+-delete(\s|$)'),
+    RegExp(r'(^|[;&|]\s*)git\s+clean\s+[^;&|]*-[a-z]*f'),
+    RegExp(r'(^|[;&|]\s*)dd\s+'),
+    RegExp(r'(curl|wget|fetch)\s+.+\|\s*(sh|bash|zsh|python|node)'),
+  ];
+  if (patterns.any((pattern) => pattern.hasMatch(normalized))) return true;
+  const credentialTerms = [
+    'gh auth token',
+    'printenv',
+    'cat ~/.config/gh/hosts.yml',
+    '.env',
+    'cookie',
+    'token',
+    'secret',
+  ];
+  return credentialTerms.any(normalized.contains);
 }
 
 int? _intValue(Object? value) {

@@ -1,0 +1,15 @@
+{
+  "name": "mobilecode-html-pptx-worker",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node mobilecode_html_to_pptx_worker.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.52.0",
+    "pptxgenjs": "^3.12.0"
+  }
+}

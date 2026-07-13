@@ -65,7 +65,11 @@ class MobileCodeHelperService : Service() {
 
         startForeground(NOTIFICATION_ID, buildNotification("Helper daemon listening on 127.0.0.1:$PORT"))
         startServer()
-        return START_STICKY
+        // A sticky restart can arrive with a null Intent after the process is
+        // reclaimed. Restarting in that state would replace the caller-supplied
+        // token with a random token and leave a live daemon that always returns
+        // 401 to the original caller. Require an explicit authenticated start.
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
@@ -386,11 +390,87 @@ class MobileCodeHelperService : Service() {
         val timeoutMs = payload.optLong("timeoutMs", 120_000L).coerceIn(1_000L, 120_000L)
         val maxOutputBytes = payload.optInt("maxOutputBytes", 32_768).coerceIn(1_024, 262_144)
 
+        if (taskKind == "hyperframes_render" && !payload.optBoolean("approved", false)) {
+            writeJson(
+                socket,
+                200,
+                JSONObject()
+                    .put("success", false)
+                    .put("taskId", taskId)
+                    .put("taskKind", taskKind)
+                    .put("status", "failed")
+                    .put("stdout", "")
+                    .put("stderr", "HyperFrames render requires explicit user approval because it writes an MP4 artifact.")
+                    .put("exitCode", 126)
+                    .put("durationMs", 0)
+                    .put("failureKind", "approvalRequired")
+            )
+            return
+        }
+
         when (taskKind) {
             "project_check", "validate", "build_preview" -> handleBuiltinTypedTask(socket, taskId, taskKind, cwd, typedArgs, maxOutputBytes)
             "flutter_analyze" -> runTypedProcessTask(socket, taskId, taskKind, listOf("flutter", "analyze"), cwd, timeoutMs, maxOutputBytes)
             "flutter_test" -> runTypedProcessTask(socket, taskId, taskKind, listOf("flutter", "test"), cwd, timeoutMs, maxOutputBytes)
             "npm_build" -> runTypedProcessTask(socket, taskId, taskKind, listOf("npm", "run", "build"), cwd, timeoutMs, maxOutputBytes)
+            "hyperframes_cli_probe" -> runTypedProcessTask(socket, taskId, taskKind, listOf("hyperframes", "--version"), cwd, timeoutMs, maxOutputBytes)
+            "hyperframes_lint", "hyperframes_check", "hyperframes_compositions", "hyperframes_render" -> {
+                val args = try {
+                    hyperFramesCommandArgs(taskKind, typedArgs, cwd)
+                } catch (error: IllegalArgumentException) {
+                    writeJson(
+                        socket,
+                        200,
+                        JSONObject()
+                            .put("success", false)
+                            .put("taskId", taskId)
+                            .put("taskKind", taskKind)
+                            .put("status", "failed")
+                            .put("stdout", "")
+                            .put("stderr", error.message ?: "Invalid HyperFrames arguments")
+                            .put("exitCode", 126)
+                            .put("durationMs", 0)
+                            .put("failureKind", "commandBlocked")
+                    )
+                    return
+                }
+                runTypedProcessTask(socket, taskId, taskKind, args, cwd, timeoutMs, maxOutputBytes)
+            }
+        }
+    }
+
+    private fun hyperFramesCommandArgs(taskKind: String, args: JSONObject, cwd: File): List<String> {
+        return when (taskKind) {
+            "hyperframes_lint" -> listOf("hyperframes", "lint", ".", "--json")
+            "hyperframes_check" -> buildList {
+                addAll(listOf("hyperframes", "check", ".", "--json"))
+                if (args.optBoolean("snapshots", false)) add("--snapshots")
+                if (args.optBoolean("strict", false)) add("--strict")
+                if (args.optBoolean("noContrast", false)) add("--no-contrast")
+                if (args.optBoolean("frameCheck", false)) add("--frame-check")
+                val samples = args.optString("samples", "").toIntOrNull()
+                if (samples != null) addAll(listOf("--samples", samples.coerceIn(1, 100).toString()))
+            }
+            "hyperframes_compositions" -> listOf("hyperframes", "compositions", ".", "--json")
+            "hyperframes_render" -> buildList {
+                val output = args.optString("output", "output.mp4").ifBlank { "output.mp4" }
+                val safeOutput = resolveChildPath(cwd, output)
+                if (!safeOutput.path.lowercase(Locale.US).endsWith(".mp4") ||
+                    output.startsWith("/") ||
+                    output.contains("..") ||
+                    !Regex("^[A-Za-z0-9._/-]+$").matches(output)) {
+                    throw IllegalArgumentException("HyperFrames output must be a workspace-relative .mp4 path.")
+                }
+                addAll(listOf("hyperframes", "render", ".", "-o", output))
+                val composition = args.optString("composition", "").trim()
+                if (composition.isNotEmpty()) {
+                    if (!Regex("^[A-Za-z0-9_.-]+$").matches(composition)) {
+                        throw IllegalArgumentException("HyperFrames composition must be a simple identifier.")
+                    }
+                    addAll(listOf("-c", composition))
+                }
+            }
+            else -> throw IllegalArgumentException("Unsupported HyperFrames task: $taskKind")
         }
     }
 
@@ -1248,7 +1328,12 @@ class MobileCodeHelperService : Service() {
             "build_preview",
             "flutter_analyze",
             "flutter_test",
-            "npm_build"
+            "npm_build",
+            "hyperframes_cli_probe",
+            "hyperframes_lint",
+            "hyperframes_check",
+            "hyperframes_compositions",
+            "hyperframes_render"
         )
 
         private val blockedTypedArgKeys = setOf("command", "cmd", "shell")

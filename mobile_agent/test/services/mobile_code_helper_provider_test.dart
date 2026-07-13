@@ -316,7 +316,7 @@ void main() {
       expect(profile.detectedFiles, ['./.git', './package.json']);
     });
 
-    test('starts typed termux task through helper protocol', () async {
+    test('starts typed helper task through helper protocol', () async {
       _serve((request) async {
         expect(request.uri.path, '/v1/task/start');
         expect(request.method, 'POST');
@@ -339,7 +339,7 @@ void main() {
       }, server);
 
       final provider = MobileCodeHelperProvider(baseUri: baseUri);
-      final result = await provider.runTermuxTask(
+      final result = await provider.runTypedTask(
         taskKind: 'project_check',
         payload: const {
           'path': '.',

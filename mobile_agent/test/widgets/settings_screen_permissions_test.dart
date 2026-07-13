@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_agent/screens/settings_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   const channel = MethodChannel('mobilecode/system_tools');
+
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
 
   tearDown(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -46,6 +51,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('系统权限'), findsOneWidget);
+    expect(find.text('Harness 权限模式'), findsOneWidget);
     expect(find.text('无障碍服务'), findsOneWidget);
     expect(find.text('后台运行权限'), findsOneWidget);
     expect(find.text('未开启'), findsOneWidget);
@@ -73,6 +79,50 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(methods, contains('openBatteryOptimizationSettings'));
+  });
+
+  testWidgets('lets the user choose Harness permission mode', (tester) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      switch (call.method) {
+        case 'getPhoneUseAccessibilityStatus':
+          return _status(accessibilityEnabled: false, serviceConnected: false);
+        default:
+          return false;
+      }
+    });
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: SettingsScreen(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final row = find.byKey(const ValueKey('settings.harnessPermissionMode'));
+    await tester.scrollUntilVisible(
+      row,
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Approve safe typed tasks'), findsNothing);
+    expect(find.text('Typed'), findsOneWidget);
+
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ask every time'), findsOneWidget);
+    expect(find.text('Approve safe typed tasks'), findsOneWidget);
+    expect(find.text('Full access'), findsOneWidget);
+
+    await tester.tap(find.text('Full access'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Full'), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('mobilecode.harness.permissionMode'), 'fullAccess');
   });
 
   testWidgets('shows enabled permission waiting for service connection',

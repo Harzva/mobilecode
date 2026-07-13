@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import '../core/evidence/action_runner.dart';
 import '../core/evidence/evidence_model.dart';
+import 'harness_permission_service.dart';
 import 'tool_call_adapter.dart';
 
 const List<String> _larkReadOnlyTools = [
@@ -55,6 +56,7 @@ class AgentLoopEvent {
     this.toolName,
     this.roleName,
     this.evidenceId,
+    this.evidenceMetadata = const {},
     this.success,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -65,6 +67,7 @@ class AgentLoopEvent {
   final String? toolName;
   final String? roleName;
   final String? evidenceId;
+  final Map<String, dynamic> evidenceMetadata;
   final bool? success;
 }
 
@@ -177,6 +180,7 @@ extension AgentPresetConfig on AgentPreset {
             'preview_html',
             'preview_snapshot',
             'termux_task_start',
+            'cli_hub_task',
             'report_result',
           ],
         AgentPreset.builder => const [
@@ -203,6 +207,7 @@ extension AgentPresetConfig on AgentPreset {
             'apply_patch',
             'preview_html',
             'termux_task_start',
+            'cli_hub_task',
             'report_result',
           ],
         AgentPreset.researchBuilder => const [
@@ -233,6 +238,7 @@ extension AgentPresetConfig on AgentPreset {
             'preview_html',
             'preview_snapshot',
             'termux_task_start',
+            'cli_hub_task',
             'report_result',
           ],
         AgentPreset.repair => const [
@@ -260,6 +266,7 @@ extension AgentPresetConfig on AgentPreset {
             'preview_html',
             'preview_snapshot',
             'termux_task_start',
+            'cli_hub_task',
             'report_result',
           ],
         AgentPreset.reviewer => const [
@@ -288,9 +295,9 @@ extension AgentPresetConfig on AgentPreset {
 
   String get systemInstruction => switch (this) {
         AgentPreset.autoAgent =>
-          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may summarize/list/find/grep/read/detect project type/status/history first, open read-only Sub-Agent Lite explorer/reviewer sessions when useful, then write/patch/preview/validate/restore or use typed Lark tools only when the user intent and observations justify it. Preview Lark writes before sending and set confirm=true only after explicit user approval. Use termux_task_start only when exposed as a typed helper route, never raw shell. Do not follow a fixed sequence; call only useful tools, and stop with report_result when done or blocked.',
+          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may summarize/list/find/grep/read/detect project type/status/history first, open read-only Sub-Agent Lite explorer/reviewer sessions when useful, then write/patch/preview/validate/restore or use typed Lark and CLI Hub tools only when the user intent and observations justify it. Preview Lark writes before sending and set confirm=true only after explicit user approval. Use termux_task_start and cli_hub_task only when exposed as typed helper routes, never raw shell. Do not follow a fixed sequence; call only useful tools, and stop with report_result when done or blocked.',
         AgentPreset.builder =>
-          'Agent preset Builder: inspect with project_summary/detect_project_type/find_files/grep_files/read_file/virtual_status when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, use typed Lark publish tools only after preview and explicit confirm=true, preview and validate HTML/JSON/Markdown when relevant, then report concise evidence. Use termux_task_start only when the typed helper route is exposed. If apply_patch is blocked, do not repeat the same malformed patch; read the target and retry a valid unified diff or use complete write_file for a small generated artifact.',
+          'Agent preset Builder: inspect with project_summary/detect_project_type/find_files/grep_files/read_file/virtual_status when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, use typed Lark publish and CLI Hub tools only after preview and explicit confirm=true when required, preview and validate HTML/JSON/Markdown when relevant, then report concise evidence. Use termux_task_start and cli_hub_task only when the typed helper route is exposed. If apply_patch is blocked, do not repeat the same malformed patch; read the target and retry a valid unified diff or use complete write_file for a small generated artifact.',
         AgentPreset.researchBuilder =>
           'Agent preset Research Builder: use public reference tools when they are useful, inspect/summarize local files, optionally open read-only background explorer/reviewer Sub-Agent Lite sessions, build or patch one local artifact, preview typed Lark evidence writes before confirm=true, preview and validate local artifacts when relevant, capture preview evidence when needed, then report refIds and evidenceIds.',
         AgentPreset.repair =>
@@ -316,6 +323,7 @@ class AgentLoopController {
     required this.actionRunner,
     required this.preset,
     List<String>? allowedToolNames,
+    this.permissionMode = HarnessPermissionMode.approveSafeTypedTasks,
     this.maxRounds = 6,
   }) : _allowedToolNames = allowedToolNames;
 
@@ -323,17 +331,25 @@ class AgentLoopController {
   final ActionRunner actionRunner;
   final AgentPreset preset;
   final List<String>? _allowedToolNames;
+  final HarnessPermissionMode permissionMode;
   final int maxRounds;
 
   List<String> get allowedToolNames {
     final base = _allowedToolNames ?? preset.allowedToolNames;
-    final filtered = base.where((name) {
+    final withPermissionTools = [
+      ...base,
+      if (permissionMode == HarnessPermissionMode.fullAccess) 'raw_shell',
+    ];
+    final filtered = withPermissionTools.where((name) {
       if (actionRunner.webToolInvoker == null &&
           (name == 'web_search' || name == 'fetch_url')) {
         return false;
       }
       if (actionRunner.termuxTaskInvoker == null &&
           name == 'termux_task_start') {
+        return false;
+      }
+      if (actionRunner.cliHubTaskInvoker == null && name == 'cli_hub_task') {
         return false;
       }
       return true;
@@ -493,7 +509,8 @@ class AgentLoopController {
             call.name != 'detect_project_type' &&
             call.name != 'validate_json' &&
             call.name != 'validate_markdown' &&
-            call.name != 'termux_task_start') {
+            call.name != 'termux_task_start' &&
+            call.name != 'cli_hub_task') {
           generatedPath = result.path;
         }
         if (_isMutationTool(call.name) && result.success) {
@@ -514,6 +531,7 @@ class AgentLoopController {
             call.name == 'validate_json' ||
             call.name == 'validate_markdown' ||
             call.name == 'termux_task_start' ||
+            call.name == 'cli_hub_task' ||
             _larkReadOnlyTools.contains(call.name)) {
           writeNeedsVerification = false;
         }
@@ -527,6 +545,7 @@ class AgentLoopController {
           roleName:
               result.success ? _observationRoleForTool(call.name) : 'Repair',
           evidenceId: evidence.evidenceId,
+          evidenceMetadata: evidence.metadata,
           success: result.success,
         ));
       }
@@ -595,7 +614,7 @@ class AgentLoopController {
     if (_isMutationTool(call.name) && writeNeedsVerification) {
       return _blockedProviderToolResult(
         call,
-        'A workspace file or external Lark target was already changed successfully. Use read_file, grep_files, virtual_status, validate_html, validate_json, validate_markdown, preview_html, preview_snapshot, lark_readiness, lark_wiki_list_spaces, lark_drive_upload_preview, termux_task_start, or report_result before another mutation.',
+        'A workspace file or external Lark target was already changed successfully. Use read_file, grep_files, virtual_status, validate_html, validate_json, validate_markdown, preview_html, preview_snapshot, lark_readiness, lark_wiki_list_spaces, lark_drive_upload_preview, termux_task_start, cli_hub_task, or report_result before another mutation.',
         const [
           'Read, grep, validate, preview, inspect virtual status, or run a read-only Lark check before another mutating tool call.'
         ],
@@ -1364,6 +1383,9 @@ String _roleForTool(String toolName) {
   if (toolName == 'termux_task_start') {
     return 'Builder';
   }
+  if (toolName == 'cli_hub_task') {
+    return 'Builder';
+  }
   return 'Repair';
 }
 
@@ -1395,6 +1417,9 @@ String _observationRoleForTool(String toolName) {
     return 'Research';
   }
   if (toolName == 'termux_task_start') {
+    return 'Reviewer';
+  }
+  if (toolName == 'cli_hub_task') {
     return 'Reviewer';
   }
   return 'Planner';

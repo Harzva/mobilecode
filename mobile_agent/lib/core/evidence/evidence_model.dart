@@ -219,6 +219,7 @@ enum MobileCodeAction {
   validateMarkdown,
   applyPatch,
   termuxTaskStart,
+  cliHubTaskStart,
   openFile,
   previewHtml,
   webSearch,

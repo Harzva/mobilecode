@@ -171,7 +171,7 @@ class MobileCodeHelperProvider
   }
 
   @override
-  Future<Map<String, dynamic>> runTermuxTask({
+  Future<Map<String, dynamic>> runTypedTask({
     required String taskKind,
     required Map<String, dynamic> payload,
   }) async {
@@ -180,6 +180,14 @@ class MobileCodeHelperProvider
       ...payload,
     };
     return _postJson('/v1/task/start', requestPayload);
+  }
+
+  @override
+  Future<Map<String, dynamic>> runTermuxTask({
+    required String taskKind,
+    required Map<String, dynamic> payload,
+  }) {
+    return runTypedTask(taskKind: taskKind, payload: payload);
   }
 
   @override

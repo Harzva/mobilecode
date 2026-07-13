@@ -18,12 +18,33 @@ void main() {
 
       expect(manager.providers.map((provider) => provider.name), [
         'MobileCode Helper',
+        'Linux Sandbox',
         'External Termux daemon',
         'External Termux',
         'Embedded Lite Runtime',
         'Cloud Runtime',
         'WebView Only',
       ]);
+    });
+
+    test(
+        'default Linux Sandbox is visible but does not preempt Termux fallback',
+        () async {
+      final manager = RuntimeManager.withExternalTermux(
+        TermuxService(),
+        helperBaseUri: Uri.parse('http://127.0.0.1:8765'),
+      );
+
+      final health = await manager.refresh();
+      final linux = health.firstWhere(
+        (item) => item.type == RuntimeProviderType.linuxSandbox,
+      );
+
+      expect(linux.available, isFalse);
+      expect(linux.ready, isFalse);
+      expect(linux.status, contains('rootfs is not installed'));
+      expect(linux.capabilities.rawShellAllowed, isFalse);
+      expect(linux.capabilities.rootfsInstalled, isFalse);
     });
 
     test('selects the first ready provider in priority order', () async {

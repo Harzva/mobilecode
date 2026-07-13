@@ -21,6 +21,12 @@ import java.util.Locale
 class MainActivity : FlutterActivity() {
     private var pendingInitialDeepLink: String? = null
     private var pendingSharedIntent: Intent? = null
+    private val linuxSandboxRunner: LinuxSandboxRunner by lazy {
+        LinuxSandboxRunner(this)
+    }
+    private val htmlRenderRunner: HtmlRenderRunner by lazy {
+        HtmlRenderRunner(this)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -51,6 +57,31 @@ class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                     "helperServiceStatus" -> result.success(MobileCodeHelperService.status())
+                    "linuxSandboxStatus" -> result.success(linuxSandboxRunner.status())
+                    "linuxSandboxSetup" -> runLinuxSandboxAsync(result) {
+                        @Suppress("UNCHECKED_CAST")
+                        val manifest = call.argument<Map<String, Any?>>("manifest") ?: emptyMap()
+                        linuxSandboxRunner.setup(manifest)
+                    }
+                    "linuxSandboxReset" -> runLinuxSandboxAsync(result) {
+                        linuxSandboxRunner.reset()
+                    }
+                    "linuxSandboxRunTypedTask" -> runLinuxSandboxAsync(result) {
+                        val taskKind = call.argument<String>("taskKind") ?: ""
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.argument<Map<String, Any?>>("payload") ?: emptyMap()
+                        linuxSandboxRunner.runTypedTask(taskKind, payload)
+                    }
+                    "renderPng" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPng(payload, result)
+                    }
+                    "renderPdf" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPdf(payload, result)
+                    }
                     "getPhoneUseAccessibilityStatus" -> result.success(PhoneUseAccessibilityService.status(this))
                     "openPhoneUseAccessibilitySettings" -> result.success(openPhoneUseAccessibilitySettings())
                     "openAppSettings" -> result.success(openAppSettings())
@@ -60,6 +91,25 @@ class MainActivity : FlutterActivity() {
                         @Suppress("UNCHECKED_CAST")
                         val action = call.argument<Map<String, Any?>>("action") ?: emptyMap()
                         result.success(PhoneUseAccessibilityService.performPhoneUseAction(this, action))
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // Keep the renderer channel separate from general system tools so the
+        // Flutter provider has the same contract on Android and iOS.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mobilecode/html_renderer")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "renderPng" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPng(payload, result)
+                    }
+                    "renderPdf" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPdf(payload, result)
                     }
                     else -> result.notImplemented()
                 }
@@ -288,6 +338,26 @@ class MainActivity : FlutterActivity() {
             Log.e(TAG, "Failed to request MobileCode helper service start", error)
             false
         }
+    }
+
+    private fun runLinuxSandboxAsync(
+        result: MethodChannel.Result,
+        block: () -> Map<String, Any?>,
+    ) {
+        Thread {
+            try {
+                result.success(block())
+            } catch (error: Throwable) {
+                result.success(
+                    mapOf(
+                        "success" to false,
+                        "status" to "failed",
+                        "failureKind" to "processFailed",
+                        "stderr" to (error.localizedMessage ?: error.javaClass.simpleName),
+                    )
+                )
+            }
+        }.start()
     }
 
     private fun installerPackage(): String? {

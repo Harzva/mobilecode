@@ -4,6 +4,7 @@
 import 'dart:async';
 
 import 'external_termux_provider.dart';
+import 'linux_sandbox_provider.dart';
 import 'mobile_code_helper_auth.dart';
 import 'mobile_code_helper_provider.dart';
 import 'runtime_actions.dart';
@@ -35,6 +36,7 @@ class RuntimeManager {
           baseUri: helperBaseUri,
           authToken: MobileCodeHelperAuth.token,
         ),
+        LinuxSandboxRuntimeProvider(),
         TermuxDaemonProvider(baseUri: helperBaseUri),
         ExternalTermuxProvider(termux),
         EmbeddedLiteRuntimeProvider(),
@@ -237,10 +239,32 @@ class RuntimeManager {
     final provider = _activeProvider;
     if (provider == null || provider is! RuntimeTypedTaskRunner) {
       throw StateError(
-          'Active runtime provider does not expose a typed Termux task endpoint.');
+          'Active runtime provider does not expose a typed helper task endpoint.');
     }
     return (provider as RuntimeTypedTaskRunner)
-        .runTermuxTask(taskKind: taskKind, payload: payload);
+        .runTypedTask(taskKind: taskKind, payload: payload);
+  }
+
+  Future<Map<String, dynamic>> startCliHubTask(
+    String taskKind,
+    Map<String, dynamic> payload,
+  ) async {
+    await _ensureReady();
+    RuntimeProvider? provider;
+    for (final candidate in _providers) {
+      if (candidate.type == RuntimeProviderType.linuxSandbox &&
+          candidate is RuntimeTypedTaskRunner) {
+        provider = candidate;
+        break;
+      }
+    }
+    provider ??= _activeProvider;
+    if (provider == null || provider is! RuntimeTypedTaskRunner) {
+      throw StateError(
+          'No runtime provider exposes a CLI Hub typed task endpoint.');
+    }
+    return (provider as RuntimeTypedTaskRunner)
+        .runTypedTask(taskKind: taskKind, payload: payload);
   }
 
   Future<RuntimeProjectProfile> preflightProject(

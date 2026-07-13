@@ -47,7 +47,7 @@
 
     <!-- SECURITY: release builds disable debugging, cleartext traffic, and auto backup. -->
     <application
-        android:label="MobileCode"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="false"

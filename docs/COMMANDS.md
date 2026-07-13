@@ -51,7 +51,7 @@ Streaming note: provider SSE deltas are buffered as in-memory tool-call drafts f
 | `validate_markdown` | `markdownlint` basics | Read | Markdown structure check | Supported |
 | `apply_patch` | `patch`, `git apply` | Bounded write | Unified diff, workspace only | Supported |
 | `preview_html` | browser preview | Local preview | Workspace HTML / inline HTML | Supported |
-| `preview_snapshot` | screenshot-like evidence | Local evidence | Metadata / DOM summary, not bitmap | Supported |
+| `preview_snapshot` | screenshot evidence | Local evidence | PNG artifact + metadata, explicit metadata-only fallback | Supported |
 | `termux_task_start` | typed runtime task | Runtime bridge | Helper/Termux when configured | Supported when configured |
 | `report_result` | final status | No execution | Conversation summary | Supported |
 
@@ -436,7 +436,7 @@ Parameters:
 
 Notes:
 
-- This is metadata/DOM evidence, not native bitmap screenshot yet.
+- With the native HTML renderer enabled, this action writes a real PNG artifact and records its path, dimensions, byte count, backend, and SHA-256. If the platform renderer is unavailable, the action remains explicit metadata-only evidence.
 
 ### `termux_task_start`
 

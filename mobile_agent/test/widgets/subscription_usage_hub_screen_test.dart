@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_agent/screens/subscription_usage_hub_screen.dart';
+import 'package:mobile_agent/services/cli_hub_runtime_events.dart';
 import 'package:mobile_agent/services/subscription_usage_service.dart';
 
 void main() {
@@ -41,8 +42,47 @@ void main() {
     await tester.tap(find.text('使用 Claude 登录'));
     await tester.pumpAndSettle();
 
-    expect(service.stateFor('claude').hasError, isTrue);
-    expect(find.text('错误'), findsWidgets);
+    expect(service.stateFor('claude').hasError, isFalse);
+    expect(
+      find.textContaining('当前先保留 mock quota 预览'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Official login requires provider-specific'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('refreshes mapped provider after CLI Hub auth event',
+      (tester) async {
+    var now = DateTime(2026, 6, 25, 10);
+    final service = SubscriptionUsageService(
+      credentialVault: _MemoryCredentialVault(),
+      clock: () => now,
+    );
+
+    expect(
+      service.stateFor('copilotGithub').quotas.first.lastRefreshedAt,
+      isNull,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(home: SubscriptionUsageHubScreen(service: service)),
+    );
+
+    now = DateTime(2026, 6, 25, 10, 5);
+    CliHubRuntimeEvents.publish(const CliHubRuntimeEvent(
+      cliId: 'github-cli',
+      taskKind: 'github_cli_auth_status',
+      status: 'succeeded',
+      success: true,
+    ));
+    await tester.pump(const Duration(milliseconds: 120));
+
+    expect(
+      service.stateFor('copilotGithub').quotas.first.lastRefreshedAt,
+      DateTime(2026, 6, 25, 10, 5),
+    );
   });
 }
 

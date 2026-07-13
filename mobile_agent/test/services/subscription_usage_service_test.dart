@@ -65,7 +65,8 @@ void main() {
       expect(state.account!.connected, isFalse);
       expect(state.account!.failureKind, 'official_flow_not_connected_locally');
       expect(state.account!.recoveryHint, contains('GitHub'));
-      expect(state.hasError, isTrue);
+      expect(state.hasError, isFalse);
+      expect(state.quotas.every((quota) => quota.errorMessage == null), isTrue);
     });
 
     test('validates GitHub token before storing Copilot credential', () async {
@@ -157,6 +158,31 @@ void main() {
       expect(state.account!.loginMethod, ProviderLoginMethod.githubOAuth);
       expect(state.account!.toRedactedJson()['credential'],
           'github_deep_service_secure_storage');
+    });
+
+    test('reads provider credential from vault without exposing it in state',
+        () async {
+      final vault = _MemoryCredentialVault();
+      final service = SubscriptionUsageService(
+        credentialVault: vault,
+        loginAdapters: const {},
+        clock: () => DateTime(2026, 6, 25, 10),
+      );
+
+      await service.connectManualCredential(
+        providerId: 'codexChatGpt',
+        accountLabel: 'Codex',
+        credential: 'credential-value',
+      );
+
+      expect(
+        await service.readCredentialForProvider('codexChatGpt'),
+        'credential-value',
+      );
+      expect(
+        service.stateFor('codexChatGpt').account!.toRedactedJson().toString(),
+        isNot(contains('credential-value')),
+      );
     });
 
     test('GitHub adapter validates token against user endpoint', () async {

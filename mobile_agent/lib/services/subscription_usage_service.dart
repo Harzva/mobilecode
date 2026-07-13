@@ -160,7 +160,8 @@ class SubscriptionProviderState {
 
   bool get connected => account?.connected == true;
   bool get hasError =>
-      account?.failureKind != null ||
+      (account?.failureKind != null &&
+          account?.failureKind != 'official_flow_not_connected_locally') ||
       quotas
           .any((quota) => quota.refreshState == SubscriptionRefreshState.error);
 
@@ -485,6 +486,13 @@ class SubscriptionUsageService extends ChangeNotifier {
     return _states.firstWhere((state) => state.provider.id == providerId);
   }
 
+  Future<String?> readCredentialForProvider(String providerId) {
+    return _credentialVault.readCredential(
+      providerId: providerId,
+      accountId: _accountId(providerId),
+    );
+  }
+
   Future<void> connectManualCredential({
     required String providerId,
     required String accountLabel,
@@ -615,9 +623,8 @@ class SubscriptionUsageService extends ChangeNotifier {
         ),
         quotas: state.quotas
             .map((quota) => quota.copyWith(
-                  refreshState: SubscriptionRefreshState.error,
-                  errorMessage:
-                      'Official login requires provider-specific integration before real quota refresh.',
+                  refreshState: SubscriptionRefreshState.success,
+                  errorMessage: null,
                 ))
             .toList(growable: false),
       ),

@@ -1,6 +1,6 @@
 # T26 Subscription Login 与 Usage Hub
 
-Status: [ ] Local Phase 1 implemented; manual credential validation added for GitHub, OpenAI, Anthropic, and Gemini; Copilot/GitHub now reuses existing GitHub auth; provider-supported official login and real quota refresh still pending where available
+Status: [ ] Local Phase 1 implemented; manual credential validation added for GitHub, OpenAI, Anthropic, and Gemini; Copilot/GitHub now reuses existing GitHub auth and has the first ModelRouter forwarding adapter; provider-supported official login and real quota refresh still pending where available
 Priority: P2
 Owner role: software-dev-pipeline + appui-design-skill + quality-reviewer
 Depends on: T04, T13, T14, T18, T25
@@ -46,6 +46,8 @@ Depends on: T04, T13, T14, T18, T25
 
 - Do not store credentials in `SharedPreferences`, logs, screenshots, roadmap files, or plain evidence.
 - Do not scrape browser cookies or import session files without explicit user action and a documented provider boundary.
+- Do not bind provider login to Termux or any external runtime. Login belongs to the built-in app/provider auth surface and secure storage.
+- Do not make Termux the product default for model forwarding. The product path is built-in Android Helper APK or provider-native SDK adapters; external daemons are development or advanced fallback only.
 - Do not silently switch active providers or mutate Codex/Claude/GitHub configs without preview and user confirmation.
 - Do not claim real quota accuracy until provider-specific refresh has verified evidence.
 - Do not copy AIUsage implementation details or assets.
@@ -84,6 +86,8 @@ Depends on: T04, T13, T14, T18, T25
 - [ ] Implement ChatGPT/Codex official browser/OAuth-style flow when available.
 - [x] Implement GitHub/Copilot manual token validation through GitHub `/user` before writing to secure storage.
 - [x] Reuse or converge with the existing GitHub auth surface so GitHub app login and Usage Hub account state share one explicit token boundary.
+- [x] Add `ProviderLogin -> CredentialVault -> ModelRouter -> ProviderAdapter` chain and route GitHub/Copilot chat requests through a helper-side `copilot_chat` bridge task.
+- [x] Make missing Copilot SDK bridge a visible `dependencyMissing` failure instead of silently using mock forwarding.
 - [ ] Implement real Copilot usage refresh after provider-supported quota source is confirmed.
 - [x] Implement Google/Antigravity manual Gemini API key validation through Gemini `models.list` before writing to secure storage.
 - [ ] Implement Google/Antigravity login using system browser account flow where available.
@@ -133,6 +137,10 @@ Manual QA should cover mock state, successful login state, login failure state, 
 - `SubscriptionUsageService` accepts provider login adapters and uses `GitHubSubscriptionLoginAdapter` for `copilotGithub` manual access tokens.
 - GitHub/Copilot manual token mode calls GitHub `/user` with an explicit bearer token and stores the token only after validation succeeds.
 - Copilot/GitHub official login now reuses the existing MobileCode GitHub auth surface: Usage Hub opens/syncs `GitHubScreen` and links the active `GitHubDeepService` secure session as `github_deep_service_secure_storage` instead of duplicating the token in `SubscriptionCredentialVault`.
+- `mobile_agent/lib/services/model_provider_adapter_service.dart` defines the forwarding chain:
+  `ProviderCredentialResolver` reads provider credentials, `ModelRouter` selects a provider adapter, and `CopilotBridgeModelProviderAdapter` sends chat requests to the helper-side `copilot_chat` task with redacted result metadata.
+- The forwarding chain is intentionally split from login: provider login and credential storage do not require Termux or any external runtime. Adapter execution should default to the built-in Android Helper APK or provider-native SDK bindings.
+- `mobile_agent/tooling/mobilecode_helper_daemon.py` accepts `copilot_chat` typed tasks as a development bridge while the built-in Helper/provider-native path is being finalized. It requires `MOBILECODE_COPILOT_BRIDGE_CMD` to point at a bridge built on the official GitHub Copilot SDK; this is a model-forwarding runtime boundary, not a login requirement. The GitHub token is passed only as process environment for the bridge process, not written to task payload stdout/stderr or persisted logs by MobileCode.
 - ChatGPT/Codex manual API key mode calls OpenAI `/v1/models` with an explicit bearer token and stores the key only after validation succeeds.
 - Claude manual API key mode calls Anthropic `/v1/models` with `x-api-key` and `anthropic-version: 2023-06-01`, then stores the key only after validation succeeds.
 - Google/Antigravity manual API key mode calls Gemini `models.list` with an explicit key query parameter and stores the key only after validation succeeds.
@@ -150,6 +158,17 @@ Manual QA should cover mock state, successful login state, login failure state, 
   - GitHub Copilot SDK documentation supports GitHub OAuth for users to use Copilot through an application, so MobileCode can reuse its existing GitHub OAuth/PAT auth surface for Usage Hub account state.
   - Google Gemini API documentation supports OAuth when stricter access controls are needed, but a production mobile flow requires Google OAuth client configuration and consent-screen setup before real account login can ship.
   - Anthropic Claude API documentation supports API keys and Workload Identity Federation for API access. Claude consumer account login must remain pending unless Anthropic provides an official third-party app login boundary; cookie/session import is not allowed.
+- 2026-06-25 ModelRouter forwarding follow-up passed:
+  - `python3 -m py_compile mobile_agent/tooling/mobilecode_helper_daemon.py`
+  - `cd mobile_agent && flutter test test/services/model_provider_adapter_service_test.dart test/services/subscription_usage_service_test.dart`
+  - `test/services/model_provider_adapter_service_test.dart` covers Copilot helper payload shape, redacted credential metadata, missing bridge failure, and missing credential failure.
+
+## Deferred Provider Adapter Work
+
+- GitHub/Copilot: promote the official Copilot SDK bridge into the built-in Helper APK or provider-native adapter path, then capture real signed-in end-to-end QA evidence. `MOBILECODE_COPILOT_BRIDGE_CMD` remains a development bridge hook, not the product dependency.
+- OpenAI/Codex: keep API-key forwarding separate from ChatGPT subscription login. Do not claim ChatGPT subscription model forwarding until OpenAI exposes a supported third-party app handoff for that account surface.
+- Google/Antigravity: add OAuth client and consent-screen configuration before replacing manual Gemini API-key mode with account login.
+- Claude: support official API-key or Workload Identity Federation boundaries first; do not add consumer cookie/session import.
 
 ## Handoff Prompt
 

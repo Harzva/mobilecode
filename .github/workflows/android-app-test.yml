@@ -77,15 +77,14 @@ jobs:
             mkdir -p artifacts
             adb wait-for-device
             installed=0; for attempt in 1 2 3; do if timeout 120s adb install -r mobile_agent/build/app/outputs/flutter-apk/app-pure-debug.apk; then installed=1; break; fi; adb kill-server; adb start-server; adb wait-for-device; sleep 20; done; test "$installed" = 1
-            auth_header='X-MobileCode-Token: ci-helper-token'
             adb shell am force-stop com.mobilecode.app
             adb forward --remove tcp:18765 || true
             adb forward tcp:18765 tcp:8765
-            helper_ready=0; for attempt in $(seq 1 12); do timeout 5s adb shell am start -n com.mobilecode.app/.MobileCodeHelperLauncherActivity --es mobilecode_helper_auth_token ci-helper-token > artifacts/helper-launch.txt 2>&1 || true; if curl --connect-timeout 2 --max-time 5 -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then helper_ready=1; break; fi; sleep 1; done; if [ "$helper_ready" != 1 ]; then adb shell dumpsys activity services com.mobilecode.app > artifacts/helper-services.txt || true; adb logcat -d -t 1500 > artifacts/android-logcat.txt || true; cat artifacts/helper-launch.txt || true; grep -E 'MobileCodeHelper|AndroidRuntime' artifacts/android-logcat.txt | tail -n 200 || true; exit 1; fi
-            curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health | tee artifacts/android-helper-health.json
+            helper_ready=0; for attempt in $(seq 1 12); do timeout 5s adb shell am start -n com.mobilecode.app/.MobileCodeHelperLauncherActivity --es mobilecode_helper_auth_token ci-helper-token > artifacts/helper-launch.txt 2>&1 || true; if curl --connect-timeout 2 --max-time 5 -fsS -H 'X-MobileCode-Token: ci-helper-token' http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then helper_ready=1; break; fi; sleep 1; done; if [ "$helper_ready" != 1 ]; then adb shell dumpsys activity services com.mobilecode.app > artifacts/helper-services.txt || true; adb logcat -d -t 1500 > artifacts/android-logcat.txt || true; cat artifacts/helper-launch.txt || true; grep -E 'MobileCodeHelper|AndroidRuntime' artifacts/android-logcat.txt | tail -n 200 || true; exit 1; fi
+            curl -fsS -H 'X-MobileCode-Token: ci-helper-token' http://127.0.0.1:18765/v1/health | tee artifacts/android-helper-health.json
             test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-MobileCode-Token: wrong-token' http://127.0.0.1:18765/v1/health)" = 401
-            curl -fsS -H "$auth_header" -H 'Content-Type: application/json' -X POST http://127.0.0.1:18765/v1/execute -d '{"command":"pwd","timeoutMs":10000}' | tee artifacts/android-helper-execute.json
-            curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/tasks/current | tee artifacts/android-helper-task.json
+            curl -fsS -H 'X-MobileCode-Token: ci-helper-token' -H 'Content-Type: application/json' -X POST http://127.0.0.1:18765/v1/execute -d '{"command":"pwd","timeoutMs":10000}' | tee artifacts/android-helper-execute.json
+            curl -fsS -H 'X-MobileCode-Token: ci-helper-token' http://127.0.0.1:18765/v1/tasks/current | tee artifacts/android-helper-task.json
             grep '"name":"MobileCode Helper Service"' artifacts/android-helper-health.json
             grep '"ready":true' artifacts/android-helper-health.json
             grep '"authRequired":true' artifacts/android-helper-health.json

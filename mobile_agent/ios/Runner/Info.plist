@@ -28,6 +28,11 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>MobileCode uses the microphone for optional voice-driven coding prompts.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>MobileCode uses speech recognition for optional voice-driven coding prompts.</string>
 	<key>UIApplicationSceneManifest</key>

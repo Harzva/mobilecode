@@ -55,6 +55,7 @@ import '../services/skill_manager_service.dart';
 import '../services/termux_service.dart';
 import '../services/token_usage_service.dart';
 import '../services/tool_call_adapter.dart';
+import '../services/tuima_provider_service.dart';
 import '../services/voice_service.dart';
 import '../themes/app_theme.dart';
 import '../widgets/phone_use_mode_card.dart';
@@ -2459,23 +2460,33 @@ class _HomeScreenState extends State<HomeScreen> {
     if (presetModel.isNotEmpty) {
       await prefs.setString(_modelKey, presetModel);
     }
+    if (preset == _ProviderPreset.tuimaLocal) {
+      await prefs.setString(
+        _apiKeyKey,
+        ModelProviderPresetService.tuimaLocalToken,
+      );
+    }
     if (!mounted) return;
     setState(() {
       _customProviderOverride = true;
       _customProviderPreset = preset;
       if (presetBaseUrl.isNotEmpty) _baseUrlController.text = presetBaseUrl;
       if (presetModel.isNotEmpty) _modelController.text = presetModel;
-      _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
+      _apiKeyController.text = preset == _ProviderPreset.tuimaLocal
+          ? ModelProviderPresetService.tuimaLocalToken
+          : prefs.getString(_apiKeyKey) ?? '';
     });
     _addLog(
       '${_providerPresetLabel(preset)} custom profile selected',
       preset == _ProviderPreset.custom
           ? 'Custom provider keeps the saved Base URL, model, and local key.'
-          : preset == _ProviderPreset.deepSeekAuto
-              ? 'DeepSeek Auto fills DeepSeek Base URL and starts with Flash; MobileCode can later route hard steps to Pro.'
-              : preset == _ProviderPreset.tierFlowAuto
-                  ? 'TierFlow Auto fills Base URL and model=auto; paste your TierFlow key if needed.'
-                  : 'No bundled key is active for this profile; paste a key in Models & Provider if needed.',
+          : preset == _ProviderPreset.tuimaLocal
+              ? 'TuiMa uses the on-device MobileCore OpenAI-compatible API. Prompts stay on this phone.'
+              : preset == _ProviderPreset.deepSeekAuto
+                  ? 'DeepSeek Auto fills DeepSeek Base URL and starts with Flash; MobileCode can later route hard steps to Pro.'
+                  : preset == _ProviderPreset.tierFlowAuto
+                      ? 'TierFlow Auto fills Base URL and model=auto; paste your TierFlow key if needed.'
+                      : 'No bundled key is active for this profile; paste a key in Models & Provider if needed.',
       Icons.tune_outlined,
       _cyan,
     );
@@ -2623,17 +2634,22 @@ class _HomeScreenState extends State<HomeScreen> {
       if (presetModel.isNotEmpty) {
         _modelController.text = presetModel;
       }
+      if (preset == _ProviderPreset.tuimaLocal) {
+        _apiKeyController.text = ModelProviderPresetService.tuimaLocalToken;
+      }
     });
     final label = _providerPresetLabel(preset);
     _addLog(
       '$label provider selected',
       preset == _ProviderPreset.custom
           ? 'Custom mode keeps your current Base URL/model so you can edit them directly.'
-          : preset == _ProviderPreset.deepSeekAuto
-              ? 'DeepSeek Auto fills DeepSeek Base URL and Flash/Pro routing metadata.'
-              : preset == _ProviderPreset.tierFlowAuto
-                  ? 'TierFlow Auto fills Base URL and model=auto for provider-side routing.'
-                  : 'Base URL and model filled. API key stays private.',
+          : preset == _ProviderPreset.tuimaLocal
+              ? 'TuiMa Local routes chat to 127.0.0.1:8080. No cloud credential is required.'
+              : preset == _ProviderPreset.deepSeekAuto
+                  ? 'DeepSeek Auto fills DeepSeek Base URL and Flash/Pro routing metadata.'
+                  : preset == _ProviderPreset.tierFlowAuto
+                      ? 'TierFlow Auto fills Base URL and model=auto for provider-side routing.'
+                      : 'Base URL and model filled. API key stays private.',
       Icons.tune_outlined,
       preset == _ProviderPreset.custom || preset == _ProviderPreset.tierFlowAuto
           ? _cyan
@@ -13893,6 +13909,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   final _promptController = TextEditingController();
   final _chatScrollController = ScrollController();
   final _voiceService = VoiceService();
+  late final TuimaProviderService _tuimaProviderService;
   final List<_ChatSession> _sessions = [];
   Future<void>? _sessionLoadFuture;
   String? _activeSessionId;
@@ -13929,8 +13946,12 @@ class _ChatPanelState extends State<_ChatPanel> {
   final Set<String> _approvedCliHubPreviewEvidenceIds = {};
   final Map<String, GlobalKey> _turnKeys = {};
   Timer? _navPreviewTimer;
+  Timer? _tuimaHealthTimer;
   _ChatNavPreview? _navPreview;
   int? _lastNavActiveIndex;
+  TuimaHealth _tuimaHealth = TuimaHealth.unavailable('Not checked');
+  bool _tuimaHealthChecking = false;
+  bool _offlineFallbackActive = false;
 
   _ChatSession? get _activeSession {
     if (_sessions.isEmpty) return null;
@@ -13945,6 +13966,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   @override
   void initState() {
     super.initState();
+    _tuimaProviderService = TuimaProviderService();
     _chatScrollController.addListener(_handleChatScroll);
     RoleLibraryService.instance.addListener(_handleRoleLibraryChanged);
     HarnessPermissionStore.instance
@@ -13961,11 +13983,26 @@ class _ChatPanelState extends State<_ChatPanel> {
     unawaited(TokenUsageService.instance.initialize());
     _sessionLoadFuture = _loadSessions();
     _initVoiceInput();
+    unawaited(_refreshTuimaHealth());
+    _tuimaHealthTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => unawaited(_refreshTuimaHealth()),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.providerPreset != widget.providerPreset) {
+      unawaited(_refreshTuimaHealth());
+    }
   }
 
   @override
   void dispose() {
     _agentProviderClient?.close(force: true);
+    _tuimaHealthTimer?.cancel();
+    _tuimaProviderService.close();
     RoleLibraryService.instance.removeListener(_handleRoleLibraryChanged);
     HarnessPermissionStore.instance
         .removeListener(_handleHarnessPermissionChanged);
@@ -13976,6 +14013,106 @@ class _ChatPanelState extends State<_ChatPanel> {
     _chatScrollController.dispose();
     _promptController.dispose();
     super.dispose();
+  }
+
+  Future<TuimaHealth> _refreshTuimaHealth() async {
+    if (_tuimaHealthChecking) return _tuimaHealth;
+    if (mounted) setState(() => _tuimaHealthChecking = true);
+    final previousState = _tuimaHealth.state;
+    final health = await _tuimaProviderService.probe();
+    if (!mounted) return health;
+    setState(() {
+      _tuimaHealth = health;
+      _tuimaHealthChecking = false;
+      if (health.state != TuimaConnectionState.modelReady) {
+        _offlineFallbackActive = false;
+      }
+    });
+    if (previousState != health.state) {
+      final detail = switch (health.state) {
+        TuimaConnectionState.modelReady =>
+          'MobileCore ${health.version} is ready with ${health.activeModel ?? 'a local model'}.',
+        TuimaConnectionState.serviceReady =>
+          'MobileCore ${health.version} is running, but no model is loaded.',
+        TuimaConnectionState.unavailable =>
+          'MobileCore is not reachable at 127.0.0.1:8080.',
+      };
+      widget.onLog(
+        'TuiMa status changed',
+        detail,
+        health.canInfer
+            ? Icons.offline_bolt_outlined
+            : Icons.portable_wifi_off_outlined,
+        health.canInfer ? _mint : _amber,
+      );
+    }
+    return health;
+  }
+
+  List<Map<String, dynamic>> _tuimaMessages(
+    List<_ChatTurn> history,
+    String systemPrompt,
+  ) =>
+      [
+        {'role': 'system', 'content': systemPrompt},
+        ..._providerMessages(history),
+      ];
+
+  ModelRouteDecision _tuimaRouteDecision({
+    required ModelRouteEndpoint endpoint,
+    required int maxTokens,
+    required List<_ChatTurn> history,
+    required String systemPrompt,
+  }) =>
+      ModelRoutingService.decide(
+        preset: _ProviderPreset.tuimaLocal,
+        configuredModel: ModelProviderPresetService.tuimaModel,
+        endpoint: endpoint,
+        maxTokens: maxTokens,
+        inputCharacters: _tokenInputChars(history, systemPrompt),
+        userText: _routeUserText(history),
+      );
+
+  Future<TuimaHealth> _requireTuimaReady() async {
+    final health = await _refreshTuimaHealth();
+    if (health.state == TuimaConnectionState.modelReady) return health;
+    if (health.state == TuimaConnectionState.serviceReady) {
+      throw Exception(
+          'TuiMa is running but no model is loaded. Open TuiMa and load the benchmark model first.');
+    }
+    throw Exception(
+        'TuiMa is offline. Open TuiMa, start the local API, and load a model.');
+  }
+
+  bool _isCloudTransportFailure(Object error) =>
+      error is SocketException ||
+      error is TimeoutException ||
+      error is HttpException;
+
+  Future<bool> _canFallbackToTuima({
+    required Object cloudError,
+    required bool emittedCloudText,
+  }) async {
+    if (widget.providerPreset == _ProviderPreset.tuimaLocal ||
+        !_isCloudTransportFailure(cloudError)) {
+      return false;
+    }
+    final health = await _refreshTuimaHealth();
+    final decision = TuimaProviderService.fallbackAfterCloudFailure(
+      localState: health.state,
+      emittedCloudText: emittedCloudText,
+    );
+    return decision.target == HybridModelTarget.tuimaLocal;
+  }
+
+  void _recordOfflineFallback() {
+    if (mounted) setState(() => _offlineFallbackActive = true);
+    widget.onLog(
+      'Cloud offline fallback',
+      'The cloud transport failed before returning text. This request was rerouted to the ready TuiMa model on this phone.',
+      Icons.offline_bolt_outlined,
+      _mint,
+    );
   }
 
   void _handleRoleLibraryChanged() {
@@ -14571,6 +14708,27 @@ class _ChatPanelState extends State<_ChatPanel> {
     ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
     void Function(ModelRouteDecision decision)? onRoute,
   }) async {
+    if (widget.providerPreset == _ProviderPreset.tuimaLocal) {
+      await _requireTuimaReady();
+      final decision = _tuimaRouteDecision(
+        endpoint: endpoint,
+        maxTokens: maxTokens,
+        history: history,
+        systemPrompt: systemPrompt,
+      );
+      onRoute?.call(decision);
+      _recordProviderRouteEvidence(
+        decision,
+        maxTokens: maxTokens,
+        inputCharacters: _tokenInputChars(history, systemPrompt),
+      );
+      return _tuimaProviderService.completeChat(
+        messages: _tuimaMessages(history, systemPrompt),
+        model: decision.model,
+        maxTokens: maxTokens,
+        timeout: responseTimeout,
+      );
+    }
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
     }
@@ -14663,6 +14821,30 @@ class _ChatPanelState extends State<_ChatPanel> {
           announceRoute(routeDecision);
           continue;
         }
+        if (await _canFallbackToTuima(
+          cloudError: error,
+          emittedCloudText: false,
+        )) {
+          final localDecision = _tuimaRouteDecision(
+            endpoint: endpoint,
+            maxTokens: maxTokens,
+            history: history,
+            systemPrompt: systemPrompt,
+          );
+          onRoute?.call(localDecision);
+          _recordProviderRouteEvidence(
+            localDecision,
+            maxTokens: maxTokens,
+            inputCharacters: inputCharacters,
+          );
+          _recordOfflineFallback();
+          return _tuimaProviderService.completeChat(
+            messages: _tuimaMessages(history, systemPrompt),
+            model: localDecision.model,
+            maxTokens: maxTokens,
+            timeout: responseTimeout,
+          );
+        }
         throw Exception(message);
       } finally {
         if (identical(_agentProviderClient, client)) {
@@ -14684,6 +14866,28 @@ class _ChatPanelState extends State<_ChatPanel> {
     ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
     void Function(ModelRouteDecision decision)? onRoute,
   }) async* {
+    if (widget.providerPreset == _ProviderPreset.tuimaLocal) {
+      await _requireTuimaReady();
+      final decision = _tuimaRouteDecision(
+        endpoint: endpoint,
+        maxTokens: maxTokens,
+        history: history,
+        systemPrompt: systemPrompt,
+      );
+      onRoute?.call(decision);
+      _recordProviderRouteEvidence(
+        decision,
+        maxTokens: maxTokens,
+        inputCharacters: _tokenInputChars(history, systemPrompt),
+      );
+      yield* _tuimaProviderService.streamChat(
+        messages: _tuimaMessages(history, systemPrompt),
+        model: decision.model,
+        maxTokens: maxTokens,
+        timeout: responseTimeout,
+      );
+      return;
+    }
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
     }
@@ -14810,6 +15014,31 @@ class _ChatPanelState extends State<_ChatPanel> {
           routeDecision = retry;
           announceRoute(routeDecision);
           continue;
+        }
+        if (await _canFallbackToTuima(
+          cloudError: error,
+          emittedCloudText: emittedText,
+        )) {
+          final localDecision = _tuimaRouteDecision(
+            endpoint: endpoint,
+            maxTokens: maxTokens,
+            history: history,
+            systemPrompt: systemPrompt,
+          );
+          onRoute?.call(localDecision);
+          _recordProviderRouteEvidence(
+            localDecision,
+            maxTokens: maxTokens,
+            inputCharacters: inputCharacters,
+          );
+          _recordOfflineFallback();
+          yield* _tuimaProviderService.streamChat(
+            messages: _tuimaMessages(history, systemPrompt),
+            model: localDecision.model,
+            maxTokens: maxTokens,
+            timeout: responseTimeout,
+          );
+          return;
         }
         throw Exception(message);
       } finally {
@@ -17179,6 +17408,15 @@ class _ChatPanelState extends State<_ChatPanel> {
                     onTap: _sending || _agentRunning
                         ? null
                         : _openModelSelectionSheet,
+                  ),
+                  const SizedBox(width: 8),
+                  _TuimaStatusButton(
+                    health: _tuimaHealth,
+                    checking: _tuimaHealthChecking,
+                    fallbackActive: _offlineFallbackActive,
+                    onTap: _tuimaHealthChecking
+                        ? null
+                        : () => unawaited(_refreshTuimaHealth()),
                   ),
                   const SizedBox(width: 8),
                   _AgentModeSummaryButton(
@@ -19806,6 +20044,98 @@ class _ComposerModelButton extends StatelessWidget {
   }
 }
 
+class _TuimaStatusButton extends StatelessWidget {
+  const _TuimaStatusButton({
+    required this.health,
+    required this.checking,
+    required this.fallbackActive,
+    required this.onTap,
+  });
+
+  final TuimaHealth health;
+  final bool checking;
+  final bool fallbackActive;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = health.state == TuimaConnectionState.modelReady;
+    final serviceOnly = health.state == TuimaConnectionState.serviceReady;
+    final color = ready
+        ? _mint
+        : serviceOnly
+            ? _amber
+            : _muted;
+    final label = checking
+        ? '检测 TuiMa'
+        : fallbackActive
+            ? '本地降级中'
+            : ready
+                ? 'TuiMa 就绪'
+                : serviceOnly
+                    ? '待加载模型'
+                    : 'TuiMa 离线';
+    final detail = ready
+        ? 'MobileCore ${health.version} · ${health.activeModel ?? 'model ready'}'
+        : serviceOnly
+            ? 'MobileCore 服务已运行，但尚未加载模型'
+            : '点按重新检测 127.0.0.1:8080';
+    return Tooltip(
+      message: detail,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          height: 42,
+          constraints: const BoxConstraints(minWidth: 86, maxWidth: 116),
+          padding: const EdgeInsets.symmetric(horizontal: 9),
+          decoration: BoxDecoration(
+            color: color.withOpacity(ready ? 0.13 : 0.07),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(ready ? 0.36 : 0.20)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (checking)
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.8,
+                    color: color,
+                  ),
+                )
+              else
+                Icon(
+                  fallbackActive
+                      ? Icons.offline_bolt_outlined
+                      : ready
+                          ? Icons.memory_outlined
+                          : Icons.portable_wifi_off_outlined,
+                  color: color,
+                  size: 15,
+                ),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ModelSelectionSheet extends StatelessWidget {
   const _ModelSelectionSheet({
     required this.selected,
@@ -19894,10 +20224,14 @@ class _ModelSelectionRow extends StatelessWidget {
             ? _violet
             : preset == _ProviderPreset.tierFlowAuto
                 ? _cyan
-                : preset == _ProviderPreset.mimo
+                : preset == _ProviderPreset.tuimaLocal
                     ? _mint
-                    : _blue;
+                    : preset == _ProviderPreset.mimo
+                        ? _mint
+                        : _blue;
     final subtitle = switch (preset) {
+      _ProviderPreset.tuimaLocal =>
+        '本机 TuiMa/MobileCore · 断网可用 · 127.0.0.1 OpenAI-compatible',
       _ProviderPreset.mimo =>
         managed ? '内置体验模型，稳定聊天与中文移动开发任务' : '需要构建时配置 Mimo managed key',
       _ProviderPreset.deepSeek => managed
@@ -19924,13 +20258,15 @@ class _ModelSelectionRow extends StatelessWidget {
             Icon(
               preset == _ProviderPreset.custom
                   ? Icons.tune_outlined
-                  : preset == _ProviderPreset.deepSeek
-                      ? Icons.psychology_alt_outlined
-                      : preset == _ProviderPreset.deepSeekAuto
-                          ? Icons.alt_route_outlined
-                          : preset == _ProviderPreset.tierFlowAuto
-                              ? Icons.route_outlined
-                              : Icons.auto_awesome_outlined,
+                  : preset == _ProviderPreset.tuimaLocal
+                      ? Icons.memory_outlined
+                      : preset == _ProviderPreset.deepSeek
+                          ? Icons.psychology_alt_outlined
+                          : preset == _ProviderPreset.deepSeekAuto
+                              ? Icons.alt_route_outlined
+                              : preset == _ProviderPreset.tierFlowAuto
+                                  ? Icons.route_outlined
+                                  : Icons.auto_awesome_outlined,
               color: color,
               size: 20,
             ),
@@ -19953,6 +20289,10 @@ class _ModelSelectionRow extends StatelessWidget {
                       if (managed) ...[
                         const SizedBox(width: 8),
                         _TinyBadge(label: 'Managed', color: color),
+                      ],
+                      if (preset == _ProviderPreset.tuimaLocal) ...[
+                        const SizedBox(width: 6),
+                        const _TinyBadge(label: 'On-device', color: _mint),
                       ],
                       if (preset == _ProviderPreset.deepSeek) ...[
                         const SizedBox(width: 6),

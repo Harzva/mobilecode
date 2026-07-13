@@ -87,6 +87,8 @@ jobs:
             lib/services/build_orchestrator.dart \
             lib/services/github_pages_service.dart \
             lib/services/html_publish_readiness_service.dart \
+            lib/services/model_provider_preset_service.dart \
+            lib/services/tuima_provider_service.dart \
             lib/widgets/flutter_web_preview.dart \
             test/services/runtime_manager_test.dart \
             test/services/mobile_code_helper_provider_test.dart \
@@ -101,6 +103,8 @@ jobs:
             test/services/external_file_preview_service_test.dart \
             test/services/agent_loop_controller_test.dart \
             test/services/tool_call_adapter_test.dart \
+            test/services/model_provider_preset_service_test.dart \
+            test/services/tuima_provider_service_test.dart \
             --no-fatal-infos \
             --no-fatal-warnings
 
@@ -120,7 +124,9 @@ jobs:
             test/services/device_telemetry_service_test.dart \
             test/services/external_file_preview_service_test.dart \
             test/services/agent_loop_controller_test.dart \
-            test/services/tool_call_adapter_test.dart
+            test/services/tool_call_adapter_test.dart \
+            test/services/model_provider_preset_service_test.dart \
+            test/services/tuima_provider_service_test.dart
 
   relay-worker-syntax:
     runs-on: ubuntu-latest

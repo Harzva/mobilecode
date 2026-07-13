@@ -17,15 +17,23 @@ class MobileCodeHelperLauncherActivity : Activity() {
     private fun startHelperService() {
         try {
             val serviceIntent = Intent(this, MobileCodeHelperService::class.java)
-            intent.getStringExtra(MobileCodeHelperService.EXTRA_AUTH_TOKEN)
-                ?.takeIf { it.isNotBlank() }
-                ?.let { serviceIntent.putExtra(MobileCodeHelperService.EXTRA_AUTH_TOKEN, it) }
+            val authToken = (
+                intent.getStringExtra(EXTRA_SHELL_AUTH_TOKEN)
+                    ?: intent.getStringExtra(MobileCodeHelperService.EXTRA_AUTH_TOKEN)
+                )?.takeIf { it.isNotBlank() }
+            authToken?.let {
+                serviceIntent.putExtra(MobileCodeHelperService.EXTRA_AUTH_TOKEN, it)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(serviceIntent)
             } else {
                 startService(serviceIntent)
             }
-            Log.i(TAG, "MobileCode helper service start requested from launcher")
+            Log.i(
+                TAG,
+                "MobileCode helper service start requested from launcher; " +
+                    "authProvided=${authToken != null}; authLength=${authToken?.length ?: 0}"
+            )
         } catch (error: Throwable) {
             Log.e(TAG, "Failed to request MobileCode helper service start from launcher", error)
         }
@@ -33,5 +41,6 @@ class MobileCodeHelperLauncherActivity : Activity() {
 
     companion object {
         private const val TAG = "MobileCodeHelperLauncher"
+        const val EXTRA_SHELL_AUTH_TOKEN = "mobilecode_helper_auth_token"
     }
 }

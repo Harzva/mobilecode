@@ -1,7 +1,7 @@
 # MobileCode: A Phone-Native Harness for Verifiable Agentic Software Work
 
-Harzva MobileCode Project  
-Technical Report v0 - Evidence snapshot: 2026-07-13  
+Harzva MobileCode Project
+Technical Report v0 - Evidence snapshot: 2026-07-13
 Repository: https://github.com/Harzva/mobilecode
 
 ## Abstract

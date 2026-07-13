@@ -29,6 +29,7 @@ import kotlin.concurrent.thread
 class MobileCodeHelperService : Service() {
     private var serverSocket: ServerSocket? = null
     private var serverThread: Thread? = null
+    @Volatile
     private var authToken: String = ""
 
     private val appDataRoot: File
@@ -62,6 +63,11 @@ class MobileCodeHelperService : Service() {
         } else if (authToken.isBlank()) {
             authToken = UUID.randomUUID().toString()
         }
+        Log.i(
+            TAG,
+            "Helper service start; authProvided=${token.isNotBlank()}; " +
+                "authLength=${authToken.length}; startId=$startId"
+        )
 
         startForeground(NOTIFICATION_ID, buildNotification("Helper daemon listening on 127.0.0.1:$PORT"))
         startServer()
@@ -206,10 +212,14 @@ class MobileCodeHelperService : Service() {
     }
 
     private fun authorized(headers: Map<String, String>): Boolean {
-        if (authToken.isBlank()) return true
+        // Requests run on client threads while service starts are delivered on
+        // the main thread. Read the volatile token once so every comparison in
+        // this request uses the same, most recently published credential.
+        val expectedToken = authToken
+        if (expectedToken.isBlank()) return true
         val headerToken = headers["x-mobilecode-token"] ?: ""
         val bearer = headers["authorization"] ?: ""
-        return headerToken == authToken || bearer == "Bearer $authToken"
+        return headerToken == expectedToken || bearer == "Bearer $expectedToken"
     }
 
     private fun handleExecute(socket: Socket, body: String) {

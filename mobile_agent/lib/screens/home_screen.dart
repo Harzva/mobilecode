@@ -50,6 +50,7 @@ import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
 import '../services/agent_loop_controller.dart';
 import '../services/device_telemetry_service.dart';
+import '../services/device_automation_provider.dart';
 import '../services/external_file_preview_service.dart';
 import '../services/skill_manager_service.dart';
 import '../services/termux_service.dart';
@@ -13944,6 +13945,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   final Map<String, int> _agentStreamTraceIndexes = {};
   final ActionEvidenceStore _agentEvidenceStore = ActionEvidenceStore.shared;
   final Set<String> _approvedCliHubPreviewEvidenceIds = {};
+  final Set<String> _consumedPhoneUseApprovalTicketIds = {};
   final Map<String, GlobalKey> _turnKeys = {};
   Timer? _navPreviewTimer;
   Timer? _tuimaHealthTimer;
@@ -15290,6 +15292,10 @@ class _ChatPanelState extends State<_ChatPanel> {
           ? (taskKind, payload) =>
               widget.runtimeManager.startCliHubTask(taskKind, payload)
           : null,
+      deviceAutomationCoordinator: DeviceAutomationCoordinator(
+        provider: EmbeddedAccessibilityDeviceAutomationProvider(),
+        evidenceStore: _agentEvidenceStore,
+      ),
       htmlRenderProvider: const PlatformHtmlRenderProvider(),
     );
     final messages = _providerMessages(history)
@@ -15402,6 +15408,8 @@ class _ChatPanelState extends State<_ChatPanel> {
         ..addAll(_agentRunTraceTemplate(prompt));
       _agentTraceEventKeys.clear();
       _approvedCliHubPreviewEvidenceIds.clear();
+      _consumedPhoneUseApprovalTicketIds.clear();
+      DeviceAutomationApprovalTicketStore.shared.clear();
       _agentProviderLiveProcess.clear();
       _agentProviderLiveProcessKeys.clear();
       _agentStreamTraceIndexes.clear();
@@ -15902,6 +15910,26 @@ class _ChatPanelState extends State<_ChatPanel> {
               : '${metadata['installedSizeMb']} MB');
       details['Approval'] = 'Required; tap Confirm typed task to execute.';
     }
+    if (event.toolName == 'phone_use_action') {
+      final assessment = metadata['riskAssessment'];
+      final ticket = metadata['approvalTicket'];
+      if (assessment is Map && ticket is Map) {
+        void add(String label, Object? value) {
+          final text = value?.toString().trim() ?? '';
+          if (text.isNotEmpty) details[label] = text;
+        }
+
+        add('Action', metadata['deviceAction']);
+        add('Target', assessment['targetLabel']);
+        add('Risk', assessment['riskClass']);
+        add('Policy', assessment['policyId']);
+        add('Reason', assessment['reason']);
+        add('Expires', ticket['expiresAt']);
+        add('Credential slot', metadata['credentialSlot']);
+        details['Approval'] =
+            'One tap, one execution; bound to the current semantic snapshot.';
+      }
+    }
     return details;
   }
 
@@ -16027,6 +16055,82 @@ class _ChatPanelState extends State<_ChatPanel> {
       '$cliId.$taskKind',
       result.success ? Icons.verified_outlined : Icons.error_outline,
       color,
+    );
+    _scrollConversationToEnd(force: true);
+  }
+
+  Future<void> _approvePhoneUsePreviewStep(_AgentTraceStep step) async {
+    final rawTicket = step.evidenceMetadata['approvalTicket'];
+    if (rawTicket is! Map) {
+      _showMessage('No Phone Use approval ticket is attached to this step.');
+      return;
+    }
+    final ticketId = rawTicket['id']?.toString() ?? '';
+    if (ticketId.isEmpty) {
+      _showMessage('The Phone Use approval ticket is invalid.');
+      return;
+    }
+    if (_consumedPhoneUseApprovalTicketIds.contains(ticketId)) {
+      _showMessage('This one-shot Phone Use approval was already consumed.');
+      return;
+    }
+    setState(() => _consumedPhoneUseApprovalTicketIds.add(ticketId));
+
+    final startedAt = DateTime.now();
+    final coordinator = DeviceAutomationCoordinator(
+      provider: EmbeddedAccessibilityDeviceAutomationProvider(),
+      evidenceStore: _agentEvidenceStore,
+      approvalTickets: DeviceAutomationApprovalTicketStore.shared,
+    );
+    final execution = await coordinator.executeApprovedTicket(
+      ticketId,
+      approvalId: 'phone-user-${generateEvidenceId()}',
+      persistEvidence: true,
+    );
+    if (!mounted) return;
+    if (execution == null) {
+      _showMessage(
+        'Phone Use approval expired or was already consumed. Observe again to create a fresh card.',
+      );
+      return;
+    }
+
+    final evidence = execution.evidence;
+    final completedStep = _AgentTraceStep(
+      title: execution.success
+          ? 'Approved Phone Use action completed'
+          : 'Approved Phone Use action blocked',
+      detail: evidence.logs.isEmpty
+          ? 'The one-shot Phone Use ticket was consumed.'
+          : evidence.logs.join(' '),
+      icon: execution.success
+          ? Icons.touch_app_outlined
+          : Icons.gpp_maybe_outlined,
+      toolName: 'phone_use_action',
+      details: {
+        'Action': evidence.metadata['deviceAction']?.toString() ?? 'unknown',
+        'Evidence ID': evidence.evidenceId,
+        'Status':
+            execution.success ? 'success' : (evidence.failureKind ?? 'blocked'),
+        'Approval': 'One-shot ticket consumed',
+      },
+      evidenceMetadata: evidence.metadata,
+      traceAction: MobileCodeAction.phoneUseAct,
+      state: execution.success ? _AgentStepState.done : _AgentStepState.failed,
+      startedAt: startedAt,
+      finishedAt: evidence.endedAt,
+    )..evidence = evidence;
+    setState(() => _agentTrace.add(completedStep));
+    _showMessage(execution.success
+        ? 'Approved Phone Use action completed.'
+        : 'Phone Use action blocked: ${evidence.failureKind ?? 'failed'}');
+    widget.onLog(
+      execution.success
+          ? 'Phone Use action completed'
+          : 'Phone Use action blocked',
+      evidence.metadata['deviceAction']?.toString() ?? 'phone_use_action',
+      execution.success ? Icons.touch_app_outlined : Icons.gpp_maybe_outlined,
+      execution.success ? _mint : _rose,
     );
     _scrollConversationToEnd(force: true);
   }
@@ -17309,6 +17413,10 @@ class _ChatPanelState extends State<_ChatPanel> {
             approvedCliHubPreviewEvidenceIds: _approvedCliHubPreviewEvidenceIds,
             onApproveCliHubPreview: (step) =>
                 unawaited(_approveCliHubPreviewStep(step)),
+            consumedPhoneUseApprovalTicketIds:
+                _consumedPhoneUseApprovalTicketIds,
+            onApprovePhoneUsePreview: (step) =>
+                unawaited(_approvePhoneUsePreviewStep(step)),
             onOpenCapabilityCenter: () {
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
@@ -22366,6 +22474,8 @@ class _AgentTracePanel extends StatelessWidget {
     required this.steps,
     required this.approvedCliHubPreviewEvidenceIds,
     required this.onApproveCliHubPreview,
+    required this.consumedPhoneUseApprovalTicketIds,
+    required this.onApprovePhoneUsePreview,
     required this.onOpenCapabilityCenter,
   });
 
@@ -22373,6 +22483,8 @@ class _AgentTracePanel extends StatelessWidget {
   final List<_AgentTraceStep> steps;
   final Set<String> approvedCliHubPreviewEvidenceIds;
   final ValueChanged<_AgentTraceStep> onApproveCliHubPreview;
+  final Set<String> consumedPhoneUseApprovalTicketIds;
+  final ValueChanged<_AgentTraceStep> onApprovePhoneUsePreview;
   final VoidCallback onOpenCapabilityCenter;
 
   @override
@@ -22422,6 +22534,11 @@ class _AgentTracePanel extends StatelessWidget {
                 steps[index].evidenceId,
               ),
               onApproveCliHubPreview: onApproveCliHubPreview,
+              phoneUseApprovalConsumed:
+                  consumedPhoneUseApprovalTicketIds.contains(
+                _phoneUseApprovalTicketId(steps[index]),
+              ),
+              onApprovePhoneUsePreview: onApprovePhoneUsePreview,
               onOpenCapabilityCenter: onOpenCapabilityCenter,
             ),
           ],
@@ -22455,6 +22572,17 @@ bool _isCliHubApprovalPreviewStep(_AgentTraceStep step) =>
 
 bool _isCliHubApprovalPreviewMetadata(Map<String, dynamic> metadata) =>
     metadata['previewOnly'] == true || metadata['status'] == 'approvalRequired';
+
+bool _isPhoneUseApprovalPreviewStep(_AgentTraceStep step) =>
+    step.toolName == 'phone_use_action' &&
+    step.evidenceMetadata['approvalTicket'] is Map &&
+    (step.evidenceMetadata['approval'] is! Map ||
+        (step.evidenceMetadata['approval'] as Map)['granted'] != true);
+
+String _phoneUseApprovalTicketId(_AgentTraceStep step) {
+  final ticket = step.evidenceMetadata['approvalTicket'];
+  return ticket is Map ? ticket['id']?.toString() ?? '' : '';
+}
 
 class _AgentTraceLiveStatus extends StatelessWidget {
   const _AgentTraceLiveStatus({required this.step});
@@ -22602,6 +22730,8 @@ class _AgentTraceRow extends StatelessWidget {
     required this.isLast,
     required this.cliHubPreviewApproved,
     required this.onApproveCliHubPreview,
+    required this.phoneUseApprovalConsumed,
+    required this.onApprovePhoneUsePreview,
     required this.onOpenCapabilityCenter,
   });
 
@@ -22610,6 +22740,8 @@ class _AgentTraceRow extends StatelessWidget {
   final bool isLast;
   final bool cliHubPreviewApproved;
   final ValueChanged<_AgentTraceStep> onApproveCliHubPreview;
+  final bool phoneUseApprovalConsumed;
+  final ValueChanged<_AgentTraceStep> onApprovePhoneUsePreview;
   final VoidCallback onOpenCapabilityCenter;
 
   @override
@@ -22617,6 +22749,13 @@ class _AgentTraceRow extends StatelessWidget {
     final color = _agentStepColor(step.state);
     final icon = _agentStepStatusIcon(step.state);
     final recoveryActions = _agentTraceRecoveryActions(step);
+    final phoneAssessment = step.evidenceMetadata['riskAssessment'];
+    final phoneTicket = step.evidenceMetadata['approvalTicket'];
+    final phoneRisk = phoneAssessment is Map
+        ? phoneAssessment['riskClass']?.toString() ?? ''
+        : '';
+    final phoneExternalTransaction =
+        phoneRisk == DeviceAutomationRiskClass.externalTransaction.name;
     final showProgress = step.toolName == 'cli_hub_task' &&
         (step.state == _AgentStepState.running ||
             agentTraceProgressSummary(step.evidenceMetadata) != null) &&
@@ -22742,6 +22881,103 @@ class _AgentTraceRow extends StatelessWidget {
                             ),
                           ),
                         ],
+                      ),
+                    ],
+                    if (_isPhoneUseApprovalPreviewStep(step)) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: (phoneExternalTransaction ? _rose : _amber)
+                              .withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: (phoneExternalTransaction ? _rose : _amber)
+                                .withOpacity(0.38),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  phoneExternalTransaction
+                                      ? Icons.payment_outlined
+                                      : Icons.touch_app_outlined,
+                                  size: 17,
+                                  color:
+                                      phoneExternalTransaction ? _rose : _amber,
+                                ),
+                                const SizedBox(width: 7),
+                                Expanded(
+                                  child: Text(
+                                    phoneExternalTransaction
+                                        ? 'Trusted transaction approval'
+                                        : 'One-shot Phone Use approval',
+                                    style: TextStyle(
+                                      color: phoneExternalTransaction
+                                          ? _rose
+                                          : _amber,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 7),
+                            Text(
+                              phoneAssessment is Map
+                                  ? 'Target: ${phoneAssessment['targetLabel'] ?? '<unavailable>'}\nRisk: $phoneRisk · ${phoneAssessment['reason'] ?? 'trusted policy'}'
+                                  : 'Trusted target preview unavailable.',
+                              style: const TextStyle(
+                                color: _muted,
+                                fontSize: 11.5,
+                                height: 1.4,
+                              ),
+                            ),
+                            if (phoneTicket is Map) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Expires ${phoneTicket['expiresAt'] ?? 'soon'} · valid once · page-bound',
+                                style: const TextStyle(
+                                  color: _faint,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 9),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor:
+                                      phoneExternalTransaction ? _rose : _amber,
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: phoneUseApprovalConsumed
+                                    ? null
+                                    : () => onApprovePhoneUsePreview(step),
+                                icon: Icon(
+                                  phoneUseApprovalConsumed
+                                      ? Icons.lock_clock_outlined
+                                      : Icons.verified_user_outlined,
+                                  size: 16,
+                                ),
+                                label: Text(
+                                  phoneUseApprovalConsumed
+                                      ? 'Approval ticket consumed'
+                                      : phoneExternalTransaction
+                                          ? 'Confirm transaction action once'
+                                          : 'Allow once',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                     if (showProgress) ...[

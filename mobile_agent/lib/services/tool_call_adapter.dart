@@ -518,6 +518,38 @@ class OpenAiCompatibleToolCallAdapter {
             'maxRecent': _intArg(args, 'max_recent', defaultValue: 12),
           },
         );
+      case 'phone_use_observe':
+        return ActionSchema(
+          actionName: MobileCodeAction.phoneUseObserve,
+          requestId: call.id,
+          paramsSummary: 'provider-native phone_use_observe',
+          params: const {'action': 'observe'},
+        );
+      case 'phone_use_action':
+        return ActionSchema(
+          actionName: MobileCodeAction.phoneUseAct,
+          requestId: call.id,
+          paramsSummary:
+              'provider-native phone_use_action approval preview only',
+          risk: ActionRisk.medium,
+          approvalRequired: true,
+          params: {
+            'action': _stringArg(args, 'action'),
+            'targetRef': _stringArg(args, 'target_ref'),
+            'x': _intArg(args, 'x', defaultValue: 0),
+            'y': _intArg(args, 'y', defaultValue: 0),
+            'x2': _intArg(args, 'x2', defaultValue: 0),
+            'y2': _intArg(args, 'y2', defaultValue: 0),
+            'durationMs': _intArg(args, 'duration_ms', defaultValue: 300),
+            'text': _stringArg(args, 'text'),
+            'secretId': _stringArg(args, 'secret_id'),
+            'sensitiveFlow':
+                _boolArg(args, 'sensitive_flow', defaultValue: false),
+            'captureIfSparse': false,
+            'approved': false,
+            'approvalPreview': true,
+          },
+        );
       case 'write_file':
         final content = _stringArgAny(args, const ['content', 'html', 'body']);
         final path = _safeWritePath(args, content);
@@ -990,6 +1022,77 @@ class OpenAiCompatibleToolCallAdapter {
           'include_glob',
           'max_results',
           'max_bytes'
+        ],
+      ),
+      functionTool(
+        name: 'phone_use_observe',
+        description:
+            'Read the current Android screen as a cropped and redacted semantic accessibility snapshot. This is observation-only: it cannot click, type, capture a screenshot, or approve a transaction.',
+        properties: const {},
+        required: const [],
+      ),
+      functionTool(
+        name: 'phone_use_action',
+        description:
+            'Prepare a trusted one-shot approval card for a semantic Android action. This tool never acts directly: a human must review and tap the card before its short-lived ticket expires. Observe first and use @e references. Use secret_id instead of text for credentials.',
+        properties: const {
+          'action': {
+            'type': 'string',
+            'enum': ['tapRef', 'setTextRef', 'swipe', 'back', 'home'],
+            'description': 'Requested semantic device action.'
+          },
+          'target_ref': {
+            'type': 'string',
+            'description':
+                'Fresh @e reference from phone_use_observe; empty when unused.'
+          },
+          'x': {
+            'type': 'integer',
+            'description': 'Swipe start X; use 0 when unused.'
+          },
+          'y': {
+            'type': 'integer',
+            'description': 'Swipe start Y; use 0 when unused.'
+          },
+          'x2': {
+            'type': 'integer',
+            'description': 'Swipe end X; use 0 when unused.'
+          },
+          'y2': {
+            'type': 'integer',
+            'description': 'Swipe end Y; use 0 when unused.'
+          },
+          'duration_ms': {
+            'type': 'integer',
+            'description': 'Swipe duration in milliseconds.'
+          },
+          'text': {
+            'type': 'string',
+            'description':
+                'Non-secret text to type; empty when unused. Never put credentials here.'
+          },
+          'secret_id': {
+            'type': 'string',
+            'description':
+                'Approved local credential slot identifier; empty when unused.'
+          },
+          'sensitive_flow': {
+            'type': 'boolean',
+            'description':
+                'True for login, payment, personal-data, or other sensitive screens.'
+          },
+        },
+        required: const [
+          'action',
+          'target_ref',
+          'x',
+          'y',
+          'x2',
+          'y2',
+          'duration_ms',
+          'text',
+          'secret_id',
+          'sensitive_flow',
         ],
       ),
       functionTool(

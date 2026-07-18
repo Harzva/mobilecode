@@ -2,10 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../services/device_automation_provider.dart';
 import '../services/phone_use_accessibility_service.dart';
 
 class PhoneUseModeCard extends StatefulWidget {
-  const PhoneUseModeCard({super.key});
+  const PhoneUseModeCard({
+    super.key,
+    this.deviceAutomationCoordinator,
+    this.credentialSlotService,
+  });
+
+  final DeviceAutomationCoordinator? deviceAutomationCoordinator;
+  final PhoneUseCredentialSlotService? credentialSlotService;
 
   @override
   State<PhoneUseModeCard> createState() => _PhoneUseModeCardState();
@@ -19,23 +27,37 @@ class _PhoneUseModeCardState extends State<PhoneUseModeCard> {
   final _probeFieldKey = GlobalKey();
   final _probeFieldController = TextEditingController();
   final _probeFocusNode = FocusNode();
+  final _credentialSlotController = TextEditingController();
+  final _credentialValueController = TextEditingController();
+  late final DeviceAutomationCoordinator _deviceAutomationCoordinator;
+  late final PhoneUseCredentialSlotService _credentialSlotService;
   PhoneUseAccessibilityStatus? _status;
   Map<String, dynamic>? _lastProbe;
   Map<String, dynamic>? _lastActionProbe;
   bool _checking = false;
   bool _running = false;
   bool _runningActionProbe = false;
+  bool _savingCredential = false;
+  String? _credentialStatus;
 
   @override
   void dispose() {
     _probeFieldController.dispose();
     _probeFocusNode.dispose();
+    _credentialSlotController.dispose();
+    _credentialValueController.dispose();
     super.dispose();
   }
 
   @override
   void initState() {
     super.initState();
+    _deviceAutomationCoordinator = widget.deviceAutomationCoordinator ??
+        DeviceAutomationCoordinator(
+          provider: EmbeddedAccessibilityDeviceAutomationProvider(),
+        );
+    _credentialSlotService =
+        widget.credentialSlotService ?? PhoneUseCredentialSlotService();
     _lastProbe = _cachedLastProbe;
     _lastActionProbe = _cachedLastActionProbe;
     final cachedProbeFieldValue = _cachedProbeFieldValue;
@@ -63,7 +85,13 @@ class _PhoneUseModeCardState extends State<PhoneUseModeCard> {
 
   Future<void> _runDryProbe() async {
     setState(() => _running = true);
-    final probe = await PhoneUseAccessibilityService.instance.runDryProbe();
+    final execution = await _deviceAutomationCoordinator.execute(
+      const DeviceAutomationRequest(action: DeviceAutomationActionKind.observe),
+    );
+    final probe = {
+      ...execution.result.data,
+      'evidenceId': execution.evidence.evidenceId,
+    };
     final status = await PhoneUseAccessibilityService.instance.getStatus();
     if (!mounted) return;
     setState(() {
@@ -78,25 +106,55 @@ class _PhoneUseModeCardState extends State<PhoneUseModeCard> {
     setState(() => _runningActionProbe = true);
     final actions = <Map<String, dynamic>>[];
 
-    Future<Map<String, dynamic>> runAction(Map<String, dynamic> action) async {
-      final result = await PhoneUseAccessibilityService.instance.performAction(
-        action,
-      );
+    Future<DeviceAutomationExecution> runAction(
+      DeviceAutomationRequest request,
+    ) async {
+      final execution = await _deviceAutomationCoordinator.execute(request);
+      final result = execution.result.data;
       actions.add({
-        'type': action['type'],
+        'type': request.action.name,
         'status': result['status'],
-        'accepted': result['accepted'] == true,
-        'failureKind': result['failureKind'],
+        'accepted': execution.success,
+        'failureKind': execution.evidence.failureKind,
+        'evidenceId': execution.evidence.evidenceId,
       });
-      return result;
+      return execution;
     }
 
-    await runAction({'type': 'observe_ui'});
+    final observation = await runAction(
+      const DeviceAutomationRequest(action: DeviceAutomationActionKind.observe),
+    );
+    final snapshotMap = _mapValue(
+      observation.result.data['snapshot'] ??
+          observation.result.data['observation'],
+    );
+    final snapshot = snapshotMap.isEmpty
+        ? null
+        : PhoneUseSemanticSnapshot.fromMap(snapshotMap);
+    PhoneUseSemanticNode? editable;
+    for (final node in snapshot?.nodes ?? const <PhoneUseSemanticNode>[]) {
+      if (node.editable && node.enabled) {
+        editable = node;
+        break;
+      }
+    }
 
     _probeFieldController.clear();
     _probeFocusNode.requestFocus();
     await Future<void>.delayed(const Duration(milliseconds: 250));
-    await runAction({'type': 'set_text', 'text': 'p58 phone use'});
+    await runAction(
+      DeviceAutomationRequest(
+        action: editable == null
+            ? DeviceAutomationActionKind.setTextFocused
+            : DeviceAutomationActionKind.setTextRef,
+        targetRef: editable == null || snapshot?.refsGeneration == null
+            ? null
+            : editable.pinnedRef(snapshot!.refsGeneration!),
+        text: 'phone use probe',
+        approvalGranted: true,
+        approvalSource: 'phone_use_probe_button',
+      ),
+    );
 
     final fieldBox =
         _probeFieldKey.currentContext?.findRenderObject() as RenderBox?;
@@ -104,19 +162,27 @@ class _PhoneUseModeCardState extends State<PhoneUseModeCard> {
       final center = fieldBox.localToGlobal(
         Offset(fieldBox.size.width / 2, fieldBox.size.height / 2),
       );
-      await runAction({
-        'type': 'tap',
-        'x': center.dx.round(),
-        'y': center.dy.round(),
-      });
-      await runAction({
-        'type': 'swipe',
-        'x1': (center.dx + 80).round(),
-        'y1': center.dy.round(),
-        'x2': (center.dx - 80).round(),
-        'y2': center.dy.round(),
-        'durationMs': 180,
-      });
+      await runAction(
+        DeviceAutomationRequest(
+          action: DeviceAutomationActionKind.tapCoordinate,
+          x: center.dx.round(),
+          y: center.dy.round(),
+          approvalGranted: true,
+          approvalSource: 'phone_use_probe_button',
+        ),
+      );
+      await runAction(
+        DeviceAutomationRequest(
+          action: DeviceAutomationActionKind.swipe,
+          x: (center.dx + 80).round(),
+          y: center.dy.round(),
+          x2: (center.dx - 80).round(),
+          y2: center.dy.round(),
+          durationMs: 180,
+          approvalGranted: true,
+          approvalSource: 'phone_use_probe_button',
+        ),
+      );
     } else {
       actions.add({
         'type': 'tap',
@@ -134,14 +200,14 @@ class _PhoneUseModeCardState extends State<PhoneUseModeCard> {
 
     final status = await PhoneUseAccessibilityService.instance.getStatus();
     final accepted = actions.where((action) => action['accepted'] == true);
-    final textSet = _probeFieldController.text == 'p58 phone use';
+    final textSet = _probeFieldController.text == 'phone use probe';
     final actionProbe = {
       'status':
           accepted.length == actions.length && textSet ? 'passed' : 'warning',
       'actions': actions,
       'acceptedCount': accepted.length,
       'totalActions': actions.length,
-      'textFieldValue': _probeFieldController.text,
+      'textLength': _probeFieldController.text.length,
       'textSet': textSet,
       'homeAccepted': false,
       'homeScheduled': false,
@@ -149,6 +215,10 @@ class _PhoneUseModeCardState extends State<PhoneUseModeCard> {
       'countsAsStrategyAblationResult': false,
       'rawTextIncluded': false,
       'redactionApplied': true,
+      'evidenceIds': actions
+          .map((action) => action['evidenceId'])
+          .whereType<String>()
+          .toList(growable: false),
     };
     _cachedLastActionProbe = actionProbe;
     _cachedProbeFieldValue = _probeFieldController.text;
@@ -158,6 +228,47 @@ class _PhoneUseModeCardState extends State<PhoneUseModeCard> {
       _status = status;
       _runningActionProbe = false;
     });
+  }
+
+  Future<void> _storeCredentialSlot() async {
+    final slotId = _credentialSlotController.text;
+    final value = _credentialValueController.text;
+    setState(() {
+      _savingCredential = true;
+      _credentialStatus = null;
+    });
+    try {
+      await _credentialSlotService.store(slotId, value);
+      _credentialValueController.clear();
+      if (!mounted) return;
+      setState(() => _credentialStatus = 'Stored locally as $slotId.');
+    } on Object {
+      if (!mounted) return;
+      setState(() => _credentialStatus =
+          'Credential slot was not stored. Check the slot ID and device lock.');
+    } finally {
+      if (mounted) setState(() => _savingCredential = false);
+    }
+  }
+
+  Future<void> _deleteCredentialSlot() async {
+    final slotId = _credentialSlotController.text;
+    setState(() {
+      _savingCredential = true;
+      _credentialStatus = null;
+    });
+    try {
+      await _credentialSlotService.delete(slotId);
+      _credentialValueController.clear();
+      if (!mounted) return;
+      setState(() => _credentialStatus = 'Deleted local slot $slotId.');
+    } on Object {
+      if (!mounted) return;
+      setState(() => _credentialStatus =
+          'Credential slot was not deleted. Check the slot ID and device lock.');
+    } finally {
+      if (mounted) setState(() => _savingCredential = false);
+    }
   }
 
   @override
@@ -306,6 +417,74 @@ class _PhoneUseModeCardState extends State<PhoneUseModeCard> {
               ),
             ),
             const SizedBox(height: 12),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              title: const Text(
+                'Controlled credential slot',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+              ),
+              subtitle: const Text(
+                'Stored in Keystore/Keychain. Agent evidence records only secret_id.',
+                style: TextStyle(fontSize: 11.5),
+              ),
+              children: [
+                TextField(
+                  controller: _credentialSlotController,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: 'Slot ID (for example takeout.qa.password)',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _credentialValueController,
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    labelText: 'Credential value',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: _savingCredential
+                          ? null
+                          : () => unawaited(_storeCredentialSlot()),
+                      icon: const Icon(Icons.lock_outline),
+                      label: const Text('Store locally'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _savingCredential
+                          ? null
+                          : () => unawaited(_deleteCredentialSlot()),
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Delete slot'),
+                    ),
+                  ],
+                ),
+                if (_credentialStatus != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _credentialStatus!,
+                    style: const TextStyle(
+                      color: Color(0xFF536079),
+                      fontSize: 11.5,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 12),
             _PhoneUseSummary(
               status: status,
               probe: _lastProbe,
@@ -359,8 +538,12 @@ class _PhoneUseSummary extends StatelessWidget {
         _SummaryLine(
           'Accessibility: enabled=${status.accessibilityEnabled}, connected=${status.serviceConnected}',
         ),
+        _SummaryLine('Lifecycle: ${status.lifecycleState.wireValue}'),
         _SummaryLine(
-          'Capabilities: observe=${status.canObserveActiveWindow}, gestures=${status.canPerformGestures}, text=${status.canSetText}',
+          'Capabilities: observe=${status.canObserveActiveWindow}, gestures=${status.canPerformGestures}, text=${status.canSetText}, screenshot=${status.canCaptureScreenshot}',
+        ),
+        _SummaryLine(
+          'Background: restricted=${status.backgroundRestricted}, battery_exempt=${status.batteryOptimizationIgnored}',
         ),
         _SummaryLine('Supported actions: $actions'),
         _SummaryLine(
@@ -374,7 +557,10 @@ class _PhoneUseSummary extends StatelessWidget {
             'Observed nodes: ${observation['nodeCount'] ?? 0}, clickable ${observation['clickableNodeCount'] ?? 0}, editable ${observation['editableNodeCount'] ?? 0}',
           ),
           _SummaryLine(
-            'Foreground: ${observation['rootPackageName'] ?? 'unknown'} / ${observation['rootClassName'] ?? 'unknown'}',
+            'Semantic frame: ${observation['frameId'] ?? 'none'} state=${observation['frameState'] ?? 'none'} digest=${observation['digest'] ?? 'none'}',
+          ),
+          _SummaryLine(
+            'Foreground: ${observation['rootPackageNameHash'] ?? 'unknown'} / ${observation['rootClassName'] ?? 'unknown'}',
           ),
         ],
         if (actionProbe != null) ...[

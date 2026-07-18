@@ -87,6 +87,16 @@ class MainActivity : FlutterActivity() {
                     "openAppSettings" -> result.success(openAppSettings())
                     "openBatteryOptimizationSettings" -> result.success(openBatteryOptimizationSettings())
                     "runPhoneUseDryProbe" -> result.success(PhoneUseAccessibilityService.dryProbe(this))
+                    "markPhoneUseRecoveryRequested" ->
+                        result.success(PhoneUseAccessibilityService.markRecoveryRequested(this))
+                    "capturePhoneUseScreenshot" ->
+                        PhoneUseAccessibilityService.captureScreenshot(
+                            this,
+                            call.argument<Boolean>("approved") == true,
+                            call.argument<Boolean>("sensitiveFlow") == true,
+                        ) { screenshot ->
+                            result.success(screenshot)
+                        }
                     "performPhoneUseAction" -> {
                         @Suppress("UNCHECKED_CAST")
                         val action = call.argument<Map<String, Any?>>("action") ?: emptyMap()

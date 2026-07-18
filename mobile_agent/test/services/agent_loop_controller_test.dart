@@ -6,6 +6,7 @@ import 'package:mobile_agent/core/evidence/action_evidence_store.dart';
 import 'package:mobile_agent/core/evidence/action_runner.dart';
 import 'package:mobile_agent/core/evidence/evidence_model.dart';
 import 'package:mobile_agent/services/agent_loop_controller.dart';
+import 'package:mobile_agent/services/device_automation_provider.dart';
 import 'package:mobile_agent/services/harness_permission_service.dart';
 import 'package:mobile_agent/services/tool_call_adapter.dart';
 
@@ -144,6 +145,41 @@ void main() {
     expect(defaultController.allowedToolNames, isNot(contains('cli_hub_task')));
     expect(cliController.allowedToolNames, contains('cli_hub_task'));
     expect(cliController.allowedToolNames, isNot(contains('raw_shell')));
+  });
+
+  test('AgentLoop exposes Phone Use tools only when device route is connected',
+      () {
+    final noDeviceRunner =
+        ActionRunner(workspaceRootPath: workspace.path, evidenceStore: store);
+    final deviceRunner = ActionRunner(
+      workspaceRootPath: workspace.path,
+      evidenceStore: store,
+      deviceAutomationCoordinator: DeviceAutomationCoordinator(
+        provider: EmbeddedAccessibilityDeviceAutomationProvider(),
+      ),
+    );
+
+    final disconnectedController = AgentLoopController(
+      adapter: adapter,
+      actionRunner: noDeviceRunner,
+      preset: AgentPreset.autoAgent,
+    );
+    final connectedController = AgentLoopController(
+      adapter: adapter,
+      actionRunner: deviceRunner,
+      preset: AgentPreset.autoAgent,
+    );
+
+    expect(disconnectedController.allowedToolNames,
+        isNot(contains('phone_use_observe')));
+    expect(disconnectedController.allowedToolNames,
+        isNot(contains('phone_use_action')));
+    expect(connectedController.allowedToolNames, contains('phone_use_observe'));
+    expect(connectedController.allowedToolNames, contains('phone_use_action'));
+    expect(
+      AgentPreset.autoAgent.systemInstruction,
+      allOf(contains('one-shot human approval card'), contains('secret_id')),
+    );
   });
 
   test('AgentLoop executes cli_hub_task through ActionRunner evidence bridge',
@@ -469,19 +505,17 @@ void main() {
     expect(result.answer, contains('Alpine Linux Runtime'));
     expect(runtimeCalls, hasLength(1));
     expect(runtimeCalls.single['taskKind'], 'package_install');
-    final evidence = store
-        .recent(count: 5)
-        .firstWhere((item) =>
-            item.actionName == MobileCodeAction.cliHubTaskStart &&
-            item.metadata['taskKind'] == 'package_install');
+    final evidence = store.recent(count: 5).firstWhere((item) =>
+        item.actionName == MobileCodeAction.cliHubTaskStart &&
+        item.metadata['taskKind'] == 'package_install');
     expect(evidence.success, isFalse);
     expect(evidence.failureKind, ActionFailureKind.dependencyMissing);
     expect(evidence.metadata['status'], 'needsSetup');
     expect(evidence.metadata['runtime'], 'linuxSandbox');
     expect(evidence.metadata['runtimeMetadata'],
         containsPair('alpineRuntime', 'needsSetup'));
-    expect(evidence.recoveryActions.join(' '),
-        contains('Alpine Linux Runtime'));
+    expect(
+        evidence.recoveryActions.join(' '), contains('Alpine Linux Runtime'));
   });
 
   test('AgentLoop keeps CLI Hub install preview and approval as separate steps',

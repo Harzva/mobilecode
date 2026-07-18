@@ -11,6 +11,14 @@
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config_debug"
         tools:replace="android:usesCleartextTraffic,android:networkSecurityConfig">
+        <activity
+            android:name=".PhoneUseTakeoutQaActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <receiver
+            android:name=".PhoneUseQaBridgeReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
     </application>
     
     <!-- Debug: Allow internet for Flutter debugging -->

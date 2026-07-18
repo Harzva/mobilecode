@@ -240,6 +240,7 @@ def main() -> None:
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canPerformGestures="true"
     android:canRetrieveWindowContent="true"
+    android:canTakeScreenshot="true"
     android:description="@string/mobilecode_phone_use_accessibility_description"
     android:notificationTimeout="100"
     android:summary="@string/mobilecode_phone_use_accessibility_summary" />

@@ -121,6 +121,10 @@ class _PhoneUseModeCardState extends State<PhoneUseModeCard> {
       return execution;
     }
 
+    _probeFieldController.clear();
+    _probeFocusNode.unfocus();
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+
     final observation = await runAction(
       const DeviceAutomationRequest(action: DeviceAutomationActionKind.observe),
     );
@@ -128,20 +132,46 @@ class _PhoneUseModeCardState extends State<PhoneUseModeCard> {
       observation.result.data['snapshot'] ??
           observation.result.data['observation'],
     );
-    final snapshot = snapshotMap.isEmpty
+    var snapshot = snapshotMap.isEmpty
         ? null
         : PhoneUseSemanticSnapshot.fromMap(snapshotMap);
-    PhoneUseSemanticNode? editable;
-    for (final node in snapshot?.nodes ?? const <PhoneUseSemanticNode>[]) {
-      if (node.editable && node.enabled) {
-        editable = node;
-        break;
+    PhoneUseSemanticNode? findEditable(PhoneUseSemanticSnapshot? value) {
+      for (final node in value?.nodes ?? const <PhoneUseSemanticNode>[]) {
+        if (node.editable && node.enabled) return node;
       }
+      return null;
     }
 
-    _probeFieldController.clear();
-    _probeFocusNode.requestFocus();
-    await Future<void>.delayed(const Duration(milliseconds: 250));
+    var editable = findEditable(snapshot);
+    if (editable != null && snapshot?.refsGeneration != null) {
+      await runAction(
+        DeviceAutomationRequest(
+          action: DeviceAutomationActionKind.tapRef,
+          targetRef: editable.pinnedRef(snapshot!.refsGeneration!),
+          approvalGranted: true,
+          approvalSource: 'phone_use_probe_button',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      final refreshedObservation = await runAction(
+        const DeviceAutomationRequest(
+          action: DeviceAutomationActionKind.observe,
+        ),
+      );
+      final refreshedSnapshotMap = _mapValue(
+        refreshedObservation.result.data['snapshot'] ??
+            refreshedObservation.result.data['observation'],
+      );
+      snapshot = refreshedSnapshotMap.isEmpty
+          ? null
+          : PhoneUseSemanticSnapshot.fromMap(refreshedSnapshotMap);
+      editable = findEditable(snapshot);
+    }
+
+    if (editable == null) {
+      _probeFocusNode.requestFocus();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
     await runAction(
       DeviceAutomationRequest(
         action: editable == null
@@ -577,7 +607,7 @@ class _PhoneUseSummary extends StatelessWidget {
           _SummaryLine('Home action: ${actionProbe!['homeAccepted'] ?? false}'),
           for (final action in _actionDetails(actionProbe!))
             _SummaryLine(
-              'Action detail: ${action['type']} ${action['status']} accepted=${action['accepted']}',
+              'Action detail: ${action['type']} ${action['status']} accepted=${action['accepted']} failure=${action['failureKind'] ?? 'none'}',
             ),
         ],
       ],

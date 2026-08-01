@@ -1,0 +1,7 @@
+{
+  "apk": "mobile_agent/build/app/outputs/flutter-apk/app-pure-release.apk",
+  "sha256": "ac57246a5007610bd0ca09b884f41c085d3b32235f6755d01e5271bfce52b013",
+  "package": "com.mobilecode.app",
+  "activity": "com.mobilecode.app.MainActivity",
+  "accessibility_service": "com.mobilecode.app/com.mobilecode.app.PhoneUseAccessibilityService"
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run P6.3 Android Accessibility phone-use runtime verification.
+"""Run P6.3 Android Accessibility phone-use device QA verification.
 
 This verifier installs a MobileCode APK on an Android emulator, enables the
 MobileCode Accessibility service in the test environment, drives the Tools page
@@ -32,7 +32,7 @@ BOUNDARY = p5.BOUNDARY
 PACKAGE = "com.mobilecode.app"
 ACTIVITY = "com.mobilecode.app.MainActivity"
 SERVICE = f"{PACKAGE}/{PACKAGE}.PhoneUseAccessibilityService"
-TASK_ID = "P63-ANDROID-REAL-DEVICE-LANE-001"
+TASK_ID = "P63-ANDROID-DEVICE-QA-001"
 
 
 def utc_now() -> str:
@@ -142,7 +142,66 @@ class AdbHarness:
 
     def tap(self, x: int, y: int) -> None:
         self.shell("input", "tap", str(x), str(y), timeout=10)
-        return path
+
+
+def connected_device_lines(adb_output: str) -> list[str]:
+    connected: list[str] = []
+    for raw_line in adb_output.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("List of devices"):
+            continue
+        columns = line.split()
+        if len(columns) >= 2 and columns[1] == "device":
+            connected.append(line)
+    return connected
+
+
+def redact_adb_device_serials(adb_output: str) -> str:
+    safe_lines: list[str] = []
+    for raw_line in adb_output.splitlines():
+        columns = raw_line.split()
+        if len(columns) >= 2 and columns[1] in {
+            "device",
+            "offline",
+            "unauthorized",
+        }:
+            columns[0] = "[REDACTED_DEVICE_SERIAL]"
+            safe_lines.append(" ".join(columns))
+        else:
+            safe_lines.append(raw_line)
+    return "\n".join(safe_lines)
+
+
+def shell_value(h: AdbHarness, *args: str) -> str:
+    completed = h.shell(*args, timeout=20)
+    if completed.returncode != 0:
+        return ""
+    return completed.stdout.strip()
+
+
+def device_metadata(h: AdbHarness, device_lines: list[str]) -> dict[str, Any]:
+    serial = shell_value(h, "getprop", "ro.serialno")
+    serial_hash = (
+        hashlib.sha256(serial.encode("utf-8")).hexdigest()[:16]
+        if serial
+        else None
+    )
+    qemu = shell_value(h, "getprop", "ro.kernel.qemu") == "1"
+    selected_line = device_lines[0] if device_lines else ""
+    is_emulator = qemu or selected_line.startswith("emulator-")
+    return {
+        "device_kind": "android_emulator" if is_emulator else "android_physical_device",
+        "serial_hash": serial_hash,
+        "manufacturer": shell_value(h, "getprop", "ro.product.manufacturer"),
+        "model": shell_value(h, "getprop", "ro.product.model"),
+        "device": shell_value(h, "getprop", "ro.product.device"),
+        "android_release": shell_value(h, "getprop", "ro.build.version.release"),
+        "api_level": shell_value(h, "getprop", "ro.build.version.sdk"),
+        "abi": shell_value(h, "getprop", "ro.product.cpu.abi"),
+        "screen_size": shell_value(h, "wm", "size"),
+        "screen_density": shell_value(h, "wm", "density"),
+        "raw_serial_included": False,
+    }
 
 
 def parse_bounds(value: str) -> tuple[int, int, int, int] | None:
@@ -172,6 +231,7 @@ def find_node_bounds(xml_path: Path | None, needle: str) -> tuple[int, int] | No
     except ET.ParseError:
         return None
     needle_lower = needle.lower()
+    candidates: list[tuple[int, int, int, int, int]] = []
     for node in root.iter("node"):
         if needle_lower not in node_text(node).lower():
             continue
@@ -179,8 +239,29 @@ def find_node_bounds(xml_path: Path | None, needle: str) -> tuple[int, int] | No
         if not bounds:
             continue
         x1, y1, x2, y2 = bounds
-        return ((x1 + x2) // 2, (y1 + y2) // 2)
-    return None
+        exact = any(
+            value.strip().lower() == needle_lower
+            for value in (
+                node.attrib.get("text", ""),
+                node.attrib.get("content-desc", ""),
+            )
+            if value
+        )
+        clickable = node.attrib.get("clickable") == "true"
+        area = max(1, x2 - x1) * max(1, y2 - y1)
+        candidates.append(
+            (
+                0 if exact else 1,
+                0 if clickable else 1,
+                area,
+                (x1 + x2) // 2,
+                (y1 + y2) // 2,
+            )
+        )
+    if not candidates:
+        return None
+    _, _, _, x, y = min(candidates)
+    return x, y
 
 
 def xml_contains(xml_path: Path | None, text: str) -> bool:
@@ -328,6 +409,8 @@ def write_run(
     score: dict[str, Any],
     evidence: dict[str, Any],
     wall_ms: int,
+    terminal_outcome: str,
+    device_kind: str,
 ) -> None:
     traces_dir = output / "strategy_traces"
     traces_dir.mkdir(parents=True, exist_ok=True)
@@ -371,6 +454,8 @@ def write_run(
                 "task_id": TASK_ID,
                 "task_category": "android_phone_use_runtime",
                 "status": status,
+                "terminal_outcome": terminal_outcome,
+                "device_kind": device_kind,
                 "strategy_trace": trace,
                 "time_metrics": {
                     "planning_ms": 0,
@@ -415,10 +500,12 @@ def write_run(
         "counts_as_experiment": False,
         "counts_as_strategy_ablation_result": False,
         "run_kind": RUN_KIND,
-        "evidence_boundary": f"{BOUNDARY}:p63_android_real_device_lane_not_counted",
+        "evidence_boundary": f"{BOUNDARY}:p63_android_device_qa_lane_not_counted",
+        "terminal_outcome": terminal_outcome,
+        "device_kind": device_kind,
         "strategy_family": "mixed_strategy_ablation",
         "mode": {
-            "name": "P6.3 Android real device lane",
+            "name": "P6.3 Android device QA lane",
             "mode": RUN_KIND,
             "non_counted_reason": "Android emulator or real-device Accessibility runtime QA; not a formal strategy ablation benchmark.",
             "runtime_android_permission_required": True,
@@ -432,12 +519,12 @@ def write_run(
             for strategy_id in selected
         ],
         "task_subset": {
-            "name": "p63-android-real-device-lane",
+            "name": "p63-android-device-qa-lane",
             "task_count": 1,
             "tasks": [
                 {
                     "task_id": TASK_ID,
-                    "task_category": "android_real_device_lane",
+                    "task_category": "android_device_qa_lane",
                     "title": "Android Accessibility phone-use dry/action probe with device evidence",
                     "max_score": 100,
                 }
@@ -478,19 +565,21 @@ def write_run(
             )
 
     summary_lines = [
-        "# P6.3 Android Real Device Lane",
+        "# P6.3 Android Device QA Lane",
         "",
         f"- run_id: `{run_id}`",
         f"- run_kind: `{RUN_KIND}`",
         "- counts_as_experiment: `false`",
         "- counts_as_strategy_ablation_result: `false`",
         f"- status: `{status}`",
+        f"- terminal_outcome: `{terminal_outcome}`",
+        f"- device_kind: `{device_kind}`",
         f"- runtime_score: `{score['total_score']}`",
         f"- action_acceptance: `{score['action_accepted_count']}/{score['action_total']}`",
         f"- back_action_verified: `{score['checks'].get('back_action_verified', False)}`",
         f"- home_action_verified: `{score['checks'].get('home_action_verified', False)}`",
         "",
-        "This verifier installs the latest APK on an Android emulator or real device, verifies MobileCode Accessibility state, runs App-internal dry/action probes, verifies adb Back/Home foreground transitions, and saves screenshot/UI XML/logcat evidence. It is non-counted and does not prove strategy quality differences.",
+        "This verifier installs the latest APK on an Android emulator or physical device, records the device kind, verifies MobileCode Accessibility state, runs App-internal dry/action probes, verifies adb Back/Home foreground transitions, and saves screenshot/UI XML/logcat evidence. It is non-counted and does not prove strategy quality differences.",
         "",
         "## Boundary",
         "",
@@ -540,8 +629,22 @@ def run(args: argparse.Namespace) -> int:
     errors: list[str] = []
 
     devices = h.adb_cmd("devices", "-l", timeout=20)
-    h.write_text("adb-devices.txt", devices.stdout + devices.stderr)
-    device_connected = "device" in devices.stdout
+    device_lines = connected_device_lines(devices.stdout)
+    h.write_text(
+        "adb-devices.txt",
+        redact_adb_device_serials(devices.stdout + devices.stderr),
+    )
+    device_connected = bool(device_lines)
+    metadata = device_metadata(h, device_lines) if device_connected else {
+        "device_kind": "unavailable",
+        "serial_hash": None,
+        "raw_serial_included": False,
+    }
+    device_info_path = output / "device.json"
+    device_info_path.write_text(
+        json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
 
     h.adb_cmd("logcat", "-c", timeout=20)
     install = h.adb_cmd(
@@ -557,6 +660,21 @@ def run(args: argparse.Namespace) -> int:
     h.write_text("install.txt", install.stdout + install.stderr)
     apk_installed = install.returncode == 0 and "Success" in (install.stdout + install.stderr)
 
+    disable_service = h.shell(
+        "settings",
+        "delete",
+        "secure",
+        "enabled_accessibility_services",
+        timeout=20,
+    )
+    disable_a11y = h.shell(
+        "settings",
+        "put",
+        "secure",
+        "accessibility_enabled",
+        "0",
+        timeout=20,
+    )
     enable_service = h.shell(
         "settings",
         "put",
@@ -568,17 +686,24 @@ def run(args: argparse.Namespace) -> int:
     enable_a11y = h.shell("settings", "put", "secure", "accessibility_enabled", "1", timeout=20)
     enabled_services = h.shell("settings", "get", "secure", "enabled_accessibility_services", timeout=20)
     accessibility_enabled = SERVICE in enabled_services.stdout
+    accessibility_setting_outputs = [
+        disable_service.stdout,
+        disable_service.stderr,
+        disable_a11y.stdout,
+        disable_a11y.stderr,
+        enable_service.stdout,
+        enable_service.stderr,
+        enable_a11y.stdout,
+        enable_a11y.stderr,
+        enabled_services.stdout,
+        enabled_services.stderr,
+    ]
     h.write_text(
         "accessibility-settings.txt",
         "\n".join(
-            [
-                enable_service.stdout,
-                enable_service.stderr,
-                enable_a11y.stdout,
-                enable_a11y.stderr,
-                enabled_services.stdout,
-                enabled_services.stderr,
-            ]
+            value.strip()
+            for value in accessibility_setting_outputs
+            if value.strip()
         ),
     )
 
@@ -609,15 +734,26 @@ def run(args: argparse.Namespace) -> int:
     phone_use_visible = False
     phone_xml: Path | None = None
     dry_button_visible = False
+    phone_use_ready = False
     for index in range(12):
         phone_xml = h.dump_ui(f"02-tools-search-{index}.xml")
         phone_use_visible = phone_use_visible or xml_contains(phone_xml, "Mobile Phone Use")
         dry_button_visible = xml_contains(phone_xml, "Run dry probe")
-        if phone_use_visible and dry_button_visible:
+        phone_use_ready = xml_contains(
+            phone_xml,
+            "Service connected",
+        ) and xml_contains(phone_xml, "Ready")
+        if phone_use_visible and dry_button_visible and phone_use_ready:
             phone_use_visible = True
             break
+        if phone_use_visible and dry_button_visible and tap_text(h, phone_xml, "Refresh"):
+            time.sleep(0.8)
+            continue
         h.shell("input", "swipe", "330", "760", "330", "300", "450", timeout=10)
         time.sleep(0.6)
+
+    if not phone_use_ready:
+        errors.append("Phone Use card did not reach the ready/service-connected state.")
 
     tools_png = h.screenshot("02-tools-phone-use.png")
     if tools_png:
@@ -629,35 +765,65 @@ def run(args: argparse.Namespace) -> int:
     if not dry_clicked:
         errors.append("Run dry probe button not found.")
     time.sleep(2.0)
-    dry_xml = h.dump_ui("03-dry-probe.xml")
+    dry_xml = None
+    for _ in range(10):
+        dry_xml = h.dump_ui("03-dry-probe.xml")
+        if xml_contains(dry_xml, "Dry probe status:"):
+            break
+        h.shell("input", "swipe", "330", "900", "330", "320", "450", timeout=10)
+        time.sleep(0.6)
     dry_png = h.screenshot("03-dry-probe.png")
     if dry_xml:
         evidence_paths["ui_xml"].append(rel(dry_xml) or "")
     if dry_png:
         evidence_paths["screenshots"].append(rel(dry_png) or "")
     dry_probe_passed = xml_contains(dry_xml, "Dry probe status: passed")
+    if not xml_contains(dry_xml, "Dry probe status:"):
+        errors.append(
+            "Dry probe result was not visible after scrolling the Phone Use card."
+        )
 
     time.sleep(1.5)
-    action_clicked = tap_text(h, dry_xml, "Run action probe")
+    action_button_xml = dry_xml
+    for _ in range(10):
+        if find_node_bounds(action_button_xml, "Run action probe") is not None:
+            break
+        h.shell("input", "swipe", "330", "320", "330", "900", "450", timeout=10)
+        time.sleep(0.5)
+        action_button_xml = h.dump_ui("04-action-button.xml")
+    action_clicked = tap_text(h, action_button_xml, "Run action probe")
     if not action_clicked:
         errors.append("Run action probe button not found.")
     time.sleep(4.0)
     action_xml = None
-    for _ in range(12):
+    action_text_parts: list[str] = []
+    for _ in range(16):
         action_xml = h.dump_ui("04-action-probe.xml")
-        if xml_contains(action_xml, "Action probe status:"):
+        if action_xml and action_xml.exists():
+            action_text_parts.append(
+                action_xml.read_text(encoding="utf-8", errors="replace")
+            )
+        action_text_so_far = "\n".join(action_text_parts)
+        if "Action detail: setTextRef" in action_text_so_far and "failure=" in action_text_so_far:
             break
+        h.shell("input", "swipe", "330", "900", "330", "280", "450", timeout=10)
         time.sleep(0.8)
     action_png = h.screenshot("04-action-probe.png")
     if action_xml:
         evidence_paths["ui_xml"].append(rel(action_xml) or "")
     if action_png:
         evidence_paths["screenshots"].append(rel(action_png) or "")
-    action_probe_visible = xml_contains(action_xml, "Action probe status:")
-    action_probe_passed_or_warning = xml_contains(action_xml, "Action probe status: passed") or xml_contains(
-        action_xml, "Action probe status: warning"
+    action_text = "\n".join(action_text_parts)
+    action_probe_visible = "Action probe status:" in action_text
+    if not action_probe_visible:
+        errors.append(
+            "Action probe result was not visible after scrolling the Phone Use card."
+        )
+    action_probe_passed_or_warning = (
+        "Action probe status: passed" in action_text
+        or "Action probe status: warning" in action_text
     )
-    action_text = action_xml.read_text(encoding="utf-8", errors="replace") if action_xml and action_xml.exists() else ""
+    action_probe_passed = "Action probe status: passed" in action_text
     accepted_match = re.search(r"Actions accepted:\s*(\d+)/(\d+)", action_text)
     action_accepted = int(accepted_match.group(1)) if accepted_match else 0
     action_total = int(accepted_match.group(2)) if accepted_match else 0
@@ -739,6 +905,7 @@ def run(args: argparse.Namespace) -> int:
         "phone_use_card_visible": phone_use_visible,
         "dry_probe_passed": dry_probe_passed,
         "action_probe_visible": action_probe_visible,
+        "action_probe_passed": action_probe_passed,
         "action_probe_passed_or_warning": action_probe_passed_or_warning,
         "back_action_verified": back_action_verified,
         "home_action_verified": home_action_verified,
@@ -747,11 +914,27 @@ def run(args: argparse.Namespace) -> int:
     }
     score = score_payload(checks, action_accepted, action_total)
     status = status_for_score(score["total_score"])
+    if not device_connected or not apk_installed or not app_launched:
+        status = "failed"
+    elif status == "passed" and (
+        action_accepted < action_total or not action_probe_passed
+    ):
+        status = "warning"
+    if status == "passed":
+        terminal_outcome = "verified_success"
+    elif status == "warning":
+        terminal_outcome = "partial_progress"
+    elif not device_connected or not apk_installed or not app_launched:
+        terminal_outcome = "environment_error"
+    else:
+        terminal_outcome = "agent_failure"
     verifier_path = output / "phone_use_runtime_verifier.json"
     evidence_paths["verifier_outputs"] = [rel(verifier_path) or ""]
     verifier_payload = {
         "run_id": args.run_id,
         "status": status,
+        "terminal_outcome": terminal_outcome,
+        "device": metadata,
         "score": score,
         "checks": checks,
         "errors": errors,
@@ -775,11 +958,11 @@ def run(args: argparse.Namespace) -> int:
     verifier_path.write_text(json.dumps(verifier_payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     evidence = {
         "boundary": BOUNDARY,
-        "artifact_paths": [rel(apk_info_path)],
+        "artifact_paths": [rel(apk_info_path), rel(device_info_path)],
         "trace_paths": [],
         "screenshot_paths": evidence_paths["screenshots"],
         "logs": [
-            "P6.3 Android phone-use runtime verifier executed on emulator or real device.",
+            f"P6.3 Android phone-use runtime verifier executed on {metadata['device_kind']}.",
             "Run is non-counted and must not be cited as a formal benchmark.",
             f"Accessibility service enabled in test environment: {SERVICE}",
             *evidence_paths["logs"],
@@ -789,8 +972,22 @@ def run(args: argparse.Namespace) -> int:
         "human_intervention_notes": [],
     }
     wall_ms = int((time.time() - started) * 1000)
-    write_run(output, args.run_id, registry, selected, status, score, evidence, wall_ms)
-    print(f"P6.3 Android real device lane status={status} score={score['total_score']}")
+    write_run(
+        output,
+        args.run_id,
+        registry,
+        selected,
+        status,
+        score,
+        evidence,
+        wall_ms,
+        terminal_outcome,
+        metadata["device_kind"],
+    )
+    print(
+        f"P6.3 Android device lane status={status} outcome={terminal_outcome} "
+        f"device_kind={metadata['device_kind']} score={score['total_score']}"
+    )
     print(f"Verifier: {rel(verifier_path)}")
     return 0 if status in {"passed", "warning"} else 1
 

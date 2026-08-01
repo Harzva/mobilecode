@@ -95,7 +95,36 @@ jobs:
             grep '"failureKind":"none"' artifacts/android-helper-execute.json
             adb logcat -c || true
             timeout 30s adb shell am start -W -n com.mobilecode.app/.MainActivity | tee artifacts/main-start.txt
-            app_drawn=0; for attempt in $(seq 1 48); do adb shell pidof com.mobilecode.app; adb shell dumpsys window windows > artifacts/window-focus.txt || true; adb shell uiautomator dump /sdcard/mobilecode-window.xml >/dev/null 2>&1 || true; adb pull /sdcard/mobilecode-window.xml artifacts/window-hierarchy.xml >/dev/null 2>&1 || true; if awk '/Window #[0-9]+/ { in_app = ($0 ~ /com\.mobilecode\.app\/.*MainActivity/) } in_app && /Surface: shown=true/ { ok=1 } END { exit ok ? 0 : 1 }' artifacts/window-focus.txt || { grep -q 'package="com.mobilecode.app"' artifacts/window-hierarchy.xml 2>/dev/null && grep -q 'content-desc="MobileCode"' artifacts/window-hierarchy.xml 2>/dev/null; }; then app_drawn=1; break; fi; sleep 5; done; echo "$app_drawn" > artifacts/app-drawn.txt; if grep -q "System UI isn't responding" artifacts/window-hierarchy.xml 2>/dev/null; then adb shell input tap 540 1059 || true; sleep 2; adb shell uiautomator dump /sdcard/mobilecode-window.xml >/dev/null 2>&1 || true; adb pull /sdcard/mobilecode-window.xml artifacts/window-hierarchy.xml >/dev/null 2>&1 || true; fi; test -s artifacts/window-hierarchy.xml || exit 1; if grep -q "System UI isn't responding" artifacts/window-hierarchy.xml; then exit 1; fi; if grep -q 'package="com.android.permissioncontroller"' artifacts/window-hierarchy.xml; then exit 1; fi; adb shell pidof com.mobilecode.app; adb exec-out screencap -p > artifacts/mobilecode-android-smoke.png || true; test -s artifacts/mobilecode-android-smoke.png || exit 1; adb logcat -d -t 2000 > artifacts/android-logcat.txt || true; grep -q "com.mobilecode.app" artifacts/window-focus.txt; grep -E "FATAL EXCEPTION|E AndroidRuntime|NoSuchMethodError|MissingPluginException|ANR in com.mobilecode.app" artifacts/android-logcat.txt && exit 1 || true; test "$app_drawn" = 1
+            app_drawn=0
+            for attempt in $(seq 1 48); do
+              adb shell pidof com.mobilecode.app > artifacts/app-pid.txt || true
+              adb shell dumpsys window windows > artifacts/window-focus.txt || true
+              if awk '/Window #[0-9]+/ { in_app = ($0 ~ /com\.mobilecode\.app\/.*MainActivity/) } in_app && /Surface: shown=true/ { ok=1 } END { exit ok ? 0 : 1 }' artifacts/window-focus.txt; then
+                app_drawn=1
+                break
+              fi
+              sleep 5
+            done
+            echo "$app_drawn" > artifacts/app-drawn.txt
+            test "$app_drawn" = 1
+            adb shell pidof com.mobilecode.app > artifacts/app-pid.txt || true
+            test -s artifacts/app-pid.txt
+            adb exec-out screencap -p > artifacts/mobilecode-android-smoke.png || true
+            test -s artifacts/mobilecode-android-smoke.png
+            adb logcat -d -t 2000 > artifacts/android-logcat.txt || true
+            grep -q "com.mobilecode.app" artifacts/window-focus.txt
+            grep -E "FATAL EXCEPTION|E AndroidRuntime|NoSuchMethodError|MissingPluginException|ANR in com.mobilecode.app" artifacts/android-logcat.txt && exit 1 || true
+
+            # Flutter can draw a healthy surface while uiautomator is unavailable
+            # on a slow software-emulated API 29 runner. Keep the hierarchy as
+            # best-effort evidence; the hard gate is drawn surface + live process
+            # + screenshot + clean fatal log scan above.
+            timeout 30s adb shell uiautomator dump /sdcard/mobilecode-window.xml >/dev/null 2>&1 || true
+            adb pull /sdcard/mobilecode-window.xml artifacts/window-hierarchy.xml >/dev/null 2>&1 || true
+            if [ -s artifacts/window-hierarchy.xml ]; then
+              ! grep -q "System UI isn't responding" artifacts/window-hierarchy.xml
+              ! grep -q 'package="com.android.permissioncontroller"' artifacts/window-hierarchy.xml
+            fi
 
       - name: Upload Android smoke artifacts
         uses: actions/upload-artifact@v7

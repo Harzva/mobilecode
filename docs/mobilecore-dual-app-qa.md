@@ -154,6 +154,7 @@ process alive and the `v0.1.75` home screen visible. The captured logcat had no
 MobileCode fatal exception, ANR, process death, or out-of-memory signal. This is
 release-package and emulator-launch evidence; it does not satisfy any physical
 device, controlled-account, thermal, or Omni quality gate.
+
 ### Protocol-v2, chat-template, and cancellation refresh
 
 On 2026-08-07, a pre-release MobileCode v0.1.76 (`66`) integration build and
@@ -189,6 +190,26 @@ the Android microphone permission sheet, resumed `MainActivity`, displayed
 request. Logcat contained no MobileCode crash, ANR, OOM, or SIGABRT marker. The
 local APK is Android Debug-signed and is therefore QA evidence, not the
 production-signed GitHub Release asset.
+
+### Published v0.1.76 Android artifact
+
+The [v0.1.76 Android release workflow](https://github.com/Harzva/mobilecode/actions/runs/31128209900)
+completed all source-analysis, signing, build, version, artifact, and Release
+upload steps from merge commit `0860190`. A fresh GitHub download of
+`mobilecode-v0.1.76.apk` reported `0.1.76+66`, measured 33,053,383 bytes, and
+matched the GitHub asset digest and local SHA-256
+`52c53c26d51d6335588a443fd3f84f9a36ed9ac093de79a4238a23b2ff3ead31`.
+It verifies with APK Signature Scheme v2 and the MobileCode release certificate
+(`CN=MobileCode, O=Harzva`), not the Android Debug certificate.
+
+After removing the differently signed QA app, the official APK installed on
+the Android 16 ARM64 emulator, cold-launched through the microphone permission
+sheet, resumed `MainActivity`, displayed `v0.1.76` and `TuiMa ready`, and
+completed the controlled `Reply only OK` request with the exact answer `OK`.
+The app process remained alive and logcat contained no crash, ANR, OOM, or
+SIGABRT marker. This closes official package and emulator pairing evidence, not
+the physical-device, controlled-account, thermal, background-recovery, or
+full 30-task gates.
 
 ## Local vision chain
 

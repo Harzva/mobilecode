@@ -45,11 +45,9 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Recreate Android platform project
+      - name: Prepare checked-in Android platform project
         working-directory: mobile_agent
         run: |
-          rm -rf android
-          flutter create --platforms=android --project-name mobile_agent --org com.mobilecode .
           python3 tooling/prepare_android_project.py
 
       - name: Resolve Flutter dependencies
@@ -147,7 +145,7 @@ jobs:
           if [ -n "$MOBILECODE_GITHUB_OAUTH_REDIRECT_URI" ]; then
             DART_DEFINES+=(--dart-define=MOBILECODE_GITHUB_OAUTH_REDIRECT_URI="$MOBILECODE_GITHUB_OAUTH_REDIRECT_URI")
           fi
-          flutter build apk --release --target lib/main.dart "${DART_DEFINES[@]}"
+          flutter build apk --release --flavor pure --dart-define=MOBILECODE_BUILD_CHANNEL=pure --target lib/main.dart "${DART_DEFINES[@]}"
 
       - name: Stage APK
         id: stage_apk
@@ -156,7 +154,7 @@ jobs:
         run: |
           mkdir -p artifacts
           APK_PATH="artifacts/mobilecode-${RELEASE_TAG}.apk"
-          cp mobile_agent/build/app/outputs/flutter-apk/app-release.apk "$APK_PATH"
+          cp mobile_agent/build/app/outputs/flutter-apk/app-pure-release.apk "$APK_PATH"
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK workflow artifact

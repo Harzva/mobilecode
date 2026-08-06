@@ -14334,6 +14334,13 @@ class _ChatPanelState extends State<_ChatPanel> {
                             'Preflight ${data.health.preflight.ok ? 'ready' : data.health.preflight.failureCode ?? 'not ready'} · image ${data.health.capabilities.imageInput ? 'yes' : 'no'} · audio ${data.health.capabilities.audioInput ? 'yes' : 'no'}',
                             style: const TextStyle(color: _muted, fontSize: 12),
                           ),
+                          if (data.health.backgroundRestricted) ...[
+                            const SizedBox(height: 5),
+                            const Text(
+                              'Android is restricting MobileCore background operation. Allow background use in MobileCore battery settings before selecting the local route.',
+                              style: TextStyle(color: _amber, fontSize: 12),
+                            ),
+                          ],
                           if (data.health.canInfer) ...[
                             const SizedBox(height: 10),
                             OutlinedButton.icon(

@@ -284,6 +284,29 @@ background-recovery gate and identifies the next fix: MobileCore must preserve
 foreground-service state when refreshing its notification before the official
 v0.1.77 APK is credited with a controlled local-chat pairing.
 
+### MobileCore rc6 background closure and typed recovery state
+
+MobileCore `0.1.4-rc6` reasserts its explicitly typed `dataSync` foreground
+notification before model work on every service delivery. The acceptance lane
+also discovered that Android had marked one emulator install as
+`background_restricted`; AOSP intentionally strips foreground-service status
+from packages in that state. That restricted run is recorded as a rejected
+precondition, not as a runtime failure or pass, and neither production App
+changes secure settings automatically.
+
+After restoring the emulator through the same user-controlled background-use
+policy represented by Android Battery settings, MobileCode remained resumed
+for 40 authenticated polls (about two minutes) while MobileCore retained the
+real Qwen2.5 0.5B model. All 40 health requests passed, the service ended with
+`isForeground=true`, both processes remained alive and unfrozen, and the
+filtered safety log contained no FGS timeout, ANR, OOM, or SIGABRT marker.
+
+The follow-up client contract adds `background_restricted` to MobileCore
+`/health`. MobileCode maps `true` to a typed, fail-closed recovery state,
+preserves the active-model metadata for diagnosis, shows a Battery-settings
+instruction, and sends no local inference payload until the restriction is
+cleared. The full Flutter suite now passes 578 tests.
+
 ## Local vision chain
 
 A separate controlled emulator check used a Qwen3.5 0.8B main GGUF plus its mmproj. `/v1/models` exposed the projector as metadata on the main model, loading returned `image_input=true`, and `/health` reported `runtime=llama.cpp/libmtmd`. A real JPEG data-URI request completed through the same OpenAI-compatible endpoint with 93 total tokens and 542 MB reported runtime memory. There was no crash, ANR, or OOM.

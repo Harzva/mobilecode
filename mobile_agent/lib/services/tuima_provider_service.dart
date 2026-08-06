@@ -311,6 +311,22 @@ class MobileCoreRecommendations {
   }
 }
 
+class MobileCoreRuntimeSnapshot {
+  const MobileCoreRuntimeSnapshot({
+    required this.health,
+    required this.capturedAt,
+    this.models = const [],
+    this.metrics = const MobileCoreMetrics(),
+    this.recommendations = const MobileCoreRecommendations(),
+  });
+
+  final TuimaHealth health;
+  final List<MobileCoreModel> models;
+  final MobileCoreMetrics metrics;
+  final MobileCoreRecommendations recommendations;
+  final DateTime capturedAt;
+}
+
 enum MobileCoreAttachmentKind { image, audio }
 
 class MobileCoreAttachment {
@@ -586,23 +602,89 @@ class MobileCoreClient {
   }) =>
       _getJson(omniStatusUri, timeout: timeout);
 
+  /// Reads one coherent control-plane view of the active MobileCore runtime.
+  ///
+  /// Model switches can happen in the MobileCore app while MobileCode is
+  /// fetching models, metrics, and recommendations. Health is sampled on both
+  /// sides and a changed runtime is retried once so the UI never combines
+  /// capabilities from one model with metrics from another.
+  Future<MobileCoreRuntimeSnapshot> runtimeSnapshot({
+    Duration timeout = const Duration(seconds: 5),
+    int consistencyRetries = 1,
+  }) async {
+    var before = await probe(timeout: timeout);
+    if (before.state == TuimaConnectionState.unavailable) {
+      return MobileCoreRuntimeSnapshot(
+        health: before,
+        capturedAt: DateTime.now(),
+      );
+    }
+
+    final retries = consistencyRetries.clamp(0, 3);
+    for (var attempt = 0; attempt <= retries; attempt += 1) {
+      final results = await Future.wait<Object?>([
+        listModels(timeout: timeout),
+        metrics(timeout: timeout),
+        recommendations(timeout: timeout),
+      ]);
+      final models = results[0] as List<MobileCoreModel>;
+      final runtimeMetrics = results[1] as MobileCoreMetrics;
+      final deviceRecommendations = results[2] as MobileCoreRecommendations;
+      final after = await probe(timeout: timeout);
+      if (after.state == TuimaConnectionState.unavailable) {
+        return MobileCoreRuntimeSnapshot(
+          health: after,
+          capturedAt: DateTime.now(),
+        );
+      }
+      if (_isConsistentRuntimeSnapshot(
+        before: before,
+        after: after,
+        models: models,
+        metrics: runtimeMetrics,
+      )) {
+        return MobileCoreRuntimeSnapshot(
+          health: after,
+          models: models,
+          metrics: runtimeMetrics,
+          recommendations: deviceRecommendations,
+          capturedAt: DateTime.now(),
+        );
+      }
+      before = after;
+    }
+
+    throw const MobileCoreProviderException(
+      code: 'runtime_snapshot_changed',
+      message: 'MobileCore changed state while the runtime snapshot was read.',
+    );
+  }
+
   Future<TuimaHealth> loadModel(
     String modelId, {
+    String? projectorId,
     int contextLength = 4096,
     int threads = 4,
     Duration timeout = const Duration(minutes: 2),
   }) async {
-    final normalized = modelId.trim();
-    if (normalized.isEmpty || normalized.length > 240) {
-      throw const MobileCoreProviderException(
-        code: 'invalid_model_id',
-        message: 'A valid MobileCore model id is required.',
-      );
-    }
+    final normalized = _validatedPublicArtifactId(
+      modelId,
+      code: 'invalid_model_id',
+      label: 'model',
+    );
+    final normalizedProjector = projectorId == null
+        ? null
+        : _validatedPublicArtifactId(
+            projectorId,
+            code: 'invalid_projector_id',
+            label: 'projector',
+          );
     await _postJson(
       modelLoadUri,
       {
         'model_id': normalized,
+        if (normalizedProjector != null)
+          'projector_id': normalizedProjector,
         'context_length': contextLength.clamp(128, 32768),
         'threads': threads.clamp(1, 16),
         'gpu_layers': 0,
@@ -610,10 +692,7 @@ class MobileCoreClient {
       timeout: timeout,
     );
     final health = await probe(timeout: const Duration(seconds: 5));
-    if (!health.canInfer ||
-        !health.activeModel.toString().toLowerCase().contains(
-              normalized.toLowerCase(),
-            )) {
+    if (!health.canInfer || health.activeModel != normalized) {
       throw const MobileCoreProviderException(
         code: 'model_state_mismatch',
         message: 'MobileCore did not confirm the requested active model.',
@@ -621,6 +700,26 @@ class MobileCoreClient {
     }
     return health;
   }
+
+  /// Switches the active runtime using public artifact identifiers only.
+  ///
+  /// MobileCore uses the authenticated load route for both initial loading and
+  /// cross-model switching. This dedicated method makes the control intent
+  /// explicit and keeps lifecycle payload construction inside the v2 client.
+  Future<TuimaHealth> switchModel(
+    String modelId, {
+    String? projectorId,
+    int contextLength = 4096,
+    int threads = 4,
+    Duration timeout = const Duration(minutes: 2),
+  }) =>
+      loadModel(
+        modelId,
+        projectorId: projectorId,
+        contextLength: contextLength,
+        threads: threads,
+        timeout: timeout,
+      );
 
   Future<TuimaHealth> unloadModel({
     Duration timeout = const Duration(seconds: 30),
@@ -884,6 +983,61 @@ class MobileCoreClient {
     return normalized.length <= limit
         ? normalized
         : '${normalized.substring(0, limit)}...';
+  }
+
+  static String _validatedPublicArtifactId(
+    String value, {
+    required String code,
+    required String label,
+  }) {
+    final normalized = value.trim();
+    final hasControlCharacter = normalized.runes.any(
+      (rune) => rune < 0x20 || rune == 0x7f,
+    );
+    if (normalized.isEmpty ||
+        normalized.length > 240 ||
+        hasControlCharacter ||
+        normalized.contains('/') ||
+        normalized.contains('\\') ||
+        normalized == '.' ||
+        normalized == '..') {
+      throw MobileCoreProviderException(
+        code: code,
+        message: 'A valid public MobileCore $label id is required.',
+      );
+    }
+    return normalized;
+  }
+
+  static bool _isConsistentRuntimeSnapshot({
+    required TuimaHealth before,
+    required TuimaHealth after,
+    required List<MobileCoreModel> models,
+    required MobileCoreMetrics metrics,
+  }) {
+    if (before.state != after.state ||
+        before.activeModel != after.activeModel ||
+        before.runtime != after.runtime ||
+        before.runtimeRevision != after.runtimeRevision ||
+        before.backend != after.backend ||
+        before.quantization != after.quantization ||
+        before.projectorArtifact.fileName != after.projectorArtifact.fileName ||
+        before.capabilities.textInput != after.capabilities.textInput ||
+        before.capabilities.imageInput != after.capabilities.imageInput ||
+        before.capabilities.audioInput != after.capabilities.audioInput ||
+        before.capabilities.videoInput != after.capabilities.videoInput ||
+        before.capabilities.textOutput != after.capabilities.textOutput ||
+        before.capabilities.audioOutput != after.capabilities.audioOutput) {
+      return false;
+    }
+    final metricsModel = metrics.activeModel?.trim() ?? '';
+    if (metricsModel.isNotEmpty && metricsModel != after.activeModel) {
+      return false;
+    }
+    final loadedModels = models.where((model) => model.loaded).toList();
+    if (!after.canInfer) return loadedModels.isEmpty;
+    return loadedModels.length <= 1 &&
+        (loadedModels.isEmpty || loadedModels.single.id == after.activeModel);
   }
 
   void close() => _client.close(force: true);

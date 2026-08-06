@@ -15,7 +15,16 @@ MobileCode is the control center. It owns model routing, user consent, Phone Use
 - model/projector artifact presence and verification state;
 - memory/storage preflight and typed failure code;
 - installed models, device recommendations, and decode/latency metrics;
-- model load, unload, and switch controls using public `model_id` only.
+- model load, unload, and switch controls using public `model_id` and optional
+  public `projector_id` only.
+
+The v2 client reads health before and after the models/metrics/recommendations
+bundle. If MobileCore changes the active runtime during that window, MobileCode
+retries once and then returns the typed `runtime_snapshot_changed` result rather
+than combining capabilities from one model with metrics from another. Lifecycle
+IDs containing path separators or control characters are rejected before a
+request is sent, and a switch is successful only when `/health` reports the
+exact requested public model ID.
 
 The TuiMa control sheet exposes that state inside MobileCode. Image and audio entry points are capability-gated. Selected media is held only in memory, sent only to the local MobileCore endpoint, removed after the request, and excluded from saved chat turns and ActionEvidence. A local-only media request fails closed instead of falling back to cloud inference.
 
@@ -60,6 +69,22 @@ The host-side runner installed MobileCore, MobileCode, and the MobileCode test A
 
 Observed final-request metrics on the constrained emulator were approximately 0.46 decode tokens/s average, 2.9 seconds to first token, 11.6 seconds total, and 462 MB runtime peak memory. The final strict-run Qwen3 switch loaded in 1.2 seconds and reported 456 MB. These numbers characterize this software-emulated host only and are not phone performance claims.
 
+### MobileCoreClient v2 control refresh
+
+On 2026-08-07, a clean-built v0.1.73 `pureRelease` MobileCode APK containing the coherent
+runtime snapshot and exact switch confirmation was installed on the same
+Android 16 arm64 emulator. APK SHA-256 was
+`f6a555adf103e775bdc2b3169acf9617119f0ae414d95f07d056f7239cdbecd5`.
+Cold launch completed without an app crash, ANR, or OOM.
+
+The real MobileCore control sheet atomically displayed the Qwen2.5 active model,
+`llama.cpp`, CPU backend, `Q4_K_M`, ready preflight, capability state, 0.44
+decode tokens/s, 2957 ms first-token latency, and 462 MB peak runtime memory.
+The same UI then switched Qwen2.5 → Qwen3 and confirmed the exact Qwen3 public
+ID as active with 456 MB peak memory, before restoring the exact Qwen2.5 public
+ID. This proves the v2 control path against the running dual-app service, but it
+remains emulator evidence and does not satisfy the physical-device gate.
+
 ## Local vision chain
 
 A separate controlled emulator check used a Qwen3.5 0.8B main GGUF plus its mmproj. `/v1/models` exposed the projector as metadata on the main model, loading returned `image_input=true`, and `/health` reported `runtime=llama.cpp/libmtmd`. A real JPEG data-URI request completed through the same OpenAI-compatible endpoint with 93 total tokens and 542 MB reported runtime memory. There was no crash, ANR, or OOM.
@@ -94,8 +119,10 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
 
 ## Verification
 
-- The complete MobileCode Flutter suite passed 546 tests.
-- The focused MobileCore client suite passed 16 tests, including projector metadata and image-capability parsing.
+- The complete MobileCode Flutter suite passed 550 tests.
+- The focused MobileCore client suite passed 16 tests, including coherent
+  runtime snapshots, exact switch confirmation, public projector IDs,
+  path-like ID rejection, projector metadata, and image-capability parsing.
 - MobileCore Android unit tests passed.
 - MobileCore local API instrumentation passed its model-ID control, incompatible-projector rejection, no-path response, multimodal contract, rejection, and metrics-counter checks.
 - A post-fix real-GGUF smoke reported active-model preflight `625617760` required bytes versus `1096425472` available bytes, `runtime=llama.cpp`, two completed requests, zero failures, and a non-zero average decode rate.

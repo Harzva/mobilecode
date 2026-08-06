@@ -248,7 +248,122 @@ void main() {
       expect(metrics.firstTokenMs, 82);
     });
 
-    test('loads by model id and unloads without submitting a path', () async {
+    test('reads a coherent runtime snapshot across control endpoints',
+        () async {
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        switch (request.uri.path) {
+          case '/health':
+            request.response.write(jsonEncode({
+              'status': 'ok',
+              'version': '0.1.4-rc2',
+              'backend': 'cpu',
+              'runtime': 'llama.cpp',
+              'llama_cpp_revision': 'fixed-revision',
+              'quantization': 'Q4_K_M',
+              'active_model': 'small-q4',
+              'model_loaded': true,
+              'capabilities': {
+                'text_input': true,
+                'text_output': true,
+              },
+            }));
+            break;
+          case '/v1/models':
+            request.response.write(jsonEncode({
+              'data': [
+                {
+                  'id': 'small-q4',
+                  'mobilecore': {
+                    'size_bytes': 1234,
+                    'loaded': true,
+                    'quantization': 'Q4_K_M',
+                  },
+                },
+              ],
+            }));
+            break;
+          case '/metrics':
+            request.response.write(jsonEncode({
+              'active_model': 'small-q4',
+              'backend': 'cpu',
+              'last_decode_tokens_per_second': 8.5,
+            }));
+            break;
+          case '/v1/recommendations':
+            request.response.write(jsonEncode({
+              'device': {'available_ram_mb': 4096},
+              'recommendations': [
+                {
+                  'model_id': 'small-q4',
+                  'fit': 'perfect',
+                  'score': 90,
+                },
+              ],
+            }));
+            break;
+        }
+        await request.response.close();
+      });
+
+      final snapshot = await service.runtimeSnapshot();
+      expect(snapshot.health.activeModel, 'small-q4');
+      expect(snapshot.models.single.loaded, isTrue);
+      expect(snapshot.metrics.decodeTokensPerSecond, 8.5);
+      expect(snapshot.recommendations.recommendations.single.modelId,
+          'small-q4');
+    });
+
+    test('rejects a control snapshot that keeps changing', () async {
+      var healthRequests = 0;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path == '/health') {
+          healthRequests += 1;
+          request.response.write(jsonEncode({
+            'status': 'ok',
+            'version': '0.1.4-rc2',
+            'backend': 'cpu',
+            'runtime': 'llama.cpp',
+            'llama_cpp_revision': 'fixed-revision',
+            'quantization': 'Q4_K_M',
+            'active_model': 'model-$healthRequests',
+            'model_loaded': true,
+            'capabilities': {
+              'text_input': true,
+              'text_output': true,
+            },
+          }));
+        } else if (request.uri.path == '/v1/models') {
+          request.response.write(jsonEncode({
+            'data': [
+              {
+                'id': 'stable-model',
+                'mobilecore': {'size_bytes': 1234, 'loaded': true},
+              },
+            ],
+          }));
+        } else if (request.uri.path == '/metrics') {
+          request.response.write('{"backend":"cpu"}');
+        } else if (request.uri.path == '/v1/recommendations') {
+          request.response.write('{"recommendations":[]}');
+        }
+        await request.response.close();
+      });
+
+      await expectLater(
+        service.runtimeSnapshot(),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'runtime_snapshot_changed',
+        )),
+      );
+      expect(healthRequests, 3);
+    });
+
+    test('switches by public model/projector ids without submitting a path',
+        () async {
       var loaded = false;
       server.listen((request) async {
         request.response.headers.contentType = ContentType.json;
@@ -256,6 +371,7 @@ void main() {
           final body = jsonDecode(await utf8.decoder.bind(request).join())
               as Map<String, dynamic>;
           expect(body['model_id'], 'small-q4');
+          expect(body['projector_id'], 'mmproj-small-q4-bf16');
           expect(body.containsKey('path'), isFalse);
           loaded = true;
           request.response.write('{"ok":true}');
@@ -274,10 +390,72 @@ void main() {
         await request.response.close();
       });
 
-      final loadedHealth = await service.loadModel('small-q4');
+      final loadedHealth = await service.switchModel(
+        'small-q4',
+        projectorId: 'mmproj-small-q4-bf16',
+      );
       expect(loadedHealth.activeModel, 'small-q4');
       final unloadedHealth = await service.unloadModel();
       expect(unloadedHealth.canInfer, isFalse);
+    });
+
+    test('rejects path-like lifecycle ids before contacting MobileCore',
+        () async {
+      var requests = 0;
+      server.listen((request) async {
+        requests += 1;
+        request.response.statusCode = HttpStatus.internalServerError;
+        await request.response.close();
+      });
+
+      await expectLater(
+        service.switchModel('../private/model.gguf'),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'invalid_model_id',
+        )),
+      );
+      await expectLater(
+        service.switchModel(
+          'small-q4',
+          projectorId: '/private/mmproj.gguf',
+        ),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'invalid_projector_id',
+        )),
+      );
+      expect(requests, 0);
+    });
+
+    test('does not accept a substring model as a successful switch', () async {
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path == '/mobilecore/model/load') {
+          await utf8.decoder.bind(request).join();
+          request.response.write('{"ok":true}');
+        } else if (request.uri.path == '/health') {
+          request.response.write(jsonEncode({
+            'status': 'ok',
+            'version': '0.1.4-rc2',
+            'backend': 'cpu',
+            'active_model': 'old-small-q4-copy',
+            'model_loaded': true,
+          }));
+        }
+        await request.response.close();
+      });
+
+      await expectLater(
+        service.switchModel('small-q4'),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'model_state_mismatch',
+        )),
+      );
     });
 
     test('extracts final inference metrics from the SSE terminal event',

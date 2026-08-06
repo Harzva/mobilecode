@@ -14059,24 +14059,13 @@ class _ChatPanelState extends State<_ChatPanel> {
   }
 
   Future<_MobileCoreControlData> _loadMobileCoreControlData() async {
-    final health = await _refreshTuimaHealth();
-    if (health.state == TuimaConnectionState.unavailable) {
-      return _MobileCoreControlData(health: health);
-    }
-    final results = await Future.wait<Object?>([
-      _tuimaProviderService.listModels().catchError((_) => <MobileCoreModel>[]),
-      _tuimaProviderService
-          .metrics()
-          .catchError((_) => const MobileCoreMetrics()),
-      _tuimaProviderService
-          .recommendations()
-          .catchError((_) => const MobileCoreRecommendations()),
-    ]);
+    final snapshot = await _tuimaProviderService.runtimeSnapshot();
+    if (mounted) setState(() => _tuimaHealth = snapshot.health);
     return _MobileCoreControlData(
-      health: health,
-      models: results[0] as List<MobileCoreModel>,
-      metrics: results[1] as MobileCoreMetrics,
-      recommendations: results[2] as MobileCoreRecommendations,
+      health: snapshot.health,
+      models: snapshot.models,
+      metrics: snapshot.metrics,
+      recommendations: snapshot.recommendations,
     );
   }
 
@@ -14134,7 +14123,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       final contextLength = entry == null || entry.contextLength <= 0
           ? 4096
           : entry.contextLength.clamp(512, 8192);
-      await _tuimaProviderService.loadModel(
+      await _tuimaProviderService.switchModel(
         modelId,
         contextLength: contextLength,
       );
@@ -14194,6 +14183,37 @@ class _ChatPanelState extends State<_ChatPanel> {
             child: FutureBuilder<_MobileCoreControlData>(
               future: loader,
               builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  final error = snapshot.error;
+                  final failureCode = error is MobileCoreProviderException
+                      ? error.code
+                      : 'control_snapshot_failed';
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.sync_problem_outlined,
+                              color: _amber, size: 30),
+                          const SizedBox(height: 10),
+                          Text(
+                            'MobileCore control state is not stable ($failureCode).',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: _text),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: () => setSheetState(
+                                () => loader = _loadMobileCoreControlData()),
+                            icon: const Icon(Icons.refresh_outlined),
+                            label: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }

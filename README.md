@@ -15,7 +15,7 @@
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml"><img alt="Mobile App Release" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml/badge.svg"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=main"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.68--mobile--harness-2555FF">
+  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.69-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Flutter-0B9B7E">
 </p>
 
@@ -28,7 +28,7 @@
   ·
   <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">HTML Principle Video</a>
   ·
-  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7">Download v0.1.68 apps</a>
+  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.69">Download v0.1.69 app</a>
   ·
   <a href="https://harzva.github.io/mobilecode/">GitHub Pages Demo</a>
 </p>
@@ -406,12 +406,12 @@ That keeps the phone lightweight while still letting users produce shareable web
 
 ## Release Line
 
-Current candidate: `v0.1.68-mobile-harness-d2dd9a7`.
+Current candidate: `v0.1.69`.
 
 See:
 
 - [Latest dual app build](https://github.com/Harzva/mobilecode/actions/runs/27287231941) - Android APK, iOS simulator app, and iOS unsigned archive all completed successfully.
-- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7) - Android APK plus iOS simulator/archive artifacts.
+- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.69) - Android APK for the controlled Phone Use evaluation candidate.
 - [Version Policy](docs/mobilecode-version-policy.md)
 - [Release QA Checklist](docs/mobilecode-release-qa.md)
 - [Helper Runtime Protocol](docs/mobilecode-helper-runtime-protocol.md)

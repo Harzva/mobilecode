@@ -162,9 +162,9 @@ const _mobileCodePagesUrl = MobileCodeUpdateService.pagesUrl;
 const _mobileCodeUpdateFeedUrl = MobileCodeUpdateService.defaultFeedUrl;
 const _mobileCodeLocalModelsManifestUrl =
     MobileCodeLocalModelManifestService.defaultManifestUrl;
-const _currentProductVersion = 'v0.1.68-mobile-harness-d2dd9a7';
+const _currentProductVersion = 'v0.1.69';
 const _releaseUrl =
-    'https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7';
+    'https://github.com/Harzva/mobilecode/releases/tag/v0.1.69';
 const _androidSmokeRunUrl =
     'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl =

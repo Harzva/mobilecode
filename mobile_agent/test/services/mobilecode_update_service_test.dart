@@ -60,12 +60,12 @@ void main() {
     test('compares release labels without treating suffix digits as semver',
         () {
       final sameReleaseFeed = MobileCodeUpdateFeed.fromJson({
-        'latestVersion': 'v0.1.68-mobile-harness-d2dd9a7',
-        'latestBuildNumber': 58,
+        'latestVersion': 'v0.1.69',
+        'latestBuildNumber': 59,
       });
       final newerReleaseFeed = MobileCodeUpdateFeed.fromJson({
-        'latestVersion': 'v0.1.69-mobile-harness-d2dd9a7',
-        'latestBuildNumber': 58,
+        'latestVersion': 'v0.1.70',
+        'latestBuildNumber': 59,
       });
 
       expect(

@@ -1,22 +1,22 @@
 {
   "schemaVersion": 1,
-  "channel": "stable",
-  "title": "MobileCode 远程更新消息已接入",
-  "message": "App 会从 GitHub Pages 读取这个 JSON。以后只要更新 mobilecode-update.json，App 内公告、升级提示和官网入口就会同步变化。",
-  "latestVersion": "v0.1.68-mobile-harness-d2dd9a7",
-  "latestBuildNumber": 58,
+  "channel": "prerelease",
+  "title": "MobileCode v0.1.69 Phone Use 可信执行预览",
+  "message": "本版补齐受控 Phone Use 评测、短生命周期元素引用、ActionEvidence 与 Android 模拟器发布验证。",
+  "latestVersion": "v0.1.69",
+  "latestBuildNumber": 59,
   "minimumSupportedBuildNumber": 58,
   "severity": "info",
-  "publishedAt": "2026-06-18T12:00:00-07:00",
+  "publishedAt": "2026-08-06T12:00:00+08:00",
   "pagesUrl": "https://harzva.github.io/mobilecode/",
   "githubUrl": "https://github.com/Harzva/mobilecode",
-  "releaseUrl": "https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7",
-  "downloadUrl": "https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7",
+  "releaseUrl": "https://github.com/Harzva/mobilecode/releases/tag/v0.1.69",
+  "downloadUrl": "https://github.com/Harzva/mobilecode/releases/download/v0.1.69/mobilecode-v0.1.69.apk",
   "ctaLabel": "打开 GitHub Pages",
   "secondaryCtaLabel": "下载最新构建",
   "releaseNotes": [
-    "新增 App 内远程更新消息卡片。",
-    "新增 MobileCode GitHub Pages 固定入口。",
-    "更新 JSON 后，App 内消息可随 GitHub Pages 自动变化。"
+    "新增30项受控 Phone Use 任务集与可重复评测契约。",
+    "补齐语义快照、短生命周期元素引用和 ActionEvidence 证据链。",
+    "Android 模拟器操作探针6/6通过，并强化 APK smoke 证据门。"
   ]
 }

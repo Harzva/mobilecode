@@ -9,8 +9,8 @@ class MobileCodeUpdateService {
   static const String defaultFeedUrl =
       'https://harzva.github.io/mobilecode/mobilecode-update.json';
   static const String githubRepoUrl = 'https://github.com/Harzva/mobilecode';
-  static const String currentVersion = '0.1.68-mobile-harness-d2dd9a7';
-  static const int currentBuildNumber = 58;
+  static const String currentVersion = '0.1.69';
+  static const int currentBuildNumber = 59;
 
   final Dio _dio;
 

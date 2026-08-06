@@ -4,7 +4,7 @@
 
 MobileCode uses semantic versioning, but the project is still pre-1.0. The version number should communicate release intent clearly, not simply increase because work happened.
 
-Current next release line: `0.1.30+49`.
+Current release line: `0.1.69+59`.
 
 ## Version Lines
 
@@ -56,6 +56,7 @@ Examples:
 - `0.1.28+47`: Runtime workspace browse/sync entry for Termux git clones, including shared-folder copy actions.
 - `0.1.29+48`: Recent shared runtime workspace sync history with quick open/copy actions.
 - `0.1.30+49`: Global Downloads / Shared folders surface for Actions artifacts and runtime shared copies.
+- `0.1.69+59`: controlled Phone Use evaluation, semantic element references, ActionEvidence, and hardened Android smoke evidence.
 - `0.2.0+38`: Helper APK/runtime capability expansion starts.
 
 ## Stop Rules

@@ -291,8 +291,17 @@ jobs:
             --app "$APP_PATH" \
             --expected-tag "$RELEASE_TAG"
           xcrun simctl install "$SIM_ID" "$APP_PATH"
-          xcrun simctl launch "$SIM_ID" "$BUNDLE_ID"
+          LAUNCH_OUTPUT="$(xcrun simctl launch "$SIM_ID" "$BUNDLE_ID")"
+          echo "$LAUNCH_OUTPUT"
+          LAUNCH_PID="$(printf '%s\n' "$LAUNCH_OUTPUT" | awk -F ': ' 'NF {print $NF}' | tail -1)"
           sleep 15
+          ALIVE_OUTPUT="$(xcrun simctl launch "$SIM_ID" "$BUNDLE_ID")"
+          echo "$ALIVE_OUTPUT"
+          ALIVE_PID="$(printf '%s\n' "$ALIVE_OUTPUT" | awk -F ': ' 'NF {print $NF}' | tail -1)"
+          if [ -z "$LAUNCH_PID" ] || [ "$ALIVE_PID" != "$LAUNCH_PID" ]; then
+            echo "Runner did not remain alive for the simulator smoke interval."
+            exit 1
+          fi
           xcrun simctl io "$SIM_ID" screenshot ../artifacts/mobilecode-ios-smoke.png
           xcrun simctl spawn "$SIM_ID" log show --style compact --last 3m --predicate 'process == "Runner"' > ../artifacts/ios-runner.log || true
           python3 tooling/verify_ios_app.py \

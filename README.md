@@ -15,7 +15,7 @@
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml"><img alt="Mobile App Release" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml/badge.svg"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=main"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.77-2555FF">
+  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.78-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Flutter-0B9B7E">
 </p>
 
@@ -28,7 +28,7 @@
   ·
   <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">HTML Principle Video</a>
   ·
-  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.77">Download v0.1.77 app</a>
+  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.78">Download v0.1.78 app</a>
   ·
   <a href="https://harzva.github.io/mobilecode/">GitHub Pages Demo</a>
 </p>
@@ -415,12 +415,12 @@ That keeps the phone lightweight while still letting users produce shareable web
 
 ## Release Line
 
-Current candidate: `v0.1.77` (`0.1.77+67`).
+Current candidate: `v0.1.78` (`0.1.78+68`).
 
 See:
 
 - [MobileCore dual-app evidence](docs/mobilecore-dual-app-qa.md) - 30 real offline cross-app requests, buffered/SSE parity, unload/reload, background continuity, low-memory notification, and process restart recovery passed on Android emulator.
-- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.77) - Android `pure` APK and CI-generated platform evidence for the credential-safe protocol-gated MobileCore local inference candidate.
+- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.78) - Android `pure` APK and CI-generated platform evidence for the credential-safe, background-aware MobileCore local inference candidate.
 - [Signed Android v0.1.77 workflow](https://github.com/Harzva/mobilecode/actions/runs/31128587598) - the downloaded official `0.1.77+67` APK has SHA-256 `f008ede0e0305c835c3bf45bcc56f22c4fc911d0ae10b513f298d1bdfb0a1c1d`, verifies with the MobileCode release certificate, contains zero recognizable key/JWT/Bearer or private-host-path patterns, and clean-launches on the Android 16 ARM64 emulator.
 - v0.1.77 makes the public release workflows fail closed if they reference or compile raw provider keys, relay bearer tokens, or an OAuth client secret. Public relay URLs, OAuth client IDs, and redirect URIs remain allowed configuration; users may still save their own provider key through the app's secure-storage flow.
 - MobileCore `0.1.4-rc6` closes the emulator foreground-service regression. A 40-poll Android 16 lane kept MobileCode resumed while MobileCore retained its real local model and foreground service with zero failed health polls, freezes, FGS timeouts, ANRs, OOMs, or SIGABRTs. Android `background_restricted` is now a typed fail-closed routing state, not a hidden timeout.

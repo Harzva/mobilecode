@@ -1,8 +1,8 @@
 class MobileCodeVersion {
   const MobileCodeVersion._();
 
-  static const String semantic = '0.1.77';
-  static const int buildNumber = 67;
+  static const String semantic = '0.1.78';
+  static const int buildNumber = 68;
   static const String tag = 'v$semantic';
   static const String display = tag;
   static const String githubRepoUrl = 'https://github.com/Harzva/mobilecode';

@@ -187,6 +187,7 @@ class MobileCorePolicyDecision {
     required this.allowCloudPayload,
     this.resourceConstrained = false,
     this.recommendedModelId,
+    this.maxOutputTokens = 256,
   });
 
   final MobileCorePolicyTarget target;
@@ -196,6 +197,10 @@ class MobileCorePolicyDecision {
   final bool allowCloudPayload;
   final bool resourceConstrained;
   final String? recommendedModelId;
+  final int maxOutputTokens;
+
+  int constrainOutputTokens(int requested) =>
+      requested.clamp(1, maxOutputTokens);
 
   Map<String, Object?> get evidenceMetadata => {
         'target': target.name,
@@ -205,6 +210,7 @@ class MobileCorePolicyDecision {
         'allowCloudPayload': allowCloudPayload,
         'resourceConstrained': resourceConstrained,
         'recommendedModelId': recommendedModelId,
+        'maxOutputTokens': maxOutputTokens,
       };
 }
 
@@ -247,11 +253,16 @@ class MobileCoreAdaptivePolicy {
     bool cloudAvailable = false,
     bool cloudApproved = false,
     MobileCoreAttachmentKind? attachmentKind,
+    double measuredDecodeTokensPerSecond = 0,
   }) {
     final localReady = health.canInfer && health.capabilities.textInput;
     final recommendation = _bestSafeRecommendation(recommendations);
     final pressured = _isPressured(health, recommendations, telemetry);
     final constrainedContext = pressured ? 2048 : 4096;
+    final maxOutputTokens = _outputTokenLimit(
+      pressured: pressured,
+      measuredDecodeTokensPerSecond: measuredDecodeTokensPerSecond,
+    );
 
     if (attachmentKind != null) {
       final supported =
@@ -269,6 +280,7 @@ class MobileCoreAdaptivePolicy {
         allowCloudPayload: false,
         resourceConstrained: pressured,
         recommendedModelId: recommendation?.modelId,
+        maxOutputTokens: maxOutputTokens,
       );
     }
 
@@ -285,6 +297,7 @@ class MobileCoreAdaptivePolicy {
         allowCloudPayload: false,
         resourceConstrained: pressured,
         recommendedModelId: recommendation?.modelId,
+        maxOutputTokens: maxOutputTokens,
       );
     }
 
@@ -297,6 +310,7 @@ class MobileCoreAdaptivePolicy {
         allowCloudPayload: false,
         resourceConstrained: pressured,
         recommendedModelId: recommendation?.modelId,
+        maxOutputTokens: maxOutputTokens,
       );
     }
 
@@ -315,6 +329,7 @@ class MobileCoreAdaptivePolicy {
         allowCloudPayload: cloudApproved,
         resourceConstrained: pressured,
         recommendedModelId: recommendation?.modelId,
+        maxOutputTokens: maxOutputTokens,
       );
     }
 
@@ -327,6 +342,7 @@ class MobileCoreAdaptivePolicy {
         allowCloudPayload: false,
         resourceConstrained: pressured,
         recommendedModelId: recommendation?.modelId,
+        maxOutputTokens: maxOutputTokens,
       );
     }
     return MobileCorePolicyDecision(
@@ -341,6 +357,7 @@ class MobileCoreAdaptivePolicy {
       allowCloudPayload: cloudAvailable && cloudApproved,
       resourceConstrained: pressured,
       recommendedModelId: recommendation?.modelId,
+      maxOutputTokens: maxOutputTokens,
     );
   }
 
@@ -350,6 +367,7 @@ class MobileCoreAdaptivePolicy {
     required DeviceTelemetrySnapshot telemetry,
     required MobileCoreTaskSignals task,
     MobileCoreAttachmentKind? attachmentKind,
+    double measuredDecodeTokensPerSecond = 0,
   }) =>
       decide(
         health: health,
@@ -361,7 +379,23 @@ class MobileCoreAdaptivePolicy {
         cloudAvailable: task.cloudAvailable,
         cloudApproved: task.cloudApproved,
         attachmentKind: attachmentKind,
+        measuredDecodeTokensPerSecond: measuredDecodeTokensPerSecond,
       );
+
+  static int _outputTokenLimit({
+    required bool pressured,
+    required double measuredDecodeTokensPerSecond,
+  }) {
+    if (measuredDecodeTokensPerSecond > 0 &&
+        measuredDecodeTokensPerSecond < 0.5) {
+      return 8;
+    }
+    if (measuredDecodeTokensPerSecond > 0 &&
+        measuredDecodeTokensPerSecond < 2) {
+      return 32;
+    }
+    return pressured ? 128 : 256;
+  }
 
   static bool _isPressured(
     TuimaHealth health,

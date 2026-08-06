@@ -218,6 +218,19 @@ void main() {
     expect(decision.contextLength, 2048);
     expect(decision.resourceConstrained, isTrue);
     expect(decision.recommendedModelId, 'small-q4');
+    expect(decision.maxOutputTokens, 128);
+  });
+
+  test('measured slow local decode constrains the next output budget', () {
+    final decision = MobileCoreAdaptivePolicy.decide(
+      health: _health(),
+      recommendations: _recommendations(),
+      telemetry: _telemetry(),
+      measuredDecodeTokensPerSecond: 0.1,
+    );
+
+    expect(decision.maxOutputTokens, 8);
+    expect(decision.constrainOutputTokens(1024), 8);
   });
 
   test('private offline work still switches to the safe model under pressure',

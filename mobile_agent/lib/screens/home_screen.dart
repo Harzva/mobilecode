@@ -14047,8 +14047,9 @@ class _ChatPanelState extends State<_ChatPanel> {
           'MobileCore ${health.version} is ready with ${health.activeModel ?? 'a local model'}.',
         TuimaConnectionState.serviceReady =>
           'MobileCore ${health.version} is running, but no model is loaded.',
-        TuimaConnectionState.unavailable =>
-          'MobileCore is not reachable at 127.0.0.1:8080.',
+        TuimaConnectionState.unavailable => health.failureCode == null
+            ? 'MobileCore is not reachable at 127.0.0.1:8080.'
+            : 'MobileCore compatibility check failed (${health.failureCode}).',
       };
       widget.onLog(
         'TuiMa status changed',
@@ -14065,6 +14066,13 @@ class _ChatPanelState extends State<_ChatPanel> {
   Future<_MobileCoreControlData> _loadMobileCoreControlData() async {
     final snapshot = await _tuimaProviderService.runtimeSnapshot();
     if (mounted) setState(() => _tuimaHealth = snapshot.health);
+    if (snapshot.health.state == TuimaConnectionState.unavailable) {
+      throw MobileCoreProviderException(
+        code: snapshot.health.failureCode ?? 'service_unavailable',
+        message: snapshot.health.failure ??
+            'MobileCore is unavailable on the loopback service.',
+      );
+    }
     return _MobileCoreControlData(
       health: snapshot.health,
       models: snapshot.models,
@@ -14394,15 +14402,24 @@ class _ChatPanelState extends State<_ChatPanel> {
       _tuimaProviderService
           .recommendations()
           .catchError((_) => const MobileCoreRecommendations()),
+      _tuimaProviderService
+          .metrics()
+          .catchError((_) => const MobileCoreMetrics()),
     ]);
     final telemetry = results[0] as DeviceTelemetrySnapshot;
     final recommendations = results[1] as MobileCoreRecommendations;
+    final metrics = results[2] as MobileCoreMetrics;
+    double measuredSpeedFor(TuimaHealth candidate) =>
+        metrics.activeModel == candidate.activeModel
+            ? metrics.decodeTokensPerSecond
+            : 0;
     var decision = MobileCoreAdaptivePolicy.decideForTask(
       health: health,
       recommendations: recommendations,
       telemetry: telemetry,
       task: taskSignals,
       attachmentKind: attachment?.kind,
+      measuredDecodeTokensPerSecond: measuredSpeedFor(health),
     );
     var currentHealth = health;
     if (MobileCoreAdaptivePolicy.shouldSwitchToRecommendedModel(
@@ -14420,6 +14437,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         telemetry: telemetry,
         task: taskSignals,
         attachmentKind: attachment?.kind,
+        measuredDecodeTokensPerSecond: measuredSpeedFor(currentHealth),
       );
     }
     if (mounted && currentHealth.activeModel != _tuimaHealth.activeModel) {
@@ -14804,7 +14822,14 @@ class _ChatPanelState extends State<_ChatPanel> {
           _mint);
     } on Object catch (error) {
       if (!mounted) return;
-      final message = error.toString().replaceFirst('Exception: ', '');
+      final requestedTimeout = const Duration(minutes: 2);
+      final message = _providerRequestErrorMessage(
+        error,
+        stream: true,
+        responseTimeout: widget.providerPreset == _ProviderPreset.tuimaLocal
+            ? _mobileCoreResponseTimeout(requestedTimeout)
+            : requestedTimeout,
+      );
       setState(() => _error = message);
       await TokenUsageService.instance.recordCompleted(
         provider: _flavorLabel(flavor),
@@ -15087,6 +15112,9 @@ class _ChatPanelState extends State<_ChatPanel> {
     required bool stream,
     required Duration responseTimeout,
   }) {
+    if (error is MobileCoreProviderException) {
+      return 'MobileCore ${error.code}: ${error.message}';
+    }
     if (error is SocketException) {
       return 'Provider network error: ${_friendlySocketError(error)}';
     }
@@ -15099,6 +15127,11 @@ class _ChatPanelState extends State<_ChatPanel> {
           : 'Provider timed out after ${responseTimeout.inSeconds}s while waiting for a model response. Try a shorter prompt/model output or stop and retry.';
     }
     return error.toString().replaceFirst('Exception: ', '');
+  }
+
+  Duration _mobileCoreResponseTimeout(Duration requested) {
+    const minimum = Duration(minutes: 3);
+    return requested < minimum ? minimum : requested;
   }
 
   bool get _usesManagedRelay =>
@@ -15332,27 +15365,31 @@ class _ChatPanelState extends State<_ChatPanel> {
         taskSignals: taskSignals,
       );
       final health = runtimeDecision.health;
+      final effectiveMaxTokens =
+          runtimeDecision.policy.constrainOutputTokens(maxTokens);
       final decision = _tuimaRouteDecision(
         endpoint: endpoint,
-        maxTokens: maxTokens,
+        maxTokens: effectiveMaxTokens,
         history: history,
         systemPrompt: systemPrompt,
       );
       onRoute?.call(decision);
       _recordProviderRouteEvidence(
         decision,
-        maxTokens: maxTokens,
+        maxTokens: effectiveMaxTokens,
         inputCharacters: _tokenInputChars(history, systemPrompt),
         taskSignals: taskSignals,
       );
       final startedAt = DateTime.now();
       MobileCoreMetrics? inferenceMetrics;
       try {
+        final localResponseTimeout =
+            _mobileCoreResponseTimeout(responseTimeout);
         final answer = await _tuimaProviderService.completeChat(
           messages: _tuimaMessages(history, systemPrompt),
           model: decision.model,
-          maxTokens: maxTokens,
-          timeout: responseTimeout,
+          maxTokens: effectiveMaxTokens,
+          timeout: localResponseTimeout,
           onMetrics: (value) => inferenceMetrics = value,
         );
         _recordMobileCoreInferenceEvidence(
@@ -15483,16 +15520,18 @@ class _ChatPanelState extends State<_ChatPanel> {
             ),
           );
           final health = runtimeDecision.health;
+          final effectiveMaxTokens =
+              runtimeDecision.policy.constrainOutputTokens(maxTokens);
           final localDecision = _tuimaRouteDecision(
             endpoint: endpoint,
-            maxTokens: maxTokens,
+            maxTokens: effectiveMaxTokens,
             history: history,
             systemPrompt: systemPrompt,
           );
           onRoute?.call(localDecision);
           _recordProviderRouteEvidence(
             localDecision,
-            maxTokens: maxTokens,
+            maxTokens: effectiveMaxTokens,
             inputCharacters: inputCharacters,
             taskSignals: runtimeDecision.taskSignals,
           );
@@ -15500,11 +15539,13 @@ class _ChatPanelState extends State<_ChatPanel> {
           final startedAt = DateTime.now();
           MobileCoreMetrics? inferenceMetrics;
           try {
+            final localResponseTimeout =
+                _mobileCoreResponseTimeout(responseTimeout);
             final answer = await _tuimaProviderService.completeChat(
               messages: _tuimaMessages(history, systemPrompt),
               model: localDecision.model,
-              maxTokens: maxTokens,
-              timeout: responseTimeout,
+              maxTokens: effectiveMaxTokens,
+              timeout: localResponseTimeout,
               onMetrics: (value) => inferenceMetrics = value,
             );
             _recordMobileCoreInferenceEvidence(
@@ -15580,6 +15621,8 @@ class _ChatPanelState extends State<_ChatPanel> {
         taskSignals: taskSignals,
       );
       final health = runtimeDecision.health;
+      final effectiveMaxTokens =
+          runtimeDecision.policy.constrainOutputTokens(maxTokens);
       if (localAttachment != null &&
           !health.capabilities.supports(localAttachment.kind)) {
         throw MobileCoreProviderException(
@@ -15590,20 +15633,22 @@ class _ChatPanelState extends State<_ChatPanel> {
       }
       final decision = _tuimaRouteDecision(
         endpoint: endpoint,
-        maxTokens: maxTokens,
+        maxTokens: effectiveMaxTokens,
         history: history,
         systemPrompt: systemPrompt,
       );
       onRoute?.call(decision);
       _recordProviderRouteEvidence(
         decision,
-        maxTokens: maxTokens,
+        maxTokens: effectiveMaxTokens,
         inputCharacters: _tokenInputChars(history, systemPrompt),
         taskSignals: taskSignals,
       );
       final startedAt = DateTime.now();
       MobileCoreMetrics? inferenceMetrics;
       try {
+        final localResponseTimeout =
+            _mobileCoreResponseTimeout(responseTimeout);
         await for (final chunk in _tuimaProviderService.streamChat(
           messages: _tuimaMessages(
             history,
@@ -15611,8 +15656,8 @@ class _ChatPanelState extends State<_ChatPanel> {
             attachment: localAttachment,
           ),
           model: decision.model,
-          maxTokens: maxTokens,
-          timeout: responseTimeout,
+          maxTokens: effectiveMaxTokens,
+          timeout: localResponseTimeout,
           onMetrics: (value) => inferenceMetrics = value,
         )) {
           yield chunk;
@@ -15782,16 +15827,18 @@ class _ChatPanelState extends State<_ChatPanel> {
             ),
           );
           final health = runtimeDecision.health;
+          final effectiveMaxTokens =
+              runtimeDecision.policy.constrainOutputTokens(maxTokens);
           final localDecision = _tuimaRouteDecision(
             endpoint: endpoint,
-            maxTokens: maxTokens,
+            maxTokens: effectiveMaxTokens,
             history: history,
             systemPrompt: systemPrompt,
           );
           onRoute?.call(localDecision);
           _recordProviderRouteEvidence(
             localDecision,
-            maxTokens: maxTokens,
+            maxTokens: effectiveMaxTokens,
             inputCharacters: inputCharacters,
             taskSignals: runtimeDecision.taskSignals,
           );
@@ -15799,11 +15846,13 @@ class _ChatPanelState extends State<_ChatPanel> {
           final startedAt = DateTime.now();
           MobileCoreMetrics? inferenceMetrics;
           try {
+            final localResponseTimeout =
+                _mobileCoreResponseTimeout(responseTimeout);
             await for (final chunk in _tuimaProviderService.streamChat(
               messages: _tuimaMessages(history, systemPrompt),
               model: localDecision.model,
-              maxTokens: maxTokens,
-              timeout: responseTimeout,
+              maxTokens: effectiveMaxTokens,
+              timeout: localResponseTimeout,
               onMetrics: (value) => inferenceMetrics = value,
             )) {
               yield chunk;
@@ -16522,6 +16571,10 @@ class _ChatPanelState extends State<_ChatPanel> {
       _agentStopping = true;
     });
     _agentProviderClient?.close(force: true);
+    // A cloud task may have failed closed or been declined into MobileCore
+    // without changing the selected provider chip. Cancellation is idempotent,
+    // so always notify the loopback runtime when the user pauses the Agent.
+    unawaited(_tuimaProviderService.cancelInference().catchError((_) => false));
     _failAgentRunStep('Stopped by user.');
     widget.onLog(
         'Agent pause requested',

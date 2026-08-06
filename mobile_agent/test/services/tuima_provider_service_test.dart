@@ -89,6 +89,7 @@ void main() {
         modelLoadUri: root.resolve('/mobilecore/model/load'),
         modelUnloadUri: root.resolve('/mobilecore/model/unload'),
         omniStatusUri: root.resolve('/mobilecore/omni/status'),
+        inferenceCancelUri: root.resolve('/mobilecore/inference/cancel'),
       );
     });
 
@@ -102,6 +103,8 @@ void main() {
         request.response.headers.contentType = ContentType.json;
         request.response.write(jsonEncode({
           'status': 'ok',
+          'service': 'mobilecore',
+          'protocol': _mobileCoreProtocolV2,
           'version': '0.1.3-rc2',
           'backend': 'llama.cpp',
           'runtime': 'llama.cpp/libmtmd',
@@ -149,8 +152,143 @@ void main() {
       expect(health.evidenceMetadata.toString(), isNot(contains('8000')));
     });
 
+    test('rejects a missing MobileCoreClient protocol handshake', () async {
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        request.response.write(jsonEncode({
+          ..._healthPayload(),
+          'protocol': null,
+        }));
+        await request.response.close();
+      });
+
+      final health = await service.probe();
+      expect(health.state, TuimaConnectionState.unavailable);
+      expect(health.failureCode, 'protocol_missing');
+      expect(health.evidenceMetadata['failureCode'], 'protocol_missing');
+    });
+
+    test('blocks model control when the protocol major is unsupported',
+        () async {
+      var controlRequests = 0;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path == '/health') {
+          request.response.write(jsonEncode({
+            ..._healthPayload(),
+            'protocol': const {
+              'name': 'mobilecore.local',
+              'major': 3,
+              'minor': 0,
+              'min_client_major': 3,
+              'max_client_major': 3,
+            },
+          }));
+        } else {
+          controlRequests += 1;
+          request.response.write('{"ok":true}');
+        }
+        await request.response.close();
+      });
+
+      await expectLater(
+        service.switchModel('small-q4'),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'protocol_unsupported',
+        )),
+      );
+      expect(controlRequests, 0);
+    });
+
+    test('checks the active model before sending inference payloads', () async {
+      var chatRequests = 0;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path == '/health') {
+          request.response
+              .write(jsonEncode(_healthPayload(model: 'active-q4')));
+        } else {
+          chatRequests += 1;
+          request.response.write('{"choices":[]}');
+        }
+        await request.response.close();
+      });
+
+      await expectLater(
+        service.completeChat(
+          messages: const [
+            {'role': 'user', 'content': 'hello'}
+          ],
+          model: 'stale-q4',
+        ),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'model_state_mismatch',
+        )),
+      );
+      expect(chatRequests, 0);
+    });
+
+    test('maps a buffered local inference timeout to typed evidence', () async {
+      var cancelRequests = 0;
+      server.listen((request) async {
+        if (request.uri.path == '/health') {
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(jsonEncode(_healthPayload()));
+        } else if (request.uri.path == '/mobilecore/inference/cancel') {
+          cancelRequests += 1;
+          request.response.headers.contentType = ContentType.json;
+          request.response.write('{"ok":true,"cancel_requested":true}');
+        } else {
+          await Future<void>.delayed(const Duration(milliseconds: 150));
+          request.response.headers.contentType = ContentType.json;
+          request.response.write('{"choices":[]}');
+        }
+        await request.response.close();
+      });
+
+      await expectLater(
+        service.completeChat(
+          messages: const [
+            {'role': 'user', 'content': 'hello'}
+          ],
+          model: 'qwen',
+          timeout: const Duration(milliseconds: 30),
+        ),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'inference_timeout',
+        )),
+      );
+      expect(cancelRequests, 1);
+    });
+
+    test('sends an authenticated inference cancellation request', () async {
+      server.listen((request) async {
+        expect(request.uri.path, '/mobilecore/inference/cancel');
+        expect(request.headers.value(HttpHeaders.authorizationHeader),
+            'Bearer local');
+        await utf8.decoder.bind(request).join();
+        request.response.headers.contentType = ContentType.json;
+        request.response.write('{"ok":true,"cancel_requested":true}');
+        await request.response.close();
+      });
+
+      expect(await service.cancelInference(), isTrue);
+    });
+
     test('accepts buffered JSON when a provider ignores stream=true', () async {
       server.listen((request) async {
+        if (request.uri.path == '/health') {
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(jsonEncode(_healthPayload()));
+          await request.response.close();
+          return;
+        }
         expect(request.headers.value(HttpHeaders.authorizationHeader),
             'Bearer local');
         expect(request.contentLength, greaterThan(0));
@@ -177,6 +315,12 @@ void main() {
 
     test('parses OpenAI-compatible SSE deltas', () async {
       server.listen((request) async {
+        if (request.uri.path == '/health') {
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(jsonEncode(_healthPayload()));
+          await request.response.close();
+          return;
+        }
         request.response.headers.contentType =
             ContentType('text', 'event-stream', charset: 'utf-8');
         request.response
@@ -256,6 +400,8 @@ void main() {
           case '/health':
             request.response.write(jsonEncode({
               'status': 'ok',
+              'service': 'mobilecore',
+              'protocol': _mobileCoreProtocolV2,
               'version': '0.1.4-rc2',
               'backend': 'cpu',
               'runtime': 'llama.cpp',
@@ -310,8 +456,8 @@ void main() {
       expect(snapshot.health.activeModel, 'small-q4');
       expect(snapshot.models.single.loaded, isTrue);
       expect(snapshot.metrics.decodeTokensPerSecond, 8.5);
-      expect(snapshot.recommendations.recommendations.single.modelId,
-          'small-q4');
+      expect(
+          snapshot.recommendations.recommendations.single.modelId, 'small-q4');
     });
 
     test('rejects a control snapshot that keeps changing', () async {
@@ -322,6 +468,8 @@ void main() {
           healthRequests += 1;
           request.response.write(jsonEncode({
             'status': 'ok',
+            'service': 'mobilecore',
+            'protocol': _mobileCoreProtocolV2,
             'version': '0.1.4-rc2',
             'backend': 'cpu',
             'runtime': 'llama.cpp',
@@ -381,6 +529,8 @@ void main() {
         } else if (request.uri.path == '/health') {
           request.response.write(jsonEncode({
             'status': 'ok',
+            'service': 'mobilecore',
+            'protocol': _mobileCoreProtocolV2,
             'version': '0.1.3-rc2',
             'backend': 'cpu',
             'active_model': loaded ? 'small-q4' : null,
@@ -439,6 +589,8 @@ void main() {
         } else if (request.uri.path == '/health') {
           request.response.write(jsonEncode({
             'status': 'ok',
+            'service': 'mobilecore',
+            'protocol': _mobileCoreProtocolV2,
             'version': '0.1.4-rc2',
             'backend': 'cpu',
             'active_model': 'old-small-q4-copy',
@@ -461,6 +613,12 @@ void main() {
     test('extracts final inference metrics from the SSE terminal event',
         () async {
       server.listen((request) async {
+        if (request.uri.path == '/health') {
+          request.response.headers.contentType = ContentType.json;
+          request.response.write(jsonEncode(_healthPayload(model: 'small-q4')));
+          await request.response.close();
+          return;
+        }
         request.response.headers.contentType =
             ContentType('text', 'event-stream', charset: 'utf-8');
         request.response
@@ -502,3 +660,28 @@ void main() {
     expect(attachment.evidenceMetadata['redaction'], 'payload_omitted');
   });
 }
+
+const _mobileCoreProtocolV2 = <String, Object>{
+  'name': 'mobilecore.local',
+  'major': 2,
+  'minor': 0,
+  'min_client_major': 2,
+  'max_client_major': 2,
+};
+
+Map<String, Object?> _healthPayload({String model = 'qwen'}) => {
+      'status': 'ok',
+      'service': 'mobilecore',
+      'protocol': _mobileCoreProtocolV2,
+      'version': '0.1.4-rc4',
+      'backend': 'cpu',
+      'runtime': 'llama.cpp',
+      'llama_cpp_revision': 'fixed-revision',
+      'quantization': 'Q4_K_M',
+      'active_model': model,
+      'model_loaded': true,
+      'capabilities': const {
+        'text_input': true,
+        'text_output': true,
+      },
+    };

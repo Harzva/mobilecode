@@ -410,8 +410,10 @@ Current candidate: `v0.1.69`.
 
 See:
 
-- [Latest dual app build](https://github.com/Harzva/mobilecode/actions/runs/27287231941) - Android APK, iOS simulator app, and iOS unsigned archive all completed successfully.
-- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.69) - Android APK for the controlled Phone Use evaluation candidate.
+- [Android APK release build](https://github.com/Harzva/mobilecode/actions/runs/31091939149) - stable-signed `pure` APK `0.1.69+59` built and uploaded successfully. APK SHA-256: `7842efb5aa931c15c19158d0451210e0c6be7b56cba59905f6128436d5490ddc`.
+- [iOS release evidence](https://github.com/Harzva/mobilecode/actions/runs/31089547692) - simulator build/install/launch and unsigned device archive passed; the original Android matrix leg was superseded by the fixed Android release build above.
+- [Android emulator evidence](https://github.com/Harzva/mobilecode/actions/runs/31090709348) - app process, drawn surface, Helper health, authentication rejection, and local command execution passed; the job remained red because the unaccelerated API 29 runner surfaced a host `System UI isn't responding` dialog.
+- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.69) - Android APK, iOS simulator app, unsigned iOS archive, screenshot, and logs for the controlled Phone Use evaluation candidate.
 - [Version Policy](docs/mobilecode-version-policy.md)
 - [Release QA Checklist](docs/mobilecode-release-qa.md)
 - [Helper Runtime Protocol](docs/mobilecode-helper-runtime-protocol.md)

@@ -277,6 +277,73 @@ void main() {
     );
   });
 
+  test('verified Omni activation is selected only for a missing media ability',
+      () {
+    const verified = MobileCoreOmniStatus(
+      modelId: 'verified-omni',
+      pairVerified: true,
+      mainArtifact: MobileCoreArtifactHealth(present: true, verified: true),
+      projectorArtifact:
+          MobileCoreArtifactHealth(present: true, verified: true),
+    );
+
+    expect(
+      MobileCoreAdaptivePolicy.shouldActivateVerifiedOmni(
+        health: _health(image: false),
+        omniStatus: verified,
+        attachmentKind: MobileCoreAttachmentKind.image,
+      ),
+      isTrue,
+    );
+    expect(
+      MobileCoreAdaptivePolicy.shouldActivateVerifiedOmni(
+        health: _health(image: true),
+        omniStatus: verified,
+        attachmentKind: MobileCoreAttachmentKind.image,
+      ),
+      isFalse,
+    );
+    expect(
+      MobileCoreAdaptivePolicy.shouldActivateVerifiedOmni(
+        health: TuimaHealth(
+          state: TuimaConnectionState.modelReady,
+          version: '0.1.4-rc4',
+          backend: 'cpu',
+          runtime: 'llama.cpp/libmtmd',
+          activeModel: 'verified-omni',
+          capabilities: const MobileCoreCapabilities(textInput: true),
+          mainArtifact:
+              const MobileCoreArtifactHealth(present: true, verified: true),
+          projectorArtifact:
+              const MobileCoreArtifactHealth(present: true, verified: true),
+        ),
+        omniStatus: verified,
+        attachmentKind: MobileCoreAttachmentKind.audio,
+      ),
+      isFalse,
+    );
+  });
+
+  test('partial Omni artifacts can never trigger automatic media activation',
+      () {
+    const partial = MobileCoreOmniStatus(
+      modelId: 'partial-omni',
+      pairVerified: false,
+      mainArtifact: MobileCoreArtifactHealth(present: true, verified: true),
+      projectorArtifact:
+          MobileCoreArtifactHealth(present: true, verified: false),
+    );
+
+    expect(
+      MobileCoreAdaptivePolicy.shouldActivateVerifiedOmni(
+        health: _health(image: false),
+        omniStatus: partial,
+        attachmentKind: MobileCoreAttachmentKind.image,
+      ),
+      isFalse,
+    );
+  });
+
   test('complex work needs explicit approval before cloud routing', () {
     final pending = MobileCoreAdaptivePolicy.decide(
       health: _health(),

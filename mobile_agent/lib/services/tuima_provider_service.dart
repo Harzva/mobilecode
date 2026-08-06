@@ -154,6 +154,78 @@ class MobileCoreArtifactHealth {
   }
 }
 
+class MobileCoreOmniStatus {
+  const MobileCoreOmniStatus({
+    this.modelId = '',
+    this.revision = '',
+    this.phase = 'unknown',
+    this.pairVerified = false,
+    this.mainArtifact = const MobileCoreArtifactHealth(),
+    this.projectorArtifact = const MobileCoreArtifactHealth(),
+    this.preflightPassed,
+    this.preflightFailureCode,
+  });
+
+  final String modelId;
+  final String revision;
+  final String phase;
+  final bool pairVerified;
+  final MobileCoreArtifactHealth mainArtifact;
+  final MobileCoreArtifactHealth projectorArtifact;
+  final bool? preflightPassed;
+  final String? preflightFailureCode;
+
+  bool get loadable =>
+      modelId.isNotEmpty &&
+      pairVerified &&
+      mainArtifact.present &&
+      mainArtifact.verified &&
+      projectorArtifact.present &&
+      projectorArtifact.verified;
+
+  Map<String, Object?> get evidenceMetadata => {
+        'modelId': modelId,
+        'revision': revision,
+        'phase': phase,
+        'pairVerified': pairVerified,
+        'mainInstalled': mainArtifact.present,
+        'mainVerified': mainArtifact.verified,
+        'projectorInstalled': projectorArtifact.present,
+        'projectorVerified': projectorArtifact.verified,
+        'preflightPassed': preflightPassed,
+        if (preflightFailureCode != null)
+          'preflightFailureCode': preflightFailureCode,
+        'redaction': 'artifact_paths_and_payloads_omitted',
+      };
+
+  factory MobileCoreOmniStatus.fromJson(Object? value) {
+    final map = _stringMap(value);
+    final artifacts = _stringMap(map['artifacts']);
+    final preflight = _stringMap(map['preflight']);
+    return MobileCoreOmniStatus(
+      modelId: map['model_id']?.toString().trim() ?? '',
+      revision: map['revision']?.toString().trim() ?? '',
+      phase: map['phase']?.toString().trim() ?? 'unknown',
+      pairVerified: map['pair_verified'] == true,
+      mainArtifact: MobileCoreArtifactHealth.fromJson(artifacts['main']),
+      projectorArtifact: MobileCoreArtifactHealth.fromJson(artifacts['mmproj']),
+      preflightPassed:
+          preflight.containsKey('passed') ? preflight['passed'] == true : null,
+      preflightFailureCode: _nullableString(preflight['failure_code']),
+    );
+  }
+}
+
+class MobileCoreOmniLoadResult {
+  const MobileCoreOmniLoadResult({
+    required this.status,
+    required this.health,
+  });
+
+  final MobileCoreOmniStatus status;
+  final TuimaHealth health;
+}
+
 class MobileCoreResourceHealth {
   const MobileCoreResourceHealth({
     this.availableBytes = 0,
@@ -577,6 +649,7 @@ class MobileCoreClient {
     Uri? modelLoadUri,
     Uri? modelUnloadUri,
     Uri? omniStatusUri,
+    Uri? omniLoadUri,
     Uri? inferenceCancelUri,
   })  : _client = client ?? HttpClient(),
         healthUri = healthUri ?? Uri.parse('http://127.0.0.1:8080/health'),
@@ -592,6 +665,8 @@ class MobileCoreClient {
             Uri.parse('http://127.0.0.1:8080/mobilecore/model/unload'),
         omniStatusUri = omniStatusUri ??
             Uri.parse('http://127.0.0.1:8080/mobilecore/omni/status'),
+        omniLoadUri = omniLoadUri ??
+            Uri.parse('http://127.0.0.1:8080/mobilecore/omni/load'),
         inferenceCancelUri = inferenceCancelUri ??
             Uri.parse('http://127.0.0.1:8080/mobilecore/inference/cancel');
 
@@ -604,6 +679,7 @@ class MobileCoreClient {
   final Uri modelLoadUri;
   final Uri modelUnloadUri;
   final Uri omniStatusUri;
+  final Uri omniLoadUri;
   final Uri inferenceCancelUri;
 
   Future<TuimaHealth> probe({
@@ -697,10 +773,74 @@ class MobileCoreClient {
     );
   }
 
-  Future<Map<String, dynamic>> omniStatus({
+  Future<MobileCoreOmniStatus> omniStatus({
     Duration timeout = const Duration(seconds: 5),
-  }) =>
-      _getJson(omniStatusUri, timeout: timeout);
+  }) async =>
+      MobileCoreOmniStatus.fromJson(
+        await _getJson(omniStatusUri, timeout: timeout),
+      );
+
+  Future<MobileCoreOmniLoadResult> loadVerifiedOmni({
+    MobileCoreAttachmentKind? requiredCapability,
+    int contextLength = 4096,
+    int threads = 4,
+    Duration timeout = const Duration(minutes: 2),
+  }) async {
+    await _requireCompatibleHealth(timeout: const Duration(seconds: 5));
+    final status = await omniStatus(timeout: const Duration(seconds: 5));
+    if (!status.loadable) {
+      throw const MobileCoreProviderException(
+        code: 'omni_pair_not_verified',
+        message:
+            'MobileCore does not have a complete verified local Omni pair.',
+      );
+    }
+    _validatedPublicArtifactId(
+      status.modelId,
+      code: 'invalid_omni_model_id',
+      label: 'Omni model',
+    );
+    await _postJson(
+      omniLoadUri,
+      {
+        'context_length': contextLength.clamp(128, 32768),
+        'threads': threads.clamp(1, 16),
+        'gpu_layers': 0,
+      },
+      timeout: timeout,
+    );
+    final health = await probe(timeout: const Duration(seconds: 5));
+    final pinnedPairActive = health.canInfer &&
+        health.mainArtifact.verified &&
+        health.projectorArtifact.verified &&
+        _matchesPinnedArtifact(
+          expected: status.mainArtifact,
+          active: health.mainArtifact,
+        ) &&
+        _matchesPinnedArtifact(
+          expected: status.projectorArtifact,
+          active: health.projectorArtifact,
+        ) &&
+        health.runtime.contains('libmtmd');
+    final anyMediaCapability =
+        health.capabilities.imageInput || health.capabilities.audioInput;
+    if (!pinnedPairActive || !anyMediaCapability) {
+      throw const MobileCoreProviderException(
+        code: 'omni_runtime_not_ready',
+        message:
+            'MobileCore loaded the pair but did not confirm a verified multimodal runtime.',
+      );
+    }
+    if (requiredCapability != null &&
+        !health.capabilities.supports(requiredCapability)) {
+      throw MobileCoreProviderException(
+        code: 'unsupported_modality',
+        message:
+            'The verified local Omni runtime does not support ${requiredCapability.name} input.',
+      );
+    }
+    return MobileCoreOmniLoadResult(status: status, health: health);
+  }
 
   Future<bool> cancelInference({
     Duration timeout = const Duration(seconds: 3),
@@ -1182,6 +1322,19 @@ class MobileCoreClient {
     return normalized;
   }
 
+  static bool _matchesPinnedArtifact({
+    required MobileCoreArtifactHealth expected,
+    required MobileCoreArtifactHealth active,
+  }) {
+    final expectedDigest = expected.expectedDigest.trim().toLowerCase();
+    if (expectedDigest.isEmpty) return true;
+    final activeDigest = active.expectedDigest.trim().toLowerCase();
+    final expectedAlgorithm = expected.digestAlgorithm.trim().toLowerCase();
+    final activeAlgorithm = active.digestAlgorithm.trim().toLowerCase();
+    return activeDigest == expectedDigest &&
+        (expectedAlgorithm.isEmpty || activeAlgorithm == expectedAlgorithm);
+  }
+
   static bool _isConsistentRuntimeSnapshot({
     required TuimaHealth before,
     required TuimaHealth after,
@@ -1301,6 +1454,7 @@ class TuimaProviderService extends MobileCoreClient {
     super.modelLoadUri,
     super.modelUnloadUri,
     super.omniStatusUri,
+    super.omniLoadUri,
     super.inferenceCancelUri,
   });
 

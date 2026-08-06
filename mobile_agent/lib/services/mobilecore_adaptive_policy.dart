@@ -243,6 +243,24 @@ class MobileCoreAdaptivePolicy {
         recommended != activeModelId;
   }
 
+  /// A selected local attachment may reactivate the pinned Omni runtime when
+  /// another model became active after the attachment was chosen. The status
+  /// only proves artifact readiness; the client must still verify the active
+  /// `/health` capability after loading before sending media bytes.
+  static bool shouldActivateVerifiedOmni({
+    required TuimaHealth health,
+    required MobileCoreOmniStatus omniStatus,
+    required MobileCoreAttachmentKind attachmentKind,
+  }) {
+    final pinnedOmniActive = health.canInfer &&
+        health.mainArtifact.verified &&
+        health.projectorArtifact.verified &&
+        health.runtime.contains('libmtmd');
+    return omniStatus.loadable &&
+        !pinnedOmniActive &&
+        !health.capabilities.supports(attachmentKind);
+  }
+
   static MobileCorePolicyDecision decide({
     required TuimaHealth health,
     required MobileCoreRecommendations recommendations,

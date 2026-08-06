@@ -72,6 +72,118 @@ Temperature{mValue=42.25, mType=3, mName=skin, mStatus=2}
         self.assertEqual(qa.parse_battery_temperature_c(battery), 38.7)
         self.assertEqual(qa.parse_thermal_service(thermal), (2, 42.25, 2))
 
+    def test_instrumentation_result_parser_rejects_junit_failure_with_zero_exit(self) -> None:
+        failed = b"""
+INSTRUMENTATION_STATUS_CODE: -2
+FAILURES!!!
+Tests run: 1, Failures: 1
+INSTRUMENTATION_CODE: -1
+"""
+        passed = b"""
+Time: 0.2
+
+OK (1 test)
+
+INSTRUMENTATION_CODE: -1
+"""
+
+        self.assertFalse(
+            qa.instrumentation_succeeded(returncode=0, stdout=failed, stderr=b"")
+        )
+        self.assertTrue(
+            qa.instrumentation_succeeded(returncode=0, stdout=passed, stderr=b"")
+        )
+        self.assertFalse(
+            qa.instrumentation_succeeded(returncode=1, stdout=passed, stderr=b"")
+        )
+        self.assertFalse(
+            qa.instrumentation_succeeded(
+                returncode=0,
+                stdout=b"OK (0 tests)\nINSTRUMENTATION_CODE: -1\n",
+                stderr=b"",
+            )
+        )
+
+    def test_multimodal_lane_runs_every_advertised_cross_app_capability(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            args = argparse.Namespace(
+                output_dir=Path(directory),
+                forward_port=18080,
+                require_thermal=False,
+                require_image_multimodal=False,
+                require_audio_multimodal=False,
+                require_verified_omni=False,
+                task_timeout=30,
+            )
+            runner = qa.QaRunner(args)
+            health = {
+                "capabilities": {
+                    "image_input": True,
+                    "audio_input": True,
+                },
+                "audio_sample_rate_hz": 16_000,
+                "artifacts": {
+                    "main": {"verified": True},
+                    "mmproj": {"verified": True},
+                },
+            }
+            runner.wait_for_health = lambda **_kwargs: health
+            calls = []
+
+            def instrumentation(name, test_name, **_kwargs):
+                calls.append((name, test_name))
+                return subprocess.CompletedProcess([], 0, b"", b"")
+
+            runner.instrumentation = instrumentation
+            runner.exercise_multimodal_cross_app_tasks()
+            raw = (Path(directory) / "multimodal_summary.json").read_text()
+
+        self.assertEqual(runner.multimodal_summary["status"], "passed")
+        self.assertEqual(runner.multimodal_summary["image"], "passed")
+        self.assertEqual(runner.multimodal_summary["audio"], "passed")
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(qa.CROSS_APP_IMAGE_TEST, calls[0][1])
+        self.assertEqual(qa.CROSS_APP_AUDIO_TEST, calls[1][1])
+        self.assertNotIn("messages", raw)
+        self.assertNotIn("input_audio", raw)
+        self.assertNotIn("data:image", raw)
+
+    def test_verified_omni_gate_rejects_unverified_artifacts_before_media(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            args = argparse.Namespace(
+                output_dir=Path(directory),
+                forward_port=18080,
+                require_thermal=False,
+                require_image_multimodal=False,
+                require_audio_multimodal=False,
+                require_verified_omni=True,
+                task_timeout=30,
+            )
+            runner = qa.QaRunner(args)
+            health = {
+                "capabilities": {
+                    "image_input": True,
+                    "audio_input": True,
+                },
+                "audio_sample_rate_hz": 16_000,
+                "artifacts": {
+                    "main": {"verified": False},
+                    "mmproj": {"verified": False},
+                },
+            }
+            runner.wait_for_health = lambda **_kwargs: health
+            runner.instrumentation = lambda *_args, **_kwargs: self.fail(
+                "instrumentation must not run before artifact verification"
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "Verified Omni artifacts"):
+                runner.exercise_multimodal_cross_app_tasks()
+
+        self.assertEqual(runner.multimodal_summary["status"], "failed")
+        self.assertFalse(
+            runner.multimodal_summary["artifactVerification"]["pairVerified"]
+        )
+
     def test_v2_manifest_hashes_identifiers_and_omits_model_filename(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -67,6 +67,7 @@ import '../widgets/phone_use_mode_card.dart';
 import '../widgets/strategy_mode_card.dart';
 import '../widgets/agent_trace_progress_box.dart';
 import '../widgets/agent_trace_recovery_box.dart';
+import '../widgets/cloud_inference_approval_dialog.dart';
 
 enum _ApiFlavor { openAi, anthropic }
 
@@ -13950,6 +13951,8 @@ class _ChatPanelState extends State<_ChatPanel> {
   final Set<String> _approvedCliHubPreviewEvidenceIds = {};
   final Set<String> _consumedPhoneUseApprovalTicketIds = {};
   final List<String> _currentRunMobileCoreInferenceEvidenceIds = [];
+  final Map<String, _CloudInferenceApprovalRecord> _cloudApprovalsByContext =
+      {};
   final Map<String, GlobalKey> _turnKeys = {};
   Timer? _navPreviewTimer;
   Timer? _tuimaHealthTimer;
@@ -14749,6 +14752,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         onUsageChunk: usageAccumulator.addChunk,
         onRoute: (decision) => routeDecision = decision,
         localAttachment: attachment,
+        cloudApprovalContextId: runId,
       )) {
         answerBuffer.write(chunk);
         final answer = answerBuffer.toString();
@@ -14818,6 +14822,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       widget.onLog('AI request error', _compact(message, limit: 140),
           Icons.error_outline, _rose);
     } finally {
+      _cloudApprovalsByContext.remove(runId);
       if (mounted) {
         setState(() => _sending = false);
       }
@@ -14986,12 +14991,14 @@ class _ChatPanelState extends State<_ChatPanel> {
     ModelRouteDecision decision, {
     required int maxTokens,
     required int inputCharacters,
+    MobileCoreTaskSignals? taskSignals,
   }) {
     final now = DateTime.now();
     final metadata = Map<String, dynamic>.from(decision.metadata)
       ..addAll({
         'maxTokens': maxTokens,
         'inputCharacters': inputCharacters,
+        if (taskSignals != null) 'routingSignals': taskSignals.evidenceMetadata,
       });
     if (decision.preset == _ProviderPreset.tuimaLocal) {
       metadata.addAll({
@@ -15210,9 +15217,87 @@ class _ChatPanelState extends State<_ChatPanel> {
       cloudAvailable: cloudSelected,
       // Selecting and configuring a cloud provider is the explicit approval
       // boundary. MobileCode never switches a TuiMa-only request to cloud.
-      cloudApproved: cloudSelected,
+      // Complex cloud work must receive an approval scoped to the current
+      // chat/Agent task. Selecting a provider only makes cloud available.
+      cloudApproved: false,
       offlineSource: offlineSource,
     );
+  }
+
+  Future<MobileCoreTaskSignals> _authorizeComplexCloudTask(
+    MobileCoreTaskSignals signals, {
+    String? approvalContextId,
+  }) async {
+    if (!signals.requiresCloudApproval) return signals;
+    final contextId = approvalContextId?.trim() ?? '';
+    final cached =
+        contextId.isEmpty ? null : _cloudApprovalsByContext[contextId];
+    if (cached != null) {
+      return signals.resolveCloudApproval(
+        approved: cached.approved,
+        approvalId: cached.approvalId,
+      );
+    }
+
+    var localAvailable = _tuimaHealth.canInfer;
+    if (!localAvailable) {
+      localAvailable = (await _refreshTuimaHealth()).canInfer;
+    }
+    final approvalId = 'cloud-${generateEvidenceId()}';
+    final approved = mounted
+        ? await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (dialogContext) => CloudInferenceApprovalDialog(
+                providerLabel: widget.providerPreset.name,
+                localAvailable: localAvailable,
+                onDecision: (value) => Navigator.of(dialogContext).pop(value),
+              ),
+            ) ??
+            false
+        : false;
+    final record = _CloudInferenceApprovalRecord(
+      approvalId: approvalId,
+      approved: approved,
+    );
+    if (contextId.isNotEmpty) {
+      _cloudApprovalsByContext[contextId] = record;
+    }
+    final resolved = signals.resolveCloudApproval(
+      approved: approved,
+      approvalId: approvalId,
+    );
+    _recordCloudInferenceApproval(resolved);
+    return resolved;
+  }
+
+  void _recordCloudInferenceApproval(MobileCoreTaskSignals signals) {
+    final now = DateTime.now();
+    final approved = signals.cloudApproved;
+    _agentEvidenceStore.add(ActionEvidence(
+      evidenceId: generateEvidenceId(),
+      actionName: MobileCodeAction.traceCallProvider,
+      paramsSummary: approved
+          ? 'User approved one-task cloud inference.'
+          : 'User kept the complex task local.',
+      startedAt: now,
+      endedAt: now,
+      success: true,
+      logs: [
+        approved
+            ? 'Cloud inference approved for this task only; payload omitted.'
+            : 'Cloud inference declined; task payload omitted.',
+      ],
+      metadata: {
+        'approvalType': 'cloud_inference',
+        'approvalScope': 'single_task',
+        'approved': approved,
+        'providerPreset': widget.providerPreset.name,
+        'routingSignals': signals.evidenceMetadata,
+        'redactionApplied': true,
+        'redactionState': 'prompt_media_credentials_network_ids_omitted',
+      },
+    ));
   }
 
   Future<String> _callProvider(
@@ -15224,12 +15309,17 @@ class _ChatPanelState extends State<_ChatPanel> {
     bool Function()? isCancelled,
     ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
     void Function(ModelRouteDecision decision)? onRoute,
+    String? cloudApprovalContextId,
   }) async {
-    final taskSignals = await _mobileCoreTaskSignals(
+    var taskSignals = await _mobileCoreTaskSignals(
       history,
       systemPrompt: systemPrompt,
       maxTokens: maxTokens,
       endpoint: endpoint,
+    );
+    taskSignals = await _authorizeComplexCloudTask(
+      taskSignals,
+      approvalContextId: cloudApprovalContextId,
     );
     final routeToMobileCore = MobileCoreAdaptivePolicy.shouldUseMobileCore(
       mobileCoreSelected: widget.providerPreset == _ProviderPreset.tuimaLocal,
@@ -15253,6 +15343,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         decision,
         maxTokens: maxTokens,
         inputCharacters: _tokenInputChars(history, systemPrompt),
+        taskSignals: taskSignals,
       );
       final startedAt = DateTime.now();
       MobileCoreMetrics? inferenceMetrics;
@@ -15310,6 +15401,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         decision,
         maxTokens: maxTokens,
         inputCharacters: inputCharacters,
+        taskSignals: taskSignals,
       );
     }
 
@@ -15402,6 +15494,7 @@ class _ChatPanelState extends State<_ChatPanel> {
             localDecision,
             maxTokens: maxTokens,
             inputCharacters: inputCharacters,
+            taskSignals: runtimeDecision.taskSignals,
           );
           _recordOfflineFallback();
           final startedAt = DateTime.now();
@@ -15457,12 +15550,17 @@ class _ChatPanelState extends State<_ChatPanel> {
     ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
     void Function(ModelRouteDecision decision)? onRoute,
     MobileCoreAttachment? localAttachment,
+    String? cloudApprovalContextId,
   }) async* {
-    final taskSignals = await _mobileCoreTaskSignals(
+    var taskSignals = await _mobileCoreTaskSignals(
       history,
       systemPrompt: systemPrompt,
       maxTokens: maxTokens,
       endpoint: endpoint,
+    );
+    taskSignals = await _authorizeComplexCloudTask(
+      taskSignals,
+      approvalContextId: cloudApprovalContextId,
     );
     final routeToMobileCore = MobileCoreAdaptivePolicy.shouldUseMobileCore(
       mobileCoreSelected: widget.providerPreset == _ProviderPreset.tuimaLocal,
@@ -15501,6 +15599,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         decision,
         maxTokens: maxTokens,
         inputCharacters: _tokenInputChars(history, systemPrompt),
+        taskSignals: taskSignals,
       );
       final startedAt = DateTime.now();
       MobileCoreMetrics? inferenceMetrics;
@@ -15566,6 +15665,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         decision,
         maxTokens: maxTokens,
         inputCharacters: inputCharacters,
+        taskSignals: taskSignals,
       );
     }
 
@@ -15693,6 +15793,7 @@ class _ChatPanelState extends State<_ChatPanel> {
             localDecision,
             maxTokens: maxTokens,
             inputCharacters: inputCharacters,
+            taskSignals: runtimeDecision.taskSignals,
           );
           _recordOfflineFallback();
           final startedAt = DateTime.now();
@@ -15939,11 +16040,30 @@ class _ChatPanelState extends State<_ChatPanel> {
     required TokenUsageAccumulator usageAccumulator,
     required AgentPreset preset,
     required void Function(String detail) onStatus,
+    required String cloudApprovalContextId,
     void Function(AgentLoopEvent event)? onLoopEvent,
     void Function(int round, String detail)? onStreamStatus,
     bool Function()? isCancelled,
     void Function(ModelRouteDecision decision)? onRoute,
   }) async {
+    var taskSignals = await _mobileCoreTaskSignals(
+      history,
+      systemPrompt: systemPrompt,
+      maxTokens: 4096,
+      endpoint: ModelRouteEndpoint.agent,
+    );
+    taskSignals = await _authorizeComplexCloudTask(
+      taskSignals,
+      approvalContextId: cloudApprovalContextId,
+    );
+    if (MobileCoreAdaptivePolicy.shouldUseMobileCore(
+      mobileCoreSelected: widget.providerPreset == _ProviderPreset.tuimaLocal,
+      task: taskSignals,
+    )) {
+      // MobileCore does not own provider-native device/tool execution. Returning
+      // null moves this task into the guarded local single-shot path below.
+      return null;
+    }
     final routeDecision = _providerRouteDecision(
       history,
       systemPrompt: systemPrompt,
@@ -15955,6 +16075,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       routeDecision,
       maxTokens: 4096,
       inputCharacters: _tokenInputChars(history, systemPrompt),
+      taskSignals: taskSignals,
     );
 
     final adapter =
@@ -16156,6 +16277,7 @@ class _ChatPanelState extends State<_ChatPanel> {
               systemPrompt: agentSystemPrompt,
               usageAccumulator: usageAccumulator,
               preset: _agentPreset,
+              cloudApprovalContextId: runId,
               isCancelled: () => _agentCancelRequested,
               onRoute: (decision) => routeDecision = decision,
               onStatus: (detail) =>
@@ -16200,6 +16322,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           onUsageChunk: usageAccumulator.addChunk,
           endpoint: ModelRouteEndpoint.agent,
           onRoute: (decision) => routeDecision = decision,
+          cloudApprovalContextId: runId,
         )) {
           if (_agentCancelRequested)
             throw Exception('Agent run stopped by user.');
@@ -16247,6 +16370,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           originalAnswer: modelAnswer ?? '',
           isCancelled: () => _agentCancelRequested,
           onRoute: (decision) => routeDecision = decision,
+          cloudApprovalContextId: runId,
         );
         _setAgentRunStep(
           2,
@@ -16302,6 +16426,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       }
     }
 
+    _cloudApprovalsByContext.remove(runId);
     if (!mounted) return;
     final current = _sessions.firstWhere((session) => session.id == pending.id,
         orElse: () => pending);
@@ -17285,6 +17410,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     required List<_ChatTurn> originalTurns,
     required String systemPrompt,
     required String originalAnswer,
+    required String cloudApprovalContextId,
     bool Function()? isCancelled,
     void Function(ModelRouteDecision decision)? onRoute,
   }) async {
@@ -17324,6 +17450,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       isCancelled: isCancelled,
       endpoint: ModelRouteEndpoint.agent,
       onRoute: onRoute,
+      cloudApprovalContextId: cloudApprovalContextId,
     );
     if (_extractHtmlDocument(repaired) != null) return repaired;
     throw Exception(
@@ -20931,6 +21058,16 @@ class _MobileCoreRuntimeDecision {
   final TuimaHealth health;
   final MobileCorePolicyDecision policy;
   final MobileCoreTaskSignals taskSignals;
+}
+
+class _CloudInferenceApprovalRecord {
+  const _CloudInferenceApprovalRecord({
+    required this.approvalId,
+    required this.approved,
+  });
+
+  final String approvalId;
+  final bool approved;
 }
 
 class _TuimaStatusButton extends StatelessWidget {

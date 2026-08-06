@@ -44,9 +44,13 @@ definitive offline result routes to MobileCore before the first cloud request;
 available or unknown transport remains guarded by timeout/failure fallback
 because an active Wi-Fi or mobile interface does not prove internet access. The
 signal omits request text and network identifiers from evidence. If the local
-service is unavailable, privacy/offline routing fails closed. A configured cloud
-provider counts as approval only because the user explicitly selected that
-provider; MobileCode never changes a TuiMa-only request to cloud on its own.
+service is unavailable, privacy/offline routing fails closed. Selecting a cloud
+provider only makes that route available. Every long-context or Agent task must
+receive a separate one-task approval card before any cloud request opens;
+declining keeps the task on MobileCore or cancels it when the local runtime is
+unavailable. Approval evidence stores only the approval ID, decision, provider
+preset, scope, and redacted routing booleans. MobileCode never changes a
+TuiMa-only request to cloud on its own.
 
 When local inference informs a Phone Use approval card, MobileCode now links the two ActionEvidence records by identifier in both directions: the inference record stores `deviceOperationEvidenceIds`, and the device record stores `mobileCoreInferenceEvidenceIds`. The relation contains IDs only; prompts, media, screenshots, typed values, and credentials are not copied into either record.
 
@@ -97,6 +101,30 @@ ID as active with 456 MB peak memory, before restoring the exact Qwen2.5 public
 ID. This proves the v2 control path against the running dual-app service, but it
 remains emulator evidence and does not satisfy the physical-device gate.
 
+### One-task cloud approval check
+
+On 2026-08-07, the one-task cloud approval path was exercised through the real
+MobileCode UI on the same Android arm64 emulator. A clean arm64 `pureRelease`
+APK had SHA-256
+`8040c3ae4be7091d9169cf66c89de66a3eb07b1ad31b21c31473a118595316ec`.
+The Gradle and Flutter output timestamps, sizes, and hashes matched, and the
+compiled binary contained the approval-card labels before installation. This
+extra check was added after QA detected and rejected an older copied APK whose
+timestamp did not represent newly compiled Dart code.
+
+The emulator used a clearly fake, non-secret provider value and a benign
+complex-task marker. Before any provider request opened, MobileCode displayed
+the cloud inference approval card with the selected provider, the fact that
+task context would leave the device, one-task scope, and an explicit statement
+that the approval does not cover Phone Use, login, payment, or ordering. The
+request text was not rendered by the card. Selecting `Use MobileCore` produced
+no provider HTTP/401 event and routed the request into the local MobileCore
+process. The constrained emulator did not complete that local inference within
+the 120-second client limit; MobileCode surfaced the timeout and restored the
+composer without falling back to cloud. This proves the approval and
+fail-closed route on an emulator, not local-model performance or physical-device
+readiness.
+
 ## Local vision chain
 
 A separate controlled emulator check used a Qwen3.5 0.8B main GGUF plus its mmproj. `/v1/models` exposed the projector as metadata on the main model, loading returned `image_input=true`, and `/health` reported `runtime=llama.cpp/libmtmd`. A real JPEG data-URI request completed through the same OpenAI-compatible endpoint with 93 total tokens and 542 MB reported runtime memory. There was no crash, ANR, or OOM.
@@ -131,20 +159,30 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
 
 ## Verification
 
-- The complete MobileCode Flutter suite passed 560 tests after the Client v2,
-  adaptive-routing, pressure-switch, and proactive-offline follow-ups.
+- The complete MobileCode Flutter suite passed 565 tests after the Client v2,
+  adaptive-routing, pressure-switch, proactive-offline, and one-task cloud
+  approval follow-ups.
 - The focused MobileCore client suite passed 16 tests, including coherent
   runtime snapshots, exact switch confirmation, public projector IDs,
   path-like ID rejection, projector metadata, and image-capability parsing.
-- The focused adaptive-policy suite passed 10 tests, including privacy/offline
+- The focused adaptive-policy suite passed 13 tests, including privacy/offline
   fail-closed routing, cloud-consent gating, constrained context/model choice,
-  and multimodal capability retention under resource pressure.
+  one-task approval expiry semantics, and multimodal capability retention under
+  resource pressure.
 - Four network-transport tests cover definitive no-network routing, available
   transport, unknown/error behavior, and evidence redaction. Interface type,
   SSID, address, and probe-host details are never recorded.
+- Two approval-card widget tests cover approve/decline behavior and confirm the
+  card does not render request content.
 - A local Android arm64 `pureRelease` build passed and its manifest version was
   verified as `0.1.73+63`; this local build is validation evidence only and is
   not the stable-signed GitHub Release asset.
+- The real emulator UI displayed the one-task cloud approval card before a
+  complex cloud request. Declining routed to MobileCore, and the subsequent
+  local timeout remained fail-closed instead of opening the cloud provider.
+- APK acceptance now compares the final Flutter artifact with the Gradle output
+  and checks compiled approval labels, preventing a copied stale artifact from
+  being mistaken for a fresh build.
 - A local iOS Simulator build also passed after adding the OS connectivity
   plugin, confirming the proactive-offline route compiles on both mobile
   platforms. This remains simulator build evidence, not physical-iOS QA.

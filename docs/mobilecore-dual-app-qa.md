@@ -246,14 +246,20 @@ python3 scripts/run_mobilecore_dual_app_qa.py \
   --require-model-switch
 ```
 
-The counted physical-device lane must opt into both property-based physical-device enforcement and a sustained offline inference workload:
+The counted physical-device lane must opt into property-based physical-device
+enforcement, host-controlled background restriction/recovery, and a sustained
+offline inference workload:
 
 ```bash
 python3 scripts/run_mobilecore_dual_app_qa.py \
   --serial <physical-android-serial> \
   --model-file <controlled-gguf> \
+  --expected-mobilecore-cert-sha256 <64-hex-fingerprint> \
+  --expected-mobilecode-cert-sha256 <64-hex-fingerprint> \
+  --expected-mobilecode-test-cert-sha256 <64-hex-fingerprint> \
   --require-model-switch \
   --require-physical-device \
+  --require-background-recovery \
   --require-thermal \
   --thermal-duration-seconds 900 \
   --thermal-sample-seconds 15
@@ -268,8 +274,12 @@ image/audio cases to pass while the device is offline:
 ```bash
 python3 scripts/run_mobilecore_dual_app_qa.py \
   --serial <physical-android-serial> \
+  --expected-mobilecore-cert-sha256 <64-hex-fingerprint> \
+  --expected-mobilecode-cert-sha256 <64-hex-fingerprint> \
+  --expected-mobilecode-test-cert-sha256 <64-hex-fingerprint> \
   --require-model-switch \
   --require-physical-device \
+  --require-background-recovery \
   --require-thermal \
   --thermal-duration-seconds 900 \
   --require-verified-omni
@@ -284,6 +294,30 @@ capability and artifact-verification booleans, step digests, and numeric sample
 rate. It never stores fixture bytes, prompts, response text, or data URIs.
 
 The v2 runner verifies `ro.kernel.qemu`, `ro.boot.qemu`, hardware, and model properties instead of trusting the adb serial prefix. During the thermal lane it keeps the device offline, repeatedly performs bounded local inference, and records only numeric temperature/status samples plus aggregate request and failure counts. Raw `dumpsys` output and inference responses are never written.
+
+The background-recovery lane uses host-side ADB app-ops only on the dedicated
+QA device. It snapshots the existing background modes, applies a temporary
+restriction, verifies that the stopped MobileCore loopback service is
+unavailable, restores the original modes, and requires a visible foreground
+MobileCore recovery to reach `model_loaded=true`. The production apps never
+edit app-ops or Android secure settings. Evidence contains booleans and step
+digests only, not raw app-op output.
+
+On 2026-08-07, this lane passed once on the Android 16 ARM64 emulator:
+both restriction commands were accepted and observed, the stopped service was
+unavailable while restricted, the original app-ops were restored, and a visible
+MobileCore foreground recovery returned to `model_loaded=true`. This validates
+the harness and recovery sequence only; it is not physical-device background
+evidence.
+
+Before a counted physical run installs anything, the runner uses `apksigner`
+to compare all three APK certificate SHA-256 fingerprints with the explicitly
+pinned values. It records only public certificate fingerprints and match
+booleans, never keystore paths or passwords. The MobileCode app and its
+instrumentation APK must use a compatible controlled QA signing identity;
+this lane does not relabel that pair as the production-signed Release APK. The
+official Release APK keeps its separate download, signature, cold-launch, and
+TuiMa pairing evidence above.
 
 Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` directory. The runner's manifest contains APK/model hashes, step digests, safe metrics, environment class, and redaction state; it does not persist model filenames, prompts, responses, images, audio, credentials, cookies, tokens, raw UI text, raw system dumps, or host paths.
 
@@ -321,7 +355,9 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
 - MobileCore local API instrumentation passed 2/2 tests covering model-ID control, incompatible-projector rejection, no-path response, multimodal contract, request-body consumption, cancellation, serialized inference, `runtime_busy`, and metrics counters.
 - A post-fix real-GGUF smoke reported active-model preflight `625617760` required bytes versus `1096425472` available bytes, `runtime=llama.cpp`, two completed requests, zero failures, and a non-zero average decode rate.
 - MobileCode `pureDebug` APK and cross-app Android test APK built successfully.
-- The dual-app runner privacy/classification/thermal workload passes five deterministic host-side unit tests.
+- The dual-app runner privacy, classification, multimodal, thermal,
+  background-recovery, and APK-signing paths pass 12 deterministic host-side
+  unit tests.
 - ActionEvidence inference-to-device linking passes focused unit coverage, including idempotency and action-type rejection.
 
 ## Remaining Release Gates

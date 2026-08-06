@@ -196,6 +196,9 @@ class MobileCoreModel {
     this.loaded = false,
     this.architecture = 'unknown',
     this.parameterLabel,
+    this.projectorId,
+    this.projectorSizeBytes = 0,
+    this.capabilities = const MobileCoreCapabilities(),
     this.benchmark,
   });
 
@@ -206,6 +209,9 @@ class MobileCoreModel {
   final bool loaded;
   final String architecture;
   final String? parameterLabel;
+  final String? projectorId;
+  final int projectorSizeBytes;
+  final MobileCoreCapabilities capabilities;
   final MobileCoreMetrics? benchmark;
 
   factory MobileCoreModel.fromJson(Object? value) {
@@ -219,6 +225,9 @@ class MobileCoreModel {
       loaded: details['loaded'] == true,
       architecture: details['architecture']?.toString() ?? 'unknown',
       parameterLabel: _nullableString(details['parameter_label']),
+      projectorId: _nullableString(details['projector_id']),
+      projectorSizeBytes: _asInt(details['projector_size_bytes']),
+      capabilities: MobileCoreCapabilities.fromJson(details['capabilities']),
       benchmark: details['benchmark'] == null
           ? null
           : MobileCoreMetrics.fromJson(details['benchmark']),
@@ -236,6 +245,9 @@ class MobileCoreRecommendation {
     this.loaded = false,
     this.quantization = 'unknown',
     this.contextLength = 0,
+    this.projectorId,
+    this.projectorSizeBytes = 0,
+    this.capabilities = const MobileCoreCapabilities(),
     this.reasons = const [],
   });
 
@@ -247,6 +259,9 @@ class MobileCoreRecommendation {
   final bool loaded;
   final String quantization;
   final int contextLength;
+  final String? projectorId;
+  final int projectorSizeBytes;
+  final MobileCoreCapabilities capabilities;
   final List<String> reasons;
 
   factory MobileCoreRecommendation.fromJson(Object? value) {
@@ -260,6 +275,9 @@ class MobileCoreRecommendation {
       loaded: map['loaded'] == true,
       quantization: map['quantization']?.toString() ?? 'unknown',
       contextLength: _asInt(map['context_length']),
+      projectorId: _nullableString(map['projector_id']),
+      projectorSizeBytes: _asInt(map['projector_size_bytes']),
+      capabilities: MobileCoreCapabilities.fromJson(map['capabilities']),
       reasons: _stringList(map['reasons']),
     );
   }

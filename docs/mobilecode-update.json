@@ -1,24 +1,24 @@
 {
   "schemaVersion": 1,
   "channel": "prerelease",
-  "title": "MobileCode v0.1.74 本地推理联动预览",
-  "message": "本版补齐 MobileCore 原子运行快照、精确模型切换与任务感知路由，离线和隐私任务可在云端传输前优先选择本地推理。",
-  "latestVersion": "v0.1.74",
-  "latestBuildNumber": 64,
+  "title": "MobileCode v0.1.75 单任务云端审批预览",
+  "message": "长文本和复杂任务在打开云端请求前会显示一次性审批卡；拒绝后只使用 MobileCore，本次审批不覆盖 Phone Use、登录、支付或下单。",
+  "latestVersion": "v0.1.75",
+  "latestBuildNumber": 65,
   "minimumSupportedBuildNumber": 58,
   "severity": "info",
-  "publishedAt": "2026-08-07T01:00:00+08:00",
+  "publishedAt": "2026-08-07T03:45:00+08:00",
   "pagesUrl": "https://harzva.github.io/mobilecode/",
   "githubUrl": "https://github.com/Harzva/mobilecode",
-  "releaseUrl": "https://github.com/Harzva/mobilecode/releases/tag/v0.1.74",
-  "downloadUrl": "https://github.com/Harzva/mobilecode/releases/download/v0.1.74/mobilecode-v0.1.74.apk",
+  "releaseUrl": "https://github.com/Harzva/mobilecode/releases/tag/v0.1.75",
+  "downloadUrl": "https://github.com/Harzva/mobilecode/releases/download/v0.1.75/mobilecode-v0.1.75.apk",
   "ctaLabel": "打开 GitHub Pages",
   "secondaryCtaLabel": "下载最新构建",
   "releaseNotes": [
-    "MobileCode 以原子快照读取 MobileCore 模型、能力、projector、preflight 与指标状态。",
-    "离线、隐私、热压力和内存压力策略会在云端传输前完成路由判断。",
-    "Android 模拟器通过30项离线请求、模型切换、重启恢复与真实图像请求链验收。",
-    "首页、更新服务、发布页、Android APK 与 iOS App 版本现在由统一版本定义约束。",
-    "iOS CI 会校验权限键位于 Info.plist 根字典，并拒绝 TCC 隐私权限崩溃日志。"
+    "复杂聊天和 Agent 任务必须获得仅当前任务有效的云端推理审批。",
+    "拒绝云端后只使用 MobileCore；本地不可用时直接取消，不会静默回退云端。",
+    "审批证据只保存审批 ID、决定、Provider 与脱敏路由状态，不保存请求、媒体或凭据。",
+    "Phone Use、登录、支付和下单继续使用各自的设备操作与交易审批边界。",
+    "Android 模拟器已验证审批卡、拒绝后的本地路由、超时 fail-closed 与 v0.1.75 冷启动。"
   ]
 }

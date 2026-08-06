@@ -39,6 +39,43 @@ CROSS_APP_TEST = (
     "thirtyControlledOfflineTextAndStreamTasks"
 )
 
+_SENSITIVE_SNAPSHOT_KEYS = {
+    "absolute_path",
+    "audio",
+    "authorization",
+    "content",
+    "cookie",
+    "credential",
+    "credential_value",
+    "file_path",
+    "file_name",
+    "host_path",
+    "image",
+    "local_path",
+    "media",
+    "media_data",
+    "messages",
+    "path",
+    "prompt",
+    "raw_content",
+    "raw_media",
+    "secret",
+    "secret_value",
+    "token",
+}
+_ABSOLUTE_PATH_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])(?:/(?:data|storage|sdcard|Users|Volumes|home|tmp|var)/[^\s,;]+|[A-Za-z]:\\[^\s,;]+)"
+)
+_THERMAL_STATUS_PATTERN = re.compile(r"Thermal Status:\s*(-?\d+)", re.IGNORECASE)
+_THERMAL_TEMPERATURE_PATTERN = re.compile(
+    r"Temperature\{[^}]*mValue=(-?\d+(?:\.\d+)?)[^}]*mStatus=(-?\d+)",
+    re.IGNORECASE,
+)
+_BATTERY_TEMPERATURE_PATTERN = re.compile(
+    r"^\s*temperature:\s*(-?\d+)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
 
 @dataclass(frozen=True)
 class Step:
@@ -61,6 +98,76 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sanitize_evidence_value(value: object) -> object:
+    """Recursively remove payloads, credentials, and local absolute paths."""
+    if isinstance(value, dict):
+        safe: dict[str, object] = {}
+        for raw_key, item in value.items():
+            key = str(raw_key)
+            normalized = re.sub(r"[^a-z0-9]+", "_", key.lower()).strip("_")
+            if (
+                normalized in _SENSITIVE_SNAPSHOT_KEYS
+                or normalized.endswith(
+                    ("_path", "_token", "_cookie", "_secret", "_credential")
+                )
+                or normalized in {"api_key", "authorization_header"}
+            ):
+                continue
+            safe[key] = sanitize_evidence_value(item)
+        return safe
+    if isinstance(value, list):
+        return [sanitize_evidence_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [sanitize_evidence_value(item) for item in value]
+    if isinstance(value, str):
+        return _ABSOLUTE_PATH_PATTERN.sub("<local-path-omitted>", value)
+    return value
+
+
+def classify_android_environment(
+    *,
+    serial: str,
+    kernel_qemu: str,
+    boot_qemu: str,
+    hardware: str,
+    model: str,
+) -> str:
+    """Classify the target from Android properties, with serial as fallback."""
+    qemu_values = {kernel_qemu.strip().lower(), boot_qemu.strip().lower()}
+    if qemu_values.intersection({"1", "true", "yes"}):
+        return "emulator"
+    combined = f"{hardware} {model}".lower()
+    if any(
+        marker in combined
+        for marker in ("goldfish", "ranchu", "sdk_gphone", "emulator", "virtual device")
+    ):
+        return "emulator"
+    if serial.startswith("emulator-"):
+        return "emulator"
+    if any((serial.strip(), hardware.strip(), model.strip())):
+        return "physical_device"
+    return "unknown"
+
+
+def parse_battery_temperature_c(raw: str) -> float | None:
+    match = _BATTERY_TEMPERATURE_PATTERN.search(raw)
+    if match is None:
+        return None
+    return round(int(match.group(1)) / 10.0, 1)
+
+
+def parse_thermal_service(raw: str) -> tuple[int | None, float | None, int | None]:
+    status_match = _THERMAL_STATUS_PATTERN.search(raw)
+    service_status = int(status_match.group(1)) if status_match is not None else None
+    temperatures = [
+        (float(match.group(1)), int(match.group(2)))
+        for match in _THERMAL_TEMPERATURE_PATTERN.finditer(raw)
+    ]
+    max_temperature = max((item[0] for item in temperatures), default=None)
+    max_sensor_status = max((item[1] for item in temperatures), default=None)
+    return service_status, max_temperature, max_sensor_status
+
+
 class QaRunner:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -69,6 +176,12 @@ class QaRunner:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.forward_port = args.forward_port
         self.model_switch_status = "not_run"
+        self.environment = "unknown"
+        self.device_model = b""
+        self.thermal_summary: dict[str, object] = {
+            "status": "not_run",
+            "required": args.require_thermal,
+        }
 
     def run(
         self,
@@ -131,7 +244,14 @@ class QaRunner:
             required=required,
         )
 
-    def api(self, method: str, path: str, body: dict[str, object] | None = None) -> dict[str, object]:
+    def api(
+        self,
+        method: str,
+        path: str,
+        body: dict[str, object] | None = None,
+        *,
+        timeout: int = 15,
+    ) -> dict[str, object]:
         request = urllib.request.Request(
             f"http://127.0.0.1:{self.forward_port}{path}",
             data=None if body is None else json.dumps(body).encode("utf-8"),
@@ -142,7 +262,7 @@ class QaRunner:
                 "X-MobileCore-Client": "mobilecode-dual-app-host-qa",
             },
         )
-        with urllib.request.urlopen(request, timeout=15) as response:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
             decoded = json.loads(response.read().decode("utf-8"))
             if not isinstance(decoded, dict):
                 raise RuntimeError(f"{path} returned a non-object response")
@@ -229,27 +349,43 @@ class QaRunner:
         raise RuntimeError("No visible MobileCore model-load control was found")
 
     def snapshot(self, name: str, payload: dict[str, object]) -> None:
-        safe = {
-            key: value
-            for key, value in payload.items()
-            if key
-            not in {
-                "path",
-                "prompt",
-                "messages",
-                "image",
-                "audio",
-                "token",
-                "cookie",
-            }
-        }
+        safe = sanitize_evidence_value(payload)
         (self.output_dir / f"{name}.json").write_text(
             json.dumps(safe, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
         )
 
+    def inspect_device_environment(self) -> None:
+        properties: dict[str, bytes] = {}
+        for key, property_name in (
+            ("kernel_qemu", "ro.kernel.qemu"),
+            ("boot_qemu", "ro.boot.qemu"),
+            ("hardware", "ro.hardware"),
+            ("model", "ro.product.model"),
+        ):
+            properties[key] = self.adb(
+                f"read_device_{key}",
+                "shell",
+                "getprop",
+                property_name,
+                required=False,
+            ).stdout.strip()
+        self.device_model = properties["model"]
+        self.environment = classify_android_environment(
+            serial=self.args.serial,
+            kernel_qemu=properties["kernel_qemu"].decode("utf-8", "replace"),
+            boot_qemu=properties["boot_qemu"].decode("utf-8", "replace"),
+            hardware=properties["hardware"].decode("utf-8", "replace"),
+            model=properties["model"].decode("utf-8", "replace"),
+        )
+        if self.args.require_physical_device and self.environment != "physical_device":
+            raise RuntimeError(
+                "Physical-device acceptance was requested, but Android properties identify a non-physical target"
+            )
+
     def install_and_prepare(self) -> None:
         self.adb("wait_for_device", "wait-for-device")
+        self.inspect_device_environment()
         for name, path in (
             ("install_mobilecore", self.args.mobilecore_apk),
             ("install_mobilecode", self.args.mobilecode_apk),
@@ -417,6 +553,177 @@ class QaRunner:
         restarted = self.wait_for_health(require_model=True, timeout=self.args.ready_timeout)
         self.snapshot("health_after_process_restart", restarted)
 
+    def _capture_pressure_sample(self, elapsed_seconds: int) -> dict[str, object]:
+        def capture(*arguments: str) -> str:
+            try:
+                result = subprocess.run(
+                    [self.args.adb, "-s", self.args.serial, *arguments],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    timeout=30,
+                    check=False,
+                )
+            except subprocess.TimeoutExpired:
+                return ""
+            if result.returncode != 0:
+                return ""
+            return result.stdout.decode("utf-8", "replace")
+
+        thermal = capture("shell", "dumpsys", "thermalservice")
+        battery = capture("shell", "dumpsys", "battery")
+        thermal_status, max_sensor_c, max_sensor_status = parse_thermal_service(thermal)
+        return {
+            "elapsedSeconds": elapsed_seconds,
+            "batteryTemperatureC": parse_battery_temperature_c(battery),
+            "maxReportedSensorTemperatureC": max_sensor_c,
+            "thermalStatus": thermal_status,
+            "maxSensorStatus": max_sensor_status,
+        }
+
+    def exercise_thermal_workload(self) -> None:
+        duration = self.args.thermal_duration_seconds
+        if duration <= 0:
+            return
+        started = time.monotonic()
+        health = self.wait_for_health(require_model=True)
+        active_model = str(health.get("active_model") or "")
+        if not active_model:
+            raise RuntimeError("Thermal workload requires an active MobileCore model")
+
+        samples: list[dict[str, object]] = []
+        workload_requests = 0
+        workload_failures = 0
+        self.adb(
+            "enable_airplane_mode_for_thermal_workload",
+            "shell",
+            "cmd",
+            "connectivity",
+            "airplane-mode",
+            "enable",
+            required=False,
+        )
+        try:
+            next_sample_at = started
+            deadline = started + duration
+            while time.monotonic() < deadline:
+                now = time.monotonic()
+                if now >= next_sample_at:
+                    samples.append(
+                        self._capture_pressure_sample(round(now - started))
+                    )
+                    next_sample_at = now + self.args.thermal_sample_seconds
+                try:
+                    response = self.api(
+                        "POST",
+                        "/v1/chat/completions",
+                        {
+                            "model": active_model,
+                            "max_tokens": self.args.thermal_max_tokens,
+                            "temperature": 0.0,
+                            "stream": False,
+                            "messages": [
+                                {
+                                    "role": "user",
+                                    "content": "Controlled sustained local QA. Reply exactly: OK.",
+                                }
+                            ],
+                        },
+                        timeout=self.args.thermal_request_timeout,
+                    )
+                    choices = response.get("choices")
+                    if not isinstance(choices, list) or not choices:
+                        raise RuntimeError("empty controlled thermal response")
+                    workload_requests += 1
+                except (OSError, RuntimeError, ValueError, urllib.error.URLError):
+                    workload_failures += 1
+                    remaining = deadline - time.monotonic()
+                    if remaining > 0:
+                        time.sleep(min(remaining, 1.0))
+            samples.append(
+                self._capture_pressure_sample(round(time.monotonic() - started))
+            )
+        finally:
+            self.adb(
+                "disable_airplane_mode_after_thermal_workload",
+                "shell",
+                "cmd",
+                "connectivity",
+                "airplane-mode",
+                "disable",
+                required=False,
+            )
+
+        battery_values = [
+            float(sample["batteryTemperatureC"])
+            for sample in samples
+            if sample["batteryTemperatureC"] is not None
+        ]
+        sensor_values = [
+            float(sample["maxReportedSensorTemperatureC"])
+            for sample in samples
+            if sample["maxReportedSensorTemperatureC"] is not None
+        ]
+        status_values = [
+            int(value)
+            for sample in samples
+            for value in (sample["thermalStatus"], sample["maxSensorStatus"])
+            if value is not None
+        ]
+        telemetry_available = bool(battery_values or sensor_values or status_values)
+        passed = workload_requests > 0 and workload_failures == 0 and telemetry_available
+        observed_seconds = max(1, round(time.monotonic() - started))
+        self.thermal_summary = {
+            "status": "passed" if passed else "failed",
+            "required": self.args.require_thermal,
+            "environment": self.environment,
+            "offlineDuringWorkload": True,
+            "durationSecondsRequested": duration,
+            "durationSecondsObserved": observed_seconds,
+            "sampleIntervalSeconds": self.args.thermal_sample_seconds,
+            "sampleCount": len(samples),
+            "workloadRequests": workload_requests,
+            "workloadFailures": workload_failures,
+            "workloadAttempts": workload_requests + workload_failures,
+            "successfulRequestsPerMinute": round(
+                workload_requests * 60 / observed_seconds,
+                2,
+            ),
+            "telemetryAvailable": telemetry_available,
+            "throttlingObserved": bool(status_values and max(status_values) > 0),
+            "maxThermalStatus": max(status_values) if status_values else None,
+            "batteryTemperatureC": {
+                "start": battery_values[0] if battery_values else None,
+                "max": max(battery_values) if battery_values else None,
+                "end": battery_values[-1] if battery_values else None,
+            },
+            "reportedSensorTemperatureC": {
+                "start": sensor_values[0] if sensor_values else None,
+                "max": max(sensor_values) if sensor_values else None,
+                "end": sensor_values[-1] if sensor_values else None,
+            },
+            "samples": samples,
+        }
+        self.snapshot("thermal_workload_summary", self.thermal_summary)
+        self.steps.append(
+            Step(
+                name="sustained_local_thermal_workload",
+                status="passed" if passed else "failed",
+                duration_ms=round((time.monotonic() - started) * 1000),
+                result_digest=sha256_bytes(
+                    json.dumps(
+                        self.thermal_summary,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ),
+                failure_kind=None if passed else "thermal_acceptance_failed",
+            )
+        )
+        if self.args.require_thermal and not passed:
+            raise RuntimeError(
+                "Required sustained thermal workload did not produce complete local inference and telemetry evidence"
+            )
+
     def capture_artifacts(self) -> None:
         screenshot = self.adb(
             "capture_mobilecore_screenshot",
@@ -452,26 +759,21 @@ class QaRunner:
         )
 
     def write_manifest(self, *, status: str, error: str | None = None) -> None:
-        device = self.adb(
-            "read_device_identity",
-            "shell",
-            "getprop",
-            "ro.product.model",
-            required=False,
-        ).stdout.strip()
         manifest = {
-            "schema": "mobilecore-dual-app-qa/v1",
+            "schema": "mobilecore-dual-app-qa/v2",
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "status": status,
-            "environment": "emulator" if self.args.serial.startswith("emulator-") else "physical_device",
+            "environment": self.environment,
+            "physical_device_required": self.args.require_physical_device,
             "device_id_hash": sha256_bytes(self.args.serial.encode())[:16],
-            "device_model_hash": sha256_bytes(device)[:16],
+            "device_model_hash": sha256_bytes(self.device_model)[:16],
             "controlled_tasks": 30,
             "offline_during_tasks": True,
             "model_switch": {
                 "required": self.args.require_model_switch,
                 "status": self.model_switch_status,
             },
+            "thermal_workload": self.thermal_summary,
             "redaction": "raw_prompts_media_credentials_and_host_paths_omitted",
             "apks": {
                 "mobilecore_sha256": sha256_file(self.args.mobilecore_apk),
@@ -481,8 +783,7 @@ class QaRunner:
             "model": None
             if self.args.model_file is None
             else {
-                "file_name": self.args.model_file.name,
-                "sha256": sha256_file(self.args.model_file),
+                "artifact_sha256": sha256_file(self.args.model_file),
             },
             "artifacts": {
                 artifact.name: sha256_file(artifact)
@@ -528,6 +829,20 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Fail acceptance when the device does not expose a second loadable model.",
     )
+    parser.add_argument(
+        "--require-physical-device",
+        action="store_true",
+        help="Fail before installation when Android properties identify an emulator.",
+    )
+    parser.add_argument(
+        "--require-thermal",
+        action="store_true",
+        help="Require a successful sustained local inference workload with thermal telemetry.",
+    )
+    parser.add_argument("--thermal-duration-seconds", type=int, default=0)
+    parser.add_argument("--thermal-sample-seconds", type=int, default=15)
+    parser.add_argument("--thermal-max-tokens", type=int, default=8)
+    parser.add_argument("--thermal-request-timeout", type=int, default=120)
     parser.add_argument("--output-dir", type=Path, default=repository / f".qa-artifacts/mobilecore-dual-app/{timestamp}")
     parser.add_argument("--forward-port", type=int, default=18080)
     parser.add_argument("--ready-timeout", type=int, default=180)
@@ -539,6 +854,18 @@ def parse_args() -> argparse.Namespace:
             parser.error(f"{label.replace('_', '-')} not found: {path}")
     if args.model_file is not None and not args.model_file.is_file():
         parser.error(f"model-file not found: {args.model_file}")
+    if args.thermal_duration_seconds < 0:
+        parser.error("thermal-duration-seconds must be >= 0")
+    if not 1 <= args.thermal_sample_seconds <= 60:
+        parser.error("thermal-sample-seconds must be between 1 and 60")
+    if not 1 <= args.thermal_max_tokens <= 64:
+        parser.error("thermal-max-tokens must be between 1 and 64")
+    if args.thermal_request_timeout < 1:
+        parser.error("thermal-request-timeout must be >= 1")
+    if args.require_thermal and args.thermal_duration_seconds <= 0:
+        parser.error("--require-thermal requires --thermal-duration-seconds > 0")
+    if args.require_physical_device and not args.require_thermal:
+        parser.error("--require-physical-device requires --require-thermal")
     return args
 
 
@@ -549,6 +876,7 @@ def main() -> int:
         runner.install_and_prepare()
         runner.run_cross_app_tasks()
         runner.exercise_lifecycle()
+        runner.exercise_thermal_workload()
         runner.capture_artifacts()
         runner.write_manifest(status="passed")
         print(runner.output_dir / "manifest.json")

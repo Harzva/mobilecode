@@ -27,6 +27,8 @@ Adaptive routing currently applies these rules:
 - complex cloud routing requires explicit approval;
 - Phone Use plans may use MobileCore inference, but every device action remains in MobileCode's approval and evidence boundary.
 
+When local inference informs a Phone Use approval card, MobileCode now links the two ActionEvidence records by identifier in both directions: the inference record stores `deviceOperationEvidenceIds`, and the device record stores `mobileCoreInferenceEvidenceIds`. The relation contains IDs only; prompts, media, screenshots, typed values, and credentials are not copied into either record.
+
 ## Controlled Android Run
 
 Date: 2026-08-06
@@ -73,16 +75,33 @@ python3 scripts/run_mobilecore_dual_app_qa.py \
   --require-model-switch
 ```
 
-Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` directory. The runner's manifest contains APK/model hashes, step digests, safe metrics, environment class, and redaction state; it does not persist prompts, images, audio, credentials, cookies, tokens, raw UI text, or host paths.
+The counted physical-device lane must opt into both property-based physical-device enforcement and a sustained offline inference workload:
+
+```bash
+python3 scripts/run_mobilecore_dual_app_qa.py \
+  --serial <physical-android-serial> \
+  --model-file <controlled-gguf> \
+  --require-model-switch \
+  --require-physical-device \
+  --require-thermal \
+  --thermal-duration-seconds 900 \
+  --thermal-sample-seconds 15
+```
+
+The v2 runner verifies `ro.kernel.qemu`, `ro.boot.qemu`, hardware, and model properties instead of trusting the adb serial prefix. During the thermal lane it keeps the device offline, repeatedly performs bounded local inference, and records only numeric temperature/status samples plus aggregate request and failure counts. Raw `dumpsys` output and inference responses are never written.
+
+Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` directory. The runner's manifest contains APK/model hashes, step digests, safe metrics, environment class, and redaction state; it does not persist model filenames, prompts, responses, images, audio, credentials, cookies, tokens, raw UI text, raw system dumps, or host paths.
 
 ## Verification
 
-- The complete MobileCode Flutter suite passed 543 tests.
+- The complete MobileCode Flutter suite passed 546 tests.
 - The focused MobileCore client suite passed 16 tests, including projector metadata and image-capability parsing.
 - MobileCore Android unit tests passed.
 - MobileCore local API instrumentation passed its model-ID control, incompatible-projector rejection, no-path response, multimodal contract, rejection, and metrics-counter checks.
 - A post-fix real-GGUF smoke reported active-model preflight `625617760` required bytes versus `1096425472` available bytes, `runtime=llama.cpp`, two completed requests, zero failures, and a non-zero average decode rate.
 - MobileCode `pureDebug` APK and cross-app Android test APK built successfully.
+- The dual-app runner privacy/classification/thermal workload passes five deterministic host-side unit tests.
+- ActionEvidence inference-to-device linking passes focused unit coverage, including idempotency and action-type rejection.
 
 ## Remaining Release Gates
 

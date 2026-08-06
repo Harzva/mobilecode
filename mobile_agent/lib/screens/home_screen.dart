@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -42,6 +43,7 @@ import '../services/cli_hub_runtime_events.dart';
 import '../services/mobile_code_helper_auth.dart';
 import '../services/mobilecode_local_model_manifest_service.dart';
 import '../services/mobilecode_update_service.dart';
+import '../services/mobilecore_adaptive_policy.dart';
 import '../services/model_provider_preset_service.dart';
 import '../services/model_routing_service.dart';
 import '../services/role_library_service.dart';
@@ -163,8 +165,7 @@ const _mobileCodeUpdateFeedUrl = MobileCodeUpdateService.defaultFeedUrl;
 const _mobileCodeLocalModelsManifestUrl =
     MobileCodeLocalModelManifestService.defaultManifestUrl;
 const _currentProductVersion = 'v0.1.69';
-const _releaseUrl =
-    'https://github.com/Harzva/mobilecode/releases/tag/v0.1.69';
+const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.69';
 const _androidSmokeRunUrl =
     'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl =
@@ -13910,7 +13911,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   final _promptController = TextEditingController();
   final _chatScrollController = ScrollController();
   final _voiceService = VoiceService();
-  late final TuimaProviderService _tuimaProviderService;
+  late final MobileCoreClient _tuimaProviderService;
   final List<_ChatSession> _sessions = [];
   Future<void>? _sessionLoadFuture;
   String? _activeSessionId;
@@ -13954,6 +13955,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   TuimaHealth _tuimaHealth = TuimaHealth.unavailable('Not checked');
   bool _tuimaHealthChecking = false;
   bool _offlineFallbackActive = false;
+  MobileCoreAttachment? _pendingMobileCoreAttachment;
 
   _ChatSession? get _activeSession {
     if (_sessions.isEmpty) return null;
@@ -13968,7 +13970,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   @override
   void initState() {
     super.initState();
-    _tuimaProviderService = TuimaProviderService();
+    _tuimaProviderService = MobileCoreClient();
     _chatScrollController.addListener(_handleChatScroll);
     RoleLibraryService.instance.addListener(_handleRoleLibraryChanged);
     HarnessPermissionStore.instance
@@ -13996,6 +13998,9 @@ class _ChatPanelState extends State<_ChatPanel> {
   void didUpdateWidget(covariant _ChatPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.providerPreset != widget.providerPreset) {
+      if (widget.providerPreset != _ProviderPreset.tuimaLocal) {
+        _pendingMobileCoreAttachment = null;
+      }
       unawaited(_refreshTuimaHealth());
     }
   }
@@ -14051,14 +14056,278 @@ class _ChatPanelState extends State<_ChatPanel> {
     return health;
   }
 
+  Future<_MobileCoreControlData> _loadMobileCoreControlData() async {
+    final health = await _refreshTuimaHealth();
+    if (health.state == TuimaConnectionState.unavailable) {
+      return _MobileCoreControlData(health: health);
+    }
+    final results = await Future.wait<Object?>([
+      _tuimaProviderService.listModels().catchError((_) => <MobileCoreModel>[]),
+      _tuimaProviderService
+          .metrics()
+          .catchError((_) => const MobileCoreMetrics()),
+      _tuimaProviderService
+          .recommendations()
+          .catchError((_) => const MobileCoreRecommendations()),
+    ]);
+    return _MobileCoreControlData(
+      health: health,
+      models: results[0] as List<MobileCoreModel>,
+      metrics: results[1] as MobileCoreMetrics,
+      recommendations: results[2] as MobileCoreRecommendations,
+    );
+  }
+
+  Future<void> _recordMobileCoreControl({
+    required String operation,
+    required String? modelId,
+    required DateTime startedAt,
+    required bool success,
+    Object? error,
+  }) async {
+    final safeFailure = error is MobileCoreProviderException
+        ? error.code
+        : error == null
+            ? null
+            : 'model_control_failed';
+    _agentEvidenceStore.add(ActionEvidence(
+      evidenceId: generateEvidenceId(),
+      actionName: MobileCodeAction.traceCallProvider,
+      paramsSummary: 'MobileCore $operation · ${modelId ?? 'active model'}',
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: success,
+      failureKind: safeFailure,
+      logs: [
+        success
+            ? 'MobileCore model control completed.'
+            : 'MobileCore model control failed with ${safeFailure ?? 'unknown'}.'
+      ],
+      metadata: {
+        'inferenceProvider': 'mobilecore',
+        'inferenceLocation': 'on_device',
+        'operation': operation,
+        'modelId': modelId,
+        'redactionApplied': true,
+      },
+    ));
+  }
+
+  Future<void> _switchMobileCoreModel(String modelId) async {
+    final startedAt = DateTime.now();
+    try {
+      final recommendation = await _tuimaProviderService.recommendations();
+      final matches = recommendation.recommendations
+          .where((item) => item.modelId == modelId)
+          .toList(growable: false);
+      final entry = matches.isEmpty ? null : matches.first;
+      final constrained = entry?.fit == 'too_tight';
+      if (constrained) {
+        throw const MobileCoreProviderException(
+          code: 'insufficient_memory',
+          message:
+              'MobileCore reports that this model is too tight for the device.',
+        );
+      }
+      final contextLength = entry == null || entry.contextLength <= 0
+          ? 4096
+          : entry.contextLength.clamp(512, 8192);
+      await _tuimaProviderService.loadModel(
+        modelId,
+        contextLength: contextLength,
+      );
+      await _refreshTuimaHealth();
+      await _recordMobileCoreControl(
+        operation: 'switch_model',
+        modelId: modelId,
+        startedAt: startedAt,
+        success: true,
+      );
+    } on Object catch (error) {
+      await _recordMobileCoreControl(
+        operation: 'switch_model',
+        modelId: modelId,
+        startedAt: startedAt,
+        success: false,
+        error: error,
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> _unloadMobileCoreModel() async {
+    final startedAt = DateTime.now();
+    final modelId = _tuimaHealth.activeModel;
+    try {
+      await _tuimaProviderService.unloadModel();
+      await _refreshTuimaHealth();
+      await _recordMobileCoreControl(
+        operation: 'unload_model',
+        modelId: modelId,
+        startedAt: startedAt,
+        success: true,
+      );
+    } on Object catch (error) {
+      await _recordMobileCoreControl(
+        operation: 'unload_model',
+        modelId: modelId,
+        startedAt: startedAt,
+        success: false,
+        error: error,
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> _openMobileCoreControlSheet() async {
+    var loader = _loadMobileCoreControlData();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.78,
+            child: FutureBuilder<_MobileCoreControlData>(
+              future: loader,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final data = snapshot.data!;
+                Future<void> run(Future<void> Function() action) async {
+                  try {
+                    await action();
+                  } on Object catch (error) {
+                    if (sheetContext.mounted) {
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(
+                        content: Text(_compact(error.toString(), limit: 160)),
+                      ));
+                    }
+                  } finally {
+                    if (sheetContext.mounted) {
+                      setSheetState(
+                          () => loader = _loadMobileCoreControlData());
+                    }
+                  }
+                }
+
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
+                  children: [
+                    Row(children: [
+                      const Icon(Icons.memory_outlined, color: _mint),
+                      const SizedBox(width: 9),
+                      const Expanded(
+                        child: Text('MobileCore control',
+                            style: TextStyle(
+                                color: _text,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900)),
+                      ),
+                      IconButton(
+                        tooltip: 'Refresh',
+                        onPressed: () => setSheetState(
+                            () => loader = _loadMobileCoreControlData()),
+                        icon: const Icon(Icons.refresh_outlined),
+                      ),
+                    ]),
+                    const SizedBox(height: 10),
+                    _Panel(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            data.health.activeModel ?? 'No model loaded',
+                            style: const TextStyle(
+                                color: _text, fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${data.health.runtime} · ${data.health.backend} · ${data.health.quantization}',
+                            style: const TextStyle(color: _muted, fontSize: 12),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${data.metrics.decodeTokensPerSecond.toStringAsFixed(2)} tok/s · first ${data.metrics.firstTokenMs} ms · peak ${data.metrics.memoryPeakMb} MB',
+                            style: const TextStyle(color: _muted, fontSize: 12),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            'Preflight ${data.health.preflight.ok ? 'ready' : data.health.preflight.failureCode ?? 'not ready'} · image ${data.health.capabilities.imageInput ? 'yes' : 'no'} · audio ${data.health.capabilities.audioInput ? 'yes' : 'no'}',
+                            style: const TextStyle(color: _muted, fontSize: 12),
+                          ),
+                          if (data.health.canInfer) ...[
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              onPressed: () =>
+                                  unawaited(run(_unloadMobileCoreModel)),
+                              icon:
+                                  const Icon(Icons.power_settings_new_outlined),
+                              label: const Text('Unload active model'),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text('Installed models',
+                        style: TextStyle(
+                            color: _text, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 8),
+                    if (data.models.isEmpty)
+                      const Text('No installed GGUF models reported.',
+                          style: TextStyle(color: _muted))
+                    else
+                      for (final model in data.models)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(model.id,
+                              style: const TextStyle(color: _text)),
+                          subtitle: Text(
+                            '${model.quantization} · ${_formatBytes(model.sizeBytes)} · context ${model.contextLength}',
+                            style: const TextStyle(color: _muted, fontSize: 12),
+                          ),
+                          trailing: model.loaded
+                              ? const _TinyBadge(label: 'Active', color: _mint)
+                              : FilledButton(
+                                  onPressed: () => unawaited(run(
+                                      () => _switchMobileCoreModel(model.id))),
+                                  child: const Text('Load'),
+                                ),
+                        ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   List<Map<String, dynamic>> _tuimaMessages(
-    List<_ChatTurn> history,
-    String systemPrompt,
-  ) =>
-      [
-        {'role': 'system', 'content': systemPrompt},
-        ..._providerMessages(history),
-      ];
+      List<_ChatTurn> history, String systemPrompt,
+      {MobileCoreAttachment? attachment}) {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'system', 'content': systemPrompt},
+      ..._providerMessages(history),
+    ];
+    if (attachment == null) return messages;
+    final userIndex = messages.lastIndexWhere((item) => item['role'] == 'user');
+    if (userIndex < 0) return messages;
+    final text = messages[userIndex]['content']?.toString() ?? '';
+    messages[userIndex] = {
+      'role': 'user',
+      'content': [
+        {'type': 'text', 'text': text},
+        attachment.toContentPart(),
+      ],
+    };
+    return messages;
+  }
 
   ModelRouteDecision _tuimaRouteDecision({
     required ModelRouteEndpoint endpoint,
@@ -14068,7 +14337,9 @@ class _ChatPanelState extends State<_ChatPanel> {
   }) =>
       ModelRoutingService.decide(
         preset: _ProviderPreset.tuimaLocal,
-        configuredModel: ModelProviderPresetService.tuimaModel,
+        configuredModel: _tuimaHealth.activeModel?.trim().isNotEmpty == true
+            ? _tuimaHealth.activeModel!
+            : ModelProviderPresetService.tuimaModel,
         endpoint: endpoint,
         maxTokens: maxTokens,
         inputCharacters: _tokenInputChars(history, systemPrompt),
@@ -14084,6 +14355,48 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
     throw Exception(
         'TuiMa is offline. Open TuiMa, start the local API, and load a model.');
+  }
+
+  Future<_MobileCoreRuntimeDecision> _applyMobileCoreAdaptivePolicy(
+    TuimaHealth health, {
+    MobileCoreAttachment? attachment,
+  }) async {
+    final results = await Future.wait<Object?>([
+      DeviceTelemetryService.instance.getLatestSnapshot(),
+      _tuimaProviderService
+          .recommendations()
+          .catchError((_) => const MobileCoreRecommendations()),
+    ]);
+    final telemetry = results[0] as DeviceTelemetrySnapshot;
+    final recommendations = results[1] as MobileCoreRecommendations;
+    var decision = MobileCoreAdaptivePolicy.decide(
+      health: health,
+      recommendations: recommendations,
+      telemetry: telemetry,
+      attachmentKind: attachment?.kind,
+    );
+    var currentHealth = health;
+    if (decision.reason == MobileCorePolicyReason.thermalOrMemoryPressure &&
+        decision.recommendedModelId != null &&
+        decision.recommendedModelId != health.activeModel) {
+      currentHealth = await _tuimaProviderService.loadModel(
+        decision.recommendedModelId!,
+        contextLength: decision.contextLength,
+      );
+      decision = MobileCoreAdaptivePolicy.decide(
+        health: currentHealth,
+        recommendations: recommendations,
+        telemetry: telemetry,
+        attachmentKind: attachment?.kind,
+      );
+    }
+    if (mounted && currentHealth.activeModel != _tuimaHealth.activeModel) {
+      setState(() => _tuimaHealth = currentHealth);
+    }
+    return _MobileCoreRuntimeDecision(
+      health: currentHealth,
+      policy: decision,
+    );
   }
 
   bool _isCloudTransportFailure(Object error) =>
@@ -14331,10 +14644,29 @@ class _ChatPanelState extends State<_ChatPanel> {
   Future<void> _send() async {
     await _ensureSessionsLoaded();
     if (!mounted) return;
-    final prompt = _promptController.text.trim();
+    final attachment = _pendingMobileCoreAttachment;
+    var prompt = _promptController.text.trim();
+    if (prompt.isEmpty && attachment != null) {
+      prompt = attachment.kind == MobileCoreAttachmentKind.image
+          ? '请描述并分析这张图片。'
+          : '请转写并分析这段音频。';
+    }
     if (prompt.isEmpty) {
       _showMessage('Enter a prompt first');
       return;
+    }
+    if (attachment != null) {
+      if (widget.providerPreset != _ProviderPreset.tuimaLocal) {
+        _showMessage('Local attachments can only be sent to TuiMa/MobileCore.');
+        return;
+      }
+      final health = await _refreshTuimaHealth();
+      if (!health.canInfer || !health.capabilities.supports(attachment.kind)) {
+        _showMessage(
+          '${attachment.kind.name} input is not available in the active MobileCore model.',
+        );
+        return;
+      }
     }
     final active = _activeSession;
     if (active == null) {
@@ -14355,6 +14687,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       _sending = true;
       _error = null;
       _promptController.clear();
+      _pendingMobileCoreAttachment = null;
       _storeSession(pending);
     });
     _scrollConversationToEnd(force: true);
@@ -14385,6 +14718,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         responseTimeout: const Duration(minutes: 2),
         onUsageChunk: usageAccumulator.addChunk,
         onRoute: (decision) => routeDecision = decision,
+        localAttachment: attachment,
       )) {
         answerBuffer.write(chunk);
         final answer = answerBuffer.toString();
@@ -14532,6 +14866,57 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
   }
 
+  Future<void> _pickMobileCoreAttachment(MobileCoreAttachmentKind kind) async {
+    if (widget.providerPreset != _ProviderPreset.tuimaLocal) return;
+    final health = await _refreshTuimaHealth();
+    if (!health.canInfer || !health.capabilities.supports(kind)) {
+      _showMessage('${kind.name} input is not supported by the active model.');
+      return;
+    }
+    final allowed = kind == MobileCoreAttachmentKind.image
+        ? const ['jpg', 'jpeg', 'png', 'webp']
+        : const ['wav', 'mp3', 'flac', 'ogg', 'm4a', 'mp4', 'aac'];
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: allowed,
+      allowMultiple: false,
+      withData: true,
+    );
+    if (!mounted || result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    final bytes = file.bytes;
+    if (bytes == null) {
+      _showMessage('The selected media could not be read in memory.');
+      return;
+    }
+    try {
+      final mimeType = _mobileCoreMimeType(file.extension ?? '');
+      final attachment = MobileCoreAttachment(
+        kind: kind,
+        bytes: bytes,
+        mimeType: mimeType,
+        displayName: p.basename(file.name),
+      );
+      setState(() => _pendingMobileCoreAttachment = attachment);
+    } on Object catch (error) {
+      _showMessage(_compact(error.toString(), limit: 120));
+    }
+  }
+
+  String _mobileCoreMimeType(String extension) {
+    return switch (extension.trim().toLowerCase()) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'wav' => 'audio/wav',
+      'mp3' => 'audio/mpeg',
+      'flac' => 'audio/flac',
+      'ogg' => 'audio/ogg',
+      'm4a' || 'mp4' || 'aac' => 'audio/mp4',
+      _ => throw const FormatException('Unsupported local media type.'),
+    };
+  }
+
   String _usageProviderKind(_ApiFlavor flavor) {
     return flavor == _ApiFlavor.anthropic ? 'anthropic' : 'openai';
   }
@@ -14578,6 +14963,13 @@ class _ChatPanelState extends State<_ChatPanel> {
         'maxTokens': maxTokens,
         'inputCharacters': inputCharacters,
       });
+    if (decision.preset == _ProviderPreset.tuimaLocal) {
+      metadata.addAll({
+        'inferenceLocation': 'on_device',
+        'mobileCore': _tuimaHealth.evidenceMetadata,
+        'redactionApplied': true,
+      });
+    }
     _agentEvidenceStore.add(ActionEvidence(
       evidenceId: generateEvidenceId(),
       actionName: MobileCodeAction.traceCallProvider,
@@ -14586,6 +14978,62 @@ class _ChatPanelState extends State<_ChatPanel> {
       endedAt: now,
       success: true,
       logs: [decision.evidenceSummary],
+      metadata: metadata,
+    ));
+  }
+
+  void _recordMobileCoreInferenceEvidence({
+    required TuimaHealth health,
+    required DateTime startedAt,
+    required bool success,
+    MobileCoreMetrics? metrics,
+    MobileCoreAttachment? attachment,
+    MobileCorePolicyDecision? policy,
+    Object? error,
+  }) {
+    final failureCode = error is MobileCoreProviderException
+        ? error.code
+        : error == null
+            ? null
+            : 'local_inference_failed';
+    final metadata = <String, dynamic>{
+      'inferenceProvider': 'mobilecore',
+      'inferenceLocation': 'on_device',
+      'model': health.activeModel,
+      'serviceVersion': health.version,
+      'backend': health.backend,
+      'runtime': health.runtime,
+      'runtimeRevision': health.runtimeRevision,
+      'quantization': health.quantization,
+      'capabilitySnapshot': health.capabilities.evidenceSnapshot,
+      'preflightOk': health.preflight.ok,
+      'modelArtifactVerified': health.mainArtifact.verified,
+      'projectorArtifactVerified': health.projectorArtifact.verified,
+      if (metrics != null) 'metrics': metrics.evidenceMetadata,
+      if (attachment != null) 'attachment': attachment.evidenceMetadata,
+      if (policy != null) 'adaptivePolicy': policy.evidenceMetadata,
+      'redactionApplied': true,
+      'redactionState': 'prompt_media_credentials_omitted',
+    };
+    _agentEvidenceStore.add(ActionEvidence(
+      evidenceId: generateEvidenceId(),
+      actionName: MobileCodeAction.traceCallProvider,
+      paramsSummary:
+          'MobileCore local inference · ${health.activeModel ?? 'active model'} · ${success ? 'completed' : 'failed'}',
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: success,
+      failureKind: failureCode,
+      logs: [
+        success
+            ? 'Local inference completed; prompt and media were omitted from evidence.'
+            : 'Local inference failed with ${failureCode ?? 'unknown'}; payload omitted.',
+      ],
+      recoveryActions: success
+          ? const []
+          : const [
+              'Refresh MobileCore health and inspect the typed failure code.',
+            ],
       metadata: metadata,
     ));
   }
@@ -14711,7 +15159,9 @@ class _ChatPanelState extends State<_ChatPanel> {
     void Function(ModelRouteDecision decision)? onRoute,
   }) async {
     if (widget.providerPreset == _ProviderPreset.tuimaLocal) {
-      await _requireTuimaReady();
+      final readyHealth = await _requireTuimaReady();
+      final runtimeDecision = await _applyMobileCoreAdaptivePolicy(readyHealth);
+      final health = runtimeDecision.health;
       final decision = _tuimaRouteDecision(
         endpoint: endpoint,
         maxTokens: maxTokens,
@@ -14724,12 +15174,35 @@ class _ChatPanelState extends State<_ChatPanel> {
         maxTokens: maxTokens,
         inputCharacters: _tokenInputChars(history, systemPrompt),
       );
-      return _tuimaProviderService.completeChat(
-        messages: _tuimaMessages(history, systemPrompt),
-        model: decision.model,
-        maxTokens: maxTokens,
-        timeout: responseTimeout,
-      );
+      final startedAt = DateTime.now();
+      MobileCoreMetrics? inferenceMetrics;
+      try {
+        final answer = await _tuimaProviderService.completeChat(
+          messages: _tuimaMessages(history, systemPrompt),
+          model: decision.model,
+          maxTokens: maxTokens,
+          timeout: responseTimeout,
+          onMetrics: (value) => inferenceMetrics = value,
+        );
+        _recordMobileCoreInferenceEvidence(
+          health: health,
+          metrics: inferenceMetrics,
+          startedAt: startedAt,
+          success: true,
+          policy: runtimeDecision.policy,
+        );
+        return answer;
+      } on Object catch (error) {
+        _recordMobileCoreInferenceEvidence(
+          health: health,
+          metrics: inferenceMetrics,
+          startedAt: startedAt,
+          success: false,
+          error: error,
+          policy: runtimeDecision.policy,
+        );
+        rethrow;
+      }
     }
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
@@ -14827,6 +15300,10 @@ class _ChatPanelState extends State<_ChatPanel> {
           cloudError: error,
           emittedCloudText: false,
         )) {
+          final readyHealth = await _requireTuimaReady();
+          final runtimeDecision =
+              await _applyMobileCoreAdaptivePolicy(readyHealth);
+          final health = runtimeDecision.health;
           final localDecision = _tuimaRouteDecision(
             endpoint: endpoint,
             maxTokens: maxTokens,
@@ -14840,12 +15317,35 @@ class _ChatPanelState extends State<_ChatPanel> {
             inputCharacters: inputCharacters,
           );
           _recordOfflineFallback();
-          return _tuimaProviderService.completeChat(
-            messages: _tuimaMessages(history, systemPrompt),
-            model: localDecision.model,
-            maxTokens: maxTokens,
-            timeout: responseTimeout,
-          );
+          final startedAt = DateTime.now();
+          MobileCoreMetrics? inferenceMetrics;
+          try {
+            final answer = await _tuimaProviderService.completeChat(
+              messages: _tuimaMessages(history, systemPrompt),
+              model: localDecision.model,
+              maxTokens: maxTokens,
+              timeout: responseTimeout,
+              onMetrics: (value) => inferenceMetrics = value,
+            );
+            _recordMobileCoreInferenceEvidence(
+              health: health,
+              metrics: inferenceMetrics,
+              startedAt: startedAt,
+              success: true,
+              policy: runtimeDecision.policy,
+            );
+            return answer;
+          } on Object catch (localError) {
+            _recordMobileCoreInferenceEvidence(
+              health: health,
+              metrics: inferenceMetrics,
+              startedAt: startedAt,
+              success: false,
+              error: localError,
+              policy: runtimeDecision.policy,
+            );
+            rethrow;
+          }
         }
         throw Exception(message);
       } finally {
@@ -14867,9 +15367,30 @@ class _ChatPanelState extends State<_ChatPanel> {
     void Function(Map<String, dynamic> chunk)? onUsageChunk,
     ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
     void Function(ModelRouteDecision decision)? onRoute,
+    MobileCoreAttachment? localAttachment,
   }) async* {
+    if (localAttachment != null &&
+        widget.providerPreset != _ProviderPreset.tuimaLocal) {
+      throw const MobileCoreProviderException(
+        code: 'local_only_media',
+        message: 'Local media is never forwarded to a cloud provider.',
+      );
+    }
     if (widget.providerPreset == _ProviderPreset.tuimaLocal) {
-      await _requireTuimaReady();
+      final readyHealth = await _requireTuimaReady();
+      final runtimeDecision = await _applyMobileCoreAdaptivePolicy(
+        readyHealth,
+        attachment: localAttachment,
+      );
+      final health = runtimeDecision.health;
+      if (localAttachment != null &&
+          !health.capabilities.supports(localAttachment.kind)) {
+        throw MobileCoreProviderException(
+          code: 'unsupported_modality',
+          message:
+              '${localAttachment.kind.name} input is unavailable in the active MobileCore runtime.',
+        );
+      }
       final decision = _tuimaRouteDecision(
         endpoint: endpoint,
         maxTokens: maxTokens,
@@ -14882,12 +15403,42 @@ class _ChatPanelState extends State<_ChatPanel> {
         maxTokens: maxTokens,
         inputCharacters: _tokenInputChars(history, systemPrompt),
       );
-      yield* _tuimaProviderService.streamChat(
-        messages: _tuimaMessages(history, systemPrompt),
-        model: decision.model,
-        maxTokens: maxTokens,
-        timeout: responseTimeout,
-      );
+      final startedAt = DateTime.now();
+      MobileCoreMetrics? inferenceMetrics;
+      try {
+        await for (final chunk in _tuimaProviderService.streamChat(
+          messages: _tuimaMessages(
+            history,
+            systemPrompt,
+            attachment: localAttachment,
+          ),
+          model: decision.model,
+          maxTokens: maxTokens,
+          timeout: responseTimeout,
+          onMetrics: (value) => inferenceMetrics = value,
+        )) {
+          yield chunk;
+        }
+        _recordMobileCoreInferenceEvidence(
+          health: health,
+          metrics: inferenceMetrics,
+          attachment: localAttachment,
+          startedAt: startedAt,
+          success: true,
+          policy: runtimeDecision.policy,
+        );
+      } on Object catch (error) {
+        _recordMobileCoreInferenceEvidence(
+          health: health,
+          metrics: inferenceMetrics,
+          attachment: localAttachment,
+          startedAt: startedAt,
+          success: false,
+          error: error,
+          policy: runtimeDecision.policy,
+        );
+        rethrow;
+      }
       return;
     }
     if (widget.baseUrl.trim().isEmpty) {
@@ -15021,6 +15572,10 @@ class _ChatPanelState extends State<_ChatPanel> {
           cloudError: error,
           emittedCloudText: emittedText,
         )) {
+          final readyHealth = await _requireTuimaReady();
+          final runtimeDecision =
+              await _applyMobileCoreAdaptivePolicy(readyHealth);
+          final health = runtimeDecision.health;
           final localDecision = _tuimaRouteDecision(
             endpoint: endpoint,
             maxTokens: maxTokens,
@@ -15034,12 +15589,36 @@ class _ChatPanelState extends State<_ChatPanel> {
             inputCharacters: inputCharacters,
           );
           _recordOfflineFallback();
-          yield* _tuimaProviderService.streamChat(
-            messages: _tuimaMessages(history, systemPrompt),
-            model: localDecision.model,
-            maxTokens: maxTokens,
-            timeout: responseTimeout,
-          );
+          final startedAt = DateTime.now();
+          MobileCoreMetrics? inferenceMetrics;
+          try {
+            await for (final chunk in _tuimaProviderService.streamChat(
+              messages: _tuimaMessages(history, systemPrompt),
+              model: localDecision.model,
+              maxTokens: maxTokens,
+              timeout: responseTimeout,
+              onMetrics: (value) => inferenceMetrics = value,
+            )) {
+              yield chunk;
+            }
+            _recordMobileCoreInferenceEvidence(
+              health: health,
+              metrics: inferenceMetrics,
+              startedAt: startedAt,
+              success: true,
+              policy: runtimeDecision.policy,
+            );
+          } on Object catch (localError) {
+            _recordMobileCoreInferenceEvidence(
+              health: health,
+              metrics: inferenceMetrics,
+              startedAt: startedAt,
+              success: false,
+              error: localError,
+              policy: runtimeDecision.policy,
+            );
+            rethrow;
+          }
           return;
         }
         throw Exception(message);
@@ -17524,7 +18103,7 @@ class _ChatPanelState extends State<_ChatPanel> {
                     fallbackActive: _offlineFallbackActive,
                     onTap: _tuimaHealthChecking
                         ? null
-                        : () => unawaited(_refreshTuimaHealth()),
+                        : () => unawaited(_openMobileCoreControlSheet()),
                   ),
                   const SizedBox(width: 8),
                   _AgentModeSummaryButton(
@@ -17542,6 +18121,26 @@ class _ChatPanelState extends State<_ChatPanel> {
               ),
             ),
             const SizedBox(height: 7),
+            if (_pendingMobileCoreAttachment != null) ...[
+              InputChip(
+                avatar: Icon(
+                  _pendingMobileCoreAttachment!.kind ==
+                          MobileCoreAttachmentKind.image
+                      ? Icons.image_outlined
+                      : Icons.audio_file_outlined,
+                  size: 17,
+                  color: _mint,
+                ),
+                label: Text(
+                  '${_pendingMobileCoreAttachment!.displayName} · local only',
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onDeleted: _sending
+                    ? null
+                    : () => setState(() => _pendingMobileCoreAttachment = null),
+              ),
+              const SizedBox(height: 7),
+            ],
             Container(
               padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
               decoration: BoxDecoration(
@@ -17568,6 +18167,31 @@ class _ChatPanelState extends State<_ChatPanel> {
                     ),
                   ),
                   const SizedBox(width: 6),
+                  if (widget.providerPreset == _ProviderPreset.tuimaLocal &&
+                      _tuimaHealth.capabilities.imageInput) ...[
+                    IconButton(
+                      tooltip: 'Attach image to MobileCore (local only)',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _sending || _agentRunning
+                          ? null
+                          : () => unawaited(_pickMobileCoreAttachment(
+                              MobileCoreAttachmentKind.image)),
+                      icon: const Icon(Icons.add_photo_alternate_outlined,
+                          size: 20),
+                    ),
+                  ],
+                  if (widget.providerPreset == _ProviderPreset.tuimaLocal &&
+                      _tuimaHealth.capabilities.audioInput) ...[
+                    IconButton(
+                      tooltip: 'Attach audio to MobileCore (local only)',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _sending || _agentRunning
+                          ? null
+                          : () => unawaited(_pickMobileCoreAttachment(
+                              MobileCoreAttachmentKind.audio)),
+                      icon: const Icon(Icons.audio_file_outlined, size: 20),
+                    ),
+                  ],
                   _VoiceInputButton(
                     enabled: !_sending && (!_agentRunning || voiceActive),
                     available: _voiceAvailable,
@@ -20150,6 +20774,30 @@ class _ComposerModelButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _MobileCoreControlData {
+  const _MobileCoreControlData({
+    required this.health,
+    this.models = const [],
+    this.metrics = const MobileCoreMetrics(),
+    this.recommendations = const MobileCoreRecommendations(),
+  });
+
+  final TuimaHealth health;
+  final List<MobileCoreModel> models;
+  final MobileCoreMetrics metrics;
+  final MobileCoreRecommendations recommendations;
+}
+
+class _MobileCoreRuntimeDecision {
+  const _MobileCoreRuntimeDecision({
+    required this.health,
+    required this.policy,
+  });
+
+  final TuimaHealth health;
+  final MobileCorePolicyDecision policy;
 }
 
 class _TuimaStatusButton extends StatelessWidget {

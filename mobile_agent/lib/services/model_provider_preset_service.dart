@@ -20,7 +20,10 @@ class ModelProviderPresetService {
   static const deepSeekFlashModel = 'deepseek-v4-flash';
   static const deepSeekProModel = 'deepseek-v4-pro';
   static const tuimaBaseUrl = 'http://127.0.0.1:8080/v1';
-  static const tuimaModel = 'qwen2.5-0.5b-instruct-q4_k_m';
+  // Routing resolves this sentinel to MobileCore's health.active_model before
+  // every local request. It deliberately does not pin a GGUF model in
+  // MobileCode.
+  static const tuimaModel = 'mobilecore-active';
   static const tuimaLocalToken = 'local';
 
   static String label(ModelProviderPreset preset) => switch (preset) {

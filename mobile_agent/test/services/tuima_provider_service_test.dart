@@ -500,6 +500,51 @@ void main() {
           snapshot.recommendations.recommendations.single.modelId, 'small-q4');
     });
 
+    test('keeps a restricted loaded model visible in a coherent snapshot',
+        () async {
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        switch (request.uri.path) {
+          case '/health':
+            request.response.write(jsonEncode({
+              ..._healthPayload(model: 'small-q4'),
+              'background_restricted': true,
+            }));
+            break;
+          case '/v1/models':
+            request.response.write(jsonEncode({
+              'data': [
+                {
+                  'id': 'small-q4',
+                  'mobilecore': {
+                    'size_bytes': 1234,
+                    'loaded': true,
+                    'quantization': 'Q4_K_M',
+                  },
+                },
+              ],
+            }));
+            break;
+          case '/metrics':
+            request.response.write(jsonEncode({
+              'active_model': 'small-q4',
+              'backend': 'cpu',
+            }));
+            break;
+          case '/v1/recommendations':
+            request.response.write('{"recommendations":[]}');
+            break;
+        }
+        await request.response.close();
+      });
+
+      final snapshot = await service.runtimeSnapshot();
+      expect(snapshot.health.backgroundRestricted, isTrue);
+      expect(snapshot.health.canInfer, isFalse);
+      expect(snapshot.health.activeModel, 'small-q4');
+      expect(snapshot.models.single.loaded, isTrue);
+    });
+
     test('rejects a control snapshot that keeps changing', () async {
       var healthRequests = 0;
       server.listen((request) async {

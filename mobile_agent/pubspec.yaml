@@ -2,7 +2,7 @@ name: mobile_agent
 description: "Mobile Agent - A lightweight Vibing Coding AI companion for mobile devices"
 publish_to: 'none'
 
-version: 0.1.77+67
+version: 0.1.78+68
 
 environment:
   sdk: ^3.6.0

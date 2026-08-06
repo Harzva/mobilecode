@@ -1370,6 +1370,7 @@ class MobileCoreClient {
         before.runtimeRevision != after.runtimeRevision ||
         before.backend != after.backend ||
         before.quantization != after.quantization ||
+        before.backgroundRestricted != after.backgroundRestricted ||
         before.projectorArtifact.fileName != after.projectorArtifact.fileName ||
         before.capabilities.textInput != after.capabilities.textInput ||
         before.capabilities.imageInput != after.capabilities.imageInput ||
@@ -1384,7 +1385,9 @@ class MobileCoreClient {
       return false;
     }
     final loadedModels = models.where((model) => model.loaded).toList();
-    if (!after.canInfer) return loadedModels.isEmpty;
+    if (!after.canInfer && !after.backgroundRestricted) {
+      return loadedModels.isEmpty;
+    }
     return loadedModels.length <= 1 &&
         (loadedModels.isEmpty || loadedModels.single.id == after.activeModel);
   }

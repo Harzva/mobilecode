@@ -422,6 +422,7 @@ See:
 - [MobileCore dual-app evidence](docs/mobilecore-dual-app-qa.md) - 30 real offline cross-app requests, buffered/SSE parity, unload/reload, background continuity, low-memory notification, and process restart recovery passed on Android emulator.
 - [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.72) - Android `pure` APK and CI-generated platform evidence for the MobileCore paired local-vision integration candidate.
 - Installed-release QA caught and fixed stale `v0.1.69` product/update labels before promoting this patch release; package metadata, UI, update service, and feed are now locked to `0.1.72+62`.
+- [Signed APK workflow](https://github.com/Harzva/mobilecode/actions/runs/31123426875) passed from merge commit `81e8d7d`; the downloaded 33 MB asset has SHA-256 `acdada50092e7aa2e9727ee8a45e9c20f4c977b4be6e7c21f0ce48e1be955101`, verifies with the MobileCode release certificate, and clean-launched on the Android 16 ARM64 emulator with the `v0.1.72` header and no App crash, ANR, or OOM signature.
 - Previous stable evidence: [v0.1.69](https://github.com/Harzva/mobilecode/releases/tag/v0.1.69) and its [Android APK workflow](https://github.com/Harzva/mobilecode/actions/runs/31091939149).
 - [Version Policy](docs/mobilecode-version-policy.md)
 - [Release QA Checklist](docs/mobilecode-release-qa.md)

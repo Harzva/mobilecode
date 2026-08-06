@@ -191,7 +191,13 @@ request. Logcat contained no MobileCode crash, ANR, OOM, or SIGABRT marker. The
 local APK is Android Debug-signed and is therefore QA evidence, not the
 production-signed GitHub Release asset.
 
-### Published v0.1.76 Android artifact
+### Withdrawn v0.1.76 Android artifact
+
+The official APK described below was withdrawn on 2026-08-07 after post-build
+review found that its old public workflow supplied runtime service credentials
+as Dart compile definitions. The remaining explicitly named debug-signed APK is
+QA-only. The historical package checks are retained for traceability, but this
+section is not a current download recommendation.
 
 The [v0.1.76 Android release workflow](https://github.com/Harzva/mobilecode/actions/runs/31128209900)
 completed all source-analysis, signing, build, version, artifact, and Release
@@ -210,6 +216,31 @@ The app process remained alive and logcat contained no crash, ANR, OOM, or
 SIGABRT marker. This closes official package and emulator pairing evidence, not
 the physical-device, controlled-account, thermal, background-recovery, or
 full 30-task gates.
+
+### Published v0.1.77 Android artifact and reopened background gate
+
+The [v0.1.77 Android workflow](https://github.com/Harzva/mobilecode/actions/runs/31128587598)
+ran from merge commit `d031692`, passed the new fail-closed credential policy,
+and published an upload-signed `0.1.77+67` APK. A fresh download measured
+33,046,287 bytes and SHA-256
+`f008ede0e0305c835c3bf45bcc56f22c4fc911d0ae10b513f298d1bdfb0a1c1d`,
+matching GitHub's asset digest. The APK verifies with Signature Scheme v2 and
+the MobileCode release certificate. AOT string checks found no recognizable
+key, bearer-token, JWT, or private host-path pattern.
+
+The exact APK installed from scratch on the Android 16 ARM64 emulator, reported
+version code 67 / version name 0.1.77, rendered `v0.1.77`, stayed alive, and
+produced no fatal, ANR, OOM, or SIGABRT marker. MobileCore 0.1.4-rc4 separately
+returned a compatible v2 health payload and loaded the controlled Qwen2.5 model
+through its public model ID.
+
+The final cross-app request was not counted as passed. After MobileCore updated
+its foreground notification, Android's service record reported
+`isForeground=false`; switching to MobileCode then froze the MobileCore process
+and MobileCode correctly displayed `TuiMa offline`. This reopens the unattended
+background-recovery gate and identifies the next fix: MobileCore must preserve
+foreground-service state when refreshing its notification before the official
+v0.1.77 APK is credited with a controlled local-chat pairing.
 
 ## Local vision chain
 

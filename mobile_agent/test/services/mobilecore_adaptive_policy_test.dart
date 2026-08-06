@@ -78,6 +78,87 @@ void main() {
     );
   });
 
+  test('complex task requires a one-task approval before cloud routing', () {
+    final pending = MobileCoreTaskSignals.classify(
+      userText: 'Refactor the architecture.',
+      offline: false,
+      agentTask: true,
+      inputCharacters: 120,
+      maxTokens: 4096,
+      cloudAvailable: true,
+      cloudApproved: false,
+    );
+
+    expect(pending.requiresCloudApproval, isTrue);
+    expect(pending.cloudApprovalState, MobileCoreCloudApprovalState.pending);
+    expect(
+      MobileCoreAdaptivePolicy.shouldUseMobileCore(
+        mobileCoreSelected: false,
+        task: pending,
+      ),
+      isTrue,
+    );
+  });
+
+  test('one-task approval state is redacted and not inherited by a later task',
+      () {
+    final pending = MobileCoreTaskSignals.classify(
+      userText: 'Refactor the architecture.',
+      offline: false,
+      agentTask: true,
+      inputCharacters: 120,
+      maxTokens: 4096,
+      cloudAvailable: true,
+      cloudApproved: false,
+    );
+    final approved = pending.resolveCloudApproval(
+      approved: true,
+      approvalId: 'approval-safe-id',
+    );
+    final nextTask = MobileCoreTaskSignals.classify(
+      userText: 'Refactor another module.',
+      offline: false,
+      agentTask: true,
+      inputCharacters: 120,
+      maxTokens: 4096,
+      cloudAvailable: true,
+      cloudApproved: false,
+    );
+
+    expect(approved.cloudApproved, isTrue);
+    expect(approved.cloudApprovalState, MobileCoreCloudApprovalState.approved);
+    expect(approved.evidenceMetadata['cloudApprovalScope'], 'single_task');
+    expect(approved.evidenceMetadata.toString(),
+        isNot(contains('Refactor the architecture')));
+    expect(nextTask.cloudApproved, isFalse);
+    expect(nextTask.requiresCloudApproval, isTrue);
+  });
+
+  test('declined complex cloud task routes to MobileCore', () {
+    final declined = MobileCoreTaskSignals.classify(
+      userText: 'Review a long context.',
+      offline: false,
+      agentTask: false,
+      inputCharacters: 12000,
+      maxTokens: 1024,
+      cloudAvailable: true,
+      cloudApproved: false,
+    ).resolveCloudApproval(
+      approved: false,
+      approvalId: 'declined-safe-id',
+    );
+
+    expect(declined.cloudApprovalState, MobileCoreCloudApprovalState.declined);
+    expect(declined.requiresCloudApproval, isTrue);
+    expect(
+      MobileCoreAdaptivePolicy.shouldUseMobileCore(
+        mobileCoreSelected: false,
+        task: declined,
+      ),
+      isTrue,
+    );
+  });
+
   test('task-aware decision preserves privacy over cloud approval', () {
     final decision = MobileCoreAdaptivePolicy.decideForTask(
       health: _health(),

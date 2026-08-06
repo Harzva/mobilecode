@@ -11,6 +11,13 @@ enum MobileCoreOfflineSource {
   osAndCloudTransport,
 }
 
+enum MobileCoreCloudApprovalState {
+  notRequired,
+  pending,
+  approved,
+  declined,
+}
+
 enum MobileCorePolicyReason {
   privacyRequiresLocal,
   offlineRequiresLocal,
@@ -32,6 +39,8 @@ class MobileCoreTaskSignals {
     this.cloudAvailable = false,
     this.cloudApproved = false,
     this.offlineSource = MobileCoreOfflineSource.none,
+    this.cloudApprovalState = MobileCoreCloudApprovalState.notRequired,
+    this.cloudApprovalId,
   });
 
   final bool privacySensitive;
@@ -40,8 +49,12 @@ class MobileCoreTaskSignals {
   final bool cloudAvailable;
   final bool cloudApproved;
   final MobileCoreOfflineSource offlineSource;
+  final MobileCoreCloudApprovalState cloudApprovalState;
+  final String? cloudApprovalId;
 
   bool get forceLocal => privacySensitive || offline;
+  bool get requiresCloudApproval =>
+      complexTask && cloudAvailable && !forceLocal && !cloudApproved;
 
   Map<String, Object> get evidenceMetadata => {
         'privacySensitive': privacySensitive,
@@ -51,6 +64,12 @@ class MobileCoreTaskSignals {
         'cloudApproved': cloudApproved,
         'forceLocal': forceLocal,
         'offlineSource': offlineSource.name,
+        'cloudApprovalState': cloudApprovalState.name,
+        'cloudApprovalScope':
+            cloudApprovalState == MobileCoreCloudApprovalState.notRequired
+                ? 'none'
+                : 'single_task',
+        if (cloudApprovalId != null) 'cloudApprovalId': cloudApprovalId!,
         'redaction': 'request_text_omitted',
       };
 
@@ -61,6 +80,8 @@ class MobileCoreTaskSignals {
     bool? cloudAvailable,
     bool? cloudApproved,
     MobileCoreOfflineSource? offlineSource,
+    MobileCoreCloudApprovalState? cloudApprovalState,
+    String? cloudApprovalId,
   }) =>
       MobileCoreTaskSignals(
         privacySensitive: privacySensitive ?? this.privacySensitive,
@@ -69,6 +90,20 @@ class MobileCoreTaskSignals {
         cloudAvailable: cloudAvailable ?? this.cloudAvailable,
         cloudApproved: cloudApproved ?? this.cloudApproved,
         offlineSource: offlineSource ?? this.offlineSource,
+        cloudApprovalState: cloudApprovalState ?? this.cloudApprovalState,
+        cloudApprovalId: cloudApprovalId ?? this.cloudApprovalId,
+      );
+
+  MobileCoreTaskSignals resolveCloudApproval({
+    required bool approved,
+    required String approvalId,
+  }) =>
+      copyWith(
+        cloudApproved: approved,
+        cloudApprovalState: approved
+            ? MobileCoreCloudApprovalState.approved
+            : MobileCoreCloudApprovalState.declined,
+        cloudApprovalId: approvalId,
       );
 
   static MobileCoreTaskSignals classify({
@@ -89,6 +124,12 @@ class MobileCoreTaskSignals {
         inputCharacters >= 12000 ||
         maxTokens >= 3072 ||
         _complexMarkers.any((marker) => probe.contains(marker));
+    final forceLocal = privacySensitive || offline;
+    final approvalState = complexTask && cloudAvailable && !forceLocal
+        ? cloudApproved
+            ? MobileCoreCloudApprovalState.approved
+            : MobileCoreCloudApprovalState.pending
+        : MobileCoreCloudApprovalState.notRequired;
     return MobileCoreTaskSignals(
       privacySensitive: privacySensitive,
       offline: offline,
@@ -96,6 +137,7 @@ class MobileCoreTaskSignals {
       cloudAvailable: cloudAvailable,
       cloudApproved: cloudApproved,
       offlineSource: offline ? offlineSource : MobileCoreOfflineSource.none,
+      cloudApprovalState: approvalState,
     );
   }
 
@@ -175,7 +217,7 @@ class MobileCoreAdaptivePolicy {
     required bool mobileCoreSelected,
     required MobileCoreTaskSignals task,
   }) =>
-      mobileCoreSelected || task.forceLocal;
+      mobileCoreSelected || task.forceLocal || task.requiresCloudApproval;
 
   /// Returns whether a pressure decision should change the active text model.
   ///

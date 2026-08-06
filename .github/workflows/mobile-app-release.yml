@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag for Android and iOS app artifacts
         required: false
-        default: v0.1.68-last
+        default: v0.1.72
       upload_to_release:
         description: Upload app artifacts to the GitHub Release
         required: false
@@ -20,7 +20,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: mobile-app-release-${{ github.ref }}-${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+  group: mobile-app-release-${{ github.ref }}-${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
   cancel-in-progress: false
 
 jobs:
@@ -150,12 +150,20 @@ jobs:
       - name: Stage APK
         id: stage_apk
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
         run: |
           mkdir -p artifacts
           APK_PATH="artifacts/mobilecode-${RELEASE_TAG}.apk"
           cp mobile_agent/build/app/outputs/flutter-apk/app-pure-release.apk "$APK_PATH"
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release version consistency
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+        run: |
+          python3 scripts/verify_mobilecode_release_version.py \
+            --apk "${{ steps.stage_apk.outputs.apk_path }}" \
+            --expected-tag "$RELEASE_TAG"
 
       - name: Upload APK workflow artifact
         uses: actions/upload-artifact@v7
@@ -167,7 +175,7 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -184,7 +192,7 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
         run: |
           gh release upload "$RELEASE_TAG" "${{ steps.stage_apk.outputs.apk_path }}" --clobber --repo "$GITHUB_REPOSITORY"
 
@@ -264,7 +272,7 @@ jobs:
       - name: Install and launch on iOS simulator
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -298,7 +306,7 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -315,7 +323,7 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
         run: |
           gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-simulator-"$RELEASE_TAG".zip artifacts/mobilecode-ios-smoke.png artifacts/ios-runner.log --clobber --repo "$GITHUB_REPOSITORY"
 
@@ -377,7 +385,7 @@ jobs:
       - name: Package unsigned xcarchive
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -464,7 +472,7 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -481,6 +489,6 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.68-last' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
         run: |
           gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-archive-"$RELEASE_TAG".xcarchive.zip artifacts/ios-archive-summary.txt --clobber --repo "$GITHUB_REPOSITORY"

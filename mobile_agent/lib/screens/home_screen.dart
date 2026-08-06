@@ -47,6 +47,7 @@ import '../services/mobilecode_update_service.dart';
 import '../services/mobilecore_adaptive_policy.dart';
 import '../services/model_provider_preset_service.dart';
 import '../services/model_routing_service.dart';
+import '../services/network_transport_service.dart';
 import '../services/role_library_service.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
@@ -14424,6 +14425,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     return _MobileCoreRuntimeDecision(
       health: currentHealth,
       policy: decision,
+      taskSignals: taskSignals,
     );
   }
 
@@ -15017,6 +15019,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     MobileCoreMetrics? metrics,
     MobileCoreAttachment? attachment,
     MobileCorePolicyDecision? policy,
+    MobileCoreTaskSignals? taskSignals,
     Object? error,
   }) {
     final failureCode = error is MobileCoreProviderException
@@ -15040,6 +15043,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       if (metrics != null) 'metrics': metrics.evidenceMetadata,
       if (attachment != null) 'attachment': attachment.evidenceMetadata,
       if (policy != null) 'adaptivePolicy': policy.evidenceMetadata,
+      if (taskSignals != null) 'routingSignals': taskSignals.evidenceMetadata,
       'redactionApplied': true,
       'redactionState': 'prompt_media_credentials_omitted',
     };
@@ -15181,16 +15185,25 @@ class _ChatPanelState extends State<_ChatPanel> {
         .set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
   }
 
-  MobileCoreTaskSignals _mobileCoreTaskSignals(
+  Future<MobileCoreTaskSignals> _mobileCoreTaskSignals(
     List<_ChatTurn> history, {
     required String systemPrompt,
     required int maxTokens,
     required ModelRouteEndpoint endpoint,
-  }) {
+  }) async {
     final cloudSelected = widget.providerPreset != _ProviderPreset.tuimaLocal;
+    final transport = await NetworkTransportService.instance.snapshot();
+    final osOffline = transport.definitelyOffline;
+    final offline = _offlineFallbackActive || osOffline;
+    final offlineSource = switch ((_offlineFallbackActive, osOffline)) {
+      (true, true) => MobileCoreOfflineSource.osAndCloudTransport,
+      (true, false) => MobileCoreOfflineSource.cloudTransport,
+      (false, true) => MobileCoreOfflineSource.osConnectivity,
+      _ => MobileCoreOfflineSource.none,
+    };
     return MobileCoreTaskSignals.classify(
       userText: _routeUserText(history),
-      offline: _offlineFallbackActive,
+      offline: offline,
       agentTask: endpoint != ModelRouteEndpoint.chat,
       inputCharacters: _tokenInputChars(history, systemPrompt),
       maxTokens: maxTokens,
@@ -15198,6 +15211,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       // Selecting and configuring a cloud provider is the explicit approval
       // boundary. MobileCode never switches a TuiMa-only request to cloud.
       cloudApproved: cloudSelected,
+      offlineSource: offlineSource,
     );
   }
 
@@ -15211,7 +15225,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
     void Function(ModelRouteDecision decision)? onRoute,
   }) async {
-    final taskSignals = _mobileCoreTaskSignals(
+    final taskSignals = await _mobileCoreTaskSignals(
       history,
       systemPrompt: systemPrompt,
       maxTokens: maxTokens,
@@ -15256,6 +15270,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           startedAt: startedAt,
           success: true,
           policy: runtimeDecision.policy,
+          taskSignals: runtimeDecision.taskSignals,
         );
         return answer;
       } on Object catch (error) {
@@ -15266,6 +15281,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           success: false,
           error: error,
           policy: runtimeDecision.policy,
+          taskSignals: runtimeDecision.taskSignals,
         );
         rethrow;
       }
@@ -15369,7 +15385,10 @@ class _ChatPanelState extends State<_ChatPanel> {
           final readyHealth = await _requireTuimaReady();
           final runtimeDecision = await _applyMobileCoreAdaptivePolicy(
             readyHealth,
-            taskSignals: taskSignals.copyWith(offline: true),
+            taskSignals: taskSignals.copyWith(
+              offline: true,
+              offlineSource: MobileCoreOfflineSource.cloudTransport,
+            ),
           );
           final health = runtimeDecision.health;
           final localDecision = _tuimaRouteDecision(
@@ -15401,6 +15420,7 @@ class _ChatPanelState extends State<_ChatPanel> {
               startedAt: startedAt,
               success: true,
               policy: runtimeDecision.policy,
+              taskSignals: runtimeDecision.taskSignals,
             );
             return answer;
           } on Object catch (localError) {
@@ -15411,6 +15431,7 @@ class _ChatPanelState extends State<_ChatPanel> {
               success: false,
               error: localError,
               policy: runtimeDecision.policy,
+              taskSignals: runtimeDecision.taskSignals,
             );
             rethrow;
           }
@@ -15437,7 +15458,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     void Function(ModelRouteDecision decision)? onRoute,
     MobileCoreAttachment? localAttachment,
   }) async* {
-    final taskSignals = _mobileCoreTaskSignals(
+    final taskSignals = await _mobileCoreTaskSignals(
       history,
       systemPrompt: systemPrompt,
       maxTokens: maxTokens,
@@ -15504,6 +15525,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           startedAt: startedAt,
           success: true,
           policy: runtimeDecision.policy,
+          taskSignals: runtimeDecision.taskSignals,
         );
       } on Object catch (error) {
         _recordMobileCoreInferenceEvidence(
@@ -15514,6 +15536,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           success: false,
           error: error,
           policy: runtimeDecision.policy,
+          taskSignals: runtimeDecision.taskSignals,
         );
         rethrow;
       }
@@ -15653,7 +15676,10 @@ class _ChatPanelState extends State<_ChatPanel> {
           final readyHealth = await _requireTuimaReady();
           final runtimeDecision = await _applyMobileCoreAdaptivePolicy(
             readyHealth,
-            taskSignals: taskSignals.copyWith(offline: true),
+            taskSignals: taskSignals.copyWith(
+              offline: true,
+              offlineSource: MobileCoreOfflineSource.cloudTransport,
+            ),
           );
           final health = runtimeDecision.health;
           final localDecision = _tuimaRouteDecision(
@@ -15687,6 +15713,7 @@ class _ChatPanelState extends State<_ChatPanel> {
               startedAt: startedAt,
               success: true,
               policy: runtimeDecision.policy,
+              taskSignals: runtimeDecision.taskSignals,
             );
           } on Object catch (localError) {
             _recordMobileCoreInferenceEvidence(
@@ -15696,6 +15723,7 @@ class _ChatPanelState extends State<_ChatPanel> {
               success: false,
               error: localError,
               policy: runtimeDecision.policy,
+              taskSignals: runtimeDecision.taskSignals,
             );
             rethrow;
           }
@@ -20897,10 +20925,12 @@ class _MobileCoreRuntimeDecision {
   const _MobileCoreRuntimeDecision({
     required this.health,
     required this.policy,
+    required this.taskSignals,
   });
 
   final TuimaHealth health;
   final MobileCorePolicyDecision policy;
+  final MobileCoreTaskSignals taskSignals;
 }
 
 class _TuimaStatusButton extends StatelessWidget {

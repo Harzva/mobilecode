@@ -35,6 +35,7 @@ void main() {
     );
 
     expect(signals.offline, isTrue);
+    expect(signals.offlineSource, MobileCoreOfflineSource.explicit);
     expect(signals.forceLocal, isTrue);
     expect(
       MobileCoreAdaptivePolicy.shouldUseMobileCore(

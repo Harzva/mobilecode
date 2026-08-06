@@ -154,6 +154,26 @@ A separate controlled emulator check used a Qwen3.5 0.8B main GGUF plus its mmpr
 
 This is capability/transport evidence, not a vision-quality result. The model answered the controlled animal-breed prompt incorrectly, so MobileCode must not describe the current vision route as accuracy-qualified. Generic imported artifacts were also correctly reported as present but unverified.
 
+On 2026-08-07, a new MobileCode-process instrumentation lane generated two
+512×512 controlled PNG fixtures with different large digits, sent each through
+the structured local OpenAI request to MobileCore, and required the two answers
+to pass case-specific semantic checks and have different normalized-output
+digests. AndroidJUnitRunner completed the latest device-side run in about 134.5
+seconds with one test and zero failures. The active runtime was the same generic
+Qwen3.5/libmtmd pair with `image_input=true`, `audio_input=false`, and both
+artifacts explicitly `verified=false`. This improves cross-app image-path and
+minimal non-collapse evidence; it does not overturn the failed breed probe,
+qualify broad vision accuracy, prove audio, or satisfy verified Omni acceptance.
+
+The host runner now judges AndroidJUnitRunner output rather than trusting the
+`adb shell am instrument` process exit code. Android returns exit code zero even
+when JUnit prints `FAILURES!!!`; the runner rejects those results, records only
+a result digest and typed `instrumentation_failed`, and refreshes `/health`
+immediately before media tasks so a reclaimed process or changed model cannot
+reuse stale capability state. Model responses remain in test-process memory and
+are compared by SHA-256 for non-collapse; they are not copied into the manifest
+or assertion output.
+
 The repeatable runner is:
 
 ```bash
@@ -175,6 +195,30 @@ python3 scripts/run_mobilecore_dual_app_qa.py \
   --thermal-duration-seconds 900 \
   --thermal-sample-seconds 15
 ```
+
+The runner automatically executes MobileCode-process image/audio quality tasks
+for every capability advertised by the active MobileCore `/health` snapshot.
+The verified Omni gate additionally requires both pinned artifacts to report
+`verified=true`, both media capabilities to be active, and all four controlled
+image/audio cases to pass while the device is offline:
+
+```bash
+python3 scripts/run_mobilecore_dual_app_qa.py \
+  --serial <physical-android-serial> \
+  --require-model-switch \
+  --require-physical-device \
+  --require-thermal \
+  --thermal-duration-seconds 900 \
+  --require-verified-omni
+```
+
+The image fixtures are generated in the MobileCode test process and contain
+two labeled digits. The audio fixtures are generated PCM WAV tone/silence
+pairs at MobileCore's advertised sample rate. Requests travel only to
+`127.0.0.1` during airplane mode. The test process checks non-empty,
+case-relevant, non-collapsed outputs; the host manifest stores only pass/fail,
+capability and artifact-verification booleans, step digests, and numeric sample
+rate. It never stores fixture bytes, prompts, response text, or data URIs.
 
 The v2 runner verifies `ro.kernel.qemu`, `ro.boot.qemu`, hardware, and model properties instead of trusting the adb serial prefix. During the thermal lane it keeps the device offline, repeatedly performs bounded local inference, and records only numeric temperature/status samples plus aggregate request and failure counts. Raw `dumpsys` output and inference responses are never written.
 

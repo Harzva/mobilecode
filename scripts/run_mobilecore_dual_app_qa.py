@@ -4,9 +4,10 @@
 The runner is intentionally host-side. It installs both applications, may
 provision a caller-supplied GGUF into MobileCore's app-private external model
 directory, starts the model through the visible MobileCore UI, runs the native
-30-task cross-app instrumentation test, and exercises lifecycle and pressure
-checks. Raw prompts, media, credentials, and local host paths are not written to
-the manifest. Run this only on a dedicated QA device with controlled accounts.
+30-task cross-app instrumentation test, automatically exercises every advertised
+image/audio capability, and runs lifecycle and pressure checks. Raw prompts,
+media, model outputs, credentials, and local host paths are not written to the
+manifest. Run this only on a dedicated QA device with controlled accounts.
 """
 
 from __future__ import annotations
@@ -37,6 +38,14 @@ MOBILECODE_TEST_RUNNER = (
 CROSS_APP_TEST = (
     "com.mobilecode.app.MobileCoreCrossAppQaTest#"
     "thirtyControlledOfflineTextAndStreamTasks"
+)
+CROSS_APP_IMAGE_TEST = (
+    "com.mobilecode.app.MobileCoreCrossAppQaTest#"
+    "controlledLocalImageQualityTasks"
+)
+CROSS_APP_AUDIO_TEST = (
+    "com.mobilecode.app.MobileCoreCrossAppQaTest#"
+    "controlledLocalAudioQualityTasks"
 )
 
 _SENSITIVE_SNAPSHOT_KEYS = {
@@ -168,6 +177,22 @@ def parse_thermal_service(raw: str) -> tuple[int | None, float | None, int | Non
     return service_status, max_temperature, max_sensor_status
 
 
+def instrumentation_succeeded(
+    *,
+    returncode: int,
+    stdout: bytes,
+    stderr: bytes,
+) -> bool:
+    """Judge AndroidJUnitRunner results instead of trusting adb's exit code."""
+    if returncode != 0:
+        return False
+    output = (stdout + b"\n" + stderr).decode("utf-8", "replace")
+    if "FAILURES!!!" in output or "INSTRUMENTATION_STATUS_CODE: -2" in output:
+        return False
+    match = re.search(r"(?m)^OK \((\d+) tests?\)\s*$", output)
+    return match is not None and int(match.group(1)) > 0
+
+
 class QaRunner:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -178,6 +203,11 @@ class QaRunner:
         self.model_switch_status = "not_run"
         self.environment = "unknown"
         self.device_model = b""
+        self.multimodal_summary: dict[str, object] = {
+            "status": "not_run",
+            "localOnly": True,
+            "rawMediaPromptsAndOutputsPersisted": False,
+        }
         self.thermal_summary: dict[str, object] = {
             "status": "not_run",
             "required": args.require_thermal,
@@ -243,6 +273,68 @@ class QaRunner:
             timeout=timeout,
             required=required,
         )
+
+    def instrumentation(
+        self,
+        name: str,
+        test_name: str,
+        *,
+        timeout: int,
+    ) -> subprocess.CompletedProcess[bytes]:
+        command = [
+            self.args.adb,
+            "-s",
+            self.args.serial,
+            "shell",
+            "am",
+            "instrument",
+            "-w",
+            "-r",
+            "-e",
+            "class",
+            test_name,
+            MOBILECODE_TEST_RUNNER,
+        ]
+        started = time.monotonic()
+        try:
+            result = subprocess.run(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as error:
+            output = (error.stdout or b"") + b"\0" + (error.stderr or b"")
+            self.steps.append(
+                Step(
+                    name=name,
+                    status="failed",
+                    duration_ms=round((time.monotonic() - started) * 1000),
+                    result_digest=sha256_bytes(output),
+                    failure_kind="timeout",
+                )
+            )
+            raise RuntimeError(f"{name} timed out") from error
+
+        combined = result.stdout + b"\0" + result.stderr
+        passed = instrumentation_succeeded(
+            returncode=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
+        )
+        self.steps.append(
+            Step(
+                name=name,
+                status="passed" if passed else "failed",
+                duration_ms=round((time.monotonic() - started) * 1000),
+                result_digest=sha256_bytes(combined),
+                failure_kind=None if passed else "instrumentation_failed",
+            )
+        )
+        if not passed:
+            raise RuntimeError(f"{name} failed its AndroidJUnitRunner assertions")
+        return result
 
     def api(
         self,
@@ -444,19 +536,12 @@ class QaRunner:
             required=False,
         )
         try:
-            self.adb(
+            self.instrumentation(
                 "run_30_cross_app_tasks",
-                "shell",
-                "am",
-                "instrument",
-                "-w",
-                "-r",
-                "-e",
-                "class",
                 CROSS_APP_TEST,
-                MOBILECODE_TEST_RUNNER,
                 timeout=self.args.task_timeout,
             )
+            self.exercise_multimodal_cross_app_tasks()
         finally:
             self.adb(
                 "disable_airplane_mode",
@@ -468,6 +553,88 @@ class QaRunner:
                 required=False,
             )
         self.snapshot("metrics_after_30_tasks", self.api("GET", "/metrics"))
+
+    def exercise_multimodal_cross_app_tasks(self) -> None:
+        health = self.wait_for_health(require_model=True)
+        self.snapshot("health_before_multimodal", health)
+        capabilities = health.get("capabilities")
+        if not isinstance(capabilities, dict):
+            capabilities = {}
+        artifacts = health.get("artifacts")
+        if not isinstance(artifacts, dict):
+            artifacts = {}
+        main_artifact = artifacts.get("main")
+        projector_artifact = artifacts.get("mmproj")
+        main_verified = isinstance(main_artifact, dict) and main_artifact.get("verified") is True
+        projector_verified = (
+            isinstance(projector_artifact, dict)
+            and projector_artifact.get("verified") is True
+        )
+        pair_verified = main_verified and projector_verified
+        image_advertised = capabilities.get("image_input") is True
+        audio_advertised = capabilities.get("audio_input") is True
+        require_image = bool(getattr(self.args, "require_image_multimodal", False))
+        require_audio = bool(getattr(self.args, "require_audio_multimodal", False))
+        require_verified_omni = bool(getattr(self.args, "require_verified_omni", False))
+        if require_verified_omni:
+            require_image = True
+            require_audio = True
+
+        self.multimodal_summary = {
+            "status": "running",
+            "localOnly": True,
+            "offlineDuringTasks": True,
+            "rawMediaPromptsAndOutputsPersisted": False,
+            "capabilities": {
+                "imageInput": image_advertised,
+                "audioInput": audio_advertised,
+                "audioSampleRateHz": int(health.get("audio_sample_rate_hz") or 0),
+            },
+            "artifactVerification": {
+                "required": require_verified_omni,
+                "mainVerified": main_verified,
+                "projectorVerified": projector_verified,
+                "pairVerified": pair_verified,
+            },
+            "image": "pending" if image_advertised else "not_advertised",
+            "audio": "pending" if audio_advertised else "not_advertised",
+        }
+
+        if require_verified_omni and not pair_verified:
+            self.multimodal_summary["status"] = "failed"
+            self.snapshot("multimodal_summary", self.multimodal_summary)
+            raise RuntimeError("Verified Omni artifacts are required for multimodal acceptance")
+        if require_image and not image_advertised:
+            self.multimodal_summary["status"] = "failed"
+            self.snapshot("multimodal_summary", self.multimodal_summary)
+            raise RuntimeError("Image multimodal acceptance requires image_input=true")
+        if require_audio and not audio_advertised:
+            self.multimodal_summary["status"] = "failed"
+            self.snapshot("multimodal_summary", self.multimodal_summary)
+            raise RuntimeError("Audio multimodal acceptance requires audio_input=true")
+
+        for modality, advertised, test_name in (
+            ("image", image_advertised, CROSS_APP_IMAGE_TEST),
+            ("audio", audio_advertised, CROSS_APP_AUDIO_TEST),
+        ):
+            if not advertised:
+                continue
+            try:
+                self.instrumentation(
+                    f"run_cross_app_{modality}_quality_tasks",
+                    test_name,
+                    timeout=self.args.task_timeout,
+                )
+                self.multimodal_summary[modality] = "passed"
+            except RuntimeError:
+                self.multimodal_summary[modality] = "failed"
+                self.multimodal_summary["status"] = "failed"
+                self.snapshot("multimodal_summary", self.multimodal_summary)
+                raise
+
+        executed = image_advertised or audio_advertised
+        self.multimodal_summary["status"] = "passed" if executed else "not_available"
+        self.snapshot("multimodal_summary", self.multimodal_summary)
 
     def exercise_lifecycle(self) -> None:
         health = self.wait_for_health(require_model=True)
@@ -773,6 +940,7 @@ class QaRunner:
                 "required": self.args.require_model_switch,
                 "status": self.model_switch_status,
             },
+            "multimodal": self.multimodal_summary,
             "thermal_workload": self.thermal_summary,
             "redaction": "raw_prompts_media_credentials_and_host_paths_omitted",
             "apks": {
@@ -828,6 +996,21 @@ def parse_args() -> argparse.Namespace:
         "--require-model-switch",
         action="store_true",
         help="Fail acceptance when the device does not expose a second loadable model.",
+    )
+    parser.add_argument(
+        "--require-image-multimodal",
+        action="store_true",
+        help="Fail unless MobileCore advertises image input and the cross-app image quality tasks pass.",
+    )
+    parser.add_argument(
+        "--require-audio-multimodal",
+        action="store_true",
+        help="Fail unless MobileCore advertises audio input and the cross-app audio quality tasks pass.",
+    )
+    parser.add_argument(
+        "--require-verified-omni",
+        action="store_true",
+        help="Require verified main/projector artifacts plus passing image and audio cross-app tasks.",
     )
     parser.add_argument(
         "--require-physical-device",

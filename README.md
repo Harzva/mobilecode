@@ -15,7 +15,7 @@
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml"><img alt="Mobile App Release" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml/badge.svg"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=main"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.75-2555FF">
+  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.76-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Flutter-0B9B7E">
 </p>
 
@@ -28,7 +28,7 @@
   ·
   <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">HTML Principle Video</a>
   ·
-  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.75">Download v0.1.75 app</a>
+  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.76">Download v0.1.76 app</a>
   ·
   <a href="https://harzva.github.io/mobilecode/">GitHub Pages Demo</a>
 </p>
@@ -415,14 +415,16 @@ That keeps the phone lightweight while still letting users produce shareable web
 
 ## Release Line
 
-Current candidate: `v0.1.75` (`0.1.75+65`).
+Current candidate: `v0.1.76` (`0.1.76+66`).
 
 See:
 
 - [MobileCore dual-app evidence](docs/mobilecore-dual-app-qa.md) - 30 real offline cross-app requests, buffered/SSE parity, unload/reload, background continuity, low-memory notification, and process restart recovery passed on Android emulator.
-- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.75) - Android `pure` APK and CI-generated platform evidence for the guarded MobileCore/cloud routing candidate.
-- [Signed Android v0.1.75 workflow](https://github.com/Harzva/mobilecode/actions/runs/31127234312) - the downloaded `0.1.75+65` APK has SHA-256 `66e7a26bb7efa4b3c6f959b3e8063fb05a25f91e5b13463211c80c60da5272e2`, verifies with the MobileCode release certificate, and clean-launches on the Android 16 ARM64 emulator without crash, ANR, or OOM.
-- v0.1.75 adds a per-task cloud inference approval card, redacted approval evidence, and fail-closed decline routing to MobileCore while keeping Phone Use, login, payment, and ordering outside that approval.
+- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.76) - Android `pure` APK and CI-generated platform evidence for the protocol-gated MobileCore local inference candidate.
+- v0.1.76 requires the `mobilecore.local` v2 compatibility handshake before local model control or inference. Missing, malformed, or unsupported protocols fail closed with typed evidence; MobileCore still cannot perform Phone Use actions.
+- Local timeouts and explicit Agent pauses now request native inference cancellation, while measured slow runtimes receive a bounded next-response budget; overlapping MobileCore work fails as `runtime_busy` instead of racing the shared llama context.
+- [Signed Android v0.1.75 workflow](https://github.com/Harzva/mobilecode/actions/runs/31127234312) - the previous downloaded `0.1.75+65` APK has SHA-256 `66e7a26bb7efa4b3c6f959b3e8063fb05a25f91e5b13463211c80c60da5272e2`, verifies with the MobileCode release certificate, and clean-launches on the Android 16 ARM64 emulator without crash, ANR, or OOM.
+- v0.1.75 added a per-task cloud inference approval card, redacted approval evidence, and fail-closed decline routing to MobileCore while keeping Phone Use, login, payment, and ordering outside that approval.
 - Post-build inspection of v0.1.72 caught an iOS generated-project permission nesting bug and an incomplete smoke-test crash filter. v0.1.73 writes the microphone and speech-recognition descriptions into the top-level app plist and verifies both bundle metadata and TCC launch logs before publishing simulator assets.
 - Previous signed Android evidence: [v0.1.72](https://github.com/Harzva/mobilecode/releases/tag/v0.1.72) and its [APK workflow](https://github.com/Harzva/mobilecode/actions/runs/31123426875). The downloaded 33 MB asset has SHA-256 `acdada50092e7aa2e9727ee8a45e9c20f4c977b4be6e7c21f0ce48e1be955101`, verifies with the MobileCode release certificate, and clean-launched on the Android 16 ARM64 emulator.
 - Previous stable evidence: [v0.1.69](https://github.com/Harzva/mobilecode/releases/tag/v0.1.69) and its [Android APK workflow](https://github.com/Harzva/mobilecode/actions/runs/31091939149).

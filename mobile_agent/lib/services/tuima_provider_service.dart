@@ -11,6 +11,75 @@ enum TuimaConnectionState {
   modelReady,
 }
 
+class MobileCoreProtocol {
+  const MobileCoreProtocol({
+    required this.name,
+    required this.major,
+    required this.minor,
+    required this.minimumClientMajor,
+    required this.maximumClientMajor,
+  });
+
+  static const String expectedName = 'mobilecore.local';
+  static const int clientMajor = 2;
+
+  final String name;
+  final int major;
+  final int minor;
+  final int minimumClientMajor;
+  final int maximumClientMajor;
+
+  Map<String, Object> get evidenceMetadata => {
+        'name': name,
+        'major': major,
+        'minor': minor,
+        'minimumClientMajor': minimumClientMajor,
+        'maximumClientMajor': maximumClientMajor,
+      };
+
+  factory MobileCoreProtocol.fromJson(Object? value) {
+    final map = _stringMap(value);
+    if (map.isEmpty) {
+      throw const MobileCoreProviderException(
+        code: 'protocol_missing',
+        message: 'MobileCore did not publish a client protocol handshake.',
+      );
+    }
+    final name = map['name']?.toString().trim() ?? '';
+    final major = _asInt(map['major']);
+    final minor = _asInt(map['minor']);
+    final minimumClientMajor = _asInt(map['min_client_major']);
+    final maximumClientMajor = _asInt(map['max_client_major']);
+    if (name.isEmpty ||
+        major < 1 ||
+        minor < 0 ||
+        minimumClientMajor < 1 ||
+        maximumClientMajor < minimumClientMajor) {
+      throw const MobileCoreProviderException(
+        code: 'protocol_invalid',
+        message: 'MobileCore published an invalid client protocol handshake.',
+      );
+    }
+    if (name != expectedName ||
+        major != clientMajor ||
+        clientMajor < minimumClientMajor ||
+        clientMajor > maximumClientMajor) {
+      throw MobileCoreProviderException(
+        code: 'protocol_unsupported',
+        message:
+            'MobileCore protocol $name v$major.$minor is not compatible with MobileCode client v$clientMajor.',
+      );
+    }
+    return MobileCoreProtocol(
+      name: name,
+      major: major,
+      minor: minor,
+      minimumClientMajor: minimumClientMajor,
+      maximumClientMajor: maximumClientMajor,
+    );
+  }
+}
+
 class MobileCoreCapabilities {
   const MobileCoreCapabilities({
     this.textInput = false,
@@ -399,6 +468,7 @@ class TuimaHealth {
     required this.version,
     required this.backend,
     required this.activeModel,
+    this.protocol,
     this.runtime = '',
     this.runtimeRevision = '',
     this.quantization = 'unknown',
@@ -407,6 +477,7 @@ class TuimaHealth {
     this.projectorArtifact = const MobileCoreArtifactHealth(),
     this.preflight = const MobileCorePreflight(),
     this.audioSampleRateHz = 0,
+    this.failureCode,
     this.failure,
   });
 
@@ -414,6 +485,7 @@ class TuimaHealth {
   final String version;
   final String backend;
   final String? activeModel;
+  final MobileCoreProtocol? protocol;
   final String runtime;
   final String runtimeRevision;
   final String quantization;
@@ -422,21 +494,28 @@ class TuimaHealth {
   final MobileCoreArtifactHealth projectorArtifact;
   final MobileCorePreflight preflight;
   final int audioSampleRateHz;
+  final String? failureCode;
   final String? failure;
 
   bool get canInfer => state == TuimaConnectionState.modelReady;
 
-  factory TuimaHealth.unavailable(Object failure) => TuimaHealth(
+  factory TuimaHealth.unavailable(
+    Object failure, {
+    String? failureCode,
+  }) =>
+      TuimaHealth(
         state: TuimaConnectionState.unavailable,
         version: '',
         backend: '',
         activeModel: null,
         capabilities: const MobileCoreCapabilities(),
+        failureCode: failureCode,
         failure: failure.toString(),
       );
 
   Map<String, Object?> get evidenceMetadata => {
         'serviceVersion': version,
+        if (protocol != null) 'protocol': protocol!.evidenceMetadata,
         'activeModel': activeModel,
         'backend': backend,
         'runtime': runtime,
@@ -446,6 +525,7 @@ class TuimaHealth {
         'capabilities': capabilities.evidenceSnapshot,
         'preflightOk': preflight.ok,
         'preflightFailure': preflight.failureCode,
+        if (failureCode != null) 'failureCode': failureCode,
         'mainArtifactPresent': mainArtifact.present,
         'mainArtifactVerified': mainArtifact.verified,
         'projectorArtifactPresent': projectorArtifact.present,
@@ -497,6 +577,7 @@ class MobileCoreClient {
     Uri? modelLoadUri,
     Uri? modelUnloadUri,
     Uri? omniStatusUri,
+    Uri? inferenceCancelUri,
   })  : _client = client ?? HttpClient(),
         healthUri = healthUri ?? Uri.parse('http://127.0.0.1:8080/health'),
         chatUri =
@@ -510,7 +591,9 @@ class MobileCoreClient {
         modelUnloadUri = modelUnloadUri ??
             Uri.parse('http://127.0.0.1:8080/mobilecore/model/unload'),
         omniStatusUri = omniStatusUri ??
-            Uri.parse('http://127.0.0.1:8080/mobilecore/omni/status');
+            Uri.parse('http://127.0.0.1:8080/mobilecore/omni/status'),
+        inferenceCancelUri = inferenceCancelUri ??
+            Uri.parse('http://127.0.0.1:8080/mobilecore/inference/cancel');
 
   final HttpClient _client;
   final Uri healthUri;
@@ -521,6 +604,7 @@ class MobileCoreClient {
   final Uri modelLoadUri;
   final Uri modelUnloadUri;
   final Uri omniStatusUri;
+  final Uri inferenceCancelUri;
 
   Future<TuimaHealth> probe({
     Duration timeout = const Duration(seconds: 2),
@@ -534,8 +618,18 @@ class MobileCoreClient {
       }
       final payload = jsonDecode(body);
       if (payload is! Map<String, dynamic> || payload['status'] != 'ok') {
-        return TuimaHealth.unavailable('Invalid TuiMa health payload');
+        throw const MobileCoreProviderException(
+          code: 'invalid_response',
+          message: 'MobileCore returned an invalid health payload.',
+        );
       }
+      if (payload['service'] != 'mobilecore') {
+        throw const MobileCoreProviderException(
+          code: 'service_mismatch',
+          message: 'The loopback service is not MobileCore.',
+        );
+      }
+      final protocol = MobileCoreProtocol.fromJson(payload['protocol']);
       final modelLoaded = payload['model_loaded'] == true;
       final artifacts = _stringMap(payload['artifacts']);
       return TuimaHealth(
@@ -545,6 +639,7 @@ class MobileCoreClient {
         version: payload['version']?.toString() ?? '',
         backend: payload['backend']?.toString() ?? '',
         activeModel: _nullableString(payload['active_model']),
+        protocol: protocol,
         runtime: payload['runtime']?.toString() ?? '',
         runtimeRevision: payload['llama_cpp_revision']?.toString() ?? '',
         quantization: payload['quantization']?.toString() ?? 'unknown',
@@ -554,6 +649,11 @@ class MobileCoreClient {
             MobileCoreArtifactHealth.fromJson(artifacts['mmproj']),
         preflight: MobileCorePreflight.fromJson(payload['preflight']),
         audioSampleRateHz: _asInt(payload['audio_sample_rate_hz']),
+      );
+    } on MobileCoreProviderException catch (error) {
+      return TuimaHealth.unavailable(
+        error.message,
+        failureCode: error.code,
       );
     } on Object catch (error) {
       return TuimaHealth.unavailable(error);
@@ -601,6 +701,17 @@ class MobileCoreClient {
     Duration timeout = const Duration(seconds: 5),
   }) =>
       _getJson(omniStatusUri, timeout: timeout);
+
+  Future<bool> cancelInference({
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
+    final payload = await _postJson(
+      inferenceCancelUri,
+      const <String, dynamic>{},
+      timeout: timeout,
+    );
+    return payload['cancel_requested'] == true;
+  }
 
   /// Reads one coherent control-plane view of the active MobileCore runtime.
   ///
@@ -679,12 +790,12 @@ class MobileCoreClient {
             code: 'invalid_projector_id',
             label: 'projector',
           );
+    await _requireCompatibleHealth(timeout: const Duration(seconds: 5));
     await _postJson(
       modelLoadUri,
       {
         'model_id': normalized,
-        if (normalizedProjector != null)
-          'projector_id': normalizedProjector,
+        if (normalizedProjector != null) 'projector_id': normalizedProjector,
         'context_length': contextLength.clamp(128, 32768),
         'threads': threads.clamp(1, 16),
         'gpu_layers': 0,
@@ -724,6 +835,7 @@ class MobileCoreClient {
   Future<TuimaHealth> unloadModel({
     Duration timeout = const Duration(seconds: 30),
   }) async {
+    await _requireCompatibleHealth(timeout: const Duration(seconds: 5));
     await _postJson(modelUnloadUri, const {}, timeout: timeout);
     final health = await probe(timeout: const Duration(seconds: 5));
     if (health.canInfer) {
@@ -750,27 +862,36 @@ class MobileCoreClient {
     required List<Map<String, dynamic>> messages,
     required String model,
     int maxTokens = 1024,
-    Duration timeout = const Duration(minutes: 2),
+    Duration timeout = const Duration(minutes: 3),
     void Function(MobileCoreMetrics metrics)? onMetrics,
   }) async {
-    final response = await _postChat(
-      messages: messages,
-      model: model,
-      maxTokens: maxTokens,
-      stream: false,
-      timeout: timeout,
-    );
-    final body = await utf8.decodeStream(response).timeout(timeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw _providerError(response.statusCode, body);
+    try {
+      await _requireCompatibleModel(model);
+      final response = await _postChat(
+        messages: messages,
+        model: model,
+        maxTokens: maxTokens,
+        stream: false,
+        timeout: timeout,
+      );
+      final body = await utf8.decodeStream(response).timeout(timeout);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw _providerError(response.statusCode, body);
+      }
+      final responsePayload = _decodedMap(body);
+      onMetrics?.call(_inferenceMetrics(responsePayload));
+      final answer = _extractAssistantText(body);
+      if (answer.isEmpty) {
+        throw const FormatException('TuiMa returned an empty response');
+      }
+      return answer;
+    } on TimeoutException {
+      await _cancelTimedOutInference();
+      throw const MobileCoreProviderException(
+        code: 'inference_timeout',
+        message: 'MobileCore local inference exceeded the allowed duration.',
+      );
     }
-    final responsePayload = _decodedMap(body);
-    onMetrics?.call(_inferenceMetrics(responsePayload));
-    final answer = _extractAssistantText(body);
-    if (answer.isEmpty) {
-      throw const FormatException('TuiMa returned an empty response');
-    }
-    return answer;
   }
 
   Stream<String> streamChat({
@@ -780,59 +901,111 @@ class MobileCoreClient {
     Duration timeout = const Duration(minutes: 3),
     void Function(MobileCoreMetrics metrics)? onMetrics,
   }) async* {
-    final response = await _postChat(
-      messages: messages,
-      model: model,
-      maxTokens: maxTokens,
-      stream: true,
-      timeout: timeout,
+    try {
+      await _requireCompatibleModel(model);
+      final response = await _postChat(
+        messages: messages,
+        model: model,
+        maxTokens: maxTokens,
+        stream: true,
+        timeout: timeout,
+      );
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final body = await utf8.decodeStream(response).timeout(timeout);
+        throw _providerError(response.statusCode, body);
+      }
+
+      final mimeType = response.headers.contentType?.mimeType.toLowerCase();
+      if (mimeType != 'text/event-stream') {
+        final body = await utf8.decodeStream(response).timeout(timeout);
+        final answer = _extractAssistantText(body);
+        onMetrics?.call(_inferenceMetrics(_decodedMap(body)));
+        if (answer.isEmpty) {
+          throw const FormatException('TuiMa returned an empty response');
+        }
+        yield answer;
+        return;
+      }
+
+      var emitted = false;
+      await for (final line in response
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .timeout(timeout)) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty ||
+            trimmed.startsWith(':') ||
+            trimmed.startsWith('event:')) {
+          continue;
+        }
+        final payload =
+            trimmed.startsWith('data:') ? trimmed.substring(5).trim() : trimmed;
+        if (payload.isEmpty) continue;
+        if (payload == '[DONE]') break;
+        final decoded = jsonDecode(payload);
+        if (decoded is! Map<String, dynamic>) continue;
+        if (decoded['mobilecore'] != null || decoded['usage'] != null) {
+          onMetrics?.call(_inferenceMetrics(decoded));
+        }
+        final delta = _extractDelta(decoded);
+        if (delta.isNotEmpty) {
+          emitted = true;
+          yield delta;
+        }
+      }
+      if (!emitted) {
+        throw const FormatException('TuiMa stream completed without text');
+      }
+    } on TimeoutException {
+      await _cancelTimedOutInference();
+      throw const MobileCoreProviderException(
+        code: 'inference_timeout',
+        message: 'MobileCore local inference exceeded the allowed duration.',
+      );
+    }
+  }
+
+  Future<void> _cancelTimedOutInference() async {
+    try {
+      await cancelInference();
+    } on Object {
+      // Preserve the timeout classification. Cancellation is best-effort
+      // because MobileCore may already be restarting or unavailable.
+    }
+  }
+
+  Future<TuimaHealth> _requireCompatibleHealth({
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final health = await probe(timeout: timeout);
+    if (health.state != TuimaConnectionState.unavailable &&
+        health.protocol != null) {
+      return health;
+    }
+    throw MobileCoreProviderException(
+      code: health.failureCode ?? 'service_unavailable',
+      message: _compact(
+        health.failure ?? 'MobileCore is unavailable on the loopback service.',
+      ),
     );
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      final body = await utf8.decodeStream(response).timeout(timeout);
-      throw _providerError(response.statusCode, body);
-    }
+  }
 
-    final mimeType = response.headers.contentType?.mimeType.toLowerCase();
-    if (mimeType != 'text/event-stream') {
-      final body = await utf8.decodeStream(response).timeout(timeout);
-      final answer = _extractAssistantText(body);
-      onMetrics?.call(_inferenceMetrics(_decodedMap(body)));
-      if (answer.isEmpty) {
-        throw const FormatException('TuiMa returned an empty response');
-      }
-      yield answer;
-      return;
+  Future<TuimaHealth> _requireCompatibleModel(String model) async {
+    final health = await _requireCompatibleHealth();
+    final requested = model.trim();
+    if (!health.canInfer || health.activeModel == null) {
+      throw const MobileCoreProviderException(
+        code: 'model_not_loaded',
+        message: 'MobileCore has no active local model.',
+      );
     }
-
-    var emitted = false;
-    await for (final line in response
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())
-        .timeout(timeout)) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty ||
-          trimmed.startsWith(':') ||
-          trimmed.startsWith('event:')) {
-        continue;
-      }
-      final payload =
-          trimmed.startsWith('data:') ? trimmed.substring(5).trim() : trimmed;
-      if (payload.isEmpty) continue;
-      if (payload == '[DONE]') break;
-      final decoded = jsonDecode(payload);
-      if (decoded is! Map<String, dynamic>) continue;
-      if (decoded['mobilecore'] != null || decoded['usage'] != null) {
-        onMetrics?.call(_inferenceMetrics(decoded));
-      }
-      final delta = _extractDelta(decoded);
-      if (delta.isNotEmpty) {
-        emitted = true;
-        yield delta;
-      }
+    if (requested.isEmpty || health.activeModel != requested) {
+      throw const MobileCoreProviderException(
+        code: 'model_state_mismatch',
+        message: 'The requested model is not the active MobileCore model.',
+      );
     }
-    if (!emitted) {
-      throw const FormatException('TuiMa stream completed without text');
-    }
+    return health;
   }
 
   Future<HttpClientResponse> _postChat({
@@ -1016,6 +1189,13 @@ class MobileCoreClient {
     required MobileCoreMetrics metrics,
   }) {
     if (before.state != after.state ||
+        before.protocol?.name != after.protocol?.name ||
+        before.protocol?.major != after.protocol?.major ||
+        before.protocol?.minor != after.protocol?.minor ||
+        before.protocol?.minimumClientMajor !=
+            after.protocol?.minimumClientMajor ||
+        before.protocol?.maximumClientMajor !=
+            after.protocol?.maximumClientMajor ||
         before.activeModel != after.activeModel ||
         before.runtime != after.runtime ||
         before.runtimeRevision != after.runtimeRevision ||
@@ -1121,6 +1301,7 @@ class TuimaProviderService extends MobileCoreClient {
     super.modelLoadUri,
     super.modelUnloadUri,
     super.omniStatusUri,
+    super.inferenceCancelUri,
   });
 
   static HybridModelRouteDecision route({

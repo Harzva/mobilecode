@@ -33,6 +33,7 @@ Adaptive routing currently applies these rules:
 - privacy-sensitive or offline work stays on MobileCore;
 - local image/audio work requires an advertised local capability;
 - memory or thermal pressure reduces context to 2048 tokens and selects the smallest safe installed recommendation, including when privacy/offline routing is also active; multimodal attachments retain their capability-compatible active model instead of blindly switching to a text-only recommendation;
+- the latest measured decode rate caps the next local output budget at 8, 32, 128, or 256 tokens, preventing an extremely slow runtime from accepting an unbounded mobile request;
 - complex cloud routing requires explicit approval;
 - Phone Use plans may use MobileCore inference, but every device action remains in MobileCode's approval and evidence boundary.
 
@@ -51,6 +52,12 @@ declining keeps the task on MobileCore or cancels it when the local runtime is
 unavailable. Approval evidence stores only the approval ID, decision, provider
 preset, scope, and redacted routing booleans. MobileCode never changes a
 TuiMa-only request to cloud on its own.
+
+MobileCode requires the `mobilecore.local` protocol-v2 declaration before any
+model control or inference call. A timeout or explicit Agent pause sends an
+authenticated, content-free cancellation request. MobileCore serializes access
+to its shared llama context and returns `runtime_busy` to overlapping chat or
+model-lifecycle requests instead of allowing concurrent native decode.
 
 When local inference informs a Phone Use approval card, MobileCode now links the two ActionEvidence records by identifier in both directions: the inference record stores `deviceOperationEvidenceIds`, and the device record stores `mobileCoreInferenceEvidenceIds`. The relation contains IDs only; prompts, media, screenshots, typed values, and credentials are not copied into either record.
 
@@ -147,6 +154,41 @@ process alive and the `v0.1.75` home screen visible. The captured logcat had no
 MobileCode fatal exception, ANR, process death, or out-of-memory signal. This is
 release-package and emulator-launch evidence; it does not satisfy any physical
 device, controlled-account, thermal, or Omni quality gate.
+### Protocol-v2, chat-template, and cancellation refresh
+
+On 2026-08-07, a pre-release MobileCode v0.1.76 (`66`) integration build and
+MobileCore 0.1.4-rc4 (`8`) were
+clean-built and installed on the Android 16 arm64 emulator. The MobileCode
+`pureRelease` APK SHA-256 was
+`4c0592cf7e0c1fd45145e3eaced74f405c5fe6fa96f72e7dcbd83a9657a8da11`;
+the MobileCore debug QA APK SHA-256 was
+`dcb2ae4c1c67c7171ab7c57a1996a6257950b92256c83dc93f20e3f3e03a7e44`.
+The running `/health` response published `mobilecore.local` v2.0 with client
+major range 2–2 and the exact active Qwen2.5 public model ID.
+
+After applying the GGUF chat template, a direct controlled request returned
+exactly `OK` instead of the off-topic continuation produced by the previous raw
+role-text prompt. A fresh MobileCode chat then completed the same request through
+TuiMa Local and displayed `OK` in the app. That cross-app request used 46 prompt
+tokens and 1 completion token, completed in 18,313 ms, and reported 0.106655
+decode tokens/s. These timings describe the constrained emulator only.
+
+A separate 128-token request was cancelled through
+`POST /mobilecore/inference/cancel`. The original request returned the typed
+`cancelled` code, `/metrics` recorded one failed/cancelled request, and the
+MobileCore process returned to 0.0% sampled CPU within two seconds without a
+crash, ANR, or OOM. Instrumentation also proves that a concurrent second chat is
+rejected as `runtime_busy`; this guard was added after an obsolete background QA
+probe exposed that two simultaneous NanoHTTPD requests could otherwise enter the
+same llama context.
+
+After rebasing onto the published v0.1.75 approval and cross-app QA baseline,
+the final v0.1.76 QA APK was installed from scratch. It cold-launched through
+the Android microphone permission sheet, resumed `MainActivity`, displayed
+`v0.1.76` and `TuiMa ready`, and again returned exactly `OK` for the controlled
+request. Logcat contained no MobileCode crash, ANR, OOM, or SIGABRT marker. The
+local APK is Android Debug-signed and is therefore QA evidence, not the
+production-signed GitHub Release asset.
 
 ## Local vision chain
 
@@ -226,13 +268,14 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
 
 ## Verification
 
-- The complete MobileCode Flutter suite passed 565 tests after the Client v2,
-  adaptive-routing, pressure-switch, proactive-offline, and one-task cloud
-  approval follow-ups.
-- The focused MobileCore client suite passed 16 tests, including coherent
+- The complete MobileCode Flutter suite passed 571 tests after the Client v2,
+  adaptive-routing, pressure-switch, proactive-offline, one-task cloud approval,
+  protocol-handshake, cancellation, and bounded-output follow-ups.
+- The focused MobileCore client/adaptive-policy/approval suite passed 37 tests
+  covering coherent
   runtime snapshots, exact switch confirmation, public projector IDs,
   path-like ID rejection, projector metadata, and image-capability parsing.
-- The focused adaptive-policy suite passed 13 tests, including privacy/offline
+- The focused adaptive-policy coverage includes privacy/offline
   fail-closed routing, cloud-consent gating, constrained context/model choice,
   one-task approval expiry semantics, and multimodal capability retention under
   resource pressure.
@@ -241,8 +284,8 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
   SSID, address, and probe-host details are never recorded.
 - Two approval-card widget tests cover approve/decline behavior and confirm the
   card does not render request content.
-- A local Android arm64 `pureRelease` build passed and its manifest version was
-  verified as `0.1.73+63`; this local build is validation evidence only and is
+- A clean local Android arm64 `pureRelease` build passed and its manifest version was
+  verified as `0.1.76+66`; this local build is validation evidence only and is
   not the stable-signed GitHub Release asset.
 - The real emulator UI displayed the one-task cloud approval card before a
   complex cloud request. Declining routed to MobileCore, and the subsequent
@@ -254,7 +297,7 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
   plugin, confirming the proactive-offline route compiles on both mobile
   platforms. This remains simulator build evidence, not physical-iOS QA.
 - MobileCore Android unit tests passed.
-- MobileCore local API instrumentation passed its model-ID control, incompatible-projector rejection, no-path response, multimodal contract, rejection, and metrics-counter checks.
+- MobileCore local API instrumentation passed 2/2 tests covering model-ID control, incompatible-projector rejection, no-path response, multimodal contract, request-body consumption, cancellation, serialized inference, `runtime_busy`, and metrics counters.
 - A post-fix real-GGUF smoke reported active-model preflight `625617760` required bytes versus `1096425472` available bytes, `runtime=llama.cpp`, two completed requests, zero failures, and a non-zero average decode rate.
 - MobileCode `pureDebug` APK and cross-app Android test APK built successfully.
 - The dual-app runner privacy/classification/thermal workload passes five deterministic host-side unit tests.

@@ -36,6 +36,8 @@ Adaptive routing currently applies these rules:
 - complex cloud routing requires explicit approval;
 - Phone Use plans may use MobileCore inference, but every device action remains in MobileCode's approval and evidence boundary.
 
+Before chat or Agent traffic opens a cloud request, MobileCode derives an in-memory task signal from explicit credential/login/payment markers, the previously detected offline-fallback state, request size, and Agent mode. The signal exposes booleans only and omits the request text from evidence. Privacy-sensitive and already-offline requests are routed to MobileCore before cloud transport; if the local service is unavailable they fail closed. A configured cloud provider counts as approval only because the user explicitly selected that provider; MobileCode never changes a TuiMa-only request to cloud on its own.
+
 When local inference informs a Phone Use approval card, MobileCode now links the two ActionEvidence records by identifier in both directions: the inference record stores `deviceOperationEvidenceIds`, and the device record stores `mobileCoreInferenceEvidenceIds`. The relation contains IDs only; prompts, media, screenshots, typed values, and credentials are not copied into either record.
 
 ## Controlled Android Run

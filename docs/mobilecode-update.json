@@ -1,17 +1,17 @@
 {
   "schemaVersion": 1,
   "channel": "prerelease",
-  "title": "MobileCode v0.1.76 本地协议联动预览",
-  "message": "本版在保留单任务云端审批边界的同时，在模型控制和本地推理前强制校验 MobileCoreClient v2 协议，并支持超时取消与慢速输出预算。",
-  "latestVersion": "v0.1.76",
-  "latestBuildNumber": 66,
+  "title": "MobileCode v0.1.77 安全联动预览",
+  "message": "本版保留 MobileCoreClient v2 联动能力，同时禁止公开构建内嵌运行时服务凭据，仅允许公开 relay 与 OAuth 配置。",
+  "latestVersion": "v0.1.77",
+  "latestBuildNumber": 67,
   "minimumSupportedBuildNumber": 58,
   "severity": "info",
-  "publishedAt": "2026-08-07T03:45:00+08:00",
+  "publishedAt": "2026-08-07T05:46:40+08:00",
   "pagesUrl": "https://harzva.github.io/mobilecode/",
   "githubUrl": "https://github.com/Harzva/mobilecode",
-  "releaseUrl": "https://github.com/Harzva/mobilecode/releases/tag/v0.1.76",
-  "downloadUrl": "https://github.com/Harzva/mobilecode/releases/download/v0.1.76/mobilecode-v0.1.76.apk",
+  "releaseUrl": "https://github.com/Harzva/mobilecode/releases/tag/v0.1.77",
+  "downloadUrl": "https://github.com/Harzva/mobilecode/releases/download/v0.1.77/mobilecode-v0.1.77.apk",
   "ctaLabel": "打开 GitHub Pages",
   "secondaryCtaLabel": "下载最新构建",
   "releaseNotes": [
@@ -25,6 +25,8 @@
     "端侧输出预算会参考最近一次实测解码速度，在极慢或资源受限环境自动收紧。",
     "MobileCode 仍以原子快照读取 MobileCore 模型、能力、projector、preflight 与指标状态。",
     "离线、隐私、热压力和内存压力策略会在云端传输前完成路由判断。",
-    "Android 模拟器已验证协议握手、真实本地文本请求、取消、并发保护和跨应用图像链；实体机门槛仍单独保留。"
+    "Android 模拟器已验证协议握手、真实本地文本请求、取消、并发保护和跨应用图像链；实体机门槛仍单独保留。",
+    "公开 Android/iOS 构建不再接收或编译 Provider API Key、relay token 与 OAuth client secret。",
+    "CI 会在构建前执行凭据策略检查；仅公开 relay URL、OAuth client ID 与 redirect URI 可进入发布配置。"
   ]
 }

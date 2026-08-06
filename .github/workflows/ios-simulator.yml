@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag to upload the iOS simulator build to
         required: false
-        default: v0.1.76
+        default: v0.1.77
       upload_to_release:
         description: Upload simulator zip to the GitHub Release
         required: false
@@ -22,7 +22,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ios-simulator-${{ github.ref }}-${{ github.event.inputs.release_tag || 'v0.1.76' }}
+  group: ios-simulator-${{ github.ref }}-${{ github.event.inputs.release_tag || 'v0.1.77' }}
   cancel-in-progress: false
 
 jobs:
@@ -33,6 +33,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Enforce public release credential policy
+        run: python3 scripts/verify_public_release_workflows.py
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -65,22 +68,21 @@ jobs:
       - name: Build iOS simulator app
         working-directory: mobile_agent
         env:
-          MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
+          MOBILECODE_MANAGED_RELAY_URL: ${{ vars.MOBILECODE_MANAGED_RELAY_URL }}
         run: |
-          if [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
-            flutter build ios --simulator --debug --target lib/main.dart \
-              --dart-define=MOBILECODE_MANAGED_PROVIDER=true \
-              --dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic \
-              --dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro \
-              --dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY"
-          else
-            flutter build ios --simulator --debug --target lib/main.dart
+          DART_DEFINES=()
+          if [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_RELAY_URL="$MOBILECODE_MANAGED_RELAY_URL")
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_PROVIDER=true)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro)
           fi
+          flutter build ios --simulator --debug --target lib/main.dart "${DART_DEFINES[@]}"
 
       - name: Install and launch on iOS simulator
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.76' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.77' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -127,7 +129,7 @@ jobs:
         if: ${{ github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.76' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.77' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -149,6 +151,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Enforce public release credential policy
+        run: python3 scripts/verify_public_release_workflows.py
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -175,22 +180,21 @@ jobs:
       - name: Build unsigned iOS device app
         working-directory: mobile_agent
         env:
-          MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
+          MOBILECODE_MANAGED_RELAY_URL: ${{ vars.MOBILECODE_MANAGED_RELAY_URL }}
         run: |
-          if [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
-            flutter build ios --release --no-codesign --target lib/main.dart \
-              --dart-define=MOBILECODE_MANAGED_PROVIDER=true \
-              --dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic \
-              --dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro \
-              --dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY"
-          else
-            flutter build ios --release --no-codesign --target lib/main.dart
+          DART_DEFINES=()
+          if [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_RELAY_URL="$MOBILECODE_MANAGED_RELAY_URL")
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_PROVIDER=true)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro)
           fi
+          flutter build ios --release --no-codesign --target lib/main.dart "${DART_DEFINES[@]}"
 
       - name: Package unsigned xcarchive
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.76' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.77' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -281,7 +285,7 @@ jobs:
         if: ${{ github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.76' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.77' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."

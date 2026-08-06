@@ -169,6 +169,45 @@ void main() {
       expect(health.evidenceMetadata['failureCode'], 'protocol_missing');
     });
 
+    test('fails closed when Android background-restricts MobileCore', () async {
+      var chatRequests = 0;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path == '/health') {
+          request.response.write(jsonEncode({
+            ..._healthPayload(),
+            'background_restricted': true,
+          }));
+        } else {
+          chatRequests += 1;
+          request.response.write('{"choices":[]}');
+        }
+        await request.response.close();
+      });
+
+      final health = await service.probe();
+      expect(health.state, TuimaConnectionState.serviceReady);
+      expect(health.canInfer, isFalse);
+      expect(health.backgroundRestricted, isTrue);
+      expect(health.failureCode, 'background_restricted');
+      expect(health.activeModel, 'qwen');
+
+      await expectLater(
+        service.completeChat(
+          messages: const [
+            {'role': 'user', 'content': 'hello'}
+          ],
+          model: 'qwen',
+        ),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'background_restricted',
+        )),
+      );
+      expect(chatRequests, 0);
+    });
+
     test('blocks model control when the protocol major is unsupported',
         () async {
       var controlRequests = 0;
@@ -955,6 +994,7 @@ Map<String, Object?> _healthPayload({String model = 'qwen'}) => {
       'quantization': 'Q4_K_M',
       'active_model': model,
       'model_loaded': true,
+      'background_restricted': false,
       'capabilities': const {
         'text_input': true,
         'text_output': true,

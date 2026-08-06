@@ -549,6 +549,7 @@ class TuimaHealth {
     this.projectorArtifact = const MobileCoreArtifactHealth(),
     this.preflight = const MobileCorePreflight(),
     this.audioSampleRateHz = 0,
+    this.backgroundRestricted = false,
     this.failureCode,
     this.failure,
   });
@@ -566,6 +567,7 @@ class TuimaHealth {
   final MobileCoreArtifactHealth projectorArtifact;
   final MobileCorePreflight preflight;
   final int audioSampleRateHz;
+  final bool backgroundRestricted;
   final String? failureCode;
   final String? failure;
 
@@ -597,6 +599,7 @@ class TuimaHealth {
         'capabilities': capabilities.evidenceSnapshot,
         'preflightOk': preflight.ok,
         'preflightFailure': preflight.failureCode,
+        'backgroundRestricted': backgroundRestricted,
         if (failureCode != null) 'failureCode': failureCode,
         'mainArtifactPresent': mainArtifact.present,
         'mainArtifactVerified': mainArtifact.verified,
@@ -707,9 +710,10 @@ class MobileCoreClient {
       }
       final protocol = MobileCoreProtocol.fromJson(payload['protocol']);
       final modelLoaded = payload['model_loaded'] == true;
+      final backgroundRestricted = payload['background_restricted'] == true;
       final artifacts = _stringMap(payload['artifacts']);
       return TuimaHealth(
-        state: modelLoaded
+        state: modelLoaded && !backgroundRestricted
             ? TuimaConnectionState.modelReady
             : TuimaConnectionState.serviceReady,
         version: payload['version']?.toString() ?? '',
@@ -725,6 +729,11 @@ class MobileCoreClient {
             MobileCoreArtifactHealth.fromJson(artifacts['mmproj']),
         preflight: MobileCorePreflight.fromJson(payload['preflight']),
         audioSampleRateHz: _asInt(payload['audio_sample_rate_hz']),
+        backgroundRestricted: backgroundRestricted,
+        failureCode: backgroundRestricted ? 'background_restricted' : null,
+        failure: backgroundRestricted
+            ? 'Android is preventing MobileCore from remaining active in the background.'
+            : null,
       );
     } on MobileCoreProviderException catch (error) {
       return TuimaHealth.unavailable(
@@ -1133,6 +1142,13 @@ class MobileCoreClient {
   Future<TuimaHealth> _requireCompatibleModel(String model) async {
     final health = await _requireCompatibleHealth();
     final requested = model.trim();
+    if (health.backgroundRestricted) {
+      throw const MobileCoreProviderException(
+        code: 'background_restricted',
+        message:
+            'MobileCore background operation is restricted. Allow it in Android Battery settings before local inference.',
+      );
+    }
     if (!health.canInfer || health.activeModel == null) {
       throw const MobileCoreProviderException(
         code: 'model_not_loaded',

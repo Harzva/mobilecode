@@ -142,6 +142,19 @@ def main() -> None:
         gradle_text = re.sub(r'namespace\s*=\s*"[^"]+"', 'namespace = "com.mobilecode.app"', gradle_text, count=1)
         gradle_text = re.sub(r'applicationId\s*=\s*"[^"]+"', 'applicationId = "com.mobilecode.app"', gradle_text, count=1)
         gradle_text = gradle_text.replace('minSdk = flutter.minSdkVersion', 'minSdk = 24')
+        if 'isCoreLibraryDesugaringEnabled = true' not in gradle_text:
+            gradle_text = gradle_text.replace(
+                '    compileOptions {\n',
+                '    compileOptions {\n'
+                '        isCoreLibraryDesugaringEnabled = true\n',
+                1,
+            )
+        if 'coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:' not in gradle_text:
+            gradle_text += (
+                '\n\ndependencies {\n'
+                '    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")\n'
+                '}\n'
+            )
         if 'import java.util.Properties' not in gradle_text:
             gradle_text = (
                 'import java.util.Properties\n\n'

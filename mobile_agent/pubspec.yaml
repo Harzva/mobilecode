@@ -23,6 +23,7 @@ dependencies:
 
   # Networking
   dio: ^5.8.0
+  connectivity_plus: ^7.3.1
   web_socket_channel: ^3.0.2
   dartssh2: ^2.11.0
 

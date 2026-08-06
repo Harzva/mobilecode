@@ -36,7 +36,17 @@ Adaptive routing currently applies these rules:
 - complex cloud routing requires explicit approval;
 - Phone Use plans may use MobileCore inference, but every device action remains in MobileCode's approval and evidence boundary.
 
-Before chat or Agent traffic opens a cloud request, MobileCode derives an in-memory task signal from explicit credential/login/payment markers, the previously detected offline-fallback state, request size, and Agent mode. The signal exposes booleans only and omits the request text from evidence. Privacy-sensitive and already-offline requests are routed to MobileCore before cloud transport; if the local service is unavailable they fail closed. A configured cloud provider counts as approval only because the user explicitly selected that provider; MobileCode never changes a TuiMa-only request to cloud on its own.
+Before chat or Agent traffic opens a cloud request, MobileCode checks the current
+OS network-transport state and derives an in-memory task signal from definitive
+no-network state, explicit credential/login/payment markers, the previously
+detected cloud-transport failure state, request size, and Agent mode. A
+definitive offline result routes to MobileCore before the first cloud request;
+available or unknown transport remains guarded by timeout/failure fallback
+because an active Wi-Fi or mobile interface does not prove internet access. The
+signal omits request text and network identifiers from evidence. If the local
+service is unavailable, privacy/offline routing fails closed. A configured cloud
+provider counts as approval only because the user explicitly selected that
+provider; MobileCode never changes a TuiMa-only request to cloud on its own.
 
 When local inference informs a Phone Use approval card, MobileCode now links the two ActionEvidence records by identifier in both directions: the inference record stores `deviceOperationEvidenceIds`, and the device record stores `mobileCoreInferenceEvidenceIds`. The relation contains IDs only; prompts, media, screenshots, typed values, and credentials are not copied into either record.
 
@@ -121,17 +131,23 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
 
 ## Verification
 
-- The complete MobileCode Flutter suite passed 556 tests after the Client v2,
-  adaptive-routing, and pressure-switch follow-ups.
+- The complete MobileCode Flutter suite passed 560 tests after the Client v2,
+  adaptive-routing, pressure-switch, and proactive-offline follow-ups.
 - The focused MobileCore client suite passed 16 tests, including coherent
   runtime snapshots, exact switch confirmation, public projector IDs,
   path-like ID rejection, projector metadata, and image-capability parsing.
 - The focused adaptive-policy suite passed 10 tests, including privacy/offline
   fail-closed routing, cloud-consent gating, constrained context/model choice,
   and multimodal capability retention under resource pressure.
+- Four network-transport tests cover definitive no-network routing, available
+  transport, unknown/error behavior, and evidence redaction. Interface type,
+  SSID, address, and probe-host details are never recorded.
 - A local Android arm64 `pureRelease` build passed and its manifest version was
   verified as `0.1.73+63`; this local build is validation evidence only and is
   not the stable-signed GitHub Release asset.
+- A local iOS Simulator build also passed after adding the OS connectivity
+  plugin, confirming the proactive-offline route compiles on both mobile
+  platforms. This remains simulator build evidence, not physical-iOS QA.
 - MobileCore Android unit tests passed.
 - MobileCore local API instrumentation passed its model-ID control, incompatible-projector rejection, no-path response, multimodal contract, rejection, and metrics-counter checks.
 - A post-fix real-GGUF smoke reported active-model preflight `625617760` required bytes versus `1096425472` available bytes, `runtime=llama.cpp`, two completed requests, zero failures, and a non-zero average decode rate.

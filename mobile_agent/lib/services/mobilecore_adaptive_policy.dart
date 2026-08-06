@@ -3,6 +3,14 @@ import 'tuima_provider_service.dart';
 
 enum MobileCorePolicyTarget { local, cloud, unavailable }
 
+enum MobileCoreOfflineSource {
+  none,
+  explicit,
+  osConnectivity,
+  cloudTransport,
+  osAndCloudTransport,
+}
+
 enum MobileCorePolicyReason {
   privacyRequiresLocal,
   offlineRequiresLocal,
@@ -23,6 +31,7 @@ class MobileCoreTaskSignals {
     this.complexTask = false,
     this.cloudAvailable = false,
     this.cloudApproved = false,
+    this.offlineSource = MobileCoreOfflineSource.none,
   });
 
   final bool privacySensitive;
@@ -30,6 +39,7 @@ class MobileCoreTaskSignals {
   final bool complexTask;
   final bool cloudAvailable;
   final bool cloudApproved;
+  final MobileCoreOfflineSource offlineSource;
 
   bool get forceLocal => privacySensitive || offline;
 
@@ -40,6 +50,7 @@ class MobileCoreTaskSignals {
         'cloudAvailable': cloudAvailable,
         'cloudApproved': cloudApproved,
         'forceLocal': forceLocal,
+        'offlineSource': offlineSource.name,
         'redaction': 'request_text_omitted',
       };
 
@@ -49,6 +60,7 @@ class MobileCoreTaskSignals {
     bool? complexTask,
     bool? cloudAvailable,
     bool? cloudApproved,
+    MobileCoreOfflineSource? offlineSource,
   }) =>
       MobileCoreTaskSignals(
         privacySensitive: privacySensitive ?? this.privacySensitive,
@@ -56,6 +68,7 @@ class MobileCoreTaskSignals {
         complexTask: complexTask ?? this.complexTask,
         cloudAvailable: cloudAvailable ?? this.cloudAvailable,
         cloudApproved: cloudApproved ?? this.cloudApproved,
+        offlineSource: offlineSource ?? this.offlineSource,
       );
 
   static MobileCoreTaskSignals classify({
@@ -66,6 +79,7 @@ class MobileCoreTaskSignals {
     required int maxTokens,
     required bool cloudAvailable,
     required bool cloudApproved,
+    MobileCoreOfflineSource offlineSource = MobileCoreOfflineSource.explicit,
     bool explicitlySensitive = false,
   }) {
     final probe = userText.toLowerCase();
@@ -81,6 +95,7 @@ class MobileCoreTaskSignals {
       complexTask: complexTask,
       cloudAvailable: cloudAvailable,
       cloudApproved: cloudApproved,
+      offlineSource: offline ? offlineSource : MobileCoreOfflineSource.none,
     );
   }
 

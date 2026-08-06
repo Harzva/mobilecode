@@ -15,7 +15,7 @@
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml"><img alt="Mobile App Release" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml/badge.svg"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=main"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.69-2555FF">
+  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.70-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Flutter-0B9B7E">
 </p>
 
@@ -28,7 +28,7 @@
   ·
   <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">HTML Principle Video</a>
   ·
-  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.69">Download v0.1.69 app</a>
+  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.70">Download v0.1.70 app</a>
   ·
   <a href="https://harzva.github.io/mobilecode/">GitHub Pages Demo</a>
 </p>
@@ -228,7 +228,16 @@ flowchart LR
 - Extension management: Roles, Skill, MCP, Memory, Agent, Hook Registry surfaces for role-based workflows.
 - Observability: RR AgentView, pending role approvals, Token Usage/cache-hit statistics, searchable/sortable LiteLLM-style pricing with manual snapshot checks, and Device Telemetry htop-style phone health.
 - [Phone Use safety loop](docs/mobilecode-device-automation-architecture.md): cropped semantic snapshots and short-lived `@e` refs, trusted native transaction-risk classification, page-bound one-shot approval cards, unified ActionEvidence, and Keystore/Keychain `secret_id` credential slots.
+- [MobileCore local inference bridge](docs/mobilecore-dual-app-qa.md): dynamic model/capability discovery, model ID load/unload/switch controls, local-only image/audio transport, adaptive memory/thermal routing, and redacted inference ActionEvidence. MobileCore remains the inference engine; MobileCode remains the approval, Phone Use, transaction-risk, and evidence control center.
 - [Lark Native API plan](docs/lark-native-api-upgrade-plan.md): agent-facing, Node-free Lark OpenAPI tools for Docs, Drive, Sheets, Bitable, Wiki, and evidence publishing; official CLI/MCP remain Mac/CI development probes, not embedded app runtimes.
+
+## MobileCore Link Status
+
+MobileCode no longer hard-codes a local Qwen model. `MobileCoreClient` resolves the active model, runtime, revision, backend, quantization, capabilities, artifact state, resource preflight, recommendations, and performance metrics from the co-installed MobileCore service. The in-app TuiMa sheet can load, unload, and switch installed models by public `model_id`; ordinary clients never receive or submit absolute model paths.
+
+Image and audio buttons appear only when the active local runtime advertises the corresponding capability. Attachment bytes stay in memory, are sent only to `127.0.0.1`, are never persisted in chat turns or evidence, and never fall back to a cloud provider. Local inference evidence records safe model/runtime/latency metadata while omitting prompts, media, credentials, and payloads.
+
+The latest controlled Android emulator run passed 30 real cross-app offline tasks (15 buffered and 15 SSE), model unload/reload, background continuity, low-memory notification, and MobileCore process restart recovery. A second model and a physical Android device were unavailable, so cross-model switching, real thermal behavior, and physical-device acceptance remain open gates. See [the evidence-bound report](docs/mobilecore-dual-app-qa.md).
 
 ## Phone Use Safety Status
 
@@ -406,14 +415,13 @@ That keeps the phone lightweight while still letting users produce shareable web
 
 ## Release Line
 
-Current candidate: `v0.1.69`.
+Current candidate: `v0.1.70` (`0.1.70+60`).
 
 See:
 
-- [Android APK release build](https://github.com/Harzva/mobilecode/actions/runs/31091939149) - stable-signed `pure` APK `0.1.69+59` built and uploaded successfully. APK SHA-256: `7842efb5aa931c15c19158d0451210e0c6be7b56cba59905f6128436d5490ddc`.
-- [iOS release evidence](https://github.com/Harzva/mobilecode/actions/runs/31089547692) - simulator build/install/launch and unsigned device archive passed; the original Android matrix leg was superseded by the fixed Android release build above.
-- [Android emulator evidence](https://github.com/Harzva/mobilecode/actions/runs/31090709348) - app process, drawn surface, Helper health, authentication rejection, and local command execution passed; the job remained red because the unaccelerated API 29 runner surfaced a host `System UI isn't responding` dialog.
-- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.69) - Android APK, iOS simulator app, unsigned iOS archive, screenshot, and logs for the controlled Phone Use evaluation candidate.
+- [MobileCore dual-app evidence](docs/mobilecore-dual-app-qa.md) - 30 real offline cross-app requests, buffered/SSE parity, unload/reload, background continuity, low-memory notification, and process restart recovery passed on Android emulator.
+- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.70) - Android `pure` APK and CI-generated platform evidence for the MobileCore local-inference integration candidate.
+- Previous stable evidence: [v0.1.69](https://github.com/Harzva/mobilecode/releases/tag/v0.1.69) and its [Android APK workflow](https://github.com/Harzva/mobilecode/actions/runs/31091939149).
 - [Version Policy](docs/mobilecode-version-policy.md)
 - [Release QA Checklist](docs/mobilecode-release-qa.md)
 - [Helper Runtime Protocol](docs/mobilecode-helper-runtime-protocol.md)

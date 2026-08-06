@@ -20,6 +20,7 @@ pubspec.lock
 android/key.properties
 *.jks
 *.keystore
+.qa-artifacts/
 
 # Local-only handoff notes may contain absolute paths or private workspace context.
 docs/local/

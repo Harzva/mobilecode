@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_agent/services/tuima_provider_service.dart';
@@ -48,7 +49,7 @@ void main() {
       expect(TuimaProviderService.localOpenAiConfig(), {
         'provider': 'custom',
         'baseUrl': 'http://127.0.0.1:8080/v1',
-        'model': 'qwen2.5-0.5b-instruct-q4_k_m',
+        'model': 'mobilecore-active',
         'apiKey': 'local',
       });
     });
@@ -82,6 +83,12 @@ void main() {
       service = TuimaProviderService(
         healthUri: root.resolve('/health'),
         chatUri: root.resolve('/v1/chat/completions'),
+        modelsUri: root.resolve('/v1/models'),
+        metricsUri: root.resolve('/metrics'),
+        recommendationsUri: root.resolve('/v1/recommendations'),
+        modelLoadUri: root.resolve('/mobilecore/model/load'),
+        modelUnloadUri: root.resolve('/mobilecore/model/unload'),
+        omniStatusUri: root.resolve('/mobilecore/omni/status'),
       );
     });
 
@@ -97,8 +104,36 @@ void main() {
           'status': 'ok',
           'version': '0.1.3-rc2',
           'backend': 'llama.cpp',
+          'runtime': 'llama.cpp/libmtmd',
+          'llama_cpp_revision': 'b7035',
+          'quantization': 'Q4_K_M',
           'active_model': 'qwen',
           'model_loaded': true,
+          'capabilities': {
+            'text_input': true,
+            'image_input': true,
+            'audio_input': false,
+            'video_input': false,
+            'text_output': true,
+            'audio_output': false,
+          },
+          'artifacts': {
+            'main': {'present': true, 'verified': true},
+            'mmproj': {'present': true, 'verified': false},
+          },
+          'preflight': {
+            'memory': {
+              'available_bytes': 8000,
+              'required_bytes': 4000,
+              'ok': true,
+            },
+            'storage': {
+              'available_bytes': 16000,
+              'required_bytes': 4000,
+              'ok': true,
+            },
+            'ok': true,
+          },
         }));
         await request.response.close();
       });
@@ -106,6 +141,12 @@ void main() {
       final health = await service.probe();
       expect(health.state, TuimaConnectionState.modelReady);
       expect(health.activeModel, 'qwen');
+      expect(health.quantization, 'Q4_K_M');
+      expect(health.capabilities.imageInput, isTrue);
+      expect(health.capabilities.audioInput, isFalse);
+      expect(health.preflight.ok, isTrue);
+      expect(health.mainArtifact.verified, isTrue);
+      expect(health.evidenceMetadata.toString(), isNot(contains('8000')));
     });
 
     test('accepts buffered JSON when a provider ignores stream=true', () async {
@@ -154,5 +195,122 @@ void main() {
       ).toList();
       expect(chunks.join(), '本地推理');
     });
+
+    test('lists models and parses metrics without exposing model paths',
+        () async {
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path == '/v1/models') {
+          request.response.write(jsonEncode({
+            'object': 'list',
+            'data': [
+              {
+                'id': 'small-q4',
+                'mobilecore': {
+                  'path': '/private/models/small-q4.gguf',
+                  'quantization': 'Q4_K_M',
+                  'context_length': 4096,
+                  'size_bytes': 1234,
+                  'loaded': true,
+                }
+              }
+            ]
+          }));
+        } else {
+          request.response.write(jsonEncode({
+            'active_model': 'small-q4',
+            'backend': 'llama.cpp',
+            'last_decode_tokens_per_second': 18.5,
+            'last_first_token_ms': 82,
+            'last_total_ms': 200,
+            'memory_peak_mb': 512,
+          }));
+        }
+        await request.response.close();
+      });
+
+      final models = await service.listModels();
+      final metrics = await service.metrics();
+      expect(models.single.id, 'small-q4');
+      expect(models.single.quantization, 'Q4_K_M');
+      expect(models.single.toString(), isNot(contains('/private/')));
+      expect(metrics.decodeTokensPerSecond, 18.5);
+      expect(metrics.firstTokenMs, 82);
+    });
+
+    test('loads by model id and unloads without submitting a path', () async {
+      var loaded = false;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path == '/mobilecore/model/load') {
+          final body = jsonDecode(await utf8.decoder.bind(request).join())
+              as Map<String, dynamic>;
+          expect(body['model_id'], 'small-q4');
+          expect(body.containsKey('path'), isFalse);
+          loaded = true;
+          request.response.write('{"ok":true}');
+        } else if (request.uri.path == '/mobilecore/model/unload') {
+          loaded = false;
+          request.response.write('{"ok":true}');
+        } else if (request.uri.path == '/health') {
+          request.response.write(jsonEncode({
+            'status': 'ok',
+            'version': '0.1.3-rc2',
+            'backend': 'cpu',
+            'active_model': loaded ? 'small-q4' : null,
+            'model_loaded': loaded,
+          }));
+        }
+        await request.response.close();
+      });
+
+      final loadedHealth = await service.loadModel('small-q4');
+      expect(loadedHealth.activeModel, 'small-q4');
+      final unloadedHealth = await service.unloadModel();
+      expect(unloadedHealth.canInfer, isFalse);
+    });
+
+    test('extracts final inference metrics from the SSE terminal event',
+        () async {
+      server.listen((request) async {
+        request.response.headers.contentType =
+            ContentType('text', 'event-stream', charset: 'utf-8');
+        request.response
+            .write('data: {"choices":[{"delta":{"content":"ok"}}]}\n\n');
+        request.response.write(
+          'data: {"model":"small-q4","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":2,"completion_tokens":1,"total_tokens":3},"mobilecore":{"backend":"llama.cpp","decode_tokens_per_second":11.5,"first_token_ms":90,"total_ms":180,"memory_peak_mb":400}}\n\n',
+        );
+        request.response.write('data: [DONE]\n\n');
+        await request.response.close();
+      });
+
+      MobileCoreMetrics? metrics;
+      final chunks = await service.streamChat(
+        messages: const [
+          {'role': 'user', 'content': 'hello'}
+        ],
+        model: 'small-q4',
+        onMetrics: (value) => metrics = value,
+      ).toList();
+      expect(chunks.join(), 'ok');
+      expect(metrics?.activeModel, 'small-q4');
+      expect(metrics?.decodeTokensPerSecond, 11.5);
+      expect(metrics?.totalTokens, 3);
+    });
+  });
+
+  test('multimodal attachment evidence never contains payload data', () {
+    final attachment = MobileCoreAttachment(
+      kind: MobileCoreAttachmentKind.image,
+      bytes: Uint8List.fromList([0x89, 0x50, 0x4e, 0x47]),
+      mimeType: 'image/png',
+      displayName: 'private.png',
+    );
+
+    final part = attachment.toContentPart();
+    expect(part['type'], 'image_url');
+    expect(part.toString(), contains('base64'));
+    expect(attachment.evidenceMetadata.toString(), isNot(contains('iVBOR')));
+    expect(attachment.evidenceMetadata['redaction'], 'payload_omitted');
   });
 }

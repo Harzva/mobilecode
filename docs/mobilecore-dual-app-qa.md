@@ -104,13 +104,15 @@ remains emulator evidence and does not satisfy the physical-device gate.
 ### One-task cloud approval check
 
 On 2026-08-07, the one-task cloud approval path was exercised through the real
-MobileCode UI on the same Android arm64 emulator. A clean arm64 `pureRelease`
-APK had SHA-256
-`8040c3ae4be7091d9169cf66c89de66a3eb07b1ad31b21c31473a118595316ec`.
+MobileCode UI on the same Android arm64 emulator. After synchronizing the
+feature with the v0.1.74 baseline, a clean arm64 `pureRelease` APK had SHA-256
+`3b3146568b166287211e3e2d7688ba9f0ccd2b0f53349b4a1a3bcb94d6c39322`.
 The Gradle and Flutter output timestamps, sizes, and hashes matched, and the
 compiled binary contained the approval-card labels before installation. This
 extra check was added after QA detected and rejected an older copied APK whose
-timestamp did not represent newly compiled Dart code.
+timestamp did not represent newly compiled Dart code. The synchronized v0.1.74
+APK installed successfully and cold-launched in 1.4 seconds without a crash,
+ANR, or OOM on the emulator.
 
 The emulator used a clearly fake, non-secret provider value and a benign
 complex-task marker. Before any provider request opened, MobileCode displayed

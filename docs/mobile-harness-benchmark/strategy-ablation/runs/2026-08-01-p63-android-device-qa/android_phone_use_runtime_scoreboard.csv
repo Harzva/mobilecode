@@ -1,0 +1,7 @@
+rank,strategy_id,android_phone_use_runtime_score,status
+1,react_single_agent,100.0,passed
+2,plan_execute_verify_single_agent,100.0,passed
+3,react_with_final_verifier,100.0,passed
+4,supervisor_handoff_multi_agent,100.0,passed
+5,swarm_router_multi_agent,100.0,passed
+6,hierarchical_swarm_multi_agent,100.0,passed

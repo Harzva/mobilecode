@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_agent/core/evidence/action_evidence_store.dart';
 import 'package:mobile_agent/core/evidence/action_runner.dart';
 import 'package:mobile_agent/core/evidence/evidence_model.dart';
+import 'package:mobile_agent/services/device_automation_provider.dart';
 import 'package:mobile_agent/services/html_render_provider.dart';
 
 class _FakeHtmlRenderProvider implements HtmlRenderProvider {
@@ -25,6 +26,78 @@ class _FakeHtmlRenderProvider implements HtmlRenderProvider {
       backend: 'fake_webview',
     );
   }
+}
+
+class _FakeDeviceAutomationProvider
+    implements DeviceAutomationProvider, DeviceAutomationRiskClassifier {
+  final List<DeviceAutomationRequest> requests = [];
+  final List<DeviceAutomationRequest> riskRequests = [];
+
+  @override
+  String get name => 'action-runner-fake-device';
+
+  @override
+  DeviceAutomationProviderType get type =>
+      DeviceAutomationProviderType.agentDeviceQa;
+
+  @override
+  Future<DeviceAutomationProviderResult> execute(
+    DeviceAutomationRequest request,
+  ) async {
+    requests.add(request);
+    return const DeviceAutomationProviderResult(
+      success: true,
+      data: {
+        'status': 'passed',
+        'accepted': true,
+        'preSnapshotDigest': 'pre-runner',
+        'postSnapshotDigest': 'post-runner',
+        'redactionApplied': true,
+      },
+    );
+  }
+
+  @override
+  Future<DeviceAutomationRiskAssessment> classifyRisk(
+    DeviceAutomationRequest request,
+  ) async {
+    riskRequests.add(request);
+    return const DeviceAutomationRiskAssessment(
+      success: true,
+      trusted: true,
+      riskClass: DeviceAutomationRiskClass.reversible,
+      policyId: 'phone_use_transaction_risk_v1',
+      reason: 'trusted_policy_reversible_action',
+      previewDigest:
+          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      frameDigest:
+          'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      targetLabel: 'Continue',
+      targetLabelHash:
+          'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+    );
+  }
+
+  @override
+  Future<DeviceAutomationHealth> healthCheck() async =>
+      const DeviceAutomationHealth(
+        available: true,
+        ready: true,
+        state: 'ready',
+        failureKind: null,
+        recoveryActions: [],
+        capabilities: DeviceAutomationCapabilities(
+          semanticSnapshots: true,
+          semanticRefs: true,
+          coordinateActions: true,
+          screenshots: true,
+          video: true,
+          logs: true,
+          replay: true,
+          physicalDevices: true,
+          simulators: true,
+        ),
+      );
 }
 
 void main() {
@@ -1264,6 +1337,141 @@ void main() {
           .recent(count: 5)
           .where((item) => item.actionName == MobileCodeAction.cliHubTaskStart),
       isEmpty,
+    );
+  });
+
+  test('phone-use action keeps request correlation and one runner-store record',
+      () async {
+    final provider = _FakeDeviceAutomationProvider();
+    final coordinatorStore = ActionEvidenceStore();
+    final phoneRunner = ActionRunner(
+      workspaceRootPath: workspace.path,
+      evidenceStore: store,
+      deviceAutomationCoordinator: DeviceAutomationCoordinator(
+        provider: provider,
+        evidenceStore: coordinatorStore,
+      ),
+    );
+
+    final result = await phoneRunner.run(ActionSchema(
+      actionName: MobileCodeAction.phoneUseAct,
+      requestId: 'ev-phone-ref',
+      paramsSummary: 'approved ref tap',
+      params: const {
+        'action': 'tapRef',
+        'targetRef': '@e2~s4',
+        'approved': true,
+        'approvalSource': 'approval_queue',
+      },
+    ));
+
+    expect(result.success, isTrue);
+    expect(result.evidence.evidenceId, 'ev-phone-ref');
+    expect(provider.requests.single.targetRef, '@e2~s4');
+    expect(store.getById('ev-phone-ref'), same(result.evidence));
+    expect(coordinatorStore, isEmpty);
+  });
+
+  test('phone-use model action creates a one-shot preview without executing',
+      () async {
+    final provider = _FakeDeviceAutomationProvider();
+    final tickets = DeviceAutomationApprovalTicketStore();
+    final phoneRunner = ActionRunner(
+      workspaceRootPath: workspace.path,
+      evidenceStore: store,
+      deviceAutomationCoordinator: DeviceAutomationCoordinator(
+        provider: provider,
+        approvalTickets: tickets,
+      ),
+    );
+
+    final result = await phoneRunner.run(ActionSchema(
+      actionName: MobileCodeAction.phoneUseAct,
+      requestId: 'ev-phone-preview',
+      approvalRequired: true,
+      params: const {
+        'action': 'tapRef',
+        'targetRef': '@e3~s9',
+        'approvalPreview': true,
+        'approved': false,
+      },
+    ));
+
+    expect(result.success, isFalse);
+    expect(result.evidence.failureKind, 'approval_required');
+    expect(provider.riskRequests, hasLength(1));
+    expect(provider.requests, isEmpty);
+    expect(
+      result.evidence.metadata['approvalTicket'],
+      allOf(isA<Map>(), containsPair('oneShot', true)),
+    );
+  });
+
+  test('critical phone-use action requires digest-bound transaction approval',
+      () async {
+    final provider = _FakeDeviceAutomationProvider();
+    final phoneRunner = ActionRunner(
+      workspaceRootPath: workspace.path,
+      evidenceStore: store,
+      deviceAutomationCoordinator: DeviceAutomationCoordinator(
+        provider: provider,
+      ),
+    );
+
+    final result = await phoneRunner.run(ActionSchema(
+      actionName: MobileCodeAction.phoneUseAct,
+      requestId: 'ev-phone-critical-blocked',
+      risk: ActionRisk.critical,
+      paramsSummary: 'final external transaction',
+      params: const {
+        'action': 'tapRef',
+        'targetRef': '@e9~s12',
+        'approved': true,
+      },
+    ));
+
+    expect(result.success, isFalse);
+    expect(result.evidence.failureKind, 'transaction_approval_required');
+    expect(provider.requests, isEmpty);
+    expect(
+      result.evidence.metadata['transactionApproval'],
+      containsPair('required', true),
+    );
+  });
+
+  test('critical phone-use action forwards matching transaction approval',
+      () async {
+    final provider = _FakeDeviceAutomationProvider();
+    final phoneRunner = ActionRunner(
+      workspaceRootPath: workspace.path,
+      evidenceStore: store,
+      deviceAutomationCoordinator: DeviceAutomationCoordinator(
+        provider: provider,
+      ),
+    );
+
+    final result = await phoneRunner.run(ActionSchema(
+      actionName: MobileCodeAction.phoneUseAct,
+      requestId: 'ev-phone-critical-approved',
+      risk: ActionRisk.critical,
+      paramsSummary: 'approved final external transaction',
+      params: const {
+        'action': 'tapRef',
+        'targetRef': '@e9~s12',
+        'approved': true,
+        'transactionPreviewDigest': 'aabbccdd',
+        'transactionApprovalDigest': 'aabbccdd',
+        'transactionApprovalId': 'approval-final-1',
+      },
+    ));
+
+    expect(result.success, isTrue);
+    expect(provider.requests.single.riskClass,
+        DeviceAutomationRiskClass.externalTransaction);
+    expect(provider.requests.single.transactionApprovalSatisfied, isTrue);
+    expect(
+      result.evidence.metadata['transactionApproval'],
+      containsPair('digestMatched', true),
     );
   });
 

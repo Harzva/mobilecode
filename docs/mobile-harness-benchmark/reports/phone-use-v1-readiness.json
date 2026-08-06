@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-01T04:15:21Z",
+  "status": "passed_with_open_requirements",
+  "benchmark": "MobileHarnessBench-PhoneUse",
+  "task_set": "controlled-phone-use-v1",
+  "manifest": "docs/mobile-harness-benchmark/phone-use/controlled-task-set-v1.json",
+  "counts_as_experiment": false,
+  "ready_for_t1_non_counted_qa": true,
+  "ready_for_counted_mobile_result": false,
+  "task_count": 30,
+  "category_counts": {
+    "controlled_form_entry": 6,
+    "information_retrieval": 6,
+    "interruption_recovery": 6,
+    "system_navigation": 6,
+    "transaction_safety": 6
+  },
+  "risk_counts": {
+    "high": 4,
+    "low": 22,
+    "medium": 4
+  },
+  "tier_counts": {
+    "T1-android-emulator": 29,
+    "T2-android-real-device": 1
+  },
+  "surface_count": 13,
+  "public_adapter_count": 5,
+  "terminal_outcomes": [
+    "verified_success",
+    "partial_progress",
+    "agent_failure",
+    "environment_error",
+    "user_takeover",
+    "safety_block"
+  ],
+  "primary_metrics": [
+    "task_success_rate",
+    "verified_success_rate",
+    "partial_progress_rate",
+    "stale_reference_rejection_rate",
+    "approval_correctness_rate",
+    "approval_replay_rejection_rate",
+    "secret_leakage_rate",
+    "recovery_rate",
+    "human_intervention_count",
+    "steps_to_completion",
+    "wall_time_ms"
+  ],
+  "required_artifacts": [
+    "device_metadata",
+    "before_snapshot_summary",
+    "after_snapshot_summary",
+    "action_evidence",
+    "verifier_result",
+    "redaction_report"
+  ],
+  "public_benchmark_adapters": [
+    {
+      "benchmark": "AndroidWorld",
+      "priority": "P0",
+      "role": "reproducible Android emulator and programmatic verifier comparison",
+      "status": "adapter_not_run"
+    },
+    {
+      "benchmark": "ScreenSpot-V2/Pro",
+      "priority": "P0",
+      "role": "static GUI grounding and coordinate-contract comparison",
+      "status": "adapter_not_run"
+    },
+    {
+      "benchmark": "BFCL-v4",
+      "priority": "P0",
+      "role": "typed CLI Hub and tool-call selection comparison",
+      "status": "adapter_not_run"
+    },
+    {
+      "benchmark": "Terminal-Bench 2.0",
+      "priority": "P0",
+      "role": "host or CI Alpine/CLI execution comparison",
+      "status": "adapter_not_run"
+    },
+    {
+      "benchmark": "MobileWorld",
+      "priority": "P1",
+      "role": "long-horizon cross-app mobile comparison on a compatible Linux/KVM host",
+      "status": "blocked_host_requirements"
+    }
+  ],
+  "open_requirements": [
+    "execute_three_repetitions_per_t1_task_with_real_agent_callbacks",
+    "attach_t2_physical_android_device_evidence",
+    "run_at_least_one_official_public_benchmark_adapter",
+    "lock_and_execute_counted_baselines"
+  ]
+}

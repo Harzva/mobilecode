@@ -579,17 +579,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final connection =
         status.serviceConnected ? 'service connected' : 'service disconnected';
     if (status.ready) {
-      return '已开启，$connection，可观察窗口；服务：$serviceLabel';
+      return '已开启，$connection，可观察窗口；状态：${status.lifecycleState.wireValue}；服务：$serviceLabel';
     }
     final reason =
         status.blockedReason == null ? '点击进入系统无障碍设置' : status.blockedReason!;
-    return '未开启，$connection；$reason；服务：$serviceLabel';
+    return '状态：${status.lifecycleState.wireValue}，$connection；$reason；服务：$serviceLabel';
   }
 
   String _accessibilityPillLabel(PhoneUseAccessibilityStatus? status) {
     if (status == null) return '检测中';
     if (!status.supported) return '不可用';
     if (status.ready) return '已开启';
+    if (status.lifecycleState == PhoneUseLifecycleState.recovering)
+      return '恢复中';
+    if (status.lifecycleState == PhoneUseLifecycleState.interrupted)
+      return '已中断';
+    if (status.lifecycleState == PhoneUseLifecycleState.backgroundRestricted) {
+      return '后台受限';
+    }
     if (status.accessibilityEnabled && !status.serviceConnected) return '待连接';
     if (status.accessibilityEnabled) return '已授权';
     return '未开启';
@@ -759,6 +766,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _openAccessibilitySettings() async {
+    final status = _phoneUseStatus;
+    if (status?.accessibilityEnabled == true && status?.ready != true) {
+      await PhoneUseAccessibilityService.instance.markRecoveryRequested();
+    }
     final opened =
         await PhoneUseAccessibilityService.instance.openAccessibilitySettings();
     if (!mounted) return;

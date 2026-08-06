@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../../services/lark_api_service.dart';
 import '../../services/cli_hub_catalog_service.dart';
+import '../../services/device_automation_provider.dart';
 import '../../services/html_render_provider.dart';
 import 'action_evidence_store.dart';
 import 'evidence_model.dart';
@@ -72,6 +73,7 @@ class ActionRunner {
     ActionRunnerWebToolInvoker? webToolInvoker,
     ActionRunnerTermuxTaskInvoker? termuxTaskInvoker,
     ActionRunnerCliHubTaskInvoker? cliHubTaskInvoker,
+    DeviceAutomationCoordinator? deviceAutomationCoordinator,
     HtmlRenderProvider? htmlRenderProvider,
     LarkApiService? larkApiService,
   })  : workspaceRootPath = p.normalize(p.absolute(workspaceRootPath)),
@@ -79,6 +81,7 @@ class ActionRunner {
         webToolInvoker = webToolInvoker,
         termuxTaskInvoker = termuxTaskInvoker,
         cliHubTaskInvoker = cliHubTaskInvoker,
+        deviceAutomationCoordinator = deviceAutomationCoordinator,
         htmlRenderProvider = htmlRenderProvider,
         larkApiService = larkApiService ?? LarkApiService();
 
@@ -87,13 +90,18 @@ class ActionRunner {
   final ActionRunnerWebToolInvoker? webToolInvoker;
   final ActionRunnerTermuxTaskInvoker? termuxTaskInvoker;
   final ActionRunnerCliHubTaskInvoker? cliHubTaskInvoker;
+  final DeviceAutomationCoordinator? deviceAutomationCoordinator;
   final HtmlRenderProvider? htmlRenderProvider;
   final LarkApiService larkApiService;
 
   Future<ActionRunnerResult> run(ActionSchema schema) async {
     final startedAt = DateTime.now();
     try {
-      if (schema.approvalRequired) {
+      final isPhoneUseApprovalPreview =
+          schema.actionName == MobileCodeAction.phoneUseAct &&
+              schema.params['approvalPreview'] == true &&
+              schema.params['approved'] != true;
+      if (schema.approvalRequired && !isPhoneUseApprovalPreview) {
         throw const _ActionRunnerFailure(
           'Action requires approval before execution.',
           failureKind: ActionFailureKind.commandBlocked,
@@ -133,6 +141,11 @@ class ActionRunner {
           await _termuxTaskStart(schema, startedAt),
         MobileCodeAction.cliHubTaskStart =>
           await _cliHubTaskStart(schema, startedAt),
+        MobileCodeAction.phoneUseObserve ||
+        MobileCodeAction.phoneUseAct ||
+        MobileCodeAction.phoneUseCapture ||
+        MobileCodeAction.phoneUseReplay =>
+          await _phoneUseAction(schema, startedAt),
         MobileCodeAction.previewHtml => await _previewHtml(schema, startedAt),
         MobileCodeAction.webSearch => await _webSearch(schema, startedAt),
         MobileCodeAction.fetchUrl => await _fetchUrl(schema, startedAt),
@@ -2543,6 +2556,99 @@ class ActionRunner {
     return ActionRunnerResult(evidence: evidence, text: text, path: target);
   }
 
+  Future<ActionRunnerResult> _phoneUseAction(
+      ActionSchema schema, DateTime startedAt) async {
+    final coordinator = deviceAutomationCoordinator;
+    if (coordinator == null) {
+      throw const _ActionRunnerFailure(
+        'Device automation provider is not connected.',
+        failureKind: ActionFailureKind.dependencyMissing,
+        recoveryActions: [
+          'Connect the embedded Accessibility provider or the external agent-device QA adapter.',
+        ],
+      );
+    }
+
+    final actionName = _requiredString(schema, 'action');
+    final action = DeviceAutomationActionKind.values.firstWhere(
+      (candidate) => candidate.name == actionName,
+      orElse: () => throw _ActionRunnerFailure(
+        'Unknown phone-use action: $actionName.',
+        failureKind: ActionFailureKind.commandBlocked,
+        recoveryActions: const [
+          'Use observe, tapRef, tapCoordinate, swipe, setTextRef, setTextFocused, back, home, captureScreenshot, or replay.',
+        ],
+      ),
+    );
+    final rawArtifactIds = schema.params['artifactIds'];
+    final artifactIds = rawArtifactIds is List
+        ? rawArtifactIds.map((item) => item.toString()).toList(growable: false)
+        : const <String>[];
+    final riskClass = schema.risk == ActionRisk.critical ||
+            schema.params['externalTransaction'] == true ||
+            _stringParam(schema, 'riskClass') ==
+                DeviceAutomationRiskClass.externalTransaction.name
+        ? DeviceAutomationRiskClass.externalTransaction
+        : DeviceAutomationRiskClass.reversible;
+    final request = DeviceAutomationRequest(
+      action: action,
+      targetRef: _nullableStringParam(schema, 'targetRef'),
+      x: action == DeviceAutomationActionKind.swipe ||
+              action == DeviceAutomationActionKind.tapCoordinate
+          ? _nullableIntParam(schema, 'x')
+          : null,
+      y: action == DeviceAutomationActionKind.swipe ||
+              action == DeviceAutomationActionKind.tapCoordinate
+          ? _nullableIntParam(schema, 'y')
+          : null,
+      x2: action == DeviceAutomationActionKind.swipe
+          ? _nullableIntParam(schema, 'x2')
+          : null,
+      y2: action == DeviceAutomationActionKind.swipe
+          ? _nullableIntParam(schema, 'y2')
+          : null,
+      durationMs: _nullableIntParam(schema, 'durationMs'),
+      text: _nullableStringParam(schema, 'text'),
+      secretId: _nullableStringParam(schema, 'secretId'),
+      approvalGranted: schema.params['approved'] == true,
+      approvalSource: _stringParam(schema, 'approvalSource').isEmpty
+          ? 'action_runner'
+          : _stringParam(schema, 'approvalSource'),
+      captureIfSparse: schema.params['captureIfSparse'] == true,
+      sensitiveFlow: schema.params['sensitiveFlow'] == true,
+      artifactIds: artifactIds,
+      riskClass: riskClass,
+      transactionPreviewDigest:
+          _nullableStringParam(schema, 'transactionPreviewDigest'),
+      transactionApprovalDigest:
+          _nullableStringParam(schema, 'transactionApprovalDigest'),
+      transactionApprovalId:
+          _nullableStringParam(schema, 'transactionApprovalId'),
+      preconditionSnapshotDigest:
+          _nullableStringParam(schema, 'preconditionSnapshotDigest'),
+    );
+    final execution =
+        schema.params['approvalPreview'] == true && !request.approvalGranted
+            ? await coordinator.previewForApproval(
+                request,
+                evidenceId: schema.requestId,
+                persistEvidence: false,
+              )
+            : await coordinator.execute(
+                request,
+                evidenceId: schema.requestId,
+                persistEvidence: false,
+              );
+    evidenceStore.add(execution.evidence);
+    return ActionRunnerResult(
+      evidence: execution.evidence,
+      text: jsonEncode(execution.result.data),
+      path: execution.result.artifactPaths.isEmpty
+          ? null
+          : execution.result.artifactPaths.first,
+    );
+  }
+
   Future<ActionRunnerResult> _cliHubTaskStart(
       ActionSchema schema, DateTime startedAt) async {
     final cliId = _requiredString(schema, 'cliId');
@@ -3210,7 +3316,7 @@ class ActionRunner {
       try {
         final artifact = await htmlRenderProvider!.render(
           HtmlRenderRequest(
-            sourceUrl: previewUrl!,
+            sourceUrl: previewUrl,
             viewportWidth: viewportWidth,
             viewportHeight: viewportHeight,
             suggestedName: 'preview_snapshot',
@@ -3518,6 +3624,19 @@ class ActionRunner {
   String _stringParam(ActionSchema schema, String key) {
     final value = schema.params[key];
     return value is String ? value.trim() : '';
+  }
+
+  String? _nullableStringParam(ActionSchema schema, String key) {
+    final value = _stringParam(schema, key);
+    return value.isEmpty ? null : value;
+  }
+
+  int? _nullableIntParam(ActionSchema schema, String key) {
+    final value = schema.params[key];
+    if (value is int) return value;
+    if (value is num) return value.round();
+    if (value is String) return int.tryParse(value);
+    return null;
   }
 
   Map<String, dynamic> _mapParam(ActionSchema schema, String key) {

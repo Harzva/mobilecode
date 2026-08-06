@@ -8,141 +8,257 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
-import android.os.Bundle
-import android.os.Debug
 import android.os.Environment
-import android.os.PowerManager
 import android.os.StatFs
-import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.util.Locale
 
 class MainActivity : FlutterActivity() {
-    private var lastCpuTotal: Long? = null
-    private var lastCpuIdle: Long? = null
-    private var pendingDeepLink: String? = null
-    private var pendingSharedFile: Map<String, Any?>? = null
+    private var pendingInitialDeepLink: String? = null
+    private var pendingSharedIntent: Intent? = null
+    private val linuxSandboxRunner: LinuxSandboxRunner by lazy {
+        LinuxSandboxRunner(this)
+    }
+    private val htmlRenderRunner: HtmlRenderRunner by lazy {
+        HtmlRenderRunner(this)
+    }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        captureDeepLink(intent)
-        captureSharedFile(intent)
-        maybeStartHelperFromIntent(intent)
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        captureIntent(intent)
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mobilecode/system_tools")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "consumePendingSharedFile" -> result.success(consumePendingSharedFile())
+                    "consumeInitialDeepLink" -> {
+                        val value = pendingInitialDeepLink
+                        pendingInitialDeepLink = null
+                        result.success(value)
+                    }
+                    "getDeviceTelemetry" -> result.success(deviceTelemetry())
+                    "isPackageInstalled" -> result.success(isPackageInstalled(call.argument<String>("packageName")))
+                    "launchPackage" -> result.success(launchPackage(call.argument<String>("packageName")))
+                    "rootProbe" -> result.success(rootProbe())
+                    "startHelperService" -> {
+                        val authToken = call.argument<String>("authToken") ?: ""
+                        result.success(startHelperService(authToken))
+                    }
+                    "stopHelperService" -> {
+                        stopService(
+                            Intent(this, MobileCodeHelperService::class.java)
+                                .setAction(MobileCodeHelperService.ACTION_STOP)
+                        )
+                        result.success(true)
+                    }
+                    "helperServiceStatus" -> result.success(MobileCodeHelperService.status())
+                    "linuxSandboxStatus" -> result.success(linuxSandboxRunner.status())
+                    "linuxSandboxSetup" -> runLinuxSandboxAsync(result) {
+                        @Suppress("UNCHECKED_CAST")
+                        val manifest = call.argument<Map<String, Any?>>("manifest") ?: emptyMap()
+                        linuxSandboxRunner.setup(manifest)
+                    }
+                    "linuxSandboxReset" -> runLinuxSandboxAsync(result) {
+                        linuxSandboxRunner.reset()
+                    }
+                    "linuxSandboxRunTypedTask" -> runLinuxSandboxAsync(result) {
+                        val taskKind = call.argument<String>("taskKind") ?: ""
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.argument<Map<String, Any?>>("payload") ?: emptyMap()
+                        linuxSandboxRunner.runTypedTask(taskKind, payload)
+                    }
+                    "renderPng" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPng(payload, result)
+                    }
+                    "renderPdf" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPdf(payload, result)
+                    }
+                    "getPhoneUseAccessibilityStatus" -> result.success(PhoneUseAccessibilityService.status(this))
+                    "openPhoneUseAccessibilitySettings" -> result.success(openPhoneUseAccessibilitySettings())
+                    "openAppSettings" -> result.success(openAppSettings())
+                    "openBatteryOptimizationSettings" -> result.success(openBatteryOptimizationSettings())
+                    "runPhoneUseDryProbe" -> result.success(PhoneUseAccessibilityService.dryProbe(this))
+                    "markPhoneUseRecoveryRequested" ->
+                        result.success(PhoneUseAccessibilityService.markRecoveryRequested(this))
+                    "capturePhoneUseScreenshot" ->
+                        PhoneUseAccessibilityService.captureScreenshot(
+                            this,
+                            call.argument<Boolean>("approved") == true,
+                            call.argument<Boolean>("sensitiveFlow") == true,
+                        ) { screenshot ->
+                            result.success(screenshot)
+                        }
+                    "performPhoneUseAction" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val action = call.argument<Map<String, Any?>>("action") ?: emptyMap()
+                        result.success(PhoneUseAccessibilityService.performPhoneUseAction(this, action))
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // Keep the renderer channel separate from general system tools so the
+        // Flutter provider has the same contract on Android and iOS.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mobilecode/html_renderer")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "renderPng" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPng(payload, result)
+                    }
+                    "renderPdf" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPdf(payload, result)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mobile_coding/platform")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getBuildTags" -> result.success(Build.TAGS ?: "")
+                    "getInstallerPackage" -> result.success(installerPackage())
+                    "isAppStoreBuild" -> result.success(false)
+                    "verifySignature" -> result.success(true)
+                    else -> result.notImplemented()
+                }
+            }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        captureDeepLink(intent)
-        captureSharedFile(intent)
-        maybeStartHelperFromIntent(intent)
+        captureIntent(intent)
     }
 
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mobilecode/system_tools").setMethodCallHandler { call, result ->
-            when (call.method) {
-                "isPackageInstalled" -> {
-                    val packageName = call.argument<String>("packageName")
-                    if (packageName.isNullOrBlank()) {
-                        result.success(false)
-                        return@setMethodCallHandler
-                    }
-                    result.success(isPackageInstalled(packageName))
-                }
-                "launchPackage" -> {
-                    val packageName = call.argument<String>("packageName")
-                    if (packageName.isNullOrBlank()) {
-                        result.success(false)
-                        return@setMethodCallHandler
-                    }
-                    val intent = packageManager.getLaunchIntentForPackage(packageName)
-                    if (intent == null) {
-                        result.success(false)
-                    } else {
-                        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                        startActivity(intent)
-                        result.success(true)
-                    }
-                }
-                "rootProbe" -> {
-                    result.success(rootProbe())
-                }
-                "startHelperService" -> {
-                    val authToken = call.argument<String>("authToken") ?: ""
-                    result.success(startHelperService(authToken))
-                }
-                "stopHelperService" -> {
-                    stopService(Intent(this, MobileCodeHelperService::class.java).setAction(MobileCodeHelperService.ACTION_STOP))
-                    result.success(true)
-                }
-                "helperServiceStatus" -> {
-                    result.success(MobileCodeHelperService.status())
-                }
-                "getPhoneUseAccessibilityStatus" -> {
-                    result.success(PhoneUseAccessibilityService.status(this))
-                }
-                "openPhoneUseAccessibilitySettings" -> {
-                    result.success(openPhoneUseAccessibilitySettings())
-                }
-                "openAppSettings" -> {
-                    result.success(openAppSettings())
-                }
-                "openBatteryOptimizationSettings" -> {
-                    result.success(openBatteryOptimizationSettings())
-                }
-                "runPhoneUseDryProbe" -> {
-                    result.success(PhoneUseAccessibilityService.dryProbe(this))
-                }
-                "performPhoneUseAction" -> {
-                    @Suppress("UNCHECKED_CAST")
-                    val action = call.argument<Map<String, Any?>>("action") ?: emptyMap()
-                    result.success(PhoneUseAccessibilityService.performPhoneUseAction(this, action))
-                }
-                "getDeviceTelemetry" -> {
-                    result.success(deviceTelemetry())
-                }
-                "consumeInitialDeepLink" -> {
-                    val link = pendingDeepLink
-                    pendingDeepLink = null
-                    result.success(link)
-                }
-                "consumePendingSharedFile" -> {
-                    val shared = pendingSharedFile
-                    pendingSharedFile = null
-                    result.success(shared)
-                }
-                else -> result.notImplemented()
-            }
-        }
-
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mobile_coding/platform").setMethodCallHandler { call, result ->
-            when (call.method) {
-                "getBuildTags" -> result.success(Build.TAGS ?: "")
-                "getInstallerPackage" -> result.success(installerPackage())
-                "isAppStoreBuild" -> result.success(false)
-                "verifySignature" -> result.success(true)
-                else -> result.notImplemented()
-            }
+    private fun captureIntent(intent: Intent?) {
+        if (intent == null) return
+        intent.dataString?.let { pendingInitialDeepLink = it }
+        val action = intent.action
+        val scheme = intent.data?.scheme
+        val isShareIntent = action == Intent.ACTION_SEND
+        val isFileViewIntent = action == Intent.ACTION_VIEW &&
+            (scheme == "content" || scheme == "file")
+        if (isShareIntent || isFileViewIntent) {
+            pendingSharedIntent = intent
         }
     }
 
-    private fun isPackageInstalled(packageName: String): Boolean {
+    private fun consumePendingSharedFile(): Map<String, Any?>? {
+        val sharedIntent = pendingSharedIntent ?: return null
+        pendingSharedIntent = null
+        val uri = sharedIntent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+            ?: sharedIntent.data
+        if (uri != null) return consumeSharedUri(sharedIntent, uri)
+        return consumeSharedText(sharedIntent)
+    }
+
+    private fun consumeSharedUri(sharedIntent: Intent, uri: Uri): Map<String, Any?> {
         return try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
-            } else {
-                @Suppress("DEPRECATION")
-                packageManager.getPackageInfo(packageName, 0)
+            val mimeType = contentResolver.getType(uri) ?: sharedIntent.type ?: ""
+            val name = uri.lastPathSegment?.substringAfterLast('/') ?: "shared-file"
+            val target = File(cacheDir, "shared_${System.currentTimeMillis()}_$name")
+            val inputStream = contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("No readable stream for shared URI")
+            inputStream.use { input ->
+                target.outputStream().use { output -> input.copyTo(output) }
             }
+            mapOf(
+                "path" to target.absolutePath,
+                "displayName" to name,
+                "mimeType" to mimeType,
+                "sizeBytes" to target.length(),
+                "source" to "android_intent",
+            )
+        } catch (error: Exception) {
+            sharedFileError(
+                code = "read_failed",
+                displayName = uri.lastPathSegment?.substringAfterLast('/') ?: "shared-file",
+                source = "android_intent",
+                detail = error.localizedMessage ?: error.javaClass.simpleName,
+            )
+        }
+    }
+
+    private fun consumeSharedText(sharedIntent: Intent): Map<String, Any?>? {
+        val text = sharedIntent.getStringExtra(Intent.EXTRA_TEXT) ?: return null
+        if (text.isBlank()) return null
+        return try {
+            val intentMimeType = sharedIntent.type ?: ""
+            val html = isHtmlMime(intentMimeType) || looksHtml(text)
+            val extension = if (html) "html" else "txt"
+            val mimeType = if (html) "text/html" else "text/plain"
+            val target = File(cacheDir, "shared_text_${System.currentTimeMillis()}.$extension")
+            target.writeText(text, Charsets.UTF_8)
+            mapOf(
+                "path" to target.absolutePath,
+                "displayName" to "shared-text.$extension",
+                "mimeType" to mimeType,
+                "sizeBytes" to target.length(),
+                "source" to "android_extra_text",
+            )
+        } catch (error: Exception) {
+            sharedFileError(
+                code = "extra_text_failed",
+                displayName = "shared-text.html",
+                source = "android_extra_text",
+                detail = error.localizedMessage ?: error.javaClass.simpleName,
+            )
+        }
+    }
+
+    private fun sharedFileError(
+        code: String,
+        displayName: String,
+        source: String,
+        detail: String,
+    ): Map<String, Any?> = mapOf(
+        "error" to code,
+        "displayName" to displayName,
+        "source" to source,
+        "message" to "MobileCode cannot read shared $displayName. Grant file access and try again. $detail",
+    )
+
+    private fun isHtmlMime(mimeType: String): Boolean {
+        val lower = mimeType.lowercase(Locale.ROOT)
+        return lower == "text/html" || lower == "application/xhtml+xml"
+    }
+
+    private fun looksHtml(text: String): Boolean {
+        val lower = text.trimStart().lowercase(Locale.ROOT)
+        return lower.startsWith("<!doctype html") ||
+            lower.startsWith("<html") ||
+            lower.contains("<body")
+    }
+
+    private fun isPackageInstalled(packageName: String?): Boolean {
+        if (packageName.isNullOrBlank()) return false
+        return try {
+            packageManager.getPackageInfo(packageName, 0)
             true
         } catch (_: PackageManager.NameNotFoundException) {
             false
         }
+    }
+
+    private fun launchPackage(packageName: String?): Boolean {
+        if (packageName.isNullOrBlank()) return false
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(launchIntent)
+        return true
     }
 
     private fun rootProbe(): Map<String, Any> {
@@ -177,25 +293,6 @@ class MainActivity : FlutterActivity() {
                 "available" to false,
                 "detail" to "Root probe failed; the app process cannot see su."
             )
-        }
-    }
-
-    private fun startHelperService(authToken: String = ""): Boolean {
-        return try {
-            val intent = Intent(this, MobileCodeHelperService::class.java)
-            if (authToken.isNotBlank()) {
-                intent.putExtra(MobileCodeHelperService.EXTRA_AUTH_TOKEN, authToken)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(intent)
-            } else {
-                startService(intent)
-            }
-            Log.i(TAG, "MobileCode helper service start requested")
-            true
-        } catch (error: Throwable) {
-            Log.e(TAG, "Failed to request MobileCode helper service start", error)
-            false
         }
     }
 
@@ -234,6 +331,45 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun startHelperService(authToken: String): Boolean {
+        return try {
+            val serviceIntent = Intent(this, MobileCodeHelperService::class.java)
+            if (authToken.isNotBlank()) {
+                serviceIntent.putExtra(MobileCodeHelperService.EXTRA_AUTH_TOKEN, authToken)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+            Log.i(TAG, "MobileCode helper service start requested")
+            true
+        } catch (error: Throwable) {
+            Log.e(TAG, "Failed to request MobileCode helper service start", error)
+            false
+        }
+    }
+
+    private fun runLinuxSandboxAsync(
+        result: MethodChannel.Result,
+        block: () -> Map<String, Any?>,
+    ) {
+        Thread {
+            try {
+                result.success(block())
+            } catch (error: Throwable) {
+                result.success(
+                    mapOf(
+                        "success" to false,
+                        "status" to "failed",
+                        "failureKind" to "processFailed",
+                        "stderr" to (error.localizedMessage ?: error.javaClass.simpleName),
+                    )
+                )
+            }
+        }.start()
+    }
+
     private fun installerPackage(): String? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             packageManager.getInstallSourceInfo(packageName).installingPackageName
@@ -243,205 +379,45 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun deviceTelemetry(): Map<String, Any> {
+    private fun deviceTelemetry(): Map<String, Any?> {
         val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         val memoryInfo = ActivityManager.MemoryInfo()
         activityManager.getMemoryInfo(memoryInfo)
-
-        val debugMemoryInfo = Debug.MemoryInfo()
-        Debug.getMemoryInfo(debugMemoryInfo)
         val runtime = Runtime.getRuntime()
-        val dataStat = StatFs(Environment.getDataDirectory().path)
+        val storage = StatFs(Environment.getDataDirectory().absolutePath)
         val battery = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        val batteryLevel = batteryLevel(battery)
+        val batteryLevel = battery?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val batteryStatus = battery?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-        val charging = batteryStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
-            batteryStatus == BatteryManager.BATTERY_STATUS_FULL
         val batteryTemp = (battery?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0) / 10.0
-        val thermalStatus = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            (getSystemService(Context.POWER_SERVICE) as PowerManager).currentThermalStatus
-        } else {
-            -1
-        }
-
         return mapOf(
             "platform" to "android",
-            "manufacturer" to Build.MANUFACTURER.orEmpty(),
-            "brand" to Build.BRAND.orEmpty(),
-            "model" to Build.MODEL.orEmpty(),
-            "androidVersion" to Build.VERSION.RELEASE.orEmpty(),
+            "manufacturer" to Build.MANUFACTURER,
+            "model" to Build.MODEL,
+            "androidVersion" to Build.VERSION.RELEASE,
             "sdkInt" to Build.VERSION.SDK_INT,
             "abis" to Build.SUPPORTED_ABIS.toList(),
-            "cpuCores" to runtime.availableProcessors(),
-            "cpuUsagePercent" to sampleCpuUsagePercent(),
-            "totalMemoryMb" to mb(memoryInfo.totalMem),
-            "availableMemoryMb" to mb(memoryInfo.availMem),
+            "cpuCores" to Runtime.getRuntime().availableProcessors(),
+            "cpuUsagePercent" to 0.0,
+            "totalMemoryMb" to memoryInfo.totalMem / 1024 / 1024,
+            "availableMemoryMb" to memoryInfo.availMem / 1024 / 1024,
             "lowMemory" to memoryInfo.lowMemory,
-            "appRssMb" to debugMemoryInfo.totalPss / 1024,
-            "appHeapMb" to mb(runtime.totalMemory() - runtime.freeMemory()),
-            "storageTotalMb" to mb(dataStat.totalBytes),
-            "storageFreeMb" to mb(dataStat.availableBytes),
+            "appRssMb" to 0,
+            "appHeapMb" to (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024,
+            "storageTotalMb" to storage.totalBytes / 1024 / 1024,
+            "storageFreeMb" to storage.availableBytes / 1024 / 1024,
             "batteryLevel" to batteryLevel,
-            "batteryCharging" to charging,
+            "batteryCharging" to (
+                batteryStatus == BatteryManager.BATTERY_STATUS_CHARGING ||
+                    batteryStatus == BatteryManager.BATTERY_STATUS_FULL
+                ),
             "batteryTemperatureC" to batteryTemp,
-            "thermalStatus" to thermalStatus,
+            "thermalStatus" to -1,
             "timestamp" to System.currentTimeMillis(),
-            "fallback" to false
+            "fallback" to false,
         )
-    }
-
-    private fun batteryLevel(intent: Intent?): Int {
-        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
-        if (level < 0 || scale <= 0) return -1
-        return ((level * 100.0) / scale).toInt()
-    }
-
-    private fun mb(bytes: Long): Long = bytes / (1024L * 1024L)
-
-    private fun sampleCpuUsagePercent(): Double {
-        val sample = readCpuStat() ?: return 0.0
-        val previousTotal = lastCpuTotal
-        val previousIdle = lastCpuIdle
-        lastCpuTotal = sample.first
-        lastCpuIdle = sample.second
-        if (previousTotal == null || previousIdle == null) return 0.0
-        val totalDelta = sample.first - previousTotal
-        val idleDelta = sample.second - previousIdle
-        if (totalDelta <= 0) return 0.0
-        val busy = (totalDelta - idleDelta).coerceAtLeast(0)
-        return (busy * 100.0 / totalDelta).coerceIn(0.0, 100.0)
-    }
-
-    private fun readCpuStat(): Pair<Long, Long>? {
-        return try {
-            val firstLine = File("/proc/stat").bufferedReader().use { it.readLine() } ?: return null
-            val parts = firstLine.trim().split(Regex("\\s+"))
-            if (parts.isEmpty() || parts.first() != "cpu") return null
-            val values = parts.drop(1).mapNotNull { it.toLongOrNull() }
-            if (values.size < 5) return null
-            val idle = values[3] + values[4]
-            val total = values.sum()
-            Pair(total, idle)
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    private fun maybeStartHelperFromIntent(intent: Intent?) {
-        if (intent?.getBooleanExtra(EXTRA_START_HELPER, false) == true) {
-            Log.i(TAG, "mobilecode_start_helper intent received")
-            startHelperService(
-                intent.getStringExtra(MobileCodeHelperService.EXTRA_AUTH_TOKEN) ?: ""
-            )
-        }
-    }
-
-    private fun captureDeepLink(intent: Intent?) {
-        val data = intent?.dataString
-        if (!data.isNullOrBlank()) {
-            Log.i(TAG, "Captured deep link: $data")
-            pendingDeepLink = data
-        }
-    }
-
-    private fun captureSharedFile(intent: Intent?) {
-        if (intent == null) return
-        val action = intent.action ?: return
-        val uri = when (action) {
-            Intent.ACTION_VIEW -> intent.data
-            Intent.ACTION_SEND -> streamExtra(intent)
-            else -> null
-        } ?: return
-
-        if (uri.scheme == "mobilecode") return
-
-        try {
-            val mimeType = intent.type ?: contentResolver.getType(uri).orEmpty()
-            pendingSharedFile = copySharedFile(uri, mimeType, action)
-            Log.i(TAG, "Captured shared file for preview: ${pendingSharedFile?.get("displayName")}")
-        } catch (error: Throwable) {
-            Log.e(TAG, "Failed to copy shared file for preview", error)
-            pendingSharedFile = null
-        }
-    }
-
-    private fun streamExtra(intent: Intent): Uri? {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(Intent.EXTRA_STREAM)
-        }
-    }
-
-    private fun copySharedFile(uri: Uri, mimeType: String, action: String): Map<String, Any?> {
-        val displayName = queryDisplayName(uri)
-            ?: uri.lastPathSegment?.substringAfterLast('/')
-            ?: "external-file"
-        val targetDir = File(cacheDir, "external_previews").apply { mkdirs() }
-        val safeName = sanitizeFileName(displayName)
-        val target = File(targetDir, "${System.currentTimeMillis()}-$safeName")
-        var copied = 0L
-
-        try {
-            inputStreamFor(uri).use { input ->
-                target.outputStream().use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val read = input.read(buffer)
-                        if (read <= 0) break
-                        copied += read
-                        if (copied > MAX_SHARED_FILE_BYTES) {
-                            throw IllegalArgumentException("Shared file is larger than ${MAX_SHARED_FILE_BYTES / 1024 / 1024} MB.")
-                        }
-                        output.write(buffer, 0, read)
-                    }
-                }
-            }
-        } catch (error: Throwable) {
-            target.delete()
-            throw error
-        }
-
-        return mapOf(
-            "path" to target.absolutePath,
-            "displayName" to displayName,
-            "mimeType" to mimeType,
-            "sizeBytes" to copied,
-            "source" to "android_intent",
-            "sourceUri" to uri.toString(),
-            "action" to action,
-            "receivedAt" to System.currentTimeMillis()
-        )
-    }
-
-    private fun inputStreamFor(uri: Uri) = when (uri.scheme) {
-        "file" -> File(uri.path ?: "").inputStream()
-        else -> contentResolver.openInputStream(uri)
-            ?: throw IllegalArgumentException("Cannot open shared file stream.")
-    }
-
-    private fun queryDisplayName(uri: Uri): String? {
-        return try {
-            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-                ?.use { cursor ->
-                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
-                }
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    private fun sanitizeFileName(name: String): String {
-        val cleaned = name.replace(Regex("[^A-Za-z0-9._-]"), "_").trim('_')
-        return cleaned.ifBlank { "external-file" }.take(96)
     }
 
     companion object {
         private const val TAG = "MobileCodeMain"
-        private const val EXTRA_START_HELPER = "mobilecode_start_helper"
-        private const val MAX_SHARED_FILE_BYTES = 16L * 1024L * 1024L
     }
 }

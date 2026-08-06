@@ -1,0 +1,2 @@
+Deleted 1 rows
+com.mobilecode.app/com.mobilecode.app.PhoneUseAccessibilityService

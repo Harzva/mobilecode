@@ -15,7 +15,7 @@
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml"><img alt="Mobile App Release" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml/badge.svg"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=main"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.68--mobile--harness-2555FF">
+  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.69-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Flutter-0B9B7E">
 </p>
 
@@ -28,7 +28,7 @@
   ·
   <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">HTML Principle Video</a>
   ·
-  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7">Download v0.1.68 apps</a>
+  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.69">Download v0.1.69 app</a>
   ·
   <a href="https://harzva.github.io/mobilecode/">GitHub Pages Demo</a>
 </p>
@@ -112,6 +112,9 @@ MobileCode 选择从 AI coding 切入同一条趋势：模型可以远程，重�
 - Anonymous supplement boundary: [include/exclude and redaction gate](paper/iclr-mobile-harness/SUPPLEMENT_BOUNDARY.md)
 - Current anonymous supplement: `paper/iclr-mobile-harness/build/mobile-harness-anonymous-supplement.zip` (staged file count and byte size are emitted by the supplement script)
 - Benchmark seed: [MobileHarnessBench](docs/mobile-harness-benchmark/README.md)
+- Controlled Phone Use v1: [30-task protocol](docs/mobile-harness-benchmark/phone-use/README.md) · [readiness gate](docs/mobile-harness-benchmark/reports/phone-use-v1-readiness.md)
+- Latest Android emulator QA: [release build and Phone Use evidence](docs/mobile-harness-benchmark/reports/2026-08-01-android-emulator-qa.md)
+- Qwen UI-Agent study: [benchmark analysis](docs/research/qwen-ui-agent-benchmark-analysis.md) · [local technical report](docs/research/qwen-ui-agent-technical-report.pdf)
 - v1 task bank: [200 MobileHarnessBench candidate tasks](docs/mobile-harness-benchmark/tasks/v1-task-bank.json)
 - v2 task bank: [1000 MobileHarnessBench candidate tasks](docs/mobile-harness-benchmark/tasks/v2-task-bank.json)
 - v2 quality audit: [machine audit report](docs/mobile-harness-benchmark/reports/v2-quality-audit.md)
@@ -224,7 +227,29 @@ flowchart LR
 - API-backed file flow: browse remote tree, read text files, edit, commit via GitHub Contents API, reload on SHA conflict.
 - Extension management: Roles, Skill, MCP, Memory, Agent, Hook Registry surfaces for role-based workflows.
 - Observability: RR AgentView, pending role approvals, Token Usage/cache-hit statistics, searchable/sortable LiteLLM-style pricing with manual snapshot checks, and Device Telemetry htop-style phone health.
+- [Phone Use safety loop](docs/mobilecode-device-automation-architecture.md): cropped semantic snapshots and short-lived `@e` refs, trusted native transaction-risk classification, page-bound one-shot approval cards, unified ActionEvidence, and Keystore/Keychain `secret_id` credential slots.
 - [Lark Native API plan](docs/lark-native-api-upgrade-plan.md): agent-facing, Node-free Lark OpenAPI tools for Docs, Drive, Sheets, Bitable, Wiki, and evidence publishing; official CLI/MCP remain Mac/CI development probes, not embedded app runtimes.
+
+## Phone Use Safety Status
+
+As of 2026-07-18, the Auto Agent can observe Android UI and request a semantic
+action preview, but it cannot click or type directly. Android classifies the
+target from the admitted accessibility node, and MobileCode shows a 20-second,
+one-shot approval card. Checkout/payment/order-like targets receive a distinct
+transaction confirmation. The ticket is consumed before execution and is bound
+to the full SHA-256 page snapshot; changed pages fail closed.
+
+| Acceptance area | Result | Evidence boundary |
+| --- | --- | --- |
+| Flutter regression suite | 534 tests passed | Includes tool adapter, ActionRunner, one-shot/expiry/replay, credential redaction, and UI provisioning tests. |
+| Android native build | `devharnessDebug` and `pureDebug` Kotlin variants passed; final pure debug APK assembled | Release QA fixtures remain debug-only. |
+| Fake ordering acceptance | 29 redacted steps and 11 assertions passed; trusted `externalTransaction` classification, mismatched-page rejection, zero commit attempts | Fake merchant/data only; no payment, address, account, or real order endpoint. Manifest SHA-256: `93ce81cc52ca4c618661bc5b9a6b07676f63b1c325744aaa2ff1e602ed9a85e4`. |
+| Controlled credential path | Provision/store/delete, `secret_id` preview, approved resolution, and evidence serialization passed with fake account data | Credential value absent from evidence and rendered status; screenshots/video/logs blocked for sensitive flow. |
+| iOS source build | Unsigned device profile build passed | Signed install is blocked until Xcode provisioning/account readiness is restored. |
+| Physical devices | Not passed | Acceptance host had zero Android physical devices and zero available iOS physical devices. No real-device or real external-account claim is made. |
+
+Recording and log collection stay in the host-side QA adapter. MobileCode does
+not bundle a second recorder app or `agent-device` runtime into the APK.
 
 ## Long-term Termux-like Runtime Plan
 
@@ -381,12 +406,12 @@ That keeps the phone lightweight while still letting users produce shareable web
 
 ## Release Line
 
-Current candidate: `v0.1.68-mobile-harness-d2dd9a7`.
+Current candidate: `v0.1.69`.
 
 See:
 
 - [Latest dual app build](https://github.com/Harzva/mobilecode/actions/runs/27287231941) - Android APK, iOS simulator app, and iOS unsigned archive all completed successfully.
-- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7) - Android APK plus iOS simulator/archive artifacts.
+- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.69) - Android APK for the controlled Phone Use evaluation candidate.
 - [Version Policy](docs/mobilecode-version-policy.md)
 - [Release QA Checklist](docs/mobilecode-release-qa.md)
 - [Helper Runtime Protocol](docs/mobilecode-helper-runtime-protocol.md)

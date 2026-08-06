@@ -89,6 +89,8 @@ void main() {
       'list_files',
       'find_files',
       'grep_files',
+      'phone_use_observe',
+      'phone_use_action',
       'project_summary',
       'detect_project_type',
       'change_history',
@@ -184,6 +186,62 @@ void main() {
         .toList();
 
     expect(names, ['agent_open', 'agent_eval', 'agent_close']);
+  });
+
+  test('maps phone_use_observe to an observation-only action', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-pro',
+      ),
+    );
+
+    final schema = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_phone_observe',
+      name: 'phone_use_observe',
+      arguments: {},
+    ));
+
+    expect(schema, isNotNull);
+    expect(schema!.actionName, MobileCodeAction.phoneUseObserve);
+    expect(schema.params, {'action': 'observe'});
+    expect(schema.approvalRequired, isFalse);
+  });
+
+  test('maps phone_use_action to preview-only approval parameters', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-pro',
+      ),
+    );
+
+    final schema = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_phone_action',
+      name: 'phone_use_action',
+      arguments: {
+        'action': 'tapRef',
+        'target_ref': '@e3~s9',
+        'x': 0,
+        'y': 0,
+        'x2': 0,
+        'y2': 0,
+        'duration_ms': 300,
+        'text': '',
+        'secret_id': '',
+        'sensitive_flow': false,
+        'approved': true,
+        'externalTransaction': false,
+      },
+    ));
+
+    expect(schema, isNotNull);
+    expect(schema!.actionName, MobileCodeAction.phoneUseAct);
+    expect(schema.approvalRequired, isTrue);
+    expect(schema.params['approvalPreview'], isTrue);
+    expect(schema.params['approved'], isFalse);
+    expect(schema.params['targetRef'], '@e3~s9');
+    expect(schema.params, isNot(contains('externalTransaction')));
   });
 
   test('parses non-streaming tool_calls and maps write_file to ActionSchema',

@@ -10,6 +10,9 @@ on:
       - 'docs/mobilecode-release-qa.md'
       - 'docs/mobilecode-accessibility-background-permissions-qa.md'
       - 'roadmap/tasks/T25-accessibility-background-permissions.md'
+      - 'docs/mobile-harness-benchmark/phone-use/**'
+      - 'docs/mobile-harness-benchmark/reports/phone-use-v1-readiness.*'
+      - 'scripts/validate_mobile_harness_phone_use_v1.py'
       - '.github/workflows/mobile-runtime-ci.yml'
   push:
     paths:
@@ -19,6 +22,9 @@ on:
       - 'docs/mobilecode-release-qa.md'
       - 'docs/mobilecode-accessibility-background-permissions-qa.md'
       - 'roadmap/tasks/T25-accessibility-background-permissions.md'
+      - 'docs/mobile-harness-benchmark/phone-use/**'
+      - 'docs/mobile-harness-benchmark/reports/phone-use-v1-readiness.*'
+      - 'scripts/validate_mobile_harness_phone_use_v1.py'
       - '.github/workflows/mobile-runtime-ci.yml'
 
 permissions:
@@ -29,6 +35,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  phone-use-eval-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate controlled Phone Use v1 contract
+        run: |
+          python3 -m py_compile scripts/validate_mobile_harness_phone_use_v1.py
+          python3 scripts/validate_mobile_harness_phone_use_v1.py
+
   flutter-runtime-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -163,7 +182,9 @@ jobs:
           grep -q 'mobile_coding/platform' mobile_agent/tooling/MainActivity.kt
           cmp -s mobile_agent/tooling/MobileCodeHelperService.kt mobile_agent/android/app/src/main/kotlin/com/mobilecode/app/MobileCodeHelperService.kt
           cmp -s mobile_agent/tooling/MobileCodeHelperLauncherActivity.kt mobile_agent/android/app/src/main/kotlin/com/mobilecode/app/MobileCodeHelperLauncherActivity.kt
+          cmp -s mobile_agent/tooling/MainActivity.kt mobile_agent/android/app/src/main/kotlin/com/mobilecode/app/MainActivity.kt
           cmp -s mobile_agent/tooling/PhoneUseAccessibilityService.kt mobile_agent/android/app/src/main/kotlin/com/mobilecode/app/PhoneUseAccessibilityService.kt
+          grep -q 'android:canTakeScreenshot="true"' mobile_agent/tooling/prepare_android_project.py
 
       - name: Smoke test helper protocol
         run: |
@@ -179,7 +200,7 @@ jobs:
           auth_header='X-MobileCode-Token: ci-token'
           trap 'kill "$helper_pid" || true' EXIT
 
-          for attempt in $(seq 1 20); do
+          for _ in $(seq 1 20); do
             if curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health > artifacts/helper-health.json; then
               break
             fi

@@ -4,6 +4,8 @@ MobileHarnessBench 是 MobileCode 的最小可复现评测协议，用于衡量�
 
 它不是通用手机 App 操作 benchmark。它不评测模型是否能在真实 App 里点击按钮，也不复刻 PhoneWorld。它评测的是手机端 AI coding harness 的工程能力。
 
+Phone Use 现在作为一条独立、受控的扩展轨道接入 MobileHarnessBench，用于验证语义定位、页面操作、恢复能力和交易安全边界。首版协议包含 30 个任务、5 个类别和统一终态分类，详见 [Phone Use v1](phone-use/README.md) 与 [readiness report](reports/phone-use-v1-readiness.md)。该任务集当前只用于协议和设备 QA，`counts_as_experiment=false`；在模型、设备、重复次数和原始证据全部锁定前，不计入论文实验结果。
+
 ## v0 范围
 
 v0 包含 25 个种子任务，分成 5 类。v1 candidate bank 已扩展到 200 条任务。v2 candidate bank 已扩展到 1000 条任务，并把类别从 5 类提升到 6 类，用于后续 frozen subset、verifier dry run 和论文实验设计。
@@ -145,6 +147,9 @@ docs/mobile-harness-benchmark/
 - [x] 5 个代表任务的离线 verifier implementation 已创建。
 - [x] v0 代表任务 dry run 已完成。
 - [x] `smoke-v2` T0 离线 dry run 已完成。
+- [x] Phone Use v1 的 30-task 受控协议、终态分类、指标、证据要求和 CI validator 已创建。
+- [x] P6.3 Android device QA lane 已区分 emulator/physical device，并记录脱敏设备信息与 terminal outcome。
+- [x] 2026-08-01 Android API 36 release QA 已完成；Phone Use deterministic probe 为 `verified_success`（6/6 actions + final text verified），但仍明确标记为 non-counted。
 - [ ] 全部 25 个 seed tasks 的 verifier implementation 尚未完成。
 - [ ] v1 200 条 candidate tasks 尚未全部完成人工抽检和 dry run。
 - [ ] v2 1000 条 candidate tasks 尚未全部完成人工抽检、分层和 dry run。
@@ -158,6 +163,8 @@ docs/mobile-harness-benchmark/
 | representative-v0 | 5 | dry run completed | [summary.md](runs/2026-06-06-v0-dry-run/summary.md) |
 | v1 candidate task bank | 200 | generated + locally validated | [v1-task-bank.json](tasks/v1-task-bank.json) |
 | v2 candidate task bank | 1000 | generated + locally validated + machine audited; 6 categories | [v2-task-bank.json](tasks/v2-task-bank.json) · [quality audit](reports/v2-quality-audit.md) |
+| controlled Phone Use v1 | 30 tasks / 5 categories / 3 required repetitions | frozen protocol; validator passed; no counted model/device results | [task set](phone-use/controlled-task-set-v1.json) · [readiness](reports/phone-use-v1-readiness.md) |
+| Android emulator release QA | 1 non-counted run | APK install/launch passed; deterministic Phone Use probe `verified_success` (6/6 + text state) | [QA report](reports/2026-08-01-android-emulator-qa.md) · [run](strategy-ablation/runs/2026-08-01-p63-android-device-qa/summary.md) |
 | baseline protocol | 3 baselines | protocol defined; no baseline results counted | [baseline-protocol-readiness.md](reports/baseline-protocol-readiness.md) |
 | baseline run contract | 0 results | schema/contract defined; no baseline results counted | [baseline-run-contract.md](reports/baseline-run-contract.md) |
 | baseline scaffold | 3 baselines x 60 tasks | `not_run` scaffold only; no baseline results counted | [manifest](baselines/2026-06-06-baseline-scaffold/README.md) |

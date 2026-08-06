@@ -15,6 +15,7 @@ on:
       - 'mobile_agent/**'
       - 'docs/mobilecode-accessibility-background-permissions-qa.md'
       - 'roadmap/tasks/T25-accessibility-background-permissions.md'
+      - 'scripts/run_android_app_smoke_ci.sh'
       - '.github/workflows/android-app-test.yml'
       - '.github/workflows/android-apk.yml'
 
@@ -55,7 +56,7 @@ jobs:
 
       - name: Analyze Flutter entry surfaces
         working-directory: mobile_agent
-        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/settings_screen.dart lib/screens/github_screen.dart lib/screens/github_repo_hub_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/github_deep_service.dart lib/services/github_oauth_flow.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart lib/services/mobile_code_helper_auth.dart lib/services/phone_use_accessibility_service.dart --no-fatal-infos --no-fatal-warnings
+        run: flutter analyze lib/main.dart lib/screens/home_screen.dart lib/screens/settings_screen.dart lib/screens/github_screen.dart lib/screens/github_repo_hub_screen.dart lib/screens/role_manager_screen.dart lib/screens/api_usage_screen.dart lib/screens/device_telemetry_screen.dart lib/services/github_deep_service.dart lib/services/github_oauth_flow.dart lib/services/role_library_service.dart lib/services/token_usage_service.dart lib/services/token_pricing_service.dart lib/services/device_telemetry_service.dart lib/services/mobile_code_helper_auth.dart lib/services/phone_use_accessibility_service.dart lib/services/model_provider_preset_service.dart lib/services/tuima_provider_service.dart test/services/model_provider_preset_service_test.dart test/services/tuima_provider_service_test.dart --no-fatal-infos --no-fatal-warnings
 
       - name: Build debug APK for emulator
         working-directory: mobile_agent
@@ -72,29 +73,9 @@ jobs:
           profile: pixel_2
           target: default
           disable-animations: true
-          script: |
-            set -eux
-            mkdir -p artifacts
-            adb wait-for-device
-            adb shell settings put global hide_error_dialogs 1 || true
-            installed=0; for attempt in 1 2 3; do if timeout 120s adb install -r mobile_agent/build/app/outputs/flutter-apk/app-pure-debug.apk; then installed=1; break; fi; adb kill-server; adb start-server; adb wait-for-device; sleep 20; done; test "$installed" = 1
-            adb shell am force-stop com.mobilecode.app
-            adb forward --remove tcp:18765 || true
-            adb forward tcp:18765 tcp:8765
-            helper_ready=0; for attempt in $(seq 1 12); do timeout 5s adb shell am start -n com.mobilecode.app/.MobileCodeHelperLauncherActivity --es mobilecode_helper_auth_token ci-helper-token > artifacts/helper-launch.txt 2>&1 || true; if curl --connect-timeout 2 --max-time 5 -fsS -H 'X-MobileCode-Token: ci-helper-token' http://127.0.0.1:18765/v1/health > artifacts/android-helper-health.json; then helper_ready=1; break; fi; sleep 1; done; if [ "$helper_ready" != 1 ]; then adb shell dumpsys activity services com.mobilecode.app > artifacts/helper-services.txt || true; adb logcat -d -t 1500 > artifacts/android-logcat.txt || true; cat artifacts/helper-launch.txt || true; grep -E 'MobileCodeHelper|AndroidRuntime' artifacts/android-logcat.txt | tail -n 200 || true; exit 1; fi
-            curl -fsS -H 'X-MobileCode-Token: ci-helper-token' http://127.0.0.1:18765/v1/health | tee artifacts/android-helper-health.json
-            test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-MobileCode-Token: wrong-token' http://127.0.0.1:18765/v1/health)" = 401
-            curl -fsS -H 'X-MobileCode-Token: ci-helper-token' -H 'Content-Type: application/json' -X POST http://127.0.0.1:18765/v1/execute -d '{"command":"pwd","timeoutMs":10000}' | tee artifacts/android-helper-execute.json
-            curl -fsS -H 'X-MobileCode-Token: ci-helper-token' http://127.0.0.1:18765/v1/tasks/current | tee artifacts/android-helper-task.json
-            grep '"name":"MobileCode Helper Service"' artifacts/android-helper-health.json
-            grep '"ready":true' artifacts/android-helper-health.json
-            grep '"authRequired":true' artifacts/android-helper-health.json
-            grep '"backgroundService":true' artifacts/android-helper-health.json
-            grep '"exitCode":0' artifacts/android-helper-execute.json
-            grep '"failureKind":"none"' artifacts/android-helper-execute.json
-            adb logcat -c || true
-            timeout 30s adb shell am start -W -n com.mobilecode.app/.MainActivity | tee artifacts/main-start.txt
-            app_drawn=0; for attempt in $(seq 1 48); do adb shell pidof com.mobilecode.app; adb shell dumpsys window windows > artifacts/window-focus.txt || true; adb shell uiautomator dump /sdcard/mobilecode-window.xml >/dev/null 2>&1 || true; adb pull /sdcard/mobilecode-window.xml artifacts/window-hierarchy.xml >/dev/null 2>&1 || true; if awk '/Window #[0-9]+/ { in_app = ($0 ~ /com\.mobilecode\.app\/.*MainActivity/) } in_app && /Surface: shown=true/ { ok=1 } END { exit ok ? 0 : 1 }' artifacts/window-focus.txt || { grep -q 'package="com.mobilecode.app"' artifacts/window-hierarchy.xml 2>/dev/null && grep -q 'content-desc="MobileCode"' artifacts/window-hierarchy.xml 2>/dev/null; }; then app_drawn=1; break; fi; sleep 5; done; echo "$app_drawn" > artifacts/app-drawn.txt; if grep -q "System UI isn't responding" artifacts/window-hierarchy.xml 2>/dev/null; then adb shell input tap 540 1059 || true; sleep 2; adb shell uiautomator dump /sdcard/mobilecode-window.xml >/dev/null 2>&1 || true; adb pull /sdcard/mobilecode-window.xml artifacts/window-hierarchy.xml >/dev/null 2>&1 || true; fi; test -s artifacts/window-hierarchy.xml || exit 1; if grep -q "System UI isn't responding" artifacts/window-hierarchy.xml; then exit 1; fi; adb shell pidof com.mobilecode.app; adb exec-out screencap -p > artifacts/mobilecode-android-smoke.png || true; test -s artifacts/mobilecode-android-smoke.png || exit 1; adb logcat -d -t 2000 > artifacts/android-logcat.txt || true; grep -q "com.mobilecode.app" artifacts/window-focus.txt; grep -E "FATAL EXCEPTION|E AndroidRuntime|NoSuchMethodError|MissingPluginException|ANR in com.mobilecode.app" artifacts/android-logcat.txt && exit 1 || true; test "$app_drawn" = 1
+          # android-emulator-runner executes each script line in a separate shell.
+          # Keep stateful control flow in a checked-in POSIX shell script.
+          script: sh scripts/run_android_app_smoke_ci.sh
 
       - name: Upload Android smoke artifacts
         uses: actions/upload-artifact@v7

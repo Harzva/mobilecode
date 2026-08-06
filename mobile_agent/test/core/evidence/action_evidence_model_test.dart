@@ -4,8 +4,8 @@ import 'package:mobile_agent/core/evidence/action_evidence_store.dart';
 
 void main() {
   group('MobileCodeAction enum', () {
-    test('contains all 43 canonical action names', () {
-      expect(MobileCodeAction.values.length, 43);
+    test('contains all 47 canonical action names', () {
+      expect(MobileCodeAction.values.length, 47);
       expect(
           MobileCodeAction.values.map((e) => e.name),
           containsAll([
@@ -31,6 +31,10 @@ void main() {
             'applyPatch',
             'termuxTaskStart',
             'cliHubTaskStart',
+            'phoneUseObserve',
+            'phoneUseAct',
+            'phoneUseCapture',
+            'phoneUseReplay',
             'openFile',
             'previewHtml',
             'webSearch',

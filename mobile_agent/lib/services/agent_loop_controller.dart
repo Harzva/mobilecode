@@ -158,6 +158,8 @@ extension AgentPresetConfig on AgentPreset {
             'detect_project_type',
             'change_history',
             'virtual_status',
+            'phone_use_observe',
+            'phone_use_action',
             'agent_open',
             'agent_eval',
             'agent_close',
@@ -295,7 +297,7 @@ extension AgentPresetConfig on AgentPreset {
 
   String get systemInstruction => switch (this) {
         AgentPreset.autoAgent =>
-          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may summarize/list/find/grep/read/detect project type/status/history first, open read-only Sub-Agent Lite explorer/reviewer sessions when useful, then write/patch/preview/validate/restore or use typed Lark and CLI Hub tools only when the user intent and observations justify it. Preview Lark writes before sending and set confirm=true only after explicit user approval. Use termux_task_start and cli_hub_task only when exposed as typed helper routes, never raw shell. Do not follow a fixed sequence; call only useful tools, and stop with report_result when done or blocked.',
+          'Agent preset Auto: choose the smallest safe next tool based on the user request and MobileCode observations. Role flow is Planner -> Builder -> Reviewer -> Repair inside one execution lane. You may summarize/list/find/grep/read/detect project type/status/history first, open read-only Sub-Agent Lite explorer/reviewer sessions when useful, then write/patch/preview/validate/restore or use typed Lark and CLI Hub tools only when the user intent and observations justify it. For Phone Use, observe first, use only fresh semantic @e references, and call phone_use_action only to create a short-lived one-shot human approval card; never claim approval, never use coordinates for taps, and use secret_id rather than credential text. Preview Lark writes before sending and set confirm=true only after explicit user approval. Use termux_task_start and cli_hub_task only when exposed as typed helper routes, never raw shell. Do not follow a fixed sequence; call only useful tools, and stop with report_result when done or blocked.',
         AgentPreset.builder =>
           'Agent preset Builder: inspect with project_summary/detect_project_type/find_files/grep_files/read_file/virtual_status when useful, save snapshots or virtual diffs for safety, create or update local artifacts with write_file/copy_file/mkdir/delete_file/move_file/apply_patch, use typed Lark publish and CLI Hub tools only after preview and explicit confirm=true when required, preview and validate HTML/JSON/Markdown when relevant, then report concise evidence. Use termux_task_start and cli_hub_task only when the typed helper route is exposed. If apply_patch is blocked, do not repeat the same malformed patch; read the target and retry a valid unified diff or use complete write_file for a small generated artifact.',
         AgentPreset.researchBuilder =>
@@ -350,6 +352,10 @@ class AgentLoopController {
         return false;
       }
       if (actionRunner.cliHubTaskInvoker == null && name == 'cli_hub_task') {
+        return false;
+      }
+      if (actionRunner.deviceAutomationCoordinator == null &&
+          name.startsWith('phone_use_')) {
         return false;
       }
       return true;

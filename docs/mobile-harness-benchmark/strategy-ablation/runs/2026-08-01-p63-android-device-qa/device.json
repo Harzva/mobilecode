@@ -1,0 +1,13 @@
+{
+  "device_kind": "android_emulator",
+  "serial_hash": "d783c1cb0c9c0984",
+  "manufacturer": "Google",
+  "model": "sdk_gphone64_arm64",
+  "device": "emu64a",
+  "android_release": "16",
+  "api_level": "36",
+  "abi": "arm64-v8a",
+  "screen_size": "Physical size: 720x1280",
+  "screen_density": "Physical density: 320",
+  "raw_serial_included": false
+}

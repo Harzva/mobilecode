@@ -23,9 +23,13 @@ void main() {
         'serviceId': 'com.mobilecode.app/.PhoneUseAccessibilityService',
         'accessibilityEnabled': true,
         'serviceConnected': true,
+        'lifecycleState': 'ready',
         'canObserveActiveWindow': true,
         'canPerformGestures': true,
         'canSetText': true,
+        'canCaptureScreenshot': true,
+        'batteryOptimizationIgnored': true,
+        'backgroundRestricted': false,
         'supportedActions': ['observe_ui', 'tap', 'swipe', 'set_text'],
         'blockedReason': null,
         'eventCount': 7,
@@ -43,6 +47,69 @@ void main() {
     expect(status.countsAsExperiment, isFalse);
     expect(status.rawTextIncluded, isFalse);
     expect(status.eventCount, 7);
+    expect(status.lifecycleState, PhoneUseLifecycleState.ready);
+    expect(status.canCaptureScreenshot, isTrue);
+    expect(status.batteryOptimizationIgnored, isTrue);
+  });
+
+  test('parses semantic snapshot refs and coordinate contract', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      expect(call.method, 'performPhoneUseAction');
+      expect((call.arguments as Map)['action'], {'type': 'semantic_snapshot'});
+      return {
+        'status': 'passed',
+        'snapshot': {
+          'canObserveActiveWindow': true,
+          'frameId': 's7',
+          'refsGeneration': 7,
+          'frameState': 'active',
+          'digest': 'digest-7',
+          'interactiveNodes': [
+            {
+              'ref': '@e1',
+              'role': 'TextField',
+              'label': '[redacted-credential]',
+              'identityHash': 'node-1',
+              'bounds': {'left': 10, 'top': 20, 'right': 200, 'bottom': 80},
+              'actions': ['set_text'],
+              'clickable': true,
+              'editable': true,
+              'enabled': true,
+              'sensitive': true,
+            },
+          ],
+          'nodeCount': 9,
+          'interactiveNodeCount': 1,
+          'truncated': false,
+          'rootPackageNameHash': 'pkg-hash',
+          'rootClassName': 'android.widget.FrameLayout',
+          'coordinateContract': {
+            'sourceSpace': 'accessibility_screen_px',
+            'inputSpace': 'gesture_screen_px',
+            'sourceWidth': 1080,
+            'sourceHeight': 2400,
+            'inputWidth': 1080,
+            'inputHeight': 2400,
+            'scaleX': 1.0,
+            'scaleY': 1.0,
+            'origin': 'top_left',
+          },
+          'screenshotFallbackRecommended': true,
+          'rawTextIncluded': false,
+          'redactionApplied': true,
+        },
+      };
+    });
+
+    final snapshot =
+        await PhoneUseAccessibilityService.instance.captureSemanticSnapshot();
+
+    expect(snapshot?.digest, 'digest-7');
+    expect(snapshot?.nodes.single.pinnedRef(7), '@e1~s7');
+    expect(snapshot?.nodes.single.sensitive, isTrue);
+    expect(snapshot?.coordinateContract?.sourceWidth, 1080);
+    expect(snapshot?.rawTextIncluded, isFalse);
   });
 
   test('runs dry probe and preserves non-counted boundary', () async {
@@ -121,6 +188,39 @@ void main() {
       'openPhoneUseAccessibilitySettings',
       'openAppSettings',
       'openBatteryOptimizationSettings',
+    ]);
+  });
+
+  test('marks recovery and captures a local-only screenshot artifact',
+      () async {
+    final methods = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      methods.add(call.method);
+      if (call.method == 'markPhoneUseRecoveryRequested') {
+        return {'status': 'passed', 'lifecycleState': 'recovering'};
+      }
+      return {
+        'status': 'passed',
+        'artifactId': 'phone-screenshot-1',
+        'artifactKind': 'screenshot',
+        'localOnly': true,
+        'containsPotentiallySensitiveUi': true,
+        'shareableWithoutReview': false,
+      };
+    });
+
+    final recovery =
+        await PhoneUseAccessibilityService.instance.markRecoveryRequested();
+    final screenshot = await PhoneUseAccessibilityService.instance
+        .captureScreenshot(approved: true);
+
+    expect(recovery['lifecycleState'], 'recovering');
+    expect(screenshot['artifactId'], 'phone-screenshot-1');
+    expect(screenshot['localOnly'], isTrue);
+    expect(methods, [
+      'markPhoneUseRecoveryRequested',
+      'capturePhoneUseScreenshot',
     ]);
   });
 

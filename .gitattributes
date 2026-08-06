@@ -1,0 +1,3 @@
+# This legacy source is stored with CRLF line endings. Treat CR as part of the
+# line terminator so semantic changes can still pass Git's whitespace checks.
+mobile_agent/lib/core/evidence/action_runner.dart whitespace=cr-at-eol

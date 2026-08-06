@@ -128,6 +128,7 @@ class MobileCorePolicyDecision {
     required this.contextLength,
     required this.requiresCloudApproval,
     required this.allowCloudPayload,
+    this.resourceConstrained = false,
     this.recommendedModelId,
   });
 
@@ -136,6 +137,7 @@ class MobileCorePolicyDecision {
   final int contextLength;
   final bool requiresCloudApproval;
   final bool allowCloudPayload;
+  final bool resourceConstrained;
   final String? recommendedModelId;
 
   Map<String, Object?> get evidenceMetadata => {
@@ -144,6 +146,7 @@ class MobileCorePolicyDecision {
         'contextLength': contextLength,
         'requiresCloudApproval': requiresCloudApproval,
         'allowCloudPayload': allowCloudPayload,
+        'resourceConstrained': resourceConstrained,
         'recommendedModelId': recommendedModelId,
       };
 }
@@ -158,6 +161,24 @@ class MobileCoreAdaptivePolicy {
     required MobileCoreTaskSignals task,
   }) =>
       mobileCoreSelected || task.forceLocal;
+
+  /// Returns whether a pressure decision should change the active text model.
+  ///
+  /// Attachment work is deliberately excluded: the smallest recommendation
+  /// may not preserve the active image/audio capability. MobileCore remains the
+  /// runtime source of truth for a compatible multimodal pair.
+  static bool shouldSwitchToRecommendedModel({
+    required MobileCorePolicyDecision decision,
+    required String? activeModelId,
+    MobileCoreAttachmentKind? attachmentKind,
+  }) {
+    final recommended = decision.recommendedModelId?.trim() ?? '';
+    return decision.target == MobileCorePolicyTarget.local &&
+        decision.resourceConstrained &&
+        attachmentKind == null &&
+        recommended.isNotEmpty &&
+        recommended != activeModelId;
+  }
 
   static MobileCorePolicyDecision decide({
     required TuimaHealth health,
@@ -189,6 +210,7 @@ class MobileCoreAdaptivePolicy {
         requiresCloudApproval: false,
         // Selected local attachments are never eligible for cloud forwarding.
         allowCloudPayload: false,
+        resourceConstrained: pressured,
         recommendedModelId: recommendation?.modelId,
       );
     }
@@ -204,6 +226,7 @@ class MobileCoreAdaptivePolicy {
         contextLength: constrainedContext,
         requiresCloudApproval: false,
         allowCloudPayload: false,
+        resourceConstrained: pressured,
         recommendedModelId: recommendation?.modelId,
       );
     }
@@ -215,6 +238,7 @@ class MobileCoreAdaptivePolicy {
         contextLength: constrainedContext,
         requiresCloudApproval: false,
         allowCloudPayload: false,
+        resourceConstrained: pressured,
         recommendedModelId: recommendation?.modelId,
       );
     }
@@ -232,6 +256,7 @@ class MobileCoreAdaptivePolicy {
         contextLength: constrainedContext,
         requiresCloudApproval: !cloudApproved,
         allowCloudPayload: cloudApproved,
+        resourceConstrained: pressured,
         recommendedModelId: recommendation?.modelId,
       );
     }
@@ -243,6 +268,7 @@ class MobileCoreAdaptivePolicy {
         contextLength: constrainedContext,
         requiresCloudApproval: false,
         allowCloudPayload: false,
+        resourceConstrained: pressured,
         recommendedModelId: recommendation?.modelId,
       );
     }
@@ -256,6 +282,7 @@ class MobileCoreAdaptivePolicy {
       contextLength: constrainedContext,
       requiresCloudApproval: cloudAvailable && !cloudApproved,
       allowCloudPayload: cloudAvailable && cloudApproved,
+      resourceConstrained: pressured,
       recommendedModelId: recommendation?.modelId,
     );
   }

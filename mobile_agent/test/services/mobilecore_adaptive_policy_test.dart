@@ -134,7 +134,52 @@ void main() {
 
     expect(decision.reason, MobileCorePolicyReason.thermalOrMemoryPressure);
     expect(decision.contextLength, 2048);
+    expect(decision.resourceConstrained, isTrue);
     expect(decision.recommendedModelId, 'small-q4');
+  });
+
+  test('private offline work still switches to the safe model under pressure',
+      () {
+    final decision = MobileCoreAdaptivePolicy.decideForTask(
+      health: _health(activeModel: 'large-q4'),
+      recommendations: _recommendations(),
+      telemetry: _telemetry(thermalStatus: 5),
+      task: const MobileCoreTaskSignals(
+        privacySensitive: true,
+        offline: true,
+      ),
+    );
+
+    expect(decision.reason, MobileCorePolicyReason.privacyRequiresLocal);
+    expect(decision.contextLength, 2048);
+    expect(decision.resourceConstrained, isTrue);
+    expect(
+      MobileCoreAdaptivePolicy.shouldSwitchToRecommendedModel(
+        decision: decision,
+        activeModelId: 'large-q4',
+      ),
+      isTrue,
+    );
+  });
+
+  test('pressure never auto-switches a multimodal attachment to a text model',
+      () {
+    final decision = MobileCoreAdaptivePolicy.decide(
+      health: _health(activeModel: 'omni-q4'),
+      recommendations: _recommendations(),
+      telemetry: _telemetry(thermalStatus: 5),
+      attachmentKind: MobileCoreAttachmentKind.image,
+    );
+
+    expect(decision.resourceConstrained, isTrue);
+    expect(
+      MobileCoreAdaptivePolicy.shouldSwitchToRecommendedModel(
+        decision: decision,
+        activeModelId: 'omni-q4',
+        attachmentKind: MobileCoreAttachmentKind.image,
+      ),
+      isFalse,
+    );
   });
 
   test('complex work needs explicit approval before cloud routing', () {
@@ -162,12 +207,13 @@ void main() {
   });
 }
 
-TuimaHealth _health({bool image = true}) => TuimaHealth(
+TuimaHealth _health({bool image = true, String activeModel = 'small-q4'}) =>
+    TuimaHealth(
       state: TuimaConnectionState.modelReady,
       version: '0.1.3-rc2',
       backend: 'cpu',
       runtime: 'llama.cpp/libmtmd',
-      activeModel: 'small-q4',
+      activeModel: activeModel,
       quantization: 'Q4_K_M',
       capabilities: MobileCoreCapabilities(
         textInput: true,

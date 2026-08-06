@@ -14401,9 +14401,11 @@ class _ChatPanelState extends State<_ChatPanel> {
       attachmentKind: attachment?.kind,
     );
     var currentHealth = health;
-    if (decision.reason == MobileCorePolicyReason.thermalOrMemoryPressure &&
-        decision.recommendedModelId != null &&
-        decision.recommendedModelId != health.activeModel) {
+    if (MobileCoreAdaptivePolicy.shouldSwitchToRecommendedModel(
+      decision: decision,
+      activeModelId: health.activeModel,
+      attachmentKind: attachment?.kind,
+    )) {
       currentHealth = await _tuimaProviderService.loadModel(
         decision.recommendedModelId!,
         contextLength: decision.contextLength,

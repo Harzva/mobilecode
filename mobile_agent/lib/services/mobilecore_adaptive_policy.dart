@@ -16,6 +16,111 @@ enum MobileCorePolicyReason {
   noProviderAvailable,
 }
 
+class MobileCoreTaskSignals {
+  const MobileCoreTaskSignals({
+    this.privacySensitive = false,
+    this.offline = false,
+    this.complexTask = false,
+    this.cloudAvailable = false,
+    this.cloudApproved = false,
+  });
+
+  final bool privacySensitive;
+  final bool offline;
+  final bool complexTask;
+  final bool cloudAvailable;
+  final bool cloudApproved;
+
+  bool get forceLocal => privacySensitive || offline;
+
+  Map<String, Object> get evidenceMetadata => {
+        'privacySensitive': privacySensitive,
+        'offline': offline,
+        'complexTask': complexTask,
+        'cloudAvailable': cloudAvailable,
+        'cloudApproved': cloudApproved,
+        'forceLocal': forceLocal,
+        'redaction': 'request_text_omitted',
+      };
+
+  MobileCoreTaskSignals copyWith({
+    bool? privacySensitive,
+    bool? offline,
+    bool? complexTask,
+    bool? cloudAvailable,
+    bool? cloudApproved,
+  }) =>
+      MobileCoreTaskSignals(
+        privacySensitive: privacySensitive ?? this.privacySensitive,
+        offline: offline ?? this.offline,
+        complexTask: complexTask ?? this.complexTask,
+        cloudAvailable: cloudAvailable ?? this.cloudAvailable,
+        cloudApproved: cloudApproved ?? this.cloudApproved,
+      );
+
+  static MobileCoreTaskSignals classify({
+    required String userText,
+    required bool offline,
+    required bool agentTask,
+    required int inputCharacters,
+    required int maxTokens,
+    required bool cloudAvailable,
+    required bool cloudApproved,
+    bool explicitlySensitive = false,
+  }) {
+    final probe = userText.toLowerCase();
+    final privacySensitive = explicitlySensitive ||
+        _privacyMarkers.any((marker) => probe.contains(marker));
+    final complexTask = agentTask ||
+        inputCharacters >= 12000 ||
+        maxTokens >= 3072 ||
+        _complexMarkers.any((marker) => probe.contains(marker));
+    return MobileCoreTaskSignals(
+      privacySensitive: privacySensitive,
+      offline: offline,
+      complexTask: complexTask,
+      cloudAvailable: cloudAvailable,
+      cloudApproved: cloudApproved,
+    );
+  }
+
+  static const _privacyMarkers = <String>[
+    'secret_id',
+    'sensitive_flow',
+    'credential slot',
+    'credential_slot',
+    'login',
+    'log in',
+    'sign in',
+    '登录',
+    'password',
+    '密码',
+    'one-time code',
+    'verification code',
+    '验证码',
+    'otp',
+    'cookie',
+    '银行卡',
+    'bank card',
+    'payment',
+    '付款',
+    'place order',
+    '下单',
+    '支付口令',
+  ];
+
+  static const _complexMarkers = <String>[
+    '多文件',
+    '重构',
+    '架构',
+    '长文本',
+    '复杂推理',
+    'refactor',
+    'architecture',
+    'long context',
+  ];
+}
+
 class MobileCorePolicyDecision {
   const MobileCorePolicyDecision({
     required this.target,
@@ -47,6 +152,12 @@ class MobileCorePolicyDecision {
 /// routing, approval, and device-action authority.
 class MobileCoreAdaptivePolicy {
   const MobileCoreAdaptivePolicy._();
+
+  static bool shouldUseMobileCore({
+    required bool mobileCoreSelected,
+    required MobileCoreTaskSignals task,
+  }) =>
+      mobileCoreSelected || task.forceLocal;
 
   static MobileCorePolicyDecision decide({
     required TuimaHealth health,
@@ -148,6 +259,25 @@ class MobileCoreAdaptivePolicy {
       recommendedModelId: recommendation?.modelId,
     );
   }
+
+  static MobileCorePolicyDecision decideForTask({
+    required TuimaHealth health,
+    required MobileCoreRecommendations recommendations,
+    required DeviceTelemetrySnapshot telemetry,
+    required MobileCoreTaskSignals task,
+    MobileCoreAttachmentKind? attachmentKind,
+  }) =>
+      decide(
+        health: health,
+        recommendations: recommendations,
+        telemetry: telemetry,
+        privacySensitive: task.privacySensitive,
+        offline: task.offline,
+        complexTask: task.complexTask,
+        cloudAvailable: task.cloudAvailable,
+        cloudApproved: task.cloudApproved,
+        attachmentKind: attachmentKind,
+      );
 
   static bool _isPressured(
     TuimaHealth health,

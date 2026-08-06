@@ -4,6 +4,96 @@ import 'package:mobile_agent/services/mobilecore_adaptive_policy.dart';
 import 'package:mobile_agent/services/tuima_provider_service.dart';
 
 void main() {
+  test('request classification keeps sensitive text local without evidence',
+      () {
+    final signals = MobileCoreTaskSignals.classify(
+      userText: 'Use secret_id account_primary for this login.',
+      offline: false,
+      agentTask: false,
+      inputCharacters: 48,
+      maxTokens: 512,
+      cloudAvailable: true,
+      cloudApproved: true,
+    );
+
+    expect(signals.privacySensitive, isTrue);
+    expect(signals.forceLocal, isTrue);
+    expect(signals.evidenceMetadata.toString(),
+        isNot(contains('account_primary')));
+    expect(signals.evidenceMetadata['redaction'], 'request_text_omitted');
+  });
+
+  test('detected offline state forces local before another cloud request', () {
+    final signals = MobileCoreTaskSignals.classify(
+      userText: 'Continue the task.',
+      offline: true,
+      agentTask: false,
+      inputCharacters: 20,
+      maxTokens: 512,
+      cloudAvailable: true,
+      cloudApproved: true,
+    );
+
+    expect(signals.offline, isTrue);
+    expect(signals.forceLocal, isTrue);
+    expect(
+      MobileCoreAdaptivePolicy.shouldUseMobileCore(
+        mobileCoreSelected: false,
+        task: signals,
+      ),
+      isTrue,
+    );
+  });
+
+  test('agent and long-context requests are classified as complex', () {
+    final agent = MobileCoreTaskSignals.classify(
+      userText: 'Implement the task.',
+      offline: false,
+      agentTask: true,
+      inputCharacters: 100,
+      maxTokens: 512,
+      cloudAvailable: true,
+      cloudApproved: true,
+    );
+    final longContext = MobileCoreTaskSignals.classify(
+      userText: 'Review this context.',
+      offline: false,
+      agentTask: false,
+      inputCharacters: 12000,
+      maxTokens: 512,
+      cloudAvailable: true,
+      cloudApproved: true,
+    );
+
+    expect(agent.complexTask, isTrue);
+    expect(longContext.complexTask, isTrue);
+    expect(agent.forceLocal, isFalse);
+    expect(
+      MobileCoreAdaptivePolicy.shouldUseMobileCore(
+        mobileCoreSelected: false,
+        task: agent,
+      ),
+      isFalse,
+    );
+  });
+
+  test('task-aware decision preserves privacy over cloud approval', () {
+    final decision = MobileCoreAdaptivePolicy.decideForTask(
+      health: _health(),
+      recommendations: _recommendations(),
+      telemetry: _telemetry(),
+      task: const MobileCoreTaskSignals(
+        privacySensitive: true,
+        cloudAvailable: true,
+        cloudApproved: true,
+      ),
+    );
+
+    expect(decision.target, MobileCorePolicyTarget.local);
+    expect(decision.reason, MobileCorePolicyReason.privacyRequiresLocal);
+    expect(decision.allowCloudPayload, isFalse);
+  });
+
   test('privacy and offline tasks never become cloud payloads', () {
     final decision = MobileCoreAdaptivePolicy.decide(
       health: _health(),

@@ -14363,6 +14363,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   Future<_MobileCoreRuntimeDecision> _applyMobileCoreAdaptivePolicy(
     TuimaHealth health, {
     MobileCoreAttachment? attachment,
+    MobileCoreTaskSignals taskSignals = const MobileCoreTaskSignals(),
   }) async {
     final results = await Future.wait<Object?>([
       DeviceTelemetryService.instance.getLatestSnapshot(),
@@ -14372,10 +14373,11 @@ class _ChatPanelState extends State<_ChatPanel> {
     ]);
     final telemetry = results[0] as DeviceTelemetrySnapshot;
     final recommendations = results[1] as MobileCoreRecommendations;
-    var decision = MobileCoreAdaptivePolicy.decide(
+    var decision = MobileCoreAdaptivePolicy.decideForTask(
       health: health,
       recommendations: recommendations,
       telemetry: telemetry,
+      task: taskSignals,
       attachmentKind: attachment?.kind,
     );
     var currentHealth = health;
@@ -14386,10 +14388,11 @@ class _ChatPanelState extends State<_ChatPanel> {
         decision.recommendedModelId!,
         contextLength: decision.contextLength,
       );
-      decision = MobileCoreAdaptivePolicy.decide(
+      decision = MobileCoreAdaptivePolicy.decideForTask(
         health: currentHealth,
         recommendations: recommendations,
         telemetry: telemetry,
+        task: taskSignals,
         attachmentKind: attachment?.kind,
       );
     }
@@ -15156,6 +15159,26 @@ class _ChatPanelState extends State<_ChatPanel> {
         .set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
   }
 
+  MobileCoreTaskSignals _mobileCoreTaskSignals(
+    List<_ChatTurn> history, {
+    required String systemPrompt,
+    required int maxTokens,
+    required ModelRouteEndpoint endpoint,
+  }) {
+    final cloudSelected = widget.providerPreset != _ProviderPreset.tuimaLocal;
+    return MobileCoreTaskSignals.classify(
+      userText: _routeUserText(history),
+      offline: _offlineFallbackActive,
+      agentTask: endpoint != ModelRouteEndpoint.chat,
+      inputCharacters: _tokenInputChars(history, systemPrompt),
+      maxTokens: maxTokens,
+      cloudAvailable: cloudSelected,
+      // Selecting and configuring a cloud provider is the explicit approval
+      // boundary. MobileCode never switches a TuiMa-only request to cloud.
+      cloudApproved: cloudSelected,
+    );
+  }
+
   Future<String> _callProvider(
     List<_ChatTurn> history, {
     required String systemPrompt,
@@ -15166,9 +15189,22 @@ class _ChatPanelState extends State<_ChatPanel> {
     ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
     void Function(ModelRouteDecision decision)? onRoute,
   }) async {
-    if (widget.providerPreset == _ProviderPreset.tuimaLocal) {
+    final taskSignals = _mobileCoreTaskSignals(
+      history,
+      systemPrompt: systemPrompt,
+      maxTokens: maxTokens,
+      endpoint: endpoint,
+    );
+    final routeToMobileCore = MobileCoreAdaptivePolicy.shouldUseMobileCore(
+      mobileCoreSelected: widget.providerPreset == _ProviderPreset.tuimaLocal,
+      task: taskSignals,
+    );
+    if (routeToMobileCore) {
       final readyHealth = await _requireTuimaReady();
-      final runtimeDecision = await _applyMobileCoreAdaptivePolicy(readyHealth);
+      final runtimeDecision = await _applyMobileCoreAdaptivePolicy(
+        readyHealth,
+        taskSignals: taskSignals,
+      );
       final health = runtimeDecision.health;
       final decision = _tuimaRouteDecision(
         endpoint: endpoint,
@@ -15309,8 +15345,10 @@ class _ChatPanelState extends State<_ChatPanel> {
           emittedCloudText: false,
         )) {
           final readyHealth = await _requireTuimaReady();
-          final runtimeDecision =
-              await _applyMobileCoreAdaptivePolicy(readyHealth);
+          final runtimeDecision = await _applyMobileCoreAdaptivePolicy(
+            readyHealth,
+            taskSignals: taskSignals.copyWith(offline: true),
+          );
           final health = runtimeDecision.health;
           final localDecision = _tuimaRouteDecision(
             endpoint: endpoint,
@@ -15377,18 +15415,28 @@ class _ChatPanelState extends State<_ChatPanel> {
     void Function(ModelRouteDecision decision)? onRoute,
     MobileCoreAttachment? localAttachment,
   }) async* {
-    if (localAttachment != null &&
-        widget.providerPreset != _ProviderPreset.tuimaLocal) {
+    final taskSignals = _mobileCoreTaskSignals(
+      history,
+      systemPrompt: systemPrompt,
+      maxTokens: maxTokens,
+      endpoint: endpoint,
+    );
+    final routeToMobileCore = MobileCoreAdaptivePolicy.shouldUseMobileCore(
+      mobileCoreSelected: widget.providerPreset == _ProviderPreset.tuimaLocal,
+      task: taskSignals,
+    );
+    if (localAttachment != null && !routeToMobileCore) {
       throw const MobileCoreProviderException(
         code: 'local_only_media',
         message: 'Local media is never forwarded to a cloud provider.',
       );
     }
-    if (widget.providerPreset == _ProviderPreset.tuimaLocal) {
+    if (routeToMobileCore) {
       final readyHealth = await _requireTuimaReady();
       final runtimeDecision = await _applyMobileCoreAdaptivePolicy(
         readyHealth,
         attachment: localAttachment,
+        taskSignals: taskSignals,
       );
       final health = runtimeDecision.health;
       if (localAttachment != null &&
@@ -15581,8 +15629,10 @@ class _ChatPanelState extends State<_ChatPanel> {
           emittedCloudText: emittedText,
         )) {
           final readyHealth = await _requireTuimaReady();
-          final runtimeDecision =
-              await _applyMobileCoreAdaptivePolicy(readyHealth);
+          final runtimeDecision = await _applyMobileCoreAdaptivePolicy(
+            readyHealth,
+            taskSignals: taskSignals.copyWith(offline: true),
+          );
           final health = runtimeDecision.health;
           final localDecision = _tuimaRouteDecision(
             endpoint: endpoint,

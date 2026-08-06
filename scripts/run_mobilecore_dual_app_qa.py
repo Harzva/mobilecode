@@ -15,7 +15,9 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -47,6 +49,7 @@ CROSS_APP_AUDIO_TEST = (
     "com.mobilecode.app.MobileCoreCrossAppQaTest#"
     "controlledLocalAudioQualityTasks"
 )
+BACKGROUND_APP_OPS = ("RUN_IN_BACKGROUND", "RUN_ANY_IN_BACKGROUND")
 
 _SENSITIVE_SNAPSHOT_KEYS = {
     "absolute_path",
@@ -105,6 +108,48 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def normalize_certificate_sha256(value: str) -> str:
+    normalized = re.sub(r"[^0-9a-f]", "", value.lower())
+    if len(normalized) != 64:
+        raise ValueError("certificate SHA-256 must contain exactly 64 hex digits")
+    return normalized
+
+
+def parse_apksigner_certificate_sha256(raw: str) -> str | None:
+    match = re.search(
+        r"Signer #1 certificate SHA-256 digest:\s*([0-9a-f:]+)",
+        raw,
+        re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    try:
+        return normalize_certificate_sha256(match.group(1))
+    except ValueError:
+        return None
+
+
+def resolve_apksigner(command: str) -> str | None:
+    explicit = Path(command).expanduser()
+    if explicit.is_file():
+        return str(explicit)
+    discovered = shutil.which(command)
+    if discovered is not None:
+        return discovered
+    for variable in ("ANDROID_HOME", "ANDROID_SDK_ROOT"):
+        root_value = os.environ.get(variable)
+        if not root_value:
+            continue
+        build_tools = Path(root_value).expanduser() / "build-tools"
+        if not build_tools.is_dir():
+            continue
+        for version in sorted(build_tools.iterdir(), reverse=True):
+            candidate = version / "apksigner"
+            if candidate.is_file():
+                return str(candidate)
+    return None
 
 
 def sanitize_evidence_value(value: object) -> object:
@@ -177,6 +222,21 @@ def parse_thermal_service(raw: str) -> tuple[int | None, float | None, int | Non
     return service_status, max_temperature, max_sensor_status
 
 
+def parse_app_op_mode(raw: str, operation: str) -> str | None:
+    """Return one public Android app-op mode without retaining raw dumps."""
+    for line in raw.splitlines():
+        if operation.lower() not in line.lower():
+            continue
+        match = re.search(
+            r":\s*(allow|ignore|deny|foreground|default)\b",
+            line,
+            re.IGNORECASE,
+        )
+        if match is not None:
+            return match.group(1).lower()
+    return None
+
+
 def instrumentation_succeeded(
     *,
     returncode: int,
@@ -211,6 +271,24 @@ class QaRunner:
         self.thermal_summary: dict[str, object] = {
             "status": "not_run",
             "required": args.require_thermal,
+        }
+        self.background_recovery_summary: dict[str, object] = {
+            "status": "not_run",
+            "required": bool(
+                getattr(args, "require_background_recovery", False)
+            ),
+        }
+        signing_required = any(
+            getattr(args, name, None)
+            for name in (
+                "expected_mobilecore_cert_sha256",
+                "expected_mobilecode_cert_sha256",
+                "expected_mobilecode_test_cert_sha256",
+            )
+        )
+        self.apk_signing_summary: dict[str, object] = {
+            "status": "not_run",
+            "required": signing_required,
         }
 
     def run(
@@ -374,6 +452,17 @@ class QaRunner:
             time.sleep(1)
         raise RuntimeError(f"MobileCore health timeout ({last_error})")
 
+    def wait_for_health_unavailable(self, *, timeout: int = 20) -> bool:
+        """Confirm the loopback service stopped without persisting response data."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                self.api("GET", "/health", timeout=2)
+            except (OSError, ValueError, urllib.error.URLError):
+                return True
+            time.sleep(0.5)
+        return False
+
     def dump_ui(self) -> ET.Element:
         self.adb(
             "dump_mobilecore_ui",
@@ -475,7 +564,79 @@ class QaRunner:
                 "Physical-device acceptance was requested, but Android properties identify a non-physical target"
             )
 
+    def inspect_apk_signatures(self) -> None:
+        inputs = (
+            (
+                "mobilecore",
+                self.args.mobilecore_apk,
+                getattr(self.args, "expected_mobilecore_cert_sha256", None),
+            ),
+            (
+                "mobilecode",
+                self.args.mobilecode_apk,
+                getattr(self.args, "expected_mobilecode_cert_sha256", None),
+            ),
+            (
+                "mobilecodeTest",
+                self.args.mobilecode_test_apk,
+                getattr(self.args, "expected_mobilecode_test_cert_sha256", None),
+            ),
+        )
+        if not any(expected for _, _, expected in inputs):
+            self.apk_signing_summary = {
+                "status": "not_required",
+                "required": False,
+            }
+            return
+
+        results: dict[str, object] = {}
+        all_matched = True
+        for label, path, expected in inputs:
+            normalized_expected = (
+                normalize_certificate_sha256(expected)
+                if expected is not None
+                else None
+            )
+            result = self.run(
+                f"verify_{label.lower()}_apk_signature",
+                [
+                    self.args.apksigner,
+                    "verify",
+                    "--verbose",
+                    "--print-certs",
+                    str(path),
+                ],
+                timeout=60,
+                required=False,
+            )
+            observed = parse_apksigner_certificate_sha256(
+                result.stdout.decode("utf-8", "replace")
+            )
+            matched = (
+                result.returncode == 0
+                and observed is not None
+                and normalized_expected is not None
+                and observed == normalized_expected
+            )
+            all_matched = all_matched and matched
+            results[label] = {
+                "certificateSha256": observed,
+                "matchedExpected": matched,
+            }
+
+        self.apk_signing_summary = {
+            "status": "passed" if all_matched else "failed",
+            "required": True,
+            "artifacts": results,
+        }
+        self.snapshot("apk_signing_summary", self.apk_signing_summary)
+        if not all_matched:
+            raise RuntimeError(
+                "APK signing identity did not match the pinned physical-QA certificate"
+            )
+
     def install_and_prepare(self) -> None:
+        self.inspect_apk_signatures()
         self.adb("wait_for_device", "wait-for-device")
         self.inspect_device_environment()
         for name, path in (
@@ -720,6 +881,204 @@ class QaRunner:
         restarted = self.wait_for_health(require_model=True, timeout=self.args.ready_timeout)
         self.snapshot("health_after_process_restart", restarted)
 
+    def exercise_background_recovery(self) -> None:
+        required = bool(
+            getattr(self.args, "require_background_recovery", False)
+        )
+        if not required:
+            return
+        started = time.monotonic()
+
+        original_modes: dict[str, str | None] = {}
+        restriction_commands_ok = True
+        restriction_observed = False
+        service_unavailable = False
+        recovery_ready = False
+        app_ops_restored = False
+
+        for operation in BACKGROUND_APP_OPS:
+            result = self.adb(
+                f"read_{operation.lower()}_before_restriction",
+                "shell",
+                "cmd",
+                "appops",
+                "get",
+                MOBILECORE_PACKAGE,
+                operation,
+                required=False,
+            )
+            original_modes[operation] = parse_app_op_mode(
+                result.stdout.decode("utf-8", "replace"),
+                operation,
+            )
+
+        try:
+            for operation in BACKGROUND_APP_OPS:
+                result = self.adb(
+                    f"restrict_{operation.lower()}",
+                    "shell",
+                    "cmd",
+                    "appops",
+                    "set",
+                    MOBILECORE_PACKAGE,
+                    operation,
+                    "ignore",
+                    required=False,
+                )
+                restriction_commands_ok = (
+                    restriction_commands_ok and result.returncode == 0
+                )
+
+            observed_modes: list[str | None] = []
+            for operation in BACKGROUND_APP_OPS:
+                result = self.adb(
+                    f"read_{operation.lower()}_while_restricted",
+                    "shell",
+                    "cmd",
+                    "appops",
+                    "get",
+                    MOBILECORE_PACKAGE,
+                    operation,
+                    required=False,
+                )
+                observed_modes.append(
+                    parse_app_op_mode(
+                        result.stdout.decode("utf-8", "replace"),
+                        operation,
+                    )
+                )
+            restriction_observed = (
+                restriction_commands_ok
+                and bool(observed_modes)
+                and all(mode == "ignore" for mode in observed_modes)
+            )
+
+            if restriction_observed:
+                self.adb(
+                    "show_mobilecode_while_mobilecore_restricted",
+                    "shell",
+                    "am",
+                    "start",
+                    "-W",
+                    "-n",
+                    MOBILECODE_ACTIVITY,
+                )
+                self.adb(
+                    "stop_mobilecore_while_background_restricted",
+                    "shell",
+                    "am",
+                    "force-stop",
+                    MOBILECORE_PACKAGE,
+                )
+                service_unavailable = self.wait_for_health_unavailable()
+        finally:
+            restore_commands_ok = True
+            for operation in BACKGROUND_APP_OPS:
+                restore_mode = original_modes[operation] or "default"
+                result = self.adb(
+                    f"restore_{operation.lower()}",
+                    "shell",
+                    "cmd",
+                    "appops",
+                    "set",
+                    MOBILECORE_PACKAGE,
+                    operation,
+                    restore_mode,
+                    required=False,
+                )
+                restore_commands_ok = (
+                    restore_commands_ok and result.returncode == 0
+                )
+
+            restored_modes: list[str | None] = []
+            for operation in BACKGROUND_APP_OPS:
+                result = self.adb(
+                    f"read_{operation.lower()}_after_restore",
+                    "shell",
+                    "cmd",
+                    "appops",
+                    "get",
+                    MOBILECORE_PACKAGE,
+                    operation,
+                    required=False,
+                )
+                restored_modes.append(
+                    parse_app_op_mode(
+                        result.stdout.decode("utf-8", "replace"),
+                        operation,
+                    )
+                )
+            app_ops_restored = restore_commands_ok and all(
+                (
+                    restored_mode != "ignore"
+                    if original_modes[operation] is None
+                    else restored_mode == original_modes[operation]
+                )
+                for operation, restored_mode in zip(
+                    BACKGROUND_APP_OPS,
+                    restored_modes,
+                )
+            )
+
+        if service_unavailable and app_ops_restored:
+            try:
+                # Recovery is deliberately a visible foreground action. The
+                # production app never edits app-ops or secure settings.
+                self.tap_mobilecore_load()
+                recovered = self.wait_for_health(
+                    require_model=True,
+                    timeout=self.args.ready_timeout,
+                )
+                recovery_ready = recovered.get("model_loaded") is True
+            except (OSError, RuntimeError, ValueError, urllib.error.URLError):
+                recovery_ready = False
+
+        passed = all(
+            (
+                restriction_commands_ok,
+                restriction_observed,
+                service_unavailable,
+                app_ops_restored,
+                recovery_ready,
+            )
+        )
+        self.background_recovery_summary = {
+            "status": "passed" if passed else "failed",
+            "required": required,
+            "restrictionCommandsAccepted": restriction_commands_ok,
+            "backgroundRestrictionObserved": restriction_observed,
+            "serviceUnavailableWhileRestricted": service_unavailable,
+            "appOpsRestored": app_ops_restored,
+            "recoveryAction": "visible_mobilecore_foreground_start",
+            "modelReadyAfterRecovery": recovery_ready,
+            "productionSettingsMutation": False,
+        }
+        self.snapshot(
+            "background_recovery_summary",
+            self.background_recovery_summary,
+        )
+        self.steps.append(
+            Step(
+                name="background_restricted_recovery",
+                status="passed" if passed else "failed",
+                duration_ms=round((time.monotonic() - started) * 1000),
+                result_digest=sha256_bytes(
+                    json.dumps(
+                        self.background_recovery_summary,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                ),
+                failure_kind=None
+                if passed
+                else "background_recovery_failed",
+            )
+        )
+        if not passed:
+            raise RuntimeError(
+                "Required background-restriction recovery did not complete"
+            )
+
     def _capture_pressure_sample(self, elapsed_seconds: int) -> dict[str, object]:
         def capture(*arguments: str) -> str:
             try:
@@ -940,7 +1299,9 @@ class QaRunner:
                 "required": self.args.require_model_switch,
                 "status": self.model_switch_status,
             },
+            "apk_signing": self.apk_signing_summary,
             "multimodal": self.multimodal_summary,
+            "background_recovery": self.background_recovery_summary,
             "thermal_workload": self.thermal_summary,
             "redaction": "raw_prompts_media_credentials_and_host_paths_omitted",
             "apks": {
@@ -976,6 +1337,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--serial", required=True)
     parser.add_argument("--adb", default="adb")
+    parser.add_argument("--apksigner", default="apksigner")
     parser.add_argument(
         "--mobilecore-apk",
         type=Path,
@@ -992,6 +1354,9 @@ def parse_args() -> argparse.Namespace:
         default=repository / "mobile_agent/build/app/outputs/apk/androidTest/pure/debug/app-pure-debug-androidTest.apk",
     )
     parser.add_argument("--model-file", type=Path)
+    parser.add_argument("--expected-mobilecore-cert-sha256")
+    parser.add_argument("--expected-mobilecode-cert-sha256")
+    parser.add_argument("--expected-mobilecode-test-cert-sha256")
     parser.add_argument(
         "--require-model-switch",
         action="store_true",
@@ -1018,6 +1383,14 @@ def parse_args() -> argparse.Namespace:
         help="Fail before installation when Android properties identify an emulator.",
     )
     parser.add_argument(
+        "--require-background-recovery",
+        action="store_true",
+        help=(
+            "Require host-controlled Android background restriction, service "
+            "interruption, app-op restoration, and visible foreground recovery."
+        ),
+    )
+    parser.add_argument(
         "--require-thermal",
         action="store_true",
         help="Require a successful sustained local inference workload with thermal telemetry.",
@@ -1037,6 +1410,35 @@ def parse_args() -> argparse.Namespace:
             parser.error(f"{label.replace('_', '-')} not found: {path}")
     if args.model_file is not None and not args.model_file.is_file():
         parser.error(f"model-file not found: {args.model_file}")
+    fingerprint_names = (
+        "expected_mobilecore_cert_sha256",
+        "expected_mobilecode_cert_sha256",
+        "expected_mobilecode_test_cert_sha256",
+    )
+    for name in fingerprint_names:
+        value = getattr(args, name)
+        if value is None:
+            continue
+        try:
+            setattr(args, name, normalize_certificate_sha256(value))
+        except ValueError as error:
+            parser.error(f"{name.replace('_', '-')}: {error}")
+    provided_fingerprints = [getattr(args, name) for name in fingerprint_names]
+    if any(provided_fingerprints) and not all(provided_fingerprints):
+        parser.error(
+            "APK certificate pinning requires all three expected SHA-256 values"
+        )
+    if args.require_physical_device and not all(
+        provided_fingerprints
+    ):
+        parser.error(
+            "--require-physical-device requires all three expected APK certificate SHA-256 values"
+        )
+    if any(getattr(args, name) for name in fingerprint_names):
+        resolved_apksigner = resolve_apksigner(args.apksigner)
+        if resolved_apksigner is None:
+            parser.error("apksigner was not found; pass --apksigner or set ANDROID_HOME")
+        args.apksigner = resolved_apksigner
     if args.thermal_duration_seconds < 0:
         parser.error("thermal-duration-seconds must be >= 0")
     if not 1 <= args.thermal_sample_seconds <= 60:
@@ -1049,6 +1451,10 @@ def parse_args() -> argparse.Namespace:
         parser.error("--require-thermal requires --thermal-duration-seconds > 0")
     if args.require_physical_device and not args.require_thermal:
         parser.error("--require-physical-device requires --require-thermal")
+    if args.require_physical_device and not args.require_background_recovery:
+        parser.error(
+            "--require-physical-device requires --require-background-recovery"
+        )
     return args
 
 
@@ -1059,6 +1465,7 @@ def main() -> int:
         runner.install_and_prepare()
         runner.run_cross_app_tasks()
         runner.exercise_lifecycle()
+        runner.exercise_background_recovery()
         runner.exercise_thermal_workload()
         runner.capture_artifacts()
         runner.write_manifest(status="passed")

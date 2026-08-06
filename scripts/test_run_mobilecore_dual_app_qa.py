@@ -72,6 +72,35 @@ Temperature{mValue=42.25, mType=3, mName=skin, mStatus=2}
         self.assertEqual(qa.parse_battery_temperature_c(battery), 38.7)
         self.assertEqual(qa.parse_thermal_service(thermal), (2, 42.25, 2))
 
+    def test_app_op_parser_returns_only_public_mode(self) -> None:
+        raw = """
+RUN_IN_BACKGROUND: allow; time=+10s ago
+RUN_ANY_IN_BACKGROUND: ignore
+"""
+        self.assertEqual(
+            qa.parse_app_op_mode(raw, "RUN_IN_BACKGROUND"),
+            "allow",
+        )
+        self.assertEqual(
+            qa.parse_app_op_mode(raw, "RUN_ANY_IN_BACKGROUND"),
+            "ignore",
+        )
+        self.assertIsNone(qa.parse_app_op_mode("No operations.", "RUN_IN_BACKGROUND"))
+
+    def test_apksigner_parser_normalizes_public_certificate_fingerprint(self) -> None:
+        fingerprint = "ab" * 32
+        raw = f"Signer #1 certificate SHA-256 digest: {fingerprint}\n"
+        self.assertEqual(
+            qa.parse_apksigner_certificate_sha256(raw),
+            fingerprint,
+        )
+        self.assertEqual(
+            qa.normalize_certificate_sha256(":".join(["ab"] * 32)),
+            fingerprint,
+        )
+        with self.assertRaises(ValueError):
+            qa.normalize_certificate_sha256("too-short")
+
     def test_instrumentation_result_parser_rejects_junit_failure_with_zero_exit(self) -> None:
         failed = b"""
 INSTRUMENTATION_STATUS_CODE: -2
@@ -269,6 +298,90 @@ INSTRUMENTATION_CODE: -1
         )
         self.assertNotIn("Controlled sustained local QA", raw)
         self.assertNotIn("model-public-id", raw)
+
+    def test_background_recovery_restores_app_ops_and_requires_visible_recovery(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            args = argparse.Namespace(
+                output_dir=Path(directory),
+                forward_port=18080,
+                require_thermal=False,
+                require_background_recovery=True,
+                ready_timeout=30,
+            )
+            runner = qa.QaRunner(args)
+            modes = {operation: "allow" for operation in qa.BACKGROUND_APP_OPS}
+            calls: list[str] = []
+
+            def adb(name, *arguments, **_kwargs):
+                calls.append(name)
+                if "appops" in arguments and "get" in arguments:
+                    operation = arguments[-1]
+                    stdout = f"{operation}: {modes[operation]}\n".encode()
+                    return subprocess.CompletedProcess([], 0, stdout, b"")
+                if "appops" in arguments and "set" in arguments:
+                    operation = arguments[-2]
+                    modes[operation] = arguments[-1]
+                return subprocess.CompletedProcess([], 0, b"", b"")
+
+            runner.adb = adb
+            runner.wait_for_health_unavailable = lambda **_: True
+            runner.tap_mobilecore_load = lambda: calls.append(
+                "visible_mobilecore_foreground_start"
+            )
+            runner.wait_for_health = lambda **_: {"model_loaded": True}
+
+            runner.exercise_background_recovery()
+            raw = (Path(directory) / "background_recovery_summary.json").read_text()
+
+        self.assertEqual(runner.background_recovery_summary["status"], "passed")
+        self.assertTrue(runner.background_recovery_summary["appOpsRestored"])
+        self.assertTrue(runner.background_recovery_summary["modelReadyAfterRecovery"])
+        self.assertEqual(
+            modes,
+            {operation: "allow" for operation in qa.BACKGROUND_APP_OPS},
+        )
+        self.assertIn("visible_mobilecore_foreground_start", calls)
+        self.assertNotIn("com.mobilecore.app", raw)
+
+    def test_apk_signature_gate_pins_every_physical_qa_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            apks = []
+            for name in ("core.apk", "code.apk", "code-test.apk"):
+                path = root / name
+                path.write_bytes(name.encode())
+                apks.append(path)
+            fingerprint = "12" * 32
+            args = argparse.Namespace(
+                output_dir=root / "evidence",
+                forward_port=18080,
+                require_thermal=False,
+                require_physical_device=True,
+                require_background_recovery=True,
+                mobilecore_apk=apks[0],
+                mobilecode_apk=apks[1],
+                mobilecode_test_apk=apks[2],
+                expected_mobilecore_cert_sha256=fingerprint,
+                expected_mobilecode_cert_sha256=fingerprint,
+                expected_mobilecode_test_cert_sha256=fingerprint,
+                apksigner="apksigner",
+            )
+            runner = qa.QaRunner(args)
+
+            def run(*_args, **_kwargs):
+                output = (
+                    f"Signer #1 certificate SHA-256 digest: {fingerprint}\n"
+                ).encode()
+                return subprocess.CompletedProcess([], 0, output, b"")
+
+            runner.run = run
+            runner.inspect_apk_signatures()
+            raw = (root / "evidence/apk_signing_summary.json").read_text()
+
+        self.assertEqual(runner.apk_signing_summary["status"], "passed")
+        self.assertTrue(runner.apk_signing_summary["required"])
+        self.assertEqual(len(runner.apk_signing_summary["artifacts"]), 3)
+        self.assertNotIn("core.apk", raw)
 
 
 if __name__ == "__main__":

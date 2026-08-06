@@ -32,7 +32,7 @@ Adaptive routing currently applies these rules:
 
 - privacy-sensitive or offline work stays on MobileCore;
 - local image/audio work requires an advertised local capability;
-- memory or thermal pressure reduces context to 2048 tokens and selects the smallest safe installed recommendation;
+- memory or thermal pressure reduces context to 2048 tokens and selects the smallest safe installed recommendation, including when privacy/offline routing is also active; multimodal attachments retain their capability-compatible active model instead of blindly switching to a text-only recommendation;
 - complex cloud routing requires explicit approval;
 - Phone Use plans may use MobileCore inference, but every device action remains in MobileCode's approval and evidence boundary.
 
@@ -121,10 +121,17 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
 
 ## Verification
 
-- The complete MobileCode Flutter suite passed 550 tests.
+- The complete MobileCode Flutter suite passed 556 tests after the Client v2,
+  adaptive-routing, and pressure-switch follow-ups.
 - The focused MobileCore client suite passed 16 tests, including coherent
   runtime snapshots, exact switch confirmation, public projector IDs,
   path-like ID rejection, projector metadata, and image-capability parsing.
+- The focused adaptive-policy suite passed 10 tests, including privacy/offline
+  fail-closed routing, cloud-consent gating, constrained context/model choice,
+  and multimodal capability retention under resource pressure.
+- A local Android arm64 `pureRelease` build passed and its manifest version was
+  verified as `0.1.73+63`; this local build is validation evidence only and is
+  not the stable-signed GitHub Release asset.
 - MobileCore Android unit tests passed.
 - MobileCore local API instrumentation passed its model-ID control, incompatible-projector rejection, no-path response, multimodal contract, rejection, and metrics-counter checks.
 - A post-fix real-GGUF smoke reported active-model preflight `625617760` required bytes versus `1096425472` available bytes, `runtime=llama.cpp`, two completed requests, zero failures, and a non-zero average decode rate.

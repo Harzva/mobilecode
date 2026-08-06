@@ -4,7 +4,7 @@
 
 MobileCode uses semantic versioning, but the project is still pre-1.0. The version number should communicate release intent clearly, not simply increase because work happened.
 
-Current release line: `0.1.73+63`.
+Current release line: `0.1.74+64`.
 
 ## Version Lines
 
@@ -60,6 +60,7 @@ Examples:
 - `0.1.71+61`: MobileCore generic local-vision pair discovery, capability reporting, model switching, and strict dual-app emulator evidence.
 - `0.1.72+62`: release-version consistency fix across package metadata, product UI, update service, and published update feed.
 - `0.1.73+63`: iOS generated-project privacy permission fix plus bundle-version and launch-crash release gates.
+- `0.1.74+64`: coherent MobileCoreClient v2 snapshots and model controls plus task-aware, pressure-aware, proactive offline routing.
 - `0.2.0+38`: Helper APK/runtime capability expansion starts.
 
 ## Stop Rules

@@ -68,6 +68,7 @@ class QaRunner:
         self.output_dir = args.output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.forward_port = args.forward_port
+        self.model_switch_status = "not_run"
 
     def run(
         self,
@@ -253,11 +254,16 @@ class QaRunner:
             ("install_mobilecore", self.args.mobilecore_apk),
             ("install_mobilecode", self.args.mobilecode_apk),
         ):
-            self.adb(name, "install", "-r", str(path), timeout=300)
+            # QA devices may already carry a newer release build. The
+            # instrumentation APK must target the locally built, debug-signed
+            # application, so allow a controlled version downgrade while
+            # preserving app data and installed model assets.
+            self.adb(name, "install", "-r", "-d", str(path), timeout=300)
         self.adb(
             "install_mobilecode_test",
             "install",
             "-r",
+            "-d",
             "-t",
             str(self.args.mobilecode_test_apk),
             timeout=300,
@@ -365,6 +371,9 @@ class QaRunner:
             switch_status = "passed"
         else:
             switch_status = "blocked_single_model"
+        self.model_switch_status = switch_status
+        if self.args.require_model_switch and switch_status != "passed":
+            raise RuntimeError("A second compatible local model is required for model-switch acceptance")
 
         self.adb("background_mobilecore_with_mobilecode", "shell", "am", "start", "-W", "-n", MOBILECODE_ACTIVITY)
         self.wait_for_health(require_model=True)
@@ -459,6 +468,10 @@ class QaRunner:
             "device_model_hash": sha256_bytes(device)[:16],
             "controlled_tasks": 30,
             "offline_during_tasks": True,
+            "model_switch": {
+                "required": self.args.require_model_switch,
+                "status": self.model_switch_status,
+            },
             "redaction": "raw_prompts_media_credentials_and_host_paths_omitted",
             "apks": {
                 "mobilecore_sha256": sha256_file(self.args.mobilecore_apk),
@@ -510,6 +523,11 @@ def parse_args() -> argparse.Namespace:
         default=repository / "mobile_agent/build/app/outputs/apk/androidTest/pure/debug/app-pure-debug-androidTest.apk",
     )
     parser.add_argument("--model-file", type=Path)
+    parser.add_argument(
+        "--require-model-switch",
+        action="store_true",
+        help="Fail acceptance when the device does not expose a second loadable model.",
+    )
     parser.add_argument("--output-dir", type=Path, default=repository / f".qa-artifacts/mobilecore-dual-app/{timestamp}")
     parser.add_argument("--forward-port", type=int, default=18080)
     parser.add_argument("--ready-timeout", type=int, default=180)

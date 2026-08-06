@@ -33,9 +33,13 @@ Date: 2026-08-06
 
 Environment: Android 16 arm64 emulator, 2 CPU cores, approximately 2.5 GB RAM. This is emulator evidence, not physical-device evidence.
 
-Model: `qwen2.5-0.5b-instruct-q4_k_m.gguf`
+Primary model: `qwen2.5-0.5b-instruct-q4_k_m.gguf`
 
 Model SHA-256: `74a4da8c9fdbcd15bd1f6d01d621410d31c6fc00986f5eb687824e7b93d7a9db`
+
+Switch model: `qwen3-0.6b-q4_k_m.gguf`
+
+Switch-model SHA-256: `18ea1f301079bba6391ab6d455c0c8565fd5a3214075eb2cd9daf351dedc719b`
 
 The host-side runner installed MobileCore, MobileCode, and the MobileCode test APK on the same Android instance. It loaded the real GGUF through the visible MobileCore UI, enabled airplane mode, then executed the instrumentation test from the MobileCode process against MobileCore's loopback service.
 
@@ -48,28 +52,35 @@ The host-side runner installed MobileCore, MobileCode, and the MobileCode test A
 | Background continuity | Passed | MobileCore stayed ready after MobileCode became foreground |
 | Low-memory notification | Passed | `RUNNING_LOW` delivered; health remained available |
 | MobileCore process restart | Passed | Visible UI reload restored model-ready health |
-| Cross-model switch | Not run | Only one installed model was available |
+| Cross-model switch | Passed | Qwen2.5 → Qwen3 load completed, then Qwen2.5 was restored |
 | Physical thermal behavior | Not run | Emulator temperature is not physical-device evidence |
 | Physical Android device | Not run | No Android physical device was connected |
 
-Observed final-request metrics on the constrained emulator were approximately 0.43 decode tokens/s, 3.1 seconds to first token, 12.4 seconds total for a four-token controlled response, and 462 MB runtime peak memory. These numbers characterize this software-emulated host only and are not phone performance claims.
+Observed final-request metrics on the constrained emulator were approximately 0.46 decode tokens/s average, 2.9 seconds to first token, 11.6 seconds total, and 462 MB runtime peak memory. The final strict-run Qwen3 switch loaded in 1.2 seconds and reported 456 MB. These numbers characterize this software-emulated host only and are not phone performance claims.
+
+## Local vision chain
+
+A separate controlled emulator check used a Qwen3.5 0.8B main GGUF plus its mmproj. `/v1/models` exposed the projector as metadata on the main model, loading returned `image_input=true`, and `/health` reported `runtime=llama.cpp/libmtmd`. A real JPEG data-URI request completed through the same OpenAI-compatible endpoint with 93 total tokens and 542 MB reported runtime memory. There was no crash, ANR, or OOM.
+
+This is capability/transport evidence, not a vision-quality result. The model answered the controlled animal-breed prompt incorrectly, so MobileCode must not describe the current vision route as accuracy-qualified. Generic imported artifacts were also correctly reported as present but unverified.
 
 The repeatable runner is:
 
 ```bash
 python3 scripts/run_mobilecore_dual_app_qa.py \
   --serial <dedicated-qa-device> \
-  --model-file <controlled-gguf>
+  --model-file <controlled-gguf> \
+  --require-model-switch
 ```
 
 Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` directory. The runner's manifest contains APK/model hashes, step digests, safe metrics, environment class, and redaction state; it does not persist prompts, images, audio, credentials, cookies, tokens, raw UI text, or host paths.
 
 ## Verification
 
-- 90 focused Flutter evidence/routing/provider tests passed.
-- 16 MobileCore client and adaptive-policy tests passed.
+- The complete MobileCode Flutter suite passed 543 tests.
+- The focused MobileCore client suite passed 16 tests, including projector metadata and image-capability parsing.
 - MobileCore Android unit tests passed.
-- MobileCore local API instrumentation passed its model-ID control, no-path response, multimodal contract, rejection, and metrics-counter checks.
+- MobileCore local API instrumentation passed its model-ID control, incompatible-projector rejection, no-path response, multimodal contract, rejection, and metrics-counter checks.
 - A post-fix real-GGUF smoke reported active-model preflight `625617760` required bytes versus `1096425472` available bytes, `runtime=llama.cpp`, two completed requests, zero failures, and a non-zero average decode rate.
 - MobileCode `pureDebug` APK and cross-app Android test APK built successfully.
 
@@ -78,7 +89,8 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
 Before claiming phone-grade local intelligence or using this route for ordering acceptance:
 
 1. Run the same 30-task lane on a physical Android device and retain reviewed evidence.
-2. Install at least two compatible models and pass real cross-model switching under memory pressure.
+2. Repeat the two-model switch and memory-pressure lane on physical hardware; emulator acceptance is complete.
 3. Install a verified Qwen2.5-Omni pair and pass image/audio local-only tasks without cloud fallback.
-4. Measure sustained-device temperature, battery, background restriction, and process recovery on physical hardware.
-5. Keep transaction approval and final device actions in MobileCode; never expose a MobileCore action bypass.
+4. Add a labeled vision task set and quality threshold; the current real image run proves execution but not accuracy.
+5. Measure sustained-device temperature, battery, background restriction, and process recovery on physical hardware.
+6. Keep transaction approval and final device actions in MobileCode; never expose a MobileCore action bypass.

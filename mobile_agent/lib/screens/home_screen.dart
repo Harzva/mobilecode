@@ -14287,7 +14287,8 @@ class _ChatPanelState extends State<_ChatPanel> {
                           title: Text(model.id,
                               style: const TextStyle(color: _text)),
                           subtitle: Text(
-                            '${model.quantization} · ${_formatBytes(model.sizeBytes)} · context ${model.contextLength}',
+                            '${model.quantization} · ${_formatBytes(model.sizeBytes)} · context ${model.contextLength}'
+                            '${model.capabilities.imageInput ? ' · image' : ''}',
                             style: const TextStyle(color: _muted, fontSize: 12),
                           ),
                           trailing: model.loaded

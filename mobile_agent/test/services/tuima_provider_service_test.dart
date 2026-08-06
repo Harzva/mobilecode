@@ -212,6 +212,13 @@ void main() {
                   'context_length': 4096,
                   'size_bytes': 1234,
                   'loaded': true,
+                  'projector_id': 'mmproj-small-q4-bf16',
+                  'projector_size_bytes': 456,
+                  'capabilities': {
+                    'text_input': true,
+                    'image_input': true,
+                    'text_output': true,
+                  },
                 }
               }
             ]
@@ -233,6 +240,9 @@ void main() {
       final metrics = await service.metrics();
       expect(models.single.id, 'small-q4');
       expect(models.single.quantization, 'Q4_K_M');
+      expect(models.single.projectorId, 'mmproj-small-q4-bf16');
+      expect(models.single.projectorSizeBytes, 456);
+      expect(models.single.capabilities.imageInput, isTrue);
       expect(models.single.toString(), isNot(contains('/private/')));
       expect(metrics.decodeTokensPerSecond, 18.5);
       expect(metrics.firstTokenMs, 82);

@@ -2,15 +2,17 @@ import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
+import '../core/mobilecode_version.dart';
+
 class MobileCodeUpdateService {
   MobileCodeUpdateService({Dio? dio}) : _dio = dio ?? Dio();
 
   static const String pagesUrl = 'https://harzva.github.io/mobilecode/';
   static const String defaultFeedUrl =
       'https://harzva.github.io/mobilecode/mobilecode-update.json';
-  static const String githubRepoUrl = 'https://github.com/Harzva/mobilecode';
-  static const String currentVersion = '0.1.69';
-  static const int currentBuildNumber = 59;
+  static const String githubRepoUrl = MobileCodeVersion.githubRepoUrl;
+  static const String currentVersion = MobileCodeVersion.semantic;
+  static const int currentBuildNumber = MobileCodeVersion.buildNumber;
 
   final Dio _dio;
 
@@ -110,9 +112,8 @@ class MobileCodeUpdateFeed {
     return _compareLooseVersion(latestVersion, currentVersion) > 0;
   }
 
-  bool requiresUpgrade({required int currentBuildNumber}) {
-    return minimumSupportedBuildNumber > currentBuildNumber;
-  }
+  bool requiresUpgrade({required int currentBuildNumber}) =>
+      minimumSupportedBuildNumber > currentBuildNumber;
 
   String get primaryUrl {
     if (pagesUrl.trim().isNotEmpty) return pagesUrl.trim();

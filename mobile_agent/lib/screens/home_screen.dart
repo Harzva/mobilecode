@@ -16,6 +16,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../core/evidence/action_evidence_store.dart';
 import '../core/evidence/action_runner.dart';
 import '../core/evidence/evidence_model.dart';
+import '../core/mobilecode_version.dart';
 import 'agent_dashboard_screen.dart';
 import 'api_usage_screen.dart';
 import 'benchmark_lab_screen.dart';
@@ -164,8 +165,8 @@ const _mobileCodePagesUrl = MobileCodeUpdateService.pagesUrl;
 const _mobileCodeUpdateFeedUrl = MobileCodeUpdateService.defaultFeedUrl;
 const _mobileCodeLocalModelsManifestUrl =
     MobileCodeLocalModelManifestService.defaultManifestUrl;
-const _currentProductVersion = 'v0.1.69';
-const _releaseUrl = 'https://github.com/Harzva/mobilecode/releases/tag/v0.1.69';
+const _currentProductVersion = MobileCodeVersion.display;
+const _releaseUrl = MobileCodeVersion.releaseUrl;
 const _androidSmokeRunUrl =
     'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl =

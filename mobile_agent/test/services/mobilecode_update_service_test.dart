@@ -60,12 +60,12 @@ void main() {
     test('compares release labels without treating suffix digits as semver',
         () {
       final sameReleaseFeed = MobileCodeUpdateFeed.fromJson({
-        'latestVersion': 'v0.1.69',
-        'latestBuildNumber': 59,
+        'latestVersion': 'v${MobileCodeUpdateService.currentVersion}',
+        'latestBuildNumber': MobileCodeUpdateService.currentBuildNumber,
       });
       final newerReleaseFeed = MobileCodeUpdateFeed.fromJson({
-        'latestVersion': 'v0.1.70',
-        'latestBuildNumber': 59,
+        'latestVersion': 'v0.1.73',
+        'latestBuildNumber': MobileCodeUpdateService.currentBuildNumber,
       });
 
       expect(

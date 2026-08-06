@@ -13948,6 +13948,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   final ActionEvidenceStore _agentEvidenceStore = ActionEvidenceStore.shared;
   final Set<String> _approvedCliHubPreviewEvidenceIds = {};
   final Set<String> _consumedPhoneUseApprovalTicketIds = {};
+  final List<String> _currentRunMobileCoreInferenceEvidenceIds = [];
   final Map<String, GlobalKey> _turnKeys = {};
   Timer? _navPreviewTimer;
   Timer? _tuimaHealthTimer;
@@ -14984,7 +14985,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     ));
   }
 
-  void _recordMobileCoreInferenceEvidence({
+  String _recordMobileCoreInferenceEvidence({
     required TuimaHealth health,
     required DateTime startedAt,
     required bool success,
@@ -15017,8 +15018,9 @@ class _ChatPanelState extends State<_ChatPanel> {
       'redactionApplied': true,
       'redactionState': 'prompt_media_credentials_omitted',
     };
+    final evidenceId = generateEvidenceId();
     _agentEvidenceStore.add(ActionEvidence(
-      evidenceId: generateEvidenceId(),
+      evidenceId: evidenceId,
       actionName: MobileCodeAction.traceCallProvider,
       paramsSummary:
           'MobileCore local inference · ${health.activeModel ?? 'active model'} · ${success ? 'completed' : 'failed'}',
@@ -15038,6 +15040,10 @@ class _ChatPanelState extends State<_ChatPanel> {
             ],
       metadata: metadata,
     ));
+    if (_agentRunning) {
+      _currentRunMobileCoreInferenceEvidenceIds.add(evidenceId);
+    }
+    return evidenceId;
   }
 
   String _providerRequestErrorMessage(
@@ -15990,6 +15996,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       _agentTraceEventKeys.clear();
       _approvedCliHubPreviewEvidenceIds.clear();
       _consumedPhoneUseApprovalTicketIds.clear();
+      _currentRunMobileCoreInferenceEvidenceIds.clear();
       DeviceAutomationApprovalTicketStore.shared.clear();
       _agentProviderLiveProcess.clear();
       _agentProviderLiveProcessKeys.clear();
@@ -16426,6 +16433,15 @@ class _ChatPanelState extends State<_ChatPanel> {
     };
     final round = event.round == null ? '' : 'Round ${event.round}: ';
     final eventDetails = _agentLoopTraceDetails(event);
+    final evidenceMetadata = Map<String, dynamic>.from(event.evidenceMetadata);
+    if (event.toolName == 'phone_use_action' &&
+        evidenceMetadata['approvalTicket'] is Map &&
+        _currentRunMobileCoreInferenceEvidenceIds.isNotEmpty) {
+      evidenceMetadata['mobileCoreInferenceEvidenceIds'] =
+          List<String>.unmodifiable(
+        _currentRunMobileCoreInferenceEvidenceIds,
+      );
+    }
     final step = _AgentTraceStep(
       title: title,
       detail: '$round${event.message}',
@@ -16436,7 +16452,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         if (event.evidenceId != null) 'Evidence ID': event.evidenceId!,
         ...eventDetails,
       },
-      evidenceMetadata: event.evidenceMetadata,
+      evidenceMetadata: evidenceMetadata,
       traceAction: action,
       state: state,
       startedAt: event.createdAt,
@@ -16676,7 +16692,20 @@ class _ChatPanelState extends State<_ChatPanel> {
       return;
     }
 
-    final evidence = execution.evidence;
+    var evidence = execution.evidence;
+    final inferenceEvidenceIds =
+        step.evidenceMetadata['mobileCoreInferenceEvidenceIds'];
+    if (inferenceEvidenceIds is List) {
+      for (final rawId in inferenceEvidenceIds) {
+        final inferenceEvidenceId = rawId.toString().trim();
+        if (inferenceEvidenceId.isEmpty) continue;
+        _agentEvidenceStore.linkMobileCoreInferenceToDeviceOperation(
+          inferenceEvidenceId: inferenceEvidenceId,
+          deviceOperationEvidenceId: evidence.evidenceId,
+        );
+      }
+      evidence = _agentEvidenceStore.getById(evidence.evidenceId) ?? evidence;
+    }
     final completedStep = _AgentTraceStep(
       title: execution.success
           ? 'Approved Phone Use action completed'

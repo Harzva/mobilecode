@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag for Android and iOS app artifacts
         required: false
-        default: v0.1.72
+        default: v0.1.73
       upload_to_release:
         description: Upload app artifacts to the GitHub Release
         required: false
@@ -20,7 +20,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: mobile-app-release-${{ github.ref }}-${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+  group: mobile-app-release-${{ github.ref }}-${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.73' }}
   cancel-in-progress: false
 
 jobs:
@@ -150,7 +150,7 @@ jobs:
       - name: Stage APK
         id: stage_apk
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.73' }}
         run: |
           mkdir -p artifacts
           APK_PATH="artifacts/mobilecode-${RELEASE_TAG}.apk"
@@ -159,7 +159,7 @@ jobs:
 
       - name: Verify release version consistency
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.73' }}
         run: |
           python3 scripts/verify_mobilecode_release_version.py \
             --apk "${{ steps.stage_apk.outputs.apk_path }}" \
@@ -175,7 +175,7 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.73' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -192,7 +192,7 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.73' }}
         run: |
           gh release upload "$RELEASE_TAG" "${{ steps.stage_apk.outputs.apk_path }}" --clobber --repo "$GITHUB_REPOSITORY"
 
@@ -219,6 +219,8 @@ jobs:
       - name: Recreate iOS platform project
         working-directory: mobile_agent
         run: |
+          python3 tooling/test_prepare_ios_project.py
+          python3 tooling/test_verify_ios_app.py
           rm -rf ios
           flutter create --platforms=ios --project-name mobile_agent --org com.mobilecode .
           python3 tooling/prepare_ios_project.py
@@ -272,7 +274,7 @@ jobs:
       - name: Install and launch on iOS simulator
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.73' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -285,14 +287,27 @@ jobs:
           xcrun simctl bootstatus "$SIM_ID" -b
           APP_PATH="build/ios/iphonesimulator/Runner.app"
           BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$APP_PATH/Info.plist")"
+          python3 tooling/verify_ios_app.py \
+            --app "$APP_PATH" \
+            --expected-tag "$RELEASE_TAG"
           xcrun simctl install "$SIM_ID" "$APP_PATH"
-          xcrun simctl launch "$SIM_ID" "$BUNDLE_ID"
+          LAUNCH_OUTPUT="$(xcrun simctl launch "$SIM_ID" "$BUNDLE_ID")"
+          echo "$LAUNCH_OUTPUT"
+          LAUNCH_PID="$(printf '%s\n' "$LAUNCH_OUTPUT" | awk -F ': ' 'NF {print $NF}' | tail -1)"
           sleep 15
-          xcrun simctl io "$SIM_ID" screenshot ../artifacts/mobilecode-ios-smoke.png
-          xcrun simctl spawn "$SIM_ID" log show --style compact --last 3m --predicate 'process == "Runner"' > ../artifacts/ios-runner.log || true
-          if grep -E "Terminating app due to uncaught exception|Fatal error|EXC_CRASH|SIGABRT" ../artifacts/ios-runner.log; then
+          ALIVE_OUTPUT="$(xcrun simctl launch "$SIM_ID" "$BUNDLE_ID")"
+          echo "$ALIVE_OUTPUT"
+          ALIVE_PID="$(printf '%s\n' "$ALIVE_OUTPUT" | awk -F ': ' 'NF {print $NF}' | tail -1)"
+          if [ -z "$LAUNCH_PID" ] || [ "$ALIVE_PID" != "$LAUNCH_PID" ]; then
+            echo "Runner did not remain alive for the simulator smoke interval."
             exit 1
           fi
+          xcrun simctl io "$SIM_ID" screenshot ../artifacts/mobilecode-ios-smoke.png
+          xcrun simctl spawn "$SIM_ID" log show --style compact --last 3m --predicate 'process == "Runner"' > ../artifacts/ios-runner.log || true
+          python3 tooling/verify_ios_app.py \
+            --app "$APP_PATH" \
+            --expected-tag "$RELEASE_TAG" \
+            --log ../artifacts/ios-runner.log
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "../artifacts/mobilecode-ios-simulator-${RELEASE_TAG}.zip"
 
       - name: Upload iOS simulator workflow artifacts
@@ -306,7 +321,7 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.73' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -323,7 +338,7 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.73' }}
         run: |
           gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-simulator-"$RELEASE_TAG".zip artifacts/mobilecode-ios-smoke.png artifacts/ios-runner.log --clobber --repo "$GITHUB_REPOSITORY"
 
@@ -350,6 +365,8 @@ jobs:
       - name: Recreate iOS platform project
         working-directory: mobile_agent
         run: |
+          python3 tooling/test_prepare_ios_project.py
+          python3 tooling/test_verify_ios_app.py
           rm -rf ios
           flutter create --platforms=ios --project-name mobile_agent --org com.mobilecode .
           python3 tooling/prepare_ios_project.py
@@ -385,7 +402,7 @@ jobs:
       - name: Package unsigned xcarchive
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.73' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -397,6 +414,10 @@ jobs:
             echo "Expected iOS app bundle was not found at $APP_PATH"
             exit 1
           fi
+
+          python3 tooling/verify_ios_app.py \
+            --app "$APP_PATH" \
+            --expected-tag "$RELEASE_TAG"
 
           rm -rf "$ARCHIVE_PATH" "$ZIP_PATH"
           mkdir -p "$ARCHIVE_PATH/Products/Applications"
@@ -472,7 +493,7 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.73' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -489,6 +510,6 @@ jobs:
         if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.72' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.73' }}
         run: |
           gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-archive-"$RELEASE_TAG".xcarchive.zip artifacts/ios-archive-summary.txt --clobber --repo "$GITHUB_REPOSITORY"

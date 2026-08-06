@@ -15,7 +15,7 @@
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml"><img alt="Mobile App Release" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml/badge.svg"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=main"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.72-2555FF">
+  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.73-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Flutter-0B9B7E">
 </p>
 
@@ -28,7 +28,7 @@
   ·
   <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">HTML Principle Video</a>
   ·
-  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.72">Download v0.1.72 app</a>
+  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.73">Download v0.1.73 app</a>
   ·
   <a href="https://harzva.github.io/mobilecode/">GitHub Pages Demo</a>
 </p>
@@ -415,14 +415,14 @@ That keeps the phone lightweight while still letting users produce shareable web
 
 ## Release Line
 
-Current candidate: `v0.1.72` (`0.1.72+62`).
+Current candidate: `v0.1.73` (`0.1.73+63`).
 
 See:
 
 - [MobileCore dual-app evidence](docs/mobilecore-dual-app-qa.md) - 30 real offline cross-app requests, buffered/SSE parity, unload/reload, background continuity, low-memory notification, and process restart recovery passed on Android emulator.
-- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.72) - Android `pure` APK and CI-generated platform evidence for the MobileCore paired local-vision integration candidate.
-- Installed-release QA caught and fixed stale `v0.1.69` product/update labels before promoting this patch release; package metadata, UI, update service, and feed are now locked to `0.1.72+62`.
-- [Signed APK workflow](https://github.com/Harzva/mobilecode/actions/runs/31123426875) passed from merge commit `81e8d7d`; the downloaded 33 MB asset has SHA-256 `acdada50092e7aa2e9727ee8a45e9c20f4c977b4be6e7c21f0ce48e1be955101`, verifies with the MobileCode release certificate, and clean-launched on the Android 16 ARM64 emulator with the `v0.1.72` header and no App crash, ANR, or OOM signature.
+- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.73) - Android `pure` APK and CI-generated platform evidence for the MobileCore paired local-vision integration candidate.
+- Post-build inspection of v0.1.72 caught an iOS generated-project permission nesting bug and an incomplete smoke-test crash filter. v0.1.73 writes the microphone and speech-recognition descriptions into the top-level app plist and verifies both bundle metadata and TCC launch logs before publishing simulator assets.
+- Previous signed Android evidence: [v0.1.72](https://github.com/Harzva/mobilecode/releases/tag/v0.1.72) and its [APK workflow](https://github.com/Harzva/mobilecode/actions/runs/31123426875). The downloaded 33 MB asset has SHA-256 `acdada50092e7aa2e9727ee8a45e9c20f4c977b4be6e7c21f0ce48e1be955101`, verifies with the MobileCode release certificate, and clean-launched on the Android 16 ARM64 emulator.
 - Previous stable evidence: [v0.1.69](https://github.com/Harzva/mobilecode/releases/tag/v0.1.69) and its [Android APK workflow](https://github.com/Harzva/mobilecode/actions/runs/31091939149).
 - [Version Policy](docs/mobilecode-version-policy.md)
 - [Release QA Checklist](docs/mobilecode-release-qa.md)

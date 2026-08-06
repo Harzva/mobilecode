@@ -63,8 +63,13 @@ void main() {
         'latestVersion': 'v${MobileCodeUpdateService.currentVersion}',
         'latestBuildNumber': MobileCodeUpdateService.currentBuildNumber,
       });
+      final currentParts = MobileCodeUpdateService.currentVersion
+          .split('.')
+          .map(int.parse)
+          .toList(growable: false);
       final newerReleaseFeed = MobileCodeUpdateFeed.fromJson({
-        'latestVersion': 'v0.1.73',
+        'latestVersion':
+            'v${currentParts[0]}.${currentParts[1]}.${currentParts[2] + 1}',
         'latestBuildNumber': MobileCodeUpdateService.currentBuildNumber,
       });
 

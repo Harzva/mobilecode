@@ -89,6 +89,7 @@ void main() {
         modelLoadUri: root.resolve('/mobilecore/model/load'),
         modelUnloadUri: root.resolve('/mobilecore/model/unload'),
         omniStatusUri: root.resolve('/mobilecore/omni/status'),
+        omniLoadUri: root.resolve('/mobilecore/omni/load'),
         inferenceCancelUri: root.resolve('/mobilecore/inference/cancel'),
       );
     });
@@ -547,6 +548,280 @@ void main() {
       expect(loadedHealth.activeModel, 'small-q4');
       final unloadedHealth = await service.unloadModel();
       expect(unloadedHealth.canInfer, isFalse);
+    });
+
+    test('activates only a verified Omni pair and rechecks audio capability',
+        () async {
+      var loaded = false;
+      var loadRequests = 0;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        switch (request.uri.path) {
+          case '/health':
+            request.response.write(jsonEncode({
+              'status': 'ok',
+              'service': 'mobilecore',
+              'protocol': _mobileCoreProtocolV2,
+              'version': '0.1.4-rc4',
+              'backend': 'cpu',
+              'runtime': loaded ? 'llama.cpp/libmtmd' : 'llama.cpp',
+              'active_model': loaded ? 'Qwen2.5-Omni-3B-Q4_K_M' : null,
+              'model_loaded': loaded,
+              'capabilities': {
+                'text_input': loaded,
+                'image_input': loaded,
+                'audio_input': loaded,
+                'text_output': loaded,
+              },
+              'artifacts': loaded
+                  ? {
+                      'main': {
+                        'installed': true,
+                        'verified': true,
+                        'digest_algorithm': 'sha256',
+                        'digest': 'main-pin',
+                      },
+                      'mmproj': {
+                        'installed': true,
+                        'verified': true,
+                        'digest_algorithm': 'sha256',
+                        'digest': 'projector-pin',
+                      },
+                    }
+                  : const {},
+            }));
+            break;
+          case '/mobilecore/omni/status':
+            request.response.write(jsonEncode({
+              'model_id': 'qwen2.5-omni-3b-verified',
+              'revision': 'fixed-public-revision',
+              'phase': 'verified',
+              'pair_verified': true,
+              'artifacts': {
+                'main': {
+                  'installed': true,
+                  'verified': true,
+                  'digest_algorithm': 'sha256',
+                  'digest': 'main-pin',
+                },
+                'mmproj': {
+                  'installed': true,
+                  'verified': true,
+                  'digest_algorithm': 'sha256',
+                  'digest': 'projector-pin',
+                },
+              },
+              'preflight': {'passed': true},
+            }));
+            break;
+          case '/mobilecore/omni/load':
+            loadRequests += 1;
+            expect(request.headers.value(HttpHeaders.authorizationHeader),
+                'Bearer local');
+            final body = jsonDecode(await utf8.decoder.bind(request).join())
+                as Map<String, dynamic>;
+            expect(body['context_length'], 2048);
+            expect(body['threads'], 4);
+            expect(body['gpu_layers'], 0);
+            expect(body.containsKey('path'), isFalse);
+            loaded = true;
+            request.response.write('{"loaded":true}');
+            break;
+        }
+        await request.response.close();
+      });
+
+      final result = await service.loadVerifiedOmni(
+        requiredCapability: MobileCoreAttachmentKind.audio,
+        contextLength: 2048,
+      );
+
+      expect(loadRequests, 1);
+      expect(result.status.loadable, isTrue);
+      expect(result.status.preflightPassed, isTrue);
+      expect(result.health.capabilities.audioInput, isTrue);
+      expect(result.health.mainArtifact.verified, isTrue);
+      expect(result.health.projectorArtifact.verified, isTrue);
+      expect(result.status.evidenceMetadata.toString(),
+          isNot(contains('/private/')));
+      expect(
+          result.status.evidenceMetadata.toString(), isNot(contains('.gguf')));
+    });
+
+    test('rejects an unverified Omni pair before the load route', () async {
+      var loadRequests = 0;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path == '/health') {
+          request.response.write(jsonEncode({
+            ..._healthPayload(),
+            'active_model': null,
+            'model_loaded': false,
+          }));
+        } else if (request.uri.path == '/mobilecore/omni/status') {
+          request.response.write(jsonEncode({
+            'model_id': 'qwen2.5-omni-3b-verified',
+            'phase': 'installed',
+            'pair_verified': false,
+            'artifacts': {
+              'main': {'installed': true, 'verified': true},
+              'mmproj': {'installed': true, 'verified': false},
+            },
+          }));
+        } else if (request.uri.path == '/mobilecore/omni/load') {
+          loadRequests += 1;
+          request.response.write('{"loaded":true}');
+        }
+        await request.response.close();
+      });
+
+      await expectLater(
+        service.loadVerifiedOmni(
+          requiredCapability: MobileCoreAttachmentKind.image,
+        ),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'omni_pair_not_verified',
+        )),
+      );
+      expect(loadRequests, 0);
+    });
+
+    test('rejects audio when the loaded Omni runtime reports image only',
+        () async {
+      var loaded = false;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path == '/health') {
+          request.response.write(jsonEncode({
+            'status': 'ok',
+            'service': 'mobilecore',
+            'protocol': _mobileCoreProtocolV2,
+            'version': '0.1.4-rc4',
+            'backend': 'cpu',
+            'runtime': loaded ? 'llama.cpp/libmtmd' : 'llama.cpp',
+            'active_model': loaded ? 'Qwen2.5-Omni-3B-Q4_K_M' : null,
+            'model_loaded': loaded,
+            'capabilities': {
+              'text_input': loaded,
+              'image_input': loaded,
+              'audio_input': false,
+              'text_output': loaded,
+            },
+            'artifacts': loaded
+                ? {
+                    'main': {'installed': true, 'verified': true},
+                    'mmproj': {'installed': true, 'verified': true},
+                  }
+                : const {},
+          }));
+        } else if (request.uri.path == '/mobilecore/omni/status') {
+          request.response.write(jsonEncode({
+            'model_id': 'qwen2.5-omni-3b-verified',
+            'phase': 'verified',
+            'pair_verified': true,
+            'artifacts': {
+              'main': {'installed': true, 'verified': true},
+              'mmproj': {'installed': true, 'verified': true},
+            },
+          }));
+        } else if (request.uri.path == '/mobilecore/omni/load') {
+          await utf8.decoder.bind(request).join();
+          loaded = true;
+          request.response.write('{"loaded":true}');
+        }
+        await request.response.close();
+      });
+
+      await expectLater(
+        service.loadVerifiedOmni(
+          requiredCapability: MobileCoreAttachmentKind.audio,
+        ),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'unsupported_modality',
+        )),
+      );
+    });
+
+    test('rejects a loaded Omni runtime whose artifact digest changed',
+        () async {
+      var loaded = false;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        if (request.uri.path == '/health') {
+          request.response.write(jsonEncode({
+            'status': 'ok',
+            'service': 'mobilecore',
+            'protocol': _mobileCoreProtocolV2,
+            'version': '0.1.4-rc4',
+            'backend': 'cpu',
+            'runtime': loaded ? 'llama.cpp/libmtmd' : 'llama.cpp',
+            'active_model': loaded ? 'Qwen2.5-Omni-3B-Q4_K_M' : null,
+            'model_loaded': loaded,
+            'capabilities': {
+              'text_input': loaded,
+              'image_input': loaded,
+              'audio_input': loaded,
+              'text_output': loaded,
+            },
+            'artifacts': loaded
+                ? {
+                    'main': {
+                      'installed': true,
+                      'verified': true,
+                      'digest_algorithm': 'sha256',
+                      'digest': 'different-main',
+                    },
+                    'mmproj': {
+                      'installed': true,
+                      'verified': true,
+                      'digest_algorithm': 'sha256',
+                      'digest': 'projector-pin',
+                    },
+                  }
+                : const {},
+          }));
+        } else if (request.uri.path == '/mobilecore/omni/status') {
+          request.response.write(jsonEncode({
+            'model_id': 'qwen2.5-omni-3b-verified',
+            'phase': 'verified',
+            'pair_verified': true,
+            'artifacts': {
+              'main': {
+                'installed': true,
+                'verified': true,
+                'digest_algorithm': 'sha256',
+                'digest': 'main-pin',
+              },
+              'mmproj': {
+                'installed': true,
+                'verified': true,
+                'digest_algorithm': 'sha256',
+                'digest': 'projector-pin',
+              },
+            },
+          }));
+        } else if (request.uri.path == '/mobilecore/omni/load') {
+          await utf8.decoder.bind(request).join();
+          loaded = true;
+          request.response.write('{"loaded":true}');
+        }
+        await request.response.close();
+      });
+
+      await expectLater(
+        service.loadVerifiedOmni(
+          requiredCapability: MobileCoreAttachmentKind.image,
+        ),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'omni_runtime_not_ready',
+        )),
+      );
     });
 
     test('rejects path-like lifecycle ids before contacting MobileCore',

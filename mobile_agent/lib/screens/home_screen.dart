@@ -14065,6 +14065,9 @@ class _ChatPanelState extends State<_ChatPanel> {
 
   Future<_MobileCoreControlData> _loadMobileCoreControlData() async {
     final snapshot = await _tuimaProviderService.runtimeSnapshot();
+    final omniStatus = await _tuimaProviderService
+        .omniStatus()
+        .catchError((_) => const MobileCoreOmniStatus());
     if (mounted) setState(() => _tuimaHealth = snapshot.health);
     if (snapshot.health.state == TuimaConnectionState.unavailable) {
       throw MobileCoreProviderException(
@@ -14078,6 +14081,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       models: snapshot.models,
       metrics: snapshot.metrics,
       recommendations: snapshot.recommendations,
+      omniStatus: omniStatus,
     );
   }
 
@@ -14087,6 +14091,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     required DateTime startedAt,
     required bool success,
     Object? error,
+    Map<String, Object?> safeMetadata = const {},
   }) async {
     final safeFailure = error is MobileCoreProviderException
         ? error.code
@@ -14111,6 +14116,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         'inferenceLocation': 'on_device',
         'operation': operation,
         'modelId': modelId,
+        ...safeMetadata,
         'redactionApplied': true,
       },
     ));
@@ -14174,6 +14180,41 @@ class _ChatPanelState extends State<_ChatPanel> {
       await _recordMobileCoreControl(
         operation: 'unload_model',
         modelId: modelId,
+        startedAt: startedAt,
+        success: false,
+        error: error,
+      );
+      rethrow;
+    }
+  }
+
+  Future<TuimaHealth> _activateVerifiedOmni({
+    MobileCoreAttachmentKind? requiredCapability,
+    int contextLength = 4096,
+  }) async {
+    final startedAt = DateTime.now();
+    try {
+      final result = await _tuimaProviderService.loadVerifiedOmni(
+        requiredCapability: requiredCapability,
+        contextLength: contextLength,
+      );
+      if (mounted) setState(() => _tuimaHealth = result.health);
+      await _recordMobileCoreControl(
+        operation: requiredCapability == null
+            ? 'activate_verified_omni'
+            : 'activate_verified_omni_for_${requiredCapability.name}',
+        modelId: result.status.modelId,
+        startedAt: startedAt,
+        success: true,
+        safeMetadata: result.status.evidenceMetadata,
+      );
+      return result.health;
+    } on Object catch (error) {
+      await _recordMobileCoreControl(
+        operation: requiredCapability == null
+            ? 'activate_verified_omni'
+            : 'activate_verified_omni_for_${requiredCapability.name}',
+        modelId: 'verified-omni-pair',
         startedAt: startedAt,
         success: false,
         error: error,
@@ -14303,6 +14344,26 @@ class _ChatPanelState extends State<_ChatPanel> {
                               label: const Text('Unload active model'),
                             ),
                           ],
+                          if (data.omniStatus.loadable &&
+                              !(data.health.canInfer &&
+                                  data.health.mainArtifact.verified &&
+                                  data.health.projectorArtifact.verified &&
+                                  data.health.runtime.contains('libmtmd'))) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              'A verified local Omni pair is installed. Media controls remain hidden until the runtime capability check passes.',
+                              style:
+                                  const TextStyle(color: _muted, fontSize: 12),
+                            ),
+                            const SizedBox(height: 8),
+                            FilledButton.icon(
+                              onPressed: () => unawaited(run(() async {
+                                await _activateVerifiedOmni();
+                              })),
+                              icon: const Icon(Icons.auto_awesome_outlined),
+                              label: const Text('Activate verified Omni'),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -14422,9 +14483,33 @@ class _ChatPanelState extends State<_ChatPanel> {
       measuredDecodeTokensPerSecond: measuredSpeedFor(health),
     );
     var currentHealth = health;
+    if (attachment != null &&
+        !currentHealth.capabilities.supports(attachment.kind)) {
+      final omniStatus = await _tuimaProviderService
+          .omniStatus()
+          .catchError((_) => const MobileCoreOmniStatus());
+      if (MobileCoreAdaptivePolicy.shouldActivateVerifiedOmni(
+        health: currentHealth,
+        omniStatus: omniStatus,
+        attachmentKind: attachment.kind,
+      )) {
+        currentHealth = await _activateVerifiedOmni(
+          requiredCapability: attachment.kind,
+          contextLength: decision.contextLength,
+        );
+        decision = MobileCoreAdaptivePolicy.decideForTask(
+          health: currentHealth,
+          recommendations: recommendations,
+          telemetry: telemetry,
+          task: taskSignals,
+          attachmentKind: attachment.kind,
+          measuredDecodeTokensPerSecond: measuredSpeedFor(currentHealth),
+        );
+      }
+    }
     if (MobileCoreAdaptivePolicy.shouldSwitchToRecommendedModel(
       decision: decision,
-      activeModelId: health.activeModel,
+      activeModelId: currentHealth.activeModel,
       attachmentKind: attachment?.kind,
     )) {
       currentHealth = await _tuimaProviderService.loadModel(
@@ -21093,12 +21178,14 @@ class _MobileCoreControlData {
     this.models = const [],
     this.metrics = const MobileCoreMetrics(),
     this.recommendations = const MobileCoreRecommendations(),
+    this.omniStatus = const MobileCoreOmniStatus(),
   });
 
   final TuimaHealth health;
   final List<MobileCoreModel> models;
   final MobileCoreMetrics metrics;
   final MobileCoreRecommendations recommendations;
+  final MobileCoreOmniStatus omniStatus;
 }
 
 class _MobileCoreRuntimeDecision {

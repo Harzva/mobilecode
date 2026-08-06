@@ -16,7 +16,11 @@ MobileCode is the control center. It owns model routing, user consent, Phone Use
 - memory/storage preflight and typed failure code;
 - installed models, device recommendations, and decode/latency metrics;
 - model load, unload, and switch controls using public `model_id` and optional
-  public `projector_id` only.
+  public `projector_id` only;
+- typed verified-Omni status plus a dedicated load control that refuses partial
+  or unverified pairs and rechecks the active `/health` runtime, artifact
+  verification and pinned digests, and requested image/audio capability after
+  loading.
 
 The v2 client reads health before and after the models/metrics/recommendations
 bundle. If MobileCore changes the active runtime during that window, MobileCode
@@ -26,7 +30,20 @@ IDs containing path separators or control characters are rejected before a
 request is sent, and a switch is successful only when `/health` reports the
 exact requested public model ID.
 
-The TuiMa control sheet exposes that state inside MobileCode. Image and audio entry points are capability-gated. Selected media is held only in memory, sent only to the local MobileCore endpoint, removed after the request, and excluded from saved chat turns and ActionEvidence. A local-only media request fails closed instead of falling back to cloud inference.
+The TuiMa control sheet exposes that state inside MobileCode. When MobileCore
+reports a complete verified Omni pair that is not active, the sheet offers an
+explicit local activation control. Image and audio entry points remain hidden
+until the loaded runtime's `/health` response advertises the corresponding
+capability. If an already-selected attachment survives an external model
+change, MobileCode may reactivate that verified pair, then repeats the runtime
+capability check before sending any media. Selected media is held only in
+memory, sent only to the local MobileCore endpoint, removed after the request,
+and excluded from saved chat turns and ActionEvidence. A local-only media
+request fails closed instead of falling back to cloud inference.
+
+This control path proves protocol enforcement and fail-closed selection; it is
+not evidence that the large Qwen2.5-Omni artifacts have run successfully on a
+physical phone. That remains a separate gate below.
 
 Adaptive routing currently applies these rules:
 
@@ -191,6 +208,31 @@ request. Logcat contained no MobileCode crash, ANR, OOM, or SIGABRT marker. The
 local APK is Android Debug-signed and is therefore QA evidence, not the
 production-signed GitHub Release asset.
 
+### Verified Omni activation control refresh
+
+On 2026-08-07, a clean `pureDebug` MobileCode v0.1.77 (`67`) APK containing
+the typed Omni status and dedicated verified-pair activation path was built,
+installed, and cold-launched on the Android 16 ARM64 emulator. The APK SHA-256
+was `3833b98f95c113454658d471e9824bb66d2f83c9117c03c48d192a86a47a3c11`.
+Cold launch completed in 2,694 ms, the app remained resumed, and filtered logcat
+contained no MobileCode fatal exception, ANR, OOM, or SIGABRT marker.
+
+MobileCore 0.1.4-rc4 exposed protocol v2 and loaded the real local
+`qwen2.5-0.5b-instruct-q4_k_m` runtime by public model ID. After a visible
+service restart and control-sheet retry, MobileCode displayed the exact active
+model, `llama.cpp`, CPU backend, `Q4_K_M`, 462 MB peak runtime memory, ready
+preflight, three installed models, and explicit `image no · audio no`
+capabilities. The stopped-service interval was surfaced as the typed
+`service_unavailable` state instead of stale controls.
+
+The same emulator lacked both pinned Qwen2.5-Omni artifacts, and its preflight
+reported insufficient memory and storage for that pair. MobileCode therefore
+did not render the verified-Omni activation control and did not expose image or
+audio attachment entry points. This proves real dual-app capability gating and
+the unverified/insufficient-resource refusal path; the successful activation
+path remains contract-tested until a capable physical device with both verified
+artifacts is available.
+
 ### Withdrawn v0.1.76 Android artifact
 
 The official APK described below was withdrawn on 2026-08-07 after post-build
@@ -354,13 +396,15 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
 
 ## Verification
 
-- The complete MobileCode Flutter suite passed 571 tests after the Client v2,
+- The complete MobileCode Flutter suite passed 577 tests after the Client v2,
   adaptive-routing, pressure-switch, proactive-offline, one-task cloud approval,
   protocol-handshake, cancellation, and bounded-output follow-ups.
-- The focused MobileCore client/adaptive-policy/approval suite passed 37 tests
+- The focused MobileCore client/adaptive-policy/approval suite passed 43 tests
   covering coherent
   runtime snapshots, exact switch confirmation, public projector IDs,
-  path-like ID rejection, projector metadata, and image-capability parsing.
+  path-like ID rejection, projector metadata, image-capability parsing,
+  verified-Omni activation, partial-pair rejection, post-load pinned-digest
+  matching, and audio capability confirmation.
 - The focused adaptive-policy coverage includes privacy/offline
   fail-closed routing, cloud-consent gating, constrained context/model choice,
   one-task approval expiry semantics, and multimodal capability retention under
@@ -373,6 +417,10 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
 - A clean local Android arm64 `pureRelease` build passed and its manifest version was
   verified as `0.1.76+66`; this local build is validation evidence only and is
   not the stable-signed GitHub Release asset.
+- A later `pureDebug` v0.1.77 (`67`) APK with verified-Omni activation control
+  also built, installed, cold-launched, and rendered the real MobileCore control
+  state on the Android 16 ARM64 emulator. It is debug-signed QA evidence, not a
+  release asset.
 - The real emulator UI displayed the one-task cloud approval card before a
   complex cloud request. Declining routed to MobileCore, and the subsequent
   local timeout remained fail-closed instead of opening the cloud provider.

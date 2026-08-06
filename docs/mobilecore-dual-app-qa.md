@@ -129,6 +129,25 @@ composer without falling back to cloud. This proves the approval and
 fail-closed route on an emulator, not local-model performance or physical-device
 readiness.
 
+### Published v0.1.75 Android artifact
+
+The [v0.1.75 Android release workflow](https://github.com/Harzva/mobilecode/actions/runs/31127234312)
+completed successfully from the tagged merge commit. A fresh download of the
+official `mobilecode-v0.1.75.apk` reported `0.1.75+65`, measured 33,047,539
+bytes, and matched both the GitHub asset digest and local SHA-256
+`66e7a26bb7efa4b3c6f959b3e8063fb05a25f91e5b13463211c80c60da5272e2`.
+The APK verifies with Signature Scheme v2 and the MobileCode release
+certificate (`CN=MobileCode, O=Harzva`), not the Android Debug certificate.
+
+The downloaded official APK installed cleanly after removing the differently
+signed QA build from the Android 16 ARM64 emulator. The first cold launch
+reached Android's microphone-consent sheet in 1.254 seconds. Dismissing that
+sheet returned `com.mobilecode.app/.MainActivity` to the resumed state with the
+process alive and the `v0.1.75` home screen visible. The captured logcat had no
+MobileCode fatal exception, ANR, process death, or out-of-memory signal. This is
+release-package and emulator-launch evidence; it does not satisfy any physical
+device, controlled-account, thermal, or Omni quality gate.
+
 ## Local vision chain
 
 A separate controlled emulator check used a Qwen3.5 0.8B main GGUF plus its mmproj. `/v1/models` exposed the projector as metadata on the main model, loading returned `image_input=true`, and `/health` reported `runtime=llama.cpp/libmtmd`. A real JPEG data-URI request completed through the same OpenAI-compatible endpoint with 93 total tokens and 542 MB reported runtime memory. There was no crash, ANR, or OOM.

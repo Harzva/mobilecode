@@ -50,6 +50,7 @@ CROSS_APP_AUDIO_TEST = (
     "controlledLocalAudioQualityTasks"
 )
 BACKGROUND_APP_OPS = ("RUN_IN_BACKGROUND", "RUN_ANY_IN_BACKGROUND")
+MIN_PHYSICAL_THERMAL_DURATION_SECONDS = 900
 
 _SENSITIVE_SNAPSHOT_KEYS = {
     "absolute_path",
@@ -253,6 +254,42 @@ def instrumentation_succeeded(
     return match is not None and int(match.group(1)) > 0
 
 
+def physical_acceptance_errors(args: argparse.Namespace) -> list[str]:
+    """Return strict physical-lane configuration failures."""
+    if not getattr(args, "require_physical_device", False):
+        return []
+    errors: list[str] = []
+    if not getattr(args, "require_model_switch", False):
+        errors.append("--require-physical-device requires --require-model-switch")
+    if not getattr(args, "require_background_recovery", False):
+        errors.append(
+            "--require-physical-device requires --require-background-recovery"
+        )
+    if not getattr(args, "require_thermal", False):
+        errors.append("--require-physical-device requires --require-thermal")
+    if (
+        getattr(args, "thermal_duration_seconds", 0)
+        < MIN_PHYSICAL_THERMAL_DURATION_SECONDS
+    ):
+        errors.append(
+            "--require-physical-device requires --thermal-duration-seconds "
+            f">= {MIN_PHYSICAL_THERMAL_DURATION_SECONDS}"
+        )
+    return errors
+
+
+def offline_phase_passed(summary: dict[str, object], phase: str) -> bool:
+    """Return whether one offline phase was both enabled and restored."""
+    phases = summary.get("phases")
+    phase_summary = phases.get(phase) if isinstance(phases, dict) else None
+    return (
+        isinstance(phase_summary, dict)
+        and phase_summary.get("enabledObserved") is True
+        and phase_summary.get("restoredObserved") is True
+        and phase_summary.get("stateMismatchObserved") is not True
+    )
+
+
 class QaRunner:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -277,6 +314,15 @@ class QaRunner:
             "required": bool(
                 getattr(args, "require_background_recovery", False)
             ),
+        }
+        self.offline_isolation_summary: dict[str, object] = {
+            "status": "not_run",
+            "required": True,
+            "phases": {},
+        }
+        self.low_memory_summary: dict[str, object] = {
+            "status": "not_run",
+            "required": bool(getattr(args, "require_physical_device", False)),
         }
         signing_required = any(
             getattr(args, name, None)
@@ -351,6 +397,68 @@ class QaRunner:
             timeout=timeout,
             required=required,
         )
+
+    def set_airplane_mode(self, enabled: bool, *, phase: str) -> None:
+        """Set and verify the public Android airplane-mode state."""
+        action = "enable" if enabled else "disable"
+        self.adb(
+            f"{action}_airplane_mode_{phase}",
+            "shell",
+            "cmd",
+            "connectivity",
+            "airplane-mode",
+            action,
+        )
+        observed = self.adb(
+            f"read_airplane_mode_{phase}_{action}",
+            "shell",
+            "settings",
+            "get",
+            "global",
+            "airplane_mode_on",
+        ).stdout.strip()
+        expected = b"1" if enabled else b"0"
+        matches = observed == expected
+        self.steps.append(
+            Step(
+                name=f"verify_airplane_mode_{phase}_{action}",
+                status="passed" if matches else "failed",
+                duration_ms=0,
+                result_digest=sha256_bytes(expected),
+                failure_kind=None if matches else "offline_state_mismatch",
+            )
+        )
+        phases = self.offline_isolation_summary["phases"]
+        assert isinstance(phases, dict)
+        phase_summary = phases.setdefault(
+            phase,
+            {
+                "enabledObserved": False,
+                "restoredObserved": False,
+                "stateMismatchObserved": False,
+            },
+        )
+        assert isinstance(phase_summary, dict)
+        phase_summary[
+            "enabledObserved" if enabled else "restoredObserved"
+        ] = matches
+        if not matches:
+            phase_summary["stateMismatchObserved"] = True
+            self.offline_isolation_summary["status"] = "failed"
+            raise RuntimeError(
+                f"Android airplane mode did not report the expected {action} state"
+            )
+        phase_values = [item for item in phases.values() if isinstance(item, dict)]
+        if any(item.get("stateMismatchObserved") is True for item in phase_values):
+            self.offline_isolation_summary["status"] = "failed"
+        elif phase_values and all(
+            item.get("enabledObserved") is True
+            and item.get("restoredObserved") is True
+            for item in phase_values
+        ):
+            self.offline_isolation_summary["status"] = "passed"
+        else:
+            self.offline_isolation_summary["status"] = "running"
 
     def instrumentation(
         self,
@@ -687,16 +795,8 @@ class QaRunner:
         self.snapshot("health_initial", health)
 
     def run_cross_app_tasks(self) -> None:
-        self.adb(
-            "enable_airplane_mode",
-            "shell",
-            "cmd",
-            "connectivity",
-            "airplane-mode",
-            "enable",
-            required=False,
-        )
         try:
+            self.set_airplane_mode(True, phase="controlled_tasks")
             self.instrumentation(
                 "run_30_cross_app_tasks",
                 CROSS_APP_TEST,
@@ -704,15 +804,16 @@ class QaRunner:
             )
             self.exercise_multimodal_cross_app_tasks()
         finally:
-            self.adb(
-                "disable_airplane_mode",
-                "shell",
-                "cmd",
-                "connectivity",
-                "airplane-mode",
-                "disable",
-                required=False,
-            )
+            try:
+                self.set_airplane_mode(False, phase="controlled_tasks")
+            finally:
+                self.multimodal_summary["offlineDuringTasks"] = (
+                    offline_phase_passed(
+                        self.offline_isolation_summary,
+                        "controlled_tasks",
+                    )
+                )
+                self.snapshot("multimodal_summary", self.multimodal_summary)
         self.snapshot("metrics_after_30_tasks", self.api("GET", "/metrics"))
 
     def exercise_multimodal_cross_app_tasks(self) -> None:
@@ -744,7 +845,7 @@ class QaRunner:
         self.multimodal_summary = {
             "status": "running",
             "localOnly": True,
-            "offlineDuringTasks": True,
+            "offlineDuringTasks": False,
             "rawMediaPromptsAndOutputsPersisted": False,
             "capabilities": {
                 "imageInput": image_advertised,
@@ -841,17 +942,7 @@ class QaRunner:
 
         self.adb("background_mobilecore_with_mobilecode", "shell", "am", "start", "-W", "-n", MOBILECODE_ACTIVITY)
         self.wait_for_health(require_model=True)
-        self.adb(
-            "trim_mobilecore_memory",
-            "shell",
-            "am",
-            "send-trim-memory",
-            MOBILECORE_PACKAGE,
-            "RUNNING_LOW",
-            required=False,
-        )
-        pressure_health = self.wait_for_health(require_model=True)
-        self.snapshot("health_after_memory_pressure", pressure_health)
+        self.exercise_low_memory_pressure()
 
         thermal = self.adb(
             "capture_thermal_state",
@@ -880,6 +971,35 @@ class QaRunner:
         self.tap_mobilecore_load()
         restarted = self.wait_for_health(require_model=True, timeout=self.args.ready_timeout)
         self.snapshot("health_after_process_restart", restarted)
+
+    def exercise_low_memory_pressure(self) -> None:
+        required = bool(getattr(self.args, "require_physical_device", False))
+        trim = self.adb(
+            "trim_mobilecore_memory",
+            "shell",
+            "am",
+            "send-trim-memory",
+            MOBILECORE_PACKAGE,
+            "RUNNING_LOW",
+            required=False,
+        )
+        pressure_health = self.wait_for_health(require_model=True)
+        model_ready = pressure_health.get("model_loaded") is True
+        command_accepted = trim.returncode == 0
+        passed = command_accepted and model_ready
+        self.low_memory_summary = {
+            "status": "passed" if passed else "failed",
+            "required": required,
+            "trimLevel": "RUNNING_LOW",
+            "commandAccepted": command_accepted,
+            "modelReadyAfterTrim": model_ready,
+        }
+        self.snapshot("low_memory_summary", self.low_memory_summary)
+        self.snapshot("health_after_memory_pressure", pressure_health)
+        if required and not passed:
+            raise RuntimeError(
+                "Required RUNNING_LOW injection was not accepted with a model-ready recovery"
+            )
 
     def exercise_background_recovery(self) -> None:
         required = bool(
@@ -1119,16 +1239,8 @@ class QaRunner:
         samples: list[dict[str, object]] = []
         workload_requests = 0
         workload_failures = 0
-        self.adb(
-            "enable_airplane_mode_for_thermal_workload",
-            "shell",
-            "cmd",
-            "connectivity",
-            "airplane-mode",
-            "enable",
-            required=False,
-        )
         try:
+            self.set_airplane_mode(True, phase="thermal_workload")
             next_sample_at = started
             deadline = started + duration
             while time.monotonic() < deadline:
@@ -1169,15 +1281,7 @@ class QaRunner:
                 self._capture_pressure_sample(round(time.monotonic() - started))
             )
         finally:
-            self.adb(
-                "disable_airplane_mode_after_thermal_workload",
-                "shell",
-                "cmd",
-                "connectivity",
-                "airplane-mode",
-                "disable",
-                required=False,
-            )
+            self.set_airplane_mode(False, phase="thermal_workload")
 
         battery_values = [
             float(sample["batteryTemperatureC"])
@@ -1202,7 +1306,10 @@ class QaRunner:
             "status": "passed" if passed else "failed",
             "required": self.args.require_thermal,
             "environment": self.environment,
-            "offlineDuringWorkload": True,
+            "offlineDuringWorkload": offline_phase_passed(
+                self.offline_isolation_summary,
+                "thermal_workload",
+            ),
             "durationSecondsRequested": duration,
             "durationSecondsObserved": observed_seconds,
             "sampleIntervalSeconds": self.args.thermal_sample_seconds,
@@ -1294,13 +1401,18 @@ class QaRunner:
             "device_id_hash": sha256_bytes(self.args.serial.encode())[:16],
             "device_model_hash": sha256_bytes(self.device_model)[:16],
             "controlled_tasks": 30,
-            "offline_during_tasks": True,
+            "offline_during_tasks": offline_phase_passed(
+                self.offline_isolation_summary,
+                "controlled_tasks",
+            ),
+            "offline_isolation": self.offline_isolation_summary,
             "model_switch": {
                 "required": self.args.require_model_switch,
                 "status": self.model_switch_status,
             },
             "apk_signing": self.apk_signing_summary,
             "multimodal": self.multimodal_summary,
+            "low_memory_pressure": self.low_memory_summary,
             "background_recovery": self.background_recovery_summary,
             "thermal_workload": self.thermal_summary,
             "redaction": "raw_prompts_media_credentials_and_host_paths_omitted",
@@ -1449,12 +1561,9 @@ def parse_args() -> argparse.Namespace:
         parser.error("thermal-request-timeout must be >= 1")
     if args.require_thermal and args.thermal_duration_seconds <= 0:
         parser.error("--require-thermal requires --thermal-duration-seconds > 0")
-    if args.require_physical_device and not args.require_thermal:
-        parser.error("--require-physical-device requires --require-thermal")
-    if args.require_physical_device and not args.require_background_recovery:
-        parser.error(
-            "--require-physical-device requires --require-background-recovery"
-        )
+    physical_errors = physical_acceptance_errors(args)
+    if physical_errors:
+        parser.error(physical_errors[0])
     return args
 
 

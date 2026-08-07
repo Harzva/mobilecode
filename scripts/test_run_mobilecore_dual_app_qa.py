@@ -11,6 +11,102 @@ import run_mobilecore_dual_app_qa as qa
 
 
 class MobileCoreDualAppQaTest(unittest.TestCase):
+    def test_strict_physical_lane_requires_every_counted_gate(self) -> None:
+        args = argparse.Namespace(
+            require_physical_device=True,
+            require_model_switch=False,
+            require_background_recovery=False,
+            require_thermal=False,
+            thermal_duration_seconds=1,
+        )
+
+        errors = qa.physical_acceptance_errors(args)
+
+        self.assertIn(
+            "--require-physical-device requires --require-model-switch",
+            errors,
+        )
+        self.assertIn(
+            "--require-physical-device requires --require-background-recovery",
+            errors,
+        )
+        self.assertIn(
+            "--require-physical-device requires --require-thermal",
+            errors,
+        )
+        self.assertIn(
+            "--require-physical-device requires --thermal-duration-seconds >= 900",
+            errors,
+        )
+
+        args.require_model_switch = True
+        args.require_background_recovery = True
+        args.require_thermal = True
+        args.thermal_duration_seconds = 900
+        self.assertEqual(qa.physical_acceptance_errors(args), [])
+
+    def test_airplane_mode_must_be_observed_and_restored(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            args = argparse.Namespace(
+                output_dir=Path(directory),
+                forward_port=18080,
+                require_thermal=False,
+                require_physical_device=True,
+                require_background_recovery=False,
+                adb="adb",
+                serial="private-device-id",
+            )
+            runner = qa.QaRunner(args)
+            state = b"0"
+
+            def adb(_name, *arguments, **_kwargs):
+                nonlocal state
+                if "airplane-mode" in arguments:
+                    state = b"1" if arguments[-1] == "enable" else b"0"
+                return subprocess.CompletedProcess([], 0, state + b"\n", b"")
+
+            runner.adb = adb
+            runner.set_airplane_mode(True, phase="controlled_tasks")
+            runner.set_airplane_mode(False, phase="controlled_tasks")
+
+        self.assertEqual(runner.offline_isolation_summary["status"], "passed")
+        phase = runner.offline_isolation_summary["phases"]["controlled_tasks"]
+        self.assertTrue(phase["enabledObserved"])
+        self.assertTrue(phase["restoredObserved"])
+        self.assertTrue(
+            qa.offline_phase_passed(
+                runner.offline_isolation_summary,
+                "controlled_tasks",
+            )
+        )
+
+    def test_airplane_mode_rejects_a_state_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            args = argparse.Namespace(
+                output_dir=Path(directory),
+                forward_port=18080,
+                require_thermal=False,
+                require_physical_device=True,
+                require_background_recovery=False,
+                adb="adb",
+                serial="private-device-id",
+            )
+            runner = qa.QaRunner(args)
+            runner.adb = lambda *_args, **_kwargs: subprocess.CompletedProcess(
+                [], 0, b"0\n", b""
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "airplane mode"):
+                runner.set_airplane_mode(True, phase="controlled_tasks")
+
+        self.assertEqual(runner.offline_isolation_summary["status"], "failed")
+        self.assertFalse(
+            qa.offline_phase_passed(
+                runner.offline_isolation_summary,
+                "controlled_tasks",
+            )
+        )
+
     def test_environment_classification_uses_android_properties(self) -> None:
         self.assertEqual(
             qa.classify_android_environment(
@@ -272,6 +368,7 @@ INSTRUMENTATION_CODE: -1
 
             runner.wait_for_health = lambda **_: {"active_model": "model-public-id"}
             runner.adb = lambda *_, **__: subprocess.CompletedProcess([], 0, b"", b"")
+            runner.set_airplane_mode = lambda *_args, **_kwargs: None
             runner._capture_pressure_sample = lambda elapsed: {
                 "elapsedSeconds": elapsed,
                 "batteryTemperatureC": 35.0,
@@ -298,6 +395,30 @@ INSTRUMENTATION_CODE: -1
         )
         self.assertNotIn("Controlled sustained local QA", raw)
         self.assertNotIn("model-public-id", raw)
+
+    def test_required_low_memory_lane_rejects_an_unaccepted_trim(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            args = argparse.Namespace(
+                output_dir=Path(directory),
+                forward_port=18080,
+                require_thermal=False,
+                require_physical_device=True,
+                require_background_recovery=False,
+            )
+            runner = qa.QaRunner(args)
+            runner.adb = lambda *_args, **_kwargs: subprocess.CompletedProcess(
+                [], 1, b"", b"rejected"
+            )
+            runner.wait_for_health = lambda **_: {"model_loaded": True}
+
+            with self.assertRaisesRegex(RuntimeError, "RUNNING_LOW"):
+                runner.exercise_low_memory_pressure()
+            raw = (Path(directory) / "low_memory_summary.json").read_text()
+
+        self.assertEqual(runner.low_memory_summary["status"], "failed")
+        self.assertFalse(runner.low_memory_summary["commandAccepted"])
+        self.assertTrue(runner.low_memory_summary["modelReadyAfterTrim"])
+        self.assertNotIn("com.mobilecore.app", raw)
 
     def test_background_recovery_restores_app_ops_and_requires_visible_recovery(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

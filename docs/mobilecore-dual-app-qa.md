@@ -380,7 +380,8 @@ python3 scripts/run_mobilecore_dual_app_qa.py \
 
 The counted physical-device lane must opt into property-based physical-device
 enforcement, host-controlled background restriction/recovery, and a sustained
-offline inference workload:
+offline inference workload. Strict physical mode refuses to start unless model
+switching is required and the thermal duration is at least 900 seconds:
 
 ```bash
 python3 scripts/run_mobilecore_dual_app_qa.py \
@@ -425,7 +426,20 @@ case-relevant, non-collapsed outputs; the host manifest stores only pass/fail,
 capability and artifact-verification booleans, step digests, and numeric sample
 rate. It never stores fixture bytes, prompts, response text, or data URIs.
 
-The v2 runner verifies `ro.kernel.qemu`, `ro.boot.qemu`, hardware, and model properties instead of trusting the adb serial prefix. During the thermal lane it keeps the device offline, repeatedly performs bounded local inference, and records only numeric temperature/status samples plus aggregate request and failure counts. Raw `dumpsys` output and inference responses are never written.
+The v2 runner verifies `ro.kernel.qemu`, `ro.boot.qemu`, hardware, and model
+properties instead of trusting the adb serial prefix. It now treats airplane
+mode as an asserted state rather than a best-effort command: both the enabled
+state and post-test restoration must be observed through Android settings, and
+the manifest derives `offline_during_tasks` from those observations instead of
+hard-coding it. During the thermal lane it keeps the device offline, repeatedly
+performs bounded local inference, and records only numeric temperature/status
+samples plus aggregate request and failure counts. Raw `dumpsys` output and
+inference responses are never written.
+
+Strict physical mode also requires Android to accept the `RUNNING_LOW` trim
+injection and requires MobileCore to remain model-ready afterward. A failed or
+unsupported trim command is recorded as failed low-memory evidence and cannot
+produce a passing physical manifest.
 
 The background-recovery lane uses host-side ADB app-ops only on the dedicated
 QA device. It snapshots the existing background modes, applies a temporary
@@ -494,8 +508,10 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
 - A post-fix real-GGUF smoke reported active-model preflight `625617760` required bytes versus `1096425472` available bytes, `runtime=llama.cpp`, two completed requests, zero failures, and a non-zero average decode rate.
 - MobileCode `pureDebug` APK and cross-app Android test APK built successfully.
 - The dual-app runner privacy, classification, multimodal, thermal,
-  background-recovery, and APK-signing paths pass 12 deterministic host-side
-  unit tests.
+  background-recovery, APK-signing, and strict physical-gate paths pass 16
+  deterministic host-side unit tests, including mandatory model switching,
+  15-minute thermal duration, observed airplane-mode restoration, and
+  fail-closed `RUNNING_LOW` injection.
 - ActionEvidence inference-to-device linking passes focused unit coverage, including idempotency and action-type rejection.
 - The final v0.1.78 client regression passes 582 Flutter tests, including stale-runtime rejection before model load and projected-memory refusal without a load request.
 

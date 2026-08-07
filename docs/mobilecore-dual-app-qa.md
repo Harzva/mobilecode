@@ -153,7 +153,7 @@ not replace the pending physical-device lane.
 
 The published, stable-signed `mobilecode-v0.1.78.apk` was then downloaded from
 the successful Android release workflow. Its 33,073,027-byte payload and
-SHA-256 `76e29905fb06aa007517559c54fd5f36b4af569b95d9fd74f34dca76d1ab26a7`
+SHA-256 `5123f48f93161838b166259061857b058ab63429051544e4ac0234088a886073`
 match the GitHub Release record. It reports `0.1.78+68`, verifies with the
 existing MobileCode release certificate, clean-installs and renders
 `v0.1.78` plus `TuiMa 就绪`, while MobileCore remains a foreground protocol-v2

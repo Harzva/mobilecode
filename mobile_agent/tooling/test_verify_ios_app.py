@@ -5,18 +5,22 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from verify_ios_app import verify
+from verify_ios_app import _read_version, verify
 
 
 class VerifyIosAppTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.semantic, self.build = _read_version()
+        self.expected_tag = f'v{self.semantic}'
+
     def _app(self, directory: Path) -> Path:
         app = directory / 'Runner.app'
         app.mkdir()
         (app / 'Info.plist').write_bytes(
             plistlib.dumps(
                 {
-                    'CFBundleShortVersionString': '0.1.73',
-                    'CFBundleVersion': '63',
+                    'CFBundleShortVersionString': self.semantic,
+                    'CFBundleVersion': self.build,
                     'NSMicrophoneUsageDescription': 'Microphone prompt',
                     'NSSpeechRecognitionUsageDescription': 'Speech prompt',
                 }
@@ -31,7 +35,7 @@ class VerifyIosAppTest(unittest.TestCase):
             log = directory / 'runner.log'
             log.write_text('Runner launched normally.', encoding='utf-8')
 
-            verify(app, 'v0.1.73', log)
+            verify(app, self.expected_tag, log)
 
     def test_nested_usage_description_does_not_pass(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
@@ -45,7 +49,7 @@ class VerifyIosAppTest(unittest.TestCase):
             (app / 'Info.plist').write_bytes(plistlib.dumps(document))
 
             with self.assertRaisesRegex(ValueError, 'top-level'):
-                verify(app, 'v0.1.73', None)
+                verify(app, self.expected_tag, None)
 
     def test_privacy_crash_signature_fails(self) -> None:
         with tempfile.TemporaryDirectory() as directory_name:
@@ -59,7 +63,7 @@ class VerifyIosAppTest(unittest.TestCase):
             )
 
             with self.assertRaisesRegex(ValueError, 'crash signature'):
-                verify(app, 'v0.1.73', log)
+                verify(app, self.expected_tag, log)
 
 
 if __name__ == '__main__':

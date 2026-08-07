@@ -23,6 +23,14 @@ FORBIDDEN_PATTERNS = (
     "--dart-define-from-file",
 )
 
+ANDROID_WORKFLOW = Path(".github/workflows/android-apk.yml")
+COMBINED_WORKFLOW = Path(".github/workflows/mobile-app-release.yml")
+APK_UPLOAD_STEP = "- name: Upload APK to GitHub Release"
+MANUAL_ONLY_UPLOAD_CONDITION = (
+    "if: ${{ github.event_name == 'workflow_dispatch' && "
+    "github.event.inputs.upload_to_release != 'false' }}"
+)
+
 
 def find_violations(path: Path, content: str) -> list[str]:
     violations: list[str] = []
@@ -34,14 +42,41 @@ def find_violations(path: Path, content: str) -> list[str]:
     return violations
 
 
+def find_apk_publisher_violations(contents: dict[Path, str]) -> list[str]:
+    android = contents.get(ANDROID_WORKFLOW)
+    combined = contents.get(COMBINED_WORKFLOW)
+    if android is None or combined is None:
+        return []
+
+    violations: list[str] = []
+    if APK_UPLOAD_STEP not in android:
+        violations.append(
+            f"{ANDROID_WORKFLOW}: dedicated tagged APK publisher is missing"
+        )
+
+    upload_start = combined.find(APK_UPLOAD_STEP)
+    upload_end = combined.find("\n      - name:", upload_start + 1)
+    upload_block = combined[upload_start:upload_end if upload_end >= 0 else None]
+    if upload_start < 0 or MANUAL_ONLY_UPLOAD_CONDITION not in upload_block:
+        violations.append(
+            f"{COMBINED_WORKFLOW}: APK Release upload must be manual-only; "
+            f"tagged APKs are published by {ANDROID_WORKFLOW}"
+        )
+    return violations
+
+
 def verify(root: Path, workflow_paths: tuple[Path, ...]) -> list[str]:
     violations: list[str] = []
+    contents: dict[Path, str] = {}
     for relative_path in workflow_paths:
         path = root / relative_path
         if not path.is_file():
             violations.append(f"{relative_path}: required public release workflow is missing")
             continue
-        violations.extend(find_violations(relative_path, path.read_text(encoding="utf-8")))
+        content = path.read_text(encoding="utf-8")
+        contents[relative_path] = content
+        violations.extend(find_violations(relative_path, content))
+    violations.extend(find_apk_publisher_violations(contents))
     return violations
 
 

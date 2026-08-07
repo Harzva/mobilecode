@@ -392,6 +392,7 @@ void main() {
                 'id': 'small-q4',
                 'mobilecore': {
                   'path': '/private/models/small-q4.gguf',
+                  'backend': 'llama.cpp',
                   'quantization': 'Q4_K_M',
                   'context_length': 4096,
                   'size_bytes': 1234,
@@ -411,7 +412,14 @@ void main() {
           request.response.write(jsonEncode({
             'active_model': 'small-q4',
             'backend': 'llama.cpp',
+            'uptime_seconds': 99,
+            'requests_total': 8,
+            'requests_completed': 6,
+            'requests_failed': 1,
+            'inference_cancel_requests': 1,
+            'inference_busy_rejections': 2,
             'last_decode_tokens_per_second': 18.5,
+            'average_decode_tokens_per_second': 17.25,
             'last_first_token_ms': 82,
             'last_total_ms': 200,
             'memory_peak_mb': 512,
@@ -423,13 +431,21 @@ void main() {
       final models = await service.listModels();
       final metrics = await service.metrics();
       expect(models.single.id, 'small-q4');
+      expect(models.single.backend, 'llama.cpp');
       expect(models.single.quantization, 'Q4_K_M');
       expect(models.single.projectorId, 'mmproj-small-q4-bf16');
       expect(models.single.projectorSizeBytes, 456);
       expect(models.single.capabilities.imageInput, isTrue);
       expect(models.single.toString(), isNot(contains('/private/')));
       expect(metrics.decodeTokensPerSecond, 18.5);
+      expect(metrics.averageDecodeTokensPerSecond, 17.25);
       expect(metrics.firstTokenMs, 82);
+      expect(metrics.uptimeSeconds, 99);
+      expect(metrics.requestsTotal, 8);
+      expect(metrics.requestsCompleted, 6);
+      expect(metrics.requestsFailed, 1);
+      expect(metrics.inferenceCancelRequests, 1);
+      expect(metrics.inferenceBusyRejections, 2);
     });
 
     test('reads a coherent runtime snapshot across control endpoints',
@@ -632,6 +648,245 @@ void main() {
       expect(loadedHealth.activeModel, 'small-q4');
       final unloadedHealth = await service.unloadModel();
       expect(unloadedHealth.canInfer, isFalse);
+    });
+
+    test(
+        'switch preflight counts only the matching active runtime as reclaimable',
+        () async {
+      var activeModel = 'current-q4';
+      var loadRequests = 0;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        switch (request.uri.path) {
+          case '/health':
+            request.response.write(
+              jsonEncode(_healthPayload(model: activeModel)),
+            );
+            break;
+          case '/v1/models':
+            request.response.write(jsonEncode({
+              'data': [
+                {
+                  'id': 'current-q4',
+                  'mobilecore': {
+                    'backend': 'llama.cpp',
+                    'size_bytes': 480 * 1024 * 1024,
+                    'context_length': 4096,
+                    'loaded': activeModel == 'current-q4',
+                  },
+                },
+                {
+                  'id': 'target-q4',
+                  'mobilecore': {
+                    'backend': 'llama.cpp',
+                    'size_bytes': 468 * 1024 * 1024,
+                    'context_length': 32768,
+                    'loaded': activeModel == 'target-q4',
+                  },
+                },
+              ],
+            }));
+            break;
+          case '/metrics':
+            request.response.write(jsonEncode({
+              'active_model': activeModel,
+              'backend': 'android-llama-cpp',
+              'memory_peak_mb': 456,
+            }));
+            break;
+          case '/v1/recommendations':
+            request.response.write(jsonEncode({
+              'device': {'available_ram_mb': 554},
+              'recommendations': [
+                {
+                  'model_id': 'current-q4',
+                  'fit': 'too_tight',
+                  'estimated_memory_mb': 589,
+                  'context_length': 4096,
+                  'loaded': activeModel == 'current-q4',
+                  'score': 0,
+                },
+                {
+                  'model_id': 'target-q4',
+                  'fit': 'too_tight',
+                  'estimated_memory_mb': 596,
+                  'context_length': 32768,
+                  'loaded': activeModel == 'target-q4',
+                  'score': 0,
+                },
+              ],
+            }));
+            break;
+          case '/mobilecore/model/load':
+            final body = jsonDecode(await utf8.decoder.bind(request).join())
+                as Map<String, dynamic>;
+            expect(body['model_id'], 'target-q4');
+            expect(body['context_length'], 4096);
+            expect(body.containsKey('path'), isFalse);
+            loadRequests += 1;
+            activeModel = 'target-q4';
+            request.response.write('{"ok":true}');
+            break;
+        }
+        await request.response.close();
+      });
+
+      final result = await service.switchModelWithPreflight('target-q4');
+      expect(result.health.activeModel, 'target-q4');
+      expect(result.plan.allowed, isTrue);
+      expect(result.plan.serverFit, 'too_tight');
+      expect(result.plan.availableMemoryMb, 554);
+      expect(result.plan.reclaimableRuntimeMemoryMb, 456);
+      expect(result.plan.projectedAvailableMemoryMb, 1010);
+      expect(result.plan.estimatedRequiredMemoryMb, 596);
+      expect(result.plan.usedReclaimableRuntimeMemory, isTrue);
+      expect(result.plan.contextLength, 4096);
+      expect(result.plan.evidenceMetadata.toString(), isNot(contains('/')));
+      expect(loadRequests, 1);
+    });
+
+    test('switch preflight rejects a stale runtime before model load',
+        () async {
+      var healthRequests = 0;
+      var loadRequests = 0;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        switch (request.uri.path) {
+          case '/health':
+            healthRequests += 1;
+            request.response.write(jsonEncode(_healthPayload(
+              model: healthRequests <= 2 ? 'current-q4' : 'other-q4',
+            )));
+            break;
+          case '/v1/models':
+            request.response.write(jsonEncode({
+              'data': [
+                {
+                  'id': 'current-q4',
+                  'mobilecore': {
+                    'size_bytes': 128 * 1024 * 1024,
+                    'loaded': true,
+                  },
+                },
+                {
+                  'id': 'target-q4',
+                  'mobilecore': {
+                    'size_bytes': 128 * 1024 * 1024,
+                    'loaded': false,
+                  },
+                },
+              ],
+            }));
+            break;
+          case '/metrics':
+            request.response.write(jsonEncode({
+              'active_model': 'current-q4',
+              'backend': 'android-llama-cpp',
+              'memory_peak_mb': 100,
+            }));
+            break;
+          case '/v1/recommendations':
+            request.response.write(jsonEncode({
+              'device': {'available_ram_mb': 1000},
+              'recommendations': [
+                {
+                  'model_id': 'target-q4',
+                  'fit': 'good',
+                  'estimated_memory_mb': 256,
+                  'context_length': 4096,
+                },
+              ],
+            }));
+            break;
+          case '/mobilecore/model/load':
+            loadRequests += 1;
+            request.response.write('{"ok":true}');
+            break;
+        }
+        await request.response.close();
+      });
+
+      await expectLater(
+        service.switchModelWithPreflight('target-q4'),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'runtime_snapshot_changed',
+        )),
+      );
+      expect(healthRequests, 3);
+      expect(loadRequests, 0);
+    });
+
+    test('switch preflight rejects insufficient projected memory without load',
+        () async {
+      var loadRequests = 0;
+      server.listen((request) async {
+        request.response.headers.contentType = ContentType.json;
+        switch (request.uri.path) {
+          case '/health':
+            request.response
+                .write(jsonEncode(_healthPayload(model: 'current-q4')));
+            break;
+          case '/v1/models':
+            request.response.write(jsonEncode({
+              'data': [
+                {
+                  'id': 'current-q4',
+                  'mobilecore': {
+                    'size_bytes': 128 * 1024 * 1024,
+                    'loaded': true,
+                  },
+                },
+                {
+                  'id': 'large-q4',
+                  'mobilecore': {
+                    'size_bytes': 700 * 1024 * 1024,
+                    'context_length': 8192,
+                    'loaded': false,
+                  },
+                },
+              ],
+            }));
+            break;
+          case '/metrics':
+            request.response.write(jsonEncode({
+              'active_model': 'current-q4',
+              'backend': 'android-llama-cpp',
+              'memory_peak_mb': 100,
+            }));
+            break;
+          case '/v1/recommendations':
+            request.response.write(jsonEncode({
+              'device': {'available_ram_mb': 200},
+              'recommendations': [
+                {
+                  'model_id': 'large-q4',
+                  'fit': 'too_tight',
+                  'estimated_memory_mb': 700,
+                  'context_length': 8192,
+                  'score': 0,
+                },
+              ],
+            }));
+            break;
+          case '/mobilecore/model/load':
+            loadRequests += 1;
+            request.response.write('{"ok":true}');
+            break;
+        }
+        await request.response.close();
+      });
+
+      await expectLater(
+        service.switchModelWithPreflight('large-q4'),
+        throwsA(isA<MobileCoreProviderException>().having(
+          (error) => error.code,
+          'code',
+          'insufficient_memory',
+        )),
+      );
+      expect(loadRequests, 0);
     });
 
     test('activates only a verified Omni pair and rechecks audio capability',

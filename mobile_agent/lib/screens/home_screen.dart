@@ -14125,32 +14125,15 @@ class _ChatPanelState extends State<_ChatPanel> {
   Future<void> _switchMobileCoreModel(String modelId) async {
     final startedAt = DateTime.now();
     try {
-      final recommendation = await _tuimaProviderService.recommendations();
-      final matches = recommendation.recommendations
-          .where((item) => item.modelId == modelId)
-          .toList(growable: false);
-      final entry = matches.isEmpty ? null : matches.first;
-      final constrained = entry?.fit == 'too_tight';
-      if (constrained) {
-        throw const MobileCoreProviderException(
-          code: 'insufficient_memory',
-          message:
-              'MobileCore reports that this model is too tight for the device.',
-        );
-      }
-      final contextLength = entry == null || entry.contextLength <= 0
-          ? 4096
-          : entry.contextLength.clamp(512, 8192);
-      await _tuimaProviderService.switchModel(
-        modelId,
-        contextLength: contextLength,
-      );
-      await _refreshTuimaHealth();
+      final result =
+          await _tuimaProviderService.switchModelWithPreflight(modelId);
+      if (mounted) setState(() => _tuimaHealth = result.health);
       await _recordMobileCoreControl(
         operation: 'switch_model',
         modelId: modelId,
         startedAt: startedAt,
         success: true,
+        safeMetadata: {'switchPreflight': result.plan.evidenceMetadata},
       );
     } on Object catch (error) {
       await _recordMobileCoreControl(
@@ -14389,7 +14372,7 @@ class _ChatPanelState extends State<_ChatPanel> {
                           title: Text(model.id,
                               style: const TextStyle(color: _text)),
                           subtitle: Text(
-                            '${model.quantization} · ${_formatBytes(model.sizeBytes)} · context ${model.contextLength}'
+                            '${model.backend} · ${model.quantization} · ${_formatBytes(model.sizeBytes)} · context ${model.contextLength}'
                             '${model.capabilities.imageInput ? ' · image' : ''}',
                             style: const TextStyle(color: _muted, fontSize: 12),
                           ),

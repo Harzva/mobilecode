@@ -30,6 +30,15 @@ IDs containing path separators or control characters are rejected before a
 request is sent, and a switch is successful only when `/health` reports the
 exact requested public model ID.
 
+Model switching also performs a projected post-switch memory check. MobileCode
+may count the current runtime peak as reclaimable only when health and metrics
+identify the same active model, caps that value by the active model's estimated
+memory, and keeps 10% projected headroom. Under pressure it reduces requested
+context to at most 2048 tokens. The client revalidates the runtime identity
+immediately before the load request; a concurrent model, backend, capability,
+quantization, or background-state change returns `runtime_snapshot_changed`
+without sending `/mobilecore/model/load`.
+
 The TuiMa control sheet exposes that state inside MobileCode. When MobileCore
 reports a complete verified Omni pair that is not active, the sheet offers an
 explicit local activation control. Image and audio entry points remain hidden
@@ -124,6 +133,23 @@ The same UI then switched Qwen2.5 → Qwen3 and confirmed the exact Qwen3 public
 ID as active with 456 MB peak memory, before restoring the exact Qwen2.5 public
 ID. This proves the v2 control path against the running dual-app service, but it
 remains emulator evidence and does not satisfy the physical-device gate.
+
+### v0.1.78 projected-switch and offline regression
+
+On 2026-08-07, the final `pureDebug` v0.1.78 (`68`) candidate containing the
+projected-memory switch preflight was clean-built and reinstalled with its
+Android test APK. The MobileCode APK SHA-256 was
+`f7ef72d6f615edae7015e6113d0c60b14eabf0ae42181ebae7b2b490581f705c`.
+
+The same Android 16 ARM64 emulator then passed the full 30-task cross-app lane
+again in airplane mode: 15 buffered requests and 15 SSE requests completed in
+274.615 seconds. The test asserted non-empty local output, SSE completion,
+MobileCore metrics, and absence of the controlled prompt marker in metrics.
+Airplane mode was restored by the host runner. MobileCode cold-launched as
+v0.1.78, MobileCore 0.1.4-rc6 remained a foreground service with protocol v2
+and the real Qwen2.5 GGUF loaded, and the post-run log scan found no app fatal
+exception, ANR, OOM, or SIGABRT. This is repeatable emulator evidence; it does
+not replace the pending physical-device lane.
 
 ### One-task cloud approval check
 
@@ -461,6 +487,7 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
   background-recovery, and APK-signing paths pass 12 deterministic host-side
   unit tests.
 - ActionEvidence inference-to-device linking passes focused unit coverage, including idempotency and action-type rejection.
+- The final v0.1.78 client regression passes 582 Flutter tests, including stale-runtime rejection before model load and projected-memory refusal without a load request.
 
 ## Remaining Release Gates
 

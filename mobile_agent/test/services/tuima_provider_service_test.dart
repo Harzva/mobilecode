@@ -1273,6 +1273,20 @@ void main() {
     expect(attachment.evidenceMetadata.toString(), isNot(contains('iVBOR')));
     expect(attachment.evidenceMetadata['redaction'], 'payload_omitted');
   });
+
+  test('effective decode rate falls back to the completed service average', () {
+    const pendingLatest = MobileCoreMetrics(
+      decodeTokensPerSecond: 0,
+      averageDecodeTokensPerSecond: 1.75,
+    );
+    const completedLatest = MobileCoreMetrics(
+      decodeTokensPerSecond: 2.5,
+      averageDecodeTokensPerSecond: 1.75,
+    );
+
+    expect(pendingLatest.effectiveDecodeTokensPerSecond, 1.75);
+    expect(completedLatest.effectiveDecodeTokensPerSecond, 2.5);
+  });
 }
 
 const _mobileCoreProtocolV2 = <String, Object>{

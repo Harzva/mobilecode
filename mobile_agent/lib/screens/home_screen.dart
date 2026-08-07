@@ -14462,7 +14462,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     final metrics = results[2] as MobileCoreMetrics;
     double measuredSpeedFor(TuimaHealth candidate) =>
         metrics.activeModel == candidate.activeModel
-            ? metrics.decodeTokensPerSecond
+            ? metrics.effectiveDecodeTokensPerSecond
             : 0;
     var decision = MobileCoreAdaptivePolicy.decideForTask(
       health: health,
@@ -14502,10 +14502,29 @@ class _ChatPanelState extends State<_ChatPanel> {
       activeModelId: currentHealth.activeModel,
       attachmentKind: attachment?.kind,
     )) {
-      currentHealth = await _tuimaProviderService.loadModel(
-        decision.recommendedModelId!,
-        contextLength: decision.contextLength,
-      );
+      final startedAt = DateTime.now();
+      try {
+        final result = await _tuimaProviderService.switchModelWithPreflight(
+          decision.recommendedModelId!,
+        );
+        currentHealth = result.health;
+        await _recordMobileCoreControl(
+          operation: 'adaptive_pressure_switch',
+          modelId: decision.recommendedModelId,
+          startedAt: startedAt,
+          success: true,
+          safeMetadata: {'switchPreflight': result.plan.evidenceMetadata},
+        );
+      } on Object catch (error) {
+        await _recordMobileCoreControl(
+          operation: 'adaptive_pressure_switch',
+          modelId: decision.recommendedModelId,
+          startedAt: startedAt,
+          success: false,
+          error: error,
+        );
+        rethrow;
+      }
       decision = MobileCoreAdaptivePolicy.decideForTask(
         health: currentHealth,
         recommendations: recommendations,
@@ -14787,7 +14806,20 @@ class _ChatPanelState extends State<_ChatPanel> {
         return;
       }
       final health = await _refreshTuimaHealth();
-      if (!health.canInfer || !health.capabilities.supports(attachment.kind)) {
+      var attachmentRuntimeAvailable =
+          health.canInfer && health.capabilities.supports(attachment.kind);
+      if (!attachmentRuntimeAvailable) {
+        final omniStatus = await _tuimaProviderService
+            .omniStatus()
+            .catchError((_) => const MobileCoreOmniStatus());
+        attachmentRuntimeAvailable =
+            MobileCoreAdaptivePolicy.shouldActivateVerifiedOmni(
+          health: health,
+          omniStatus: omniStatus,
+          attachmentKind: attachment.kind,
+        );
+      }
+      if (!attachmentRuntimeAvailable) {
         _showMessage(
           '${attachment.kind.name} input is not available in the active MobileCore model.',
         );

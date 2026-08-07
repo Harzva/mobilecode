@@ -7,7 +7,13 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from verify_public_release_workflows import find_violations, verify
+from verify_public_release_workflows import (
+    ANDROID_WORKFLOW,
+    COMBINED_WORKFLOW,
+    find_apk_publisher_violations,
+    find_violations,
+    verify,
+)
 
 
 class PublicReleaseWorkflowPolicyTest(unittest.TestCase):
@@ -49,6 +55,37 @@ class PublicReleaseWorkflowPolicyTest(unittest.TestCase):
             violations = verify(Path(temporary_directory), (Path("missing.yml"),))
 
         self.assertEqual(["missing.yml: required public release workflow is missing"], violations)
+
+    def test_tagged_apk_has_one_release_publisher(self) -> None:
+        contents = {
+            ANDROID_WORKFLOW: "- name: Upload APK to GitHub Release\n  run: gh release upload",
+            COMBINED_WORKFLOW: "\n".join(
+                (
+                    "      - name: Upload APK to GitHub Release",
+                    "        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_to_release != 'false' }}",
+                    "        run: gh release upload",
+                )
+            ),
+        }
+
+        self.assertEqual([], find_apk_publisher_violations(contents))
+
+    def test_combined_tagged_apk_publisher_is_rejected(self) -> None:
+        contents = {
+            ANDROID_WORKFLOW: "- name: Upload APK to GitHub Release\n  run: gh release upload",
+            COMBINED_WORKFLOW: "\n".join(
+                (
+                    "      - name: Upload APK to GitHub Release",
+                    "        if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}",
+                    "        run: gh release upload",
+                )
+            ),
+        }
+
+        violations = find_apk_publisher_violations(contents)
+
+        self.assertEqual(1, len(violations))
+        self.assertIn("manual-only", violations[0])
 
 
 if __name__ == "__main__":

@@ -155,7 +155,9 @@ jobs:
           path: ${{ steps.stage_apk.outputs.apk_path }}
 
       - name: Ensure GitHub Release exists
-        if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
+        # Tagged APKs have one publisher: android-apk.yml. This combined
+        # workflow may still publish Android when explicitly dispatched.
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.78' }}
@@ -172,7 +174,7 @@ jobs:
           fi
 
       - name: Upload APK to GitHub Release
-        if: ${{ github.event_name == 'push' || github.event.inputs.upload_to_release != 'false' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.event.inputs.release_tag || github.ref_name || 'v0.1.78' }}

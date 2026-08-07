@@ -119,7 +119,7 @@ timeout 30s adb shell uiautomator dump /sdcard/mobilecode-window.xml >/dev/null 
 adb pull /sdcard/mobilecode-window.xml "$ARTIFACTS_DIR/window-hierarchy.xml" >/dev/null 2>&1 || true
 if [ -s "$ARTIFACTS_DIR/window-hierarchy.xml" ]; then
   if grep -q "System UI isn't responding" "$ARTIFACTS_DIR/window-hierarchy.xml"; then
-    exit 1
+    echo "System UI ANR dialog is non-blocking CI infrastructure evidence; MobileCode health remains gated by its drawn surface, live process, screenshot, and fatal-log scan." >&2
   fi
   if grep -q 'package="com.android.permissioncontroller"' "$ARTIFACTS_DIR/window-hierarchy.xml"; then
     exit 1

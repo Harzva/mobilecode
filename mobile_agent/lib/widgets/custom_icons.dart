@@ -9,8 +9,9 @@
 // - All icons are implemented as clean, crisp vector shapes
 // ============================================================
 
-import 'dart:math' show pi;
+import 'dart:math' show cos, pi, sin;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../core/theme_manager.dart';
 import '../core/animations.dart';
 

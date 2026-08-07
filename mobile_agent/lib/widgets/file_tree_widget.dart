@@ -1,6 +1,84 @@
 import 'package:flutter/material.dart';
 import '../themes/app_theme.dart';
-import '../models/project_model.dart';
+
+/// Lightweight file tree node used by the legacy file tree widget.
+class FileNode {
+  final String id;
+  final String name;
+  final String path;
+  final bool isDirectory;
+  final bool isExpanded;
+  final DateTime? modifiedAt;
+  final String? content;
+  final List<FileNode> children;
+
+  const FileNode({
+    required this.id,
+    required this.name,
+    String? path,
+    this.isDirectory = false,
+    this.isExpanded = false,
+    this.modifiedAt,
+    this.content,
+    this.children = const [],
+  }) : path = path ?? name;
+
+  String? get extension {
+    if (isDirectory || !name.contains('.')) return null;
+    return name.split('.').last;
+  }
+
+  String get language {
+    switch (extension?.toLowerCase()) {
+      case 'dart':
+        return 'dart';
+      case 'js':
+      case 'jsx':
+        return 'javascript';
+      case 'ts':
+      case 'tsx':
+        return 'typescript';
+      case 'py':
+        return 'python';
+      case 'md':
+        return 'markdown';
+      case 'json':
+        return 'json';
+      case 'yaml':
+      case 'yml':
+        return 'yaml';
+      case 'html':
+        return 'html';
+      case 'css':
+      case 'scss':
+        return 'css';
+      default:
+        return 'text';
+    }
+  }
+
+  FileNode copyWith({
+    String? id,
+    String? name,
+    String? path,
+    bool? isDirectory,
+    bool? isExpanded,
+    DateTime? modifiedAt,
+    String? content,
+    List<FileNode>? children,
+  }) {
+    return FileNode(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      path: path ?? this.path,
+      isDirectory: isDirectory ?? this.isDirectory,
+      isExpanded: isExpanded ?? this.isExpanded,
+      modifiedAt: modifiedAt ?? this.modifiedAt,
+      content: content ?? this.content,
+      children: children ?? this.children,
+    );
+  }
+}
 
 /// File tree navigator widget
 /// Recursive folder/file rendering with expand/collapse

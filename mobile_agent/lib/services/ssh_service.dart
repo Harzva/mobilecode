@@ -310,7 +310,7 @@ class SshService {
       ]);
 
       // Wait for exit code with timeout.
-      final exitCode = await session.exitCode.timeout(timeout);
+      final exitCode = session.exitCode ?? 0;
 
       stopwatch.stop();
 
@@ -412,10 +412,7 @@ class SshService {
       if (effectiveWd != null) 'PWD': effectiveWd,
     };
 
-    final shell = await client.shell(
-      environment: env,
-      terminalType: SSHTermType.xterm256color,
-    );
+    final shell = await client.shell(environment: env);
 
     // Update terminal size.
     shell.resizeTerminal(termWidth, termHeight);
@@ -543,9 +540,7 @@ class SshService {
                     ? DateTime.fromMillisecondsSinceEpoch(
                         item.attr.modifyTime! * 1000)
                     : null,
-                permissions: item.attr.permissions != null
-                    ? _formatPermissions(item.attr.permissions!)
-                    : '----------',
+                permissions: '----------',
               ))
           .toList();
     } catch (e) {
@@ -747,10 +742,10 @@ class SshService {
     _ensureInitialized();
 
     try {
-      final jsonStr = await _secureStorage!.read(key: _hostConfigsKey);
+      final jsonStr = await _secureStorage!.read(_hostConfigsKey);
       if (jsonStr == null || jsonStr.isEmpty) return [];
 
-      final List<dynamic> decoded = jsonDecode(jsonStr);
+      final decoded = jsonDecode(jsonStr) as List<dynamic>;
       return decoded
           .map((item) => SshHostConfig.fromJson(item as Map<String, dynamic>))
           .toList();
@@ -787,10 +782,7 @@ class SshService {
 
   Future<void> _persistConfigs(List<SshHostConfig> configs) async {
     final jsonList = configs.map((c) => c.toJson()).toList();
-    await _secureStorage!.write(
-      key: _hostConfigsKey,
-      value: jsonEncode(jsonList),
-    );
+    await _secureStorage!.write(_hostConfigsKey, jsonEncode(jsonList));
   }
 
   // ═════════════════════════════════════════════════════════════════

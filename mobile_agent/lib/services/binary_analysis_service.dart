@@ -237,9 +237,9 @@ class BinaryAnalysisService {
     final libDir = Directory('$projectPath/lib');
     if (!await libDir.exists()) return findings;
     final patterns = [
-      _SecretPattern(type: 'api_key', regex: RegExp(r'api[_-]?key\s*[=:]\s*["\']([a-zA-Z0-9_\-]{16,})["\']', caseSensitive: false), severity: 'high'),
-      _SecretPattern(type: 'password', regex: RegExp(r'password\s*[=:]\s*["\']([^"\']+)["\']', caseSensitive: false), severity: 'critical'),
-      _SecretPattern(type: 'token', regex: RegExp(r'token\s*[=:]\s*["\']([a-zA-Z0-9_\-]{16,})["\']', caseSensitive: false), severity: 'high'),
+      _SecretPattern(type: 'api_key', regex: RegExp(r'''api[_-]?key\s*[=:]\s*["']([a-zA-Z0-9_-]{16,})["']''', caseSensitive: false), severity: 'high'),
+      _SecretPattern(type: 'password', regex: RegExp(r'''password\s*[=:]\s*["']([^"']+)["']''', caseSensitive: false), severity: 'critical'),
+      _SecretPattern(type: 'token', regex: RegExp(r'''token\s*[=:]\s*["']([a-zA-Z0-9_-]{16,})["']''', caseSensitive: false), severity: 'high'),
       _SecretPattern(type: 'private_key', regex: RegExp(r'-----BEGIN (RSA |EC |DSA )?PRIVATE KEY-----'), severity: 'critical'),
       _SecretPattern(type: 'certificate', regex: RegExp(r'-----BEGIN CERTIFICATE-----'), severity: 'medium'),
     ];
@@ -335,7 +335,7 @@ class BinaryAnalysisService {
     if (maxComplexity < 20) qs += 5;
     return CodeQualityMetrics(totalFiles: totalFiles, totalLines: totalLines, codeLines: codeLines, commentLines: commentLines, blankLines: blankLines,
       commentRatio: double.parse(cr.toStringAsFixed(2)), avgComplexity: double.parse(avgC.toStringAsFixed(1)), maxComplexity: maxComplexity,
-      duplicateBlocks: 0, deadCodeBlocks: 0, qualityScore: math.min(100, qs).toInt());
+      duplicateBlocks: 0, deadCodeBlocks: 0, qualityScore: math.min(100, qs));
   }
 
   static Future<List<ComplexityResult>> analyzeComplexity(String projectPath) async {

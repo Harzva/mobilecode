@@ -6,7 +6,7 @@ on:
       release_tag:
         description: GitHub Release tag to upload the unsigned iOS archive to
         required: false
-        default: v0.1.39
+        default: v0.1.78
       upload_to_release:
         description: Upload archive zip to the GitHub Release
         required: false
@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: ios-archive-${{ github.ref }}-${{ github.event.inputs.release_tag || 'v0.1.39' }}
+  group: ios-archive-${{ github.ref }}-${{ github.event.inputs.release_tag || 'v0.1.78' }}
   cancel-in-progress: false
 
 jobs:
@@ -28,6 +28,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Enforce public release credential policy
+        run: python3 scripts/verify_public_release_workflows.py
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -43,6 +46,8 @@ jobs:
       - name: Recreate iOS platform project
         working-directory: mobile_agent
         run: |
+          python3 tooling/test_prepare_ios_project.py
+          python3 tooling/test_verify_ios_app.py
           rm -rf ios
           flutter create --platforms=ios --project-name mobile_agent --org com.mobilecode .
           python3 tooling/prepare_ios_project.py
@@ -58,22 +63,21 @@ jobs:
       - name: Build unsigned iOS device app
         working-directory: mobile_agent
         env:
-          MOBILECODE_MANAGED_API_KEY: ${{ secrets.MOBILECODE_MANAGED_API_KEY }}
+          MOBILECODE_MANAGED_RELAY_URL: ${{ vars.MOBILECODE_MANAGED_RELAY_URL }}
         run: |
-          if [ -n "$MOBILECODE_MANAGED_API_KEY" ]; then
-            flutter build ios --release --no-codesign --target lib/main.dart \
-              --dart-define=MOBILECODE_MANAGED_PROVIDER=true \
-              --dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic \
-              --dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro \
-              --dart-define=MOBILECODE_MANAGED_API_KEY="$MOBILECODE_MANAGED_API_KEY"
-          else
-            flutter build ios --release --no-codesign --target lib/main.dart
+          DART_DEFINES=()
+          if [ -n "$MOBILECODE_MANAGED_RELAY_URL" ]; then
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_RELAY_URL="$MOBILECODE_MANAGED_RELAY_URL")
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_PROVIDER=true)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_BASE_URL=https://token-plan-cn.xiaomimimo.com/anthropic)
+            DART_DEFINES+=(--dart-define=MOBILECODE_MANAGED_MODEL=mimo-v2.5-pro)
           fi
+          flutter build ios --release --no-codesign --target lib/main.dart "${DART_DEFINES[@]}"
 
       - name: Package unsigned xcarchive
         working-directory: mobile_agent
         env:
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.39' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.78' }}
         run: |
           set -euxo pipefail
           mkdir -p ../artifacts
@@ -85,6 +89,10 @@ jobs:
             echo "Expected iOS app bundle was not found at $APP_PATH"
             exit 1
           fi
+
+          python3 tooling/verify_ios_app.py \
+            --app "$APP_PATH" \
+            --expected-tag "$RELEASE_TAG"
 
           rm -rf "$ARCHIVE_PATH" "$ZIP_PATH"
           mkdir -p "$ARCHIVE_PATH/Products/Applications"
@@ -160,7 +168,7 @@ jobs:
         if: ${{ github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.39' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.78' }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $RELEASE_TAG already exists."
@@ -177,6 +185,6 @@ jobs:
         if: ${{ github.event.inputs.upload_to_release != 'false' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.39' }}
+          RELEASE_TAG: ${{ github.event.inputs.release_tag || 'v0.1.78' }}
         run: |
           gh release upload "$RELEASE_TAG" artifacts/mobilecode-ios-archive-"$RELEASE_TAG".xcarchive.zip artifacts/ios-archive-summary.txt --clobber --repo "$GITHUB_REPOSITORY"

@@ -436,7 +436,7 @@ class _PerformanceDashboardState extends ConsumerState<PerformanceDashboard>
   Widget _infoRow(String label, String value, {Color? valueColor}) => Padding(
     padding: const EdgeInsets.only(bottom: 4),
     child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-      Text(label, style: const TextStyle(color: Colors.white45, fontSize: 11)),
+      Text(label, style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 11)),
       Text(value, style: TextStyle(color: valueColor ?? Colors.white70,
           fontSize: 11, fontWeight: FontWeight.w600)),
     ]),

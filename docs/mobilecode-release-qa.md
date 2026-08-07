@@ -27,7 +27,39 @@ Required GitHub Actions before publishing:
 - `.github/workflows/android-apk.yml`
   - Builds the release APK.
   - Uses stable signing when release keystore secrets are configured.
-  - Uploads `mobilecode-v0.1.10.apk` as an artifact and GitHub Release asset.
+  - Verifies the release tag, pubspec/feed metadata, APK manifest, and Flutter AOT release URL before upload.
+  - Uploads `mobilecode-${release_tag}.apk` as an artifact and GitHub Release asset.
+
+## v0.1.72 Release Evidence
+
+Release candidate:
+
+- Merge commit: `81e8d7dfe656ea91f1722950e81ee433f40ea036`
+- Pull request: `https://github.com/Harzva/mobilecode/pull/17`
+- Release: `https://github.com/Harzva/mobilecode/releases/tag/v0.1.72`
+- APK: `https://github.com/Harzva/mobilecode/releases/download/v0.1.72/mobilecode-v0.1.72.apk`
+- APK SHA-256: `acdada50092e7aa2e9727ee8a45e9c20f4c977b4be6e7c21f0ce48e1be955101`
+
+Required evidence:
+
+| Gate | Run | Result |
+| --- | --- | --- |
+| Mobile Runtime CI | `https://github.com/Harzva/mobilecode/actions/runs/31123047437` | Passed: relay syntax, 544 Flutter tests, Helper daemon smoke, and Phone Use contract |
+| Build Android APK | `https://github.com/Harzva/mobilecode/actions/runs/31123426875` | Passed: stable signing, build, version consistency, artifact, and Release upload |
+| Downloaded release install | Dedicated Android 16 ARM64 emulator | Passed: clean install, `0.1.72 (62)`, `v0.1.72` home label, process/focus alive, no App crash/ANR/OOM signature |
+
+Artifact verification:
+
+- GitHub Release API digest and independently downloaded SHA-256 matched.
+- APK Signature Scheme v2 verification passed with signer `CN=MobileCode, OU=MobileCode, O=Harzva, L=Shanghai, ST=Shanghai, C=CN`.
+- The release verifier matched the tag, unified Dart version source, pubspec, update feed, APK manifest, and embedded Flutter AOT release URL.
+- The previous incremental local build reproduced the stale-AOT failure, while a clean build and the GitHub artifact passed the new gate.
+
+Evidence boundary:
+
+- This is emulator packaging and launch evidence, not physical-device acceptance.
+- Physical Android/iOS background, thermal, battery, and Qwen2.5-Omni image/audio quality gates remain open.
+- The GitHub Actions service incident delayed Runner allocation; it did not fail a MobileCode build step. See `https://www.githubstatus.com/`.
 
 ## 2026-06-19 HTML Open-With QA
 

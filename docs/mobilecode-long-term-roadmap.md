@@ -148,6 +148,15 @@ flowchart LR
 - [x] 本地模型 manifest 和 App 内下载入口已接入，直接安装仍要求 checksum 和移动 runtime artifact。
   - Evidence: `docs/mobilecode-local-models.json`；`mobile_agent/lib/services/mobilecode_local_model_manifest_service.dart`；2026-06-20 `flutter test test/services/mobilecode_local_model_manifest_service_test.dart` passed。
 - [ ] 本地模型下载、校验、加载和删除完整流程尚未接入 App。
+- [x] Mobile Harness app-side strategy runner 层已开始落地：dispatcher、
+  six runner shapes、memory packet bridge、filtered handoff packets。
+  - Evidence: `mobile_agent/lib/services/strategy_dispatcher.dart`,
+    `mobile_agent/lib/services/strategy_runners.dart`,
+    `mobile_agent/lib/services/memory_packet_service.dart`, and
+    `mobile_agent/test/services/*strategy*_test.dart` / `memory_packet_service_test.dart`。
+- [x] Mobile Harness strategy UI 和 Android emulator strategy trace QA 已形成
+  release evidence。
+  - Evidence: `docs/mobile-harness-benchmark/strategy-ablation/release-readiness-2026-06-20.md` and `docs/mobile-harness-benchmark/strategy-ablation/evidence/android-strategy-qa-20260620/`。
 
 ## 总体验收标准
 
@@ -268,7 +277,24 @@ flowchart LR
 
 - [x] 已有 Mobile Harness 专项路线图。
   - Evidence: `docs/mobile-harness-roadmp/roadmp-mobile-harness.md`。
+- [x] App-side non-counted strategy dispatcher 和 runner layer 已建立。
+  - Evidence: `StrategyDispatcher.defaultSafe` routes ReAct, PEV,
+    ReAct+FinalVerifier, Supervisor/Handoff, Swarm Router, and Hierarchical
+    Swarm。
+- [x] Harness memory packet bridge 已接入，默认只生成 proposal，不静默持久化。
+  - Evidence: `mobile_agent/lib/services/memory_packet_service.dart` and
+    `mobile_agent/test/services/memory_packet_service_test.dart`。
+- [x] Supervisor/Handoff runner 已覆盖 CodeAgent、RuntimeAgent、PreviewAgent、
+  VerifierAgent、MemoryAgent、ReporterAgent，并使用 filtered packet。
+  - Evidence: `mobile_agent/test/services/supervisor_handoff_runner_test.dart`。
 - [ ] App 内 Benchmark Lab 支持选择任务、运行任务、展示 verifier report。
+- [x] App 内 strategy mode selector 支持 Auto、ReAct、Plan-Execute-Verify、
+  Supervisor/Handoff、Experimental Swarm。
+- [x] App 内可展示 current strategy、run status、trace summary、evidence
+  summary、blocked reason、retry/replan 状态。
+  - Evidence: `mobile_agent/lib/widgets/strategy_mode_card.dart`,
+    `mobile_agent/test/widgets/strategy_mode_card_test.dart`, and
+    `docs/mobile-harness-benchmark/strategy-ablation/evidence/android-strategy-qa-20260620/`。
 - [ ] Trace export JSONL：prompt、provider、runtime、tool call、file diff、preview、verifier、recovery。
 - [ ] 形成公开 trace 与脱敏 trace 两种导出模式。
 - [ ] 支持把 benchmark evidence 附到 GitHub issue、release 或 Pages。

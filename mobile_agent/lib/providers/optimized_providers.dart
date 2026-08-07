@@ -67,7 +67,7 @@ extension ProviderRefX on Ref {
 // Extension: AutoDispose Ref Cache
 // ---------------------------------------------------------------------------
 
-extension AutoDisposeRefCache on AutoDisposeRef {
+extension RefCache on Ref {
   /// Cache provider result for a duration, refreshing on timer.
   ///
   /// The provider stays alive for [cacheDuration] and is automatically
@@ -714,4 +714,27 @@ class FileItem {
 
   @override
   int get hashCode => path.hashCode;
+}
+
+extension FileItemLanguage on FileItem {
+  String get language {
+    final extension = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+    return switch (extension) {
+      'dart' => 'dart',
+      'js' || 'jsx' => 'javascript',
+      'ts' || 'tsx' => 'typescript',
+      'py' => 'python',
+      'java' => 'java',
+      'kt' => 'kotlin',
+      'swift' => 'swift',
+      'go' => 'go',
+      'rs' => 'rust',
+      'html' => 'html',
+      'css' => 'css',
+      'json' => 'json',
+      'md' => 'markdown',
+      'yaml' || 'yml' => 'yaml',
+      _ => 'text',
+    };
+  }
 }

@@ -8,6 +8,11 @@ on:
       - 'relay/**'
       - 'docs/mobilecode-helper-runtime-protocol.md'
       - 'docs/mobilecode-release-qa.md'
+      - 'docs/mobilecode-accessibility-background-permissions-qa.md'
+      - 'roadmap/tasks/T25-accessibility-background-permissions.md'
+      - 'docs/mobile-harness-benchmark/phone-use/**'
+      - 'docs/mobile-harness-benchmark/reports/phone-use-v1-readiness.*'
+      - 'scripts/validate_mobile_harness_phone_use_v1.py'
       - '.github/workflows/mobile-runtime-ci.yml'
   push:
     paths:
@@ -15,6 +20,11 @@ on:
       - 'relay/**'
       - 'docs/mobilecode-helper-runtime-protocol.md'
       - 'docs/mobilecode-release-qa.md'
+      - 'docs/mobilecode-accessibility-background-permissions-qa.md'
+      - 'roadmap/tasks/T25-accessibility-background-permissions.md'
+      - 'docs/mobile-harness-benchmark/phone-use/**'
+      - 'docs/mobile-harness-benchmark/reports/phone-use-v1-readiness.*'
+      - 'scripts/validate_mobile_harness_phone_use_v1.py'
       - '.github/workflows/mobile-runtime-ci.yml'
 
 permissions:
@@ -25,6 +35,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  phone-use-eval-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate controlled Phone Use v1 contract
+        run: |
+          python3 -m py_compile scripts/validate_mobile_harness_phone_use_v1.py
+          python3 scripts/validate_mobile_harness_phone_use_v1.py
+
   flutter-runtime-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -55,6 +78,7 @@ jobs:
           flutter analyze \
             lib/main.dart \
             lib/screens/home_screen.dart \
+            lib/screens/settings_screen.dart \
             lib/screens/build_preview_screen.dart \
             lib/screens/github_screen.dart \
             lib/screens/github_repo_hub_screen.dart \
@@ -75,14 +99,20 @@ jobs:
             lib/services/runtime_manager.dart \
             lib/services/runtime_actions.dart \
             lib/services/runtime_placeholder_providers.dart \
+            lib/services/mobile_code_helper_auth.dart \
             lib/services/mobile_code_helper_provider.dart \
+            lib/services/phone_use_accessibility_service.dart \
             lib/services/external_termux_provider.dart \
             lib/services/build_orchestrator.dart \
             lib/services/github_pages_service.dart \
             lib/services/html_publish_readiness_service.dart \
+            lib/services/model_provider_preset_service.dart \
+            lib/services/tuima_provider_service.dart \
             lib/widgets/flutter_web_preview.dart \
             test/services/runtime_manager_test.dart \
             test/services/mobile_code_helper_provider_test.dart \
+            test/services/phone_use_accessibility_service_test.dart \
+            test/widgets/settings_screen_permissions_test.dart \
             test/services/github_pages_service_test.dart \
             test/services/html_publish_readiness_service_test.dart \
             test/services/role_library_service_test.dart \
@@ -92,6 +122,8 @@ jobs:
             test/services/external_file_preview_service_test.dart \
             test/services/agent_loop_controller_test.dart \
             test/services/tool_call_adapter_test.dart \
+            test/services/model_provider_preset_service_test.dart \
+            test/services/tuima_provider_service_test.dart \
             --no-fatal-infos \
             --no-fatal-warnings
 
@@ -101,6 +133,8 @@ jobs:
           flutter test \
             test/services/runtime_manager_test.dart \
             test/services/mobile_code_helper_provider_test.dart \
+            test/services/phone_use_accessibility_service_test.dart \
+            test/widgets/settings_screen_permissions_test.dart \
             test/services/github_pages_service_test.dart \
             test/services/html_publish_readiness_service_test.dart \
             test/services/role_library_service_test.dart \
@@ -109,7 +143,9 @@ jobs:
             test/services/device_telemetry_service_test.dart \
             test/services/external_file_preview_service_test.dart \
             test/services/agent_loop_controller_test.dart \
-            test/services/tool_call_adapter_test.dart
+            test/services/tool_call_adapter_test.dart \
+            test/services/model_provider_preset_service_test.dart \
+            test/services/tuima_provider_service_test.dart
 
   relay-worker-syntax:
     runs-on: ubuntu-latest
@@ -135,6 +171,21 @@ jobs:
           python3 -m py_compile mobile_agent/tooling/mobilecode_helper_daemon.py
           python3 -m py_compile mobile_agent/tooling/prepare_android_project.py
 
+      - name: Check Android projection assets
+        run: |
+          set -eux
+          grep -q 'MobileCodeHelperService' mobile_agent/tooling/prepare_android_project.py
+          grep -q 'MobileCodeHelperLauncherActivity' mobile_agent/tooling/prepare_android_project.py
+          grep -q 'PhoneUseAccessibilityService' mobile_agent/tooling/prepare_android_project.py
+          grep -q 'mobilecode_phone_use_accessibility_service' mobile_agent/tooling/prepare_android_project.py
+          grep -q 'openPhoneUseAccessibilitySettings' mobile_agent/tooling/MainActivity.kt
+          grep -q 'mobile_coding/platform' mobile_agent/tooling/MainActivity.kt
+          cmp -s mobile_agent/tooling/MobileCodeHelperService.kt mobile_agent/android/app/src/main/kotlin/com/mobilecode/app/MobileCodeHelperService.kt
+          cmp -s mobile_agent/tooling/MobileCodeHelperLauncherActivity.kt mobile_agent/android/app/src/main/kotlin/com/mobilecode/app/MobileCodeHelperLauncherActivity.kt
+          cmp -s mobile_agent/tooling/MainActivity.kt mobile_agent/android/app/src/main/kotlin/com/mobilecode/app/MainActivity.kt
+          cmp -s mobile_agent/tooling/PhoneUseAccessibilityService.kt mobile_agent/android/app/src/main/kotlin/com/mobilecode/app/PhoneUseAccessibilityService.kt
+          grep -q 'android:canTakeScreenshot="true"' mobile_agent/tooling/prepare_android_project.py
+
       - name: Smoke test helper protocol
         run: |
           set -eux
@@ -149,7 +200,7 @@ jobs:
           auth_header='X-MobileCode-Token: ci-token'
           trap 'kill "$helper_pid" || true' EXIT
 
-          for attempt in $(seq 1 20); do
+          for _ in $(seq 1 20); do
             if curl -fsS -H "$auth_header" http://127.0.0.1:18765/v1/health > artifacts/helper-health.json; then
               break
             fi

@@ -15,7 +15,7 @@
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml"><img alt="Mobile App Release" src="https://github.com/Harzva/mobilecode/actions/workflows/mobile-app-release.yml/badge.svg"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml"><img alt="Android APK" src="https://github.com/Harzva/mobilecode/actions/workflows/android-apk.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml"><img alt="Android Smoke" src="https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml/badge.svg?branch=main"></a>
-  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.68--mobile--harness-2555FF">
+  <img alt="Version" src="https://img.shields.io/badge/version-v0.1.78-2555FF">
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Flutter-0B9B7E">
 </p>
 
@@ -28,7 +28,7 @@
   ·
   <a href="https://harzva.github.io/mobilecode/mobilecode-principle-video.html">HTML Principle Video</a>
   ·
-  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7">Download v0.1.68 apps</a>
+  <a href="https://github.com/Harzva/mobilecode/releases/tag/v0.1.78">Download v0.1.78 app</a>
   ·
   <a href="https://harzva.github.io/mobilecode/">GitHub Pages Demo</a>
 </p>
@@ -112,6 +112,9 @@ MobileCode 选择从 AI coding 切入同一条趋势：模型可以远程，重�
 - Anonymous supplement boundary: [include/exclude and redaction gate](paper/iclr-mobile-harness/SUPPLEMENT_BOUNDARY.md)
 - Current anonymous supplement: `paper/iclr-mobile-harness/build/mobile-harness-anonymous-supplement.zip` (staged file count and byte size are emitted by the supplement script)
 - Benchmark seed: [MobileHarnessBench](docs/mobile-harness-benchmark/README.md)
+- Controlled Phone Use v1: [30-task protocol](docs/mobile-harness-benchmark/phone-use/README.md) · [readiness gate](docs/mobile-harness-benchmark/reports/phone-use-v1-readiness.md)
+- Latest Android emulator QA: [release build and Phone Use evidence](docs/mobile-harness-benchmark/reports/2026-08-01-android-emulator-qa.md)
+- Qwen UI-Agent study: [benchmark analysis](docs/research/qwen-ui-agent-benchmark-analysis.md) · [local technical report](docs/research/qwen-ui-agent-technical-report.pdf)
 - v1 task bank: [200 MobileHarnessBench candidate tasks](docs/mobile-harness-benchmark/tasks/v1-task-bank.json)
 - v2 task bank: [1000 MobileHarnessBench candidate tasks](docs/mobile-harness-benchmark/tasks/v2-task-bank.json)
 - v2 quality audit: [machine audit report](docs/mobile-harness-benchmark/reports/v2-quality-audit.md)
@@ -224,7 +227,38 @@ flowchart LR
 - API-backed file flow: browse remote tree, read text files, edit, commit via GitHub Contents API, reload on SHA conflict.
 - Extension management: Roles, Skill, MCP, Memory, Agent, Hook Registry surfaces for role-based workflows.
 - Observability: RR AgentView, pending role approvals, Token Usage/cache-hit statistics, searchable/sortable LiteLLM-style pricing with manual snapshot checks, and Device Telemetry htop-style phone health.
+- [Phone Use safety loop](docs/mobilecode-device-automation-architecture.md): cropped semantic snapshots and short-lived `@e` refs, trusted native transaction-risk classification, page-bound one-shot approval cards, unified ActionEvidence, and Keystore/Keychain `secret_id` credential slots.
+- [MobileCore local inference bridge](docs/mobilecore-dual-app-qa.md): dynamic model/capability discovery, model ID load/unload/switch controls, local-only image/audio transport, adaptive memory/thermal routing, and redacted inference ActionEvidence. MobileCore remains the inference engine; MobileCode remains the approval, Phone Use, transaction-risk, and evidence control center.
 - [Lark Native API plan](docs/lark-native-api-upgrade-plan.md): agent-facing, Node-free Lark OpenAPI tools for Docs, Drive, Sheets, Bitable, Wiki, and evidence publishing; official CLI/MCP remain Mac/CI development probes, not embedded app runtimes.
+
+## MobileCore Link Status
+
+MobileCode no longer hard-codes a local Qwen model. `MobileCoreClient` resolves the active model, runtime, revision, backend, quantization, capabilities, artifact state, resource preflight, Android background-restriction state, recommendations, and performance metrics from the co-installed MobileCore service. The in-app TuiMa sheet can load, unload, and switch installed models by public `model_id`; ordinary clients never receive or submit absolute model paths. Cross-model switching projects the memory available after reclaiming the matching active runtime, retains safety headroom, and revalidates the runtime immediately before loading so a stale snapshot cannot trigger a lifecycle request. A background-restricted MobileCore remains visible for recovery but is removed from eligible local routes before inference payloads are sent.
+
+Image and audio buttons appear only when the active local runtime advertises the corresponding capability. Attachment bytes stay in memory, are sent only to `127.0.0.1`, are never persisted in chat turns or evidence, and never fall back to a cloud provider. Local inference evidence records safe model/runtime/latency metadata while omitting prompts, media, credentials, and payloads.
+
+The latest controlled Android emulator run passed 30 real cross-app offline tasks (15 buffered and 15 SSE), model unload/reload, a Qwen2.5-to-Qwen3 switch, background continuity, low-memory notification, and MobileCore process restart recovery. The current fail-closed runner additionally observed airplane-mode enable/restore, completed 30/30 requests with zero failed host steps, and rejected a counted physical run on the emulator before installation. A separate Qwen3.5 GGUF/mmproj run completed a real local image request through `llama.cpp/libmtmd`; its incorrect breed classification remains recorded as a failed broad-quality probe. A later MobileCode-process two-digit image sanity set passed both distinct cases, proving the cross-app attachment path without upgrading the generic, unverified artifacts into a broad accuracy claim. Physical-device, thermal, verified Omni audio, and broader vision-quality acceptance remain open. See [the evidence-bound report](docs/mobilecore-dual-app-qa.md).
+
+## Phone Use Safety Status
+
+As of 2026-07-18, the Auto Agent can observe Android UI and request a semantic
+action preview, but it cannot click or type directly. Android classifies the
+target from the admitted accessibility node, and MobileCode shows a 20-second,
+one-shot approval card. Checkout/payment/order-like targets receive a distinct
+transaction confirmation. The ticket is consumed before execution and is bound
+to the full SHA-256 page snapshot; changed pages fail closed.
+
+| Acceptance area | Result | Evidence boundary |
+| --- | --- | --- |
+| Flutter regression suite | 534 tests passed | Includes tool adapter, ActionRunner, one-shot/expiry/replay, credential redaction, and UI provisioning tests. |
+| Android native build | `devharnessDebug` and `pureDebug` Kotlin variants passed; final pure debug APK assembled | Release QA fixtures remain debug-only. |
+| Fake ordering acceptance | 29 redacted steps and 11 assertions passed; trusted `externalTransaction` classification, mismatched-page rejection, zero commit attempts | Fake merchant/data only; no payment, address, account, or real order endpoint. Manifest SHA-256: `93ce81cc52ca4c618661bc5b9a6b07676f63b1c325744aaa2ff1e602ed9a85e4`. |
+| Controlled credential path | Provision/store/delete, `secret_id` preview, approved resolution, and evidence serialization passed with fake account data | Credential value absent from evidence and rendered status; screenshots/video/logs blocked for sensitive flow. |
+| iOS source build | Unsigned device profile build passed | Signed install is blocked until Xcode provisioning/account readiness is restored. |
+| Physical devices | Not passed | Acceptance host had zero Android physical devices and zero available iOS physical devices. No real-device or real external-account claim is made. |
+
+Recording and log collection stay in the host-side QA adapter. MobileCode does
+not bundle a second recorder app or `agent-device` runtime into the APK.
 
 ## Long-term Termux-like Runtime Plan
 
@@ -381,12 +415,24 @@ That keeps the phone lightweight while still letting users produce shareable web
 
 ## Release Line
 
-Current candidate: `v0.1.68-mobile-harness-d2dd9a7`.
+Current candidate: `v0.1.78` (`0.1.78+68`).
 
 See:
 
-- [Latest dual app build](https://github.com/Harzva/mobilecode/actions/runs/27287231941) - Android APK, iOS simulator app, and iOS unsigned archive all completed successfully.
-- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7) - Android APK plus iOS simulator/archive artifacts.
+- [MobileCore dual-app evidence](docs/mobilecore-dual-app-qa.md) - 30 real offline cross-app requests, buffered/SSE parity, unload/reload, background continuity, low-memory notification, and process restart recovery passed on Android emulator.
+- [Release assets](https://github.com/Harzva/mobilecode/releases/tag/v0.1.78) - the final signed Android `pure` APK is 33,073,027 bytes with SHA-256 `5123f48f93161838b166259061857b058ab63429051544e4ac0234088a886073`; the downloaded asset reports `0.1.78+68`, matches the MobileCode release certificate, contains no recognizable credential or concrete private-host-path value, and clean-launches with MobileCore ready on the Android 16 ARM64 emulator.
+- [iOS Simulator](https://github.com/Harzva/mobilecode/actions/runs/31135405199) and [unsigned archive](https://github.com/Harzva/mobilecode/actions/runs/31135408249) - `0.1.78+68` now passes generated-project verification, simulator build/install/launch survival and crash-log checks, plus unsigned device archive packaging. These private workflow artifacts are build evidence, not signed physical-iPhone acceptance.
+- [Signed Android v0.1.77 workflow](https://github.com/Harzva/mobilecode/actions/runs/31128587598) - the downloaded official `0.1.77+67` APK has SHA-256 `f008ede0e0305c835c3bf45bcc56f22c4fc911d0ae10b513f298d1bdfb0a1c1d`, verifies with the MobileCode release certificate, contains zero recognizable key/JWT/Bearer or private-host-path patterns, and clean-launches on the Android 16 ARM64 emulator.
+- v0.1.77 makes the public release workflows fail closed if they reference or compile raw provider keys, relay bearer tokens, or an OAuth client secret. Public relay URLs, OAuth client IDs, and redirect URIs remain allowed configuration; users may still save their own provider key through the app's secure-storage flow.
+- MobileCore `0.1.4-rc6` closes the emulator foreground-service regression. A 40-poll Android 16 lane kept MobileCode resumed while MobileCore retained its real local model and foreground service with zero failed health polls, freezes, FGS timeouts, ANRs, OOMs, or SIGABRTs. Android `background_restricted` is now a typed fail-closed routing state, not a hidden timeout.
+- The former v0.1.76 official APK was withdrawn after post-build review found that the old public workflow supplied runtime service credentials as Dart compile definitions. The explicitly named debug-signed QA APK remains emulator evidence only; affected provider credentials should be rotated outside the repository.
+- v0.1.76 requires the `mobilecore.local` v2 compatibility handshake before local model control or inference. Missing, malformed, or unsupported protocols fail closed with typed evidence; MobileCore still cannot perform Phone Use actions.
+- Local timeouts and explicit Agent pauses now request native inference cancellation, while measured slow runtimes receive a bounded next-response budget; overlapping MobileCore work fails as `runtime_busy` instead of racing the shared llama context.
+- [Signed Android v0.1.75 workflow](https://github.com/Harzva/mobilecode/actions/runs/31127234312) - the previous downloaded `0.1.75+65` APK has SHA-256 `66e7a26bb7efa4b3c6f959b3e8063fb05a25f91e5b13463211c80c60da5272e2`, verifies with the MobileCode release certificate, and clean-launches on the Android 16 ARM64 emulator without crash, ANR, or OOM.
+- v0.1.75 added a per-task cloud inference approval card, redacted approval evidence, and fail-closed decline routing to MobileCore while keeping Phone Use, login, payment, and ordering outside that approval.
+- Post-build inspection of v0.1.72 caught an iOS generated-project permission nesting bug and an incomplete smoke-test crash filter. v0.1.73 writes the microphone and speech-recognition descriptions into the top-level app plist and verifies both bundle metadata and TCC launch logs before publishing simulator assets.
+- Previous signed Android evidence: [v0.1.72](https://github.com/Harzva/mobilecode/releases/tag/v0.1.72) and its [APK workflow](https://github.com/Harzva/mobilecode/actions/runs/31123426875). The downloaded 33 MB asset has SHA-256 `acdada50092e7aa2e9727ee8a45e9c20f4c977b4be6e7c21f0ce48e1be955101`, verifies with the MobileCode release certificate, and clean-launched on the Android 16 ARM64 emulator.
+- Previous stable evidence: [v0.1.69](https://github.com/Harzva/mobilecode/releases/tag/v0.1.69) and its [Android APK workflow](https://github.com/Harzva/mobilecode/actions/runs/31091939149).
 - [Version Policy](docs/mobilecode-version-policy.md)
 - [Release QA Checklist](docs/mobilecode-release-qa.md)
 - [Helper Runtime Protocol](docs/mobilecode-helper-runtime-protocol.md)

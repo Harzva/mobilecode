@@ -1,0 +1,26 @@
+      Window #2: WindowStateAnimator{87a1f17 com.mobilecode.app/com.mobilecode.app.MainActivity}
+    numWindow=1 mCanAddInternalSystemWindow=false mAlertWindows={} mClientDead=false    mPackageName=com.mobilecode.app
+  deepestLastOrientationSource=ActivityRecord{64378548 u0 com.mobilecode.app/.MainActivity t9}
+  mCurrentFocus=Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}
+  mFocusedApp=ActivityRecord{64378548 u0 com.mobilecode.app/.MainActivity t9}
+      mPreferredTopFocusableRootTask=Task{3e5f2dd #9 type=standard A=10213:com.mobilecode.app}
+      mLastFocusedRootTask=Task{3e5f2dd #9 type=standard A=10213:com.mobilecode.app}
+      * Task{3e5f2dd #9 type=standard A=10213:com.mobilecode.app U=0 visible=true visibleRequested=true mode=fullscreen translucent=false sz=1}
+        * ActivityRecord{64378548 u0 com.mobilecode.app/.MainActivity t9}
+    mFocusedWindow=Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}
+    mTopFullscreenOpaqueWindowState=Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}
+    mSystemBarColorApps={ActivityRecord{64378548 u0 com.mobilecode.app/.MainActivity t9}}
+    mNavBarColorWindowCandidate=Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}
+    mNavBarBackgroundWindowCandidate=Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}
+      Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}
+      Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}:
+        mControlTarget=Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}
+        mControlTarget=Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}
+        mControlTarget=Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}
+  ActivityRecord{64378548 u0 com.mobilecode.app/.MainActivity t9}
+  Window #8 Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}:
+    mOwnerUid=10213 showForAllUsers=false package=com.mobilecode.app appop=NONE
+    WindowStateAnimator{87a1f17 com.mobilecode.app/com.mobilecode.app.MainActivity}:
+  imeLayeringTarget in display# 0 Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}
+  imeInputTarget in display# 0 Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}
+  imeControlTarget in display# 0 Window{a010c22 u0 com.mobilecode.app/com.mobilecode.app.MainActivity}

@@ -45,6 +45,52 @@ class ActionEvidenceStore {
     return null;
   }
 
+  /// Link one MobileCore inference record to the Phone Use operation that it
+  /// informed. The relation is bidirectional and stores identifiers only.
+  /// Raw prompts, screenshots, media, and credential values are never copied.
+  bool linkMobileCoreInferenceToDeviceOperation({
+    required String inferenceEvidenceId,
+    required String deviceOperationEvidenceId,
+  }) {
+    if (!_isSafeEvidenceId(inferenceEvidenceId) ||
+        !_isSafeEvidenceId(deviceOperationEvidenceId)) {
+      return false;
+    }
+    final inferenceIndex = _records.indexWhere(
+      (record) => record.evidenceId == inferenceEvidenceId,
+    );
+    final deviceIndex = _records.indexWhere(
+      (record) => record.evidenceId == deviceOperationEvidenceId,
+    );
+    if (inferenceIndex == -1 || deviceIndex == -1) return false;
+
+    final inference = _records[inferenceIndex];
+    final device = _records[deviceIndex];
+    if (inference.actionName != MobileCodeAction.traceCallProvider ||
+        inference.metadata['inferenceProvider'] != 'mobilecore' ||
+        inference.metadata['inferenceLocation'] != 'on_device' ||
+        !{
+          MobileCodeAction.phoneUseObserve,
+          MobileCodeAction.phoneUseAct,
+          MobileCodeAction.phoneUseCapture,
+          MobileCodeAction.phoneUseReplay,
+        }.contains(device.actionName)) {
+      return false;
+    }
+
+    _records[inferenceIndex] = _withEvidenceRelation(
+      inference,
+      key: 'deviceOperationEvidenceIds',
+      relatedEvidenceId: deviceOperationEvidenceId,
+    );
+    _records[deviceIndex] = _withEvidenceRelation(
+      device,
+      key: 'mobileCoreInferenceEvidenceIds',
+      relatedEvidenceId: inferenceEvidenceId,
+    );
+    return true;
+  }
+
   /// Return the most recent [count] records (newest first).
   List<ActionEvidence> recent({int count = 10}) {
     final sorted = List<ActionEvidence>.of(_records)
@@ -81,4 +127,40 @@ class ActionEvidenceStore {
       }
     }
   }
+
+  ActionEvidence _withEvidenceRelation(
+    ActionEvidence evidence, {
+    required String key,
+    required String relatedEvidenceId,
+  }) {
+    final existingRelations = evidence.metadata[key];
+    final relations = <String>{
+      if (existingRelations is List)
+        ...existingRelations
+            .map((value) => value.toString().trim())
+            .where(_isSafeEvidenceId),
+      relatedEvidenceId,
+    }.toList(growable: false);
+    return ActionEvidence(
+      evidenceId: evidence.evidenceId,
+      actionName: evidence.actionName,
+      paramsSummary: evidence.paramsSummary,
+      startedAt: evidence.startedAt,
+      endedAt: evidence.endedAt,
+      success: evidence.success,
+      artifactPaths: evidence.artifactPaths,
+      urls: evidence.urls,
+      logs: evidence.logs,
+      exitCode: evidence.exitCode,
+      failureKind: evidence.failureKind,
+      recoveryActions: evidence.recoveryActions,
+      metadata: {
+        ...evidence.metadata,
+        key: relations,
+      },
+    );
+  }
 }
+
+bool _isSafeEvidenceId(String value) =>
+    RegExp(r'^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$').hasMatch(value);

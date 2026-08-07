@@ -45,7 +45,7 @@ class ActionResult {
   /// Duration of execution.
   final Duration? duration;
 
-  const ActionResult._({
+  ActionResult._({
     required this.success,
     required this.message,
     required this.actionName,

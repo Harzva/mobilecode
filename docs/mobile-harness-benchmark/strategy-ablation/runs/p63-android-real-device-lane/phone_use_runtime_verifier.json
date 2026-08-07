@@ -1,0 +1,88 @@
+{
+  "run_id": "p63-android-real-device-lane",
+  "status": "passed",
+  "score": {
+    "score_boundary": "pilot_android_phone_use_runtime_score_not_counted",
+    "total_score": 100.0,
+    "max_score": 100,
+    "checks": {
+      "device_connected": true,
+      "apk_installed": true,
+      "app_launched": true,
+      "accessibility_enabled": true,
+      "phone_use_card_visible": true,
+      "dry_probe_passed": true,
+      "action_probe_visible": true,
+      "action_probe_passed_or_warning": true,
+      "back_action_verified": true,
+      "home_action_verified": true,
+      "logcat_clean": true,
+      "evidence_saved": true
+    },
+    "action_accepted_count": 4,
+    "action_total": 4
+  },
+  "checks": {
+    "device_connected": true,
+    "apk_installed": true,
+    "app_launched": true,
+    "accessibility_enabled": true,
+    "phone_use_card_visible": true,
+    "dry_probe_passed": true,
+    "action_probe_visible": true,
+    "action_probe_passed_or_warning": true,
+    "back_action_verified": true,
+    "home_action_verified": true,
+    "logcat_clean": true,
+    "evidence_saved": true
+  },
+  "errors": [],
+  "device_connected": true,
+  "apk_installed": true,
+  "app_launched": true,
+  "accessibility_enabled": true,
+  "phone_use_card_visible": true,
+  "dry_probe_passed": true,
+  "action_probe_visible": true,
+  "action_probe_passed_or_warning": true,
+  "back_action_verified": true,
+  "home_action_verified": true,
+  "counts_as_experiment": false,
+  "counts_as_strategy_ablation_result": false,
+  "raw_text_included": false,
+  "redaction_applied": true,
+  "evidence": {
+    "screenshots": [
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/01-launch.png",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/02-tools-phone-use.png",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/03-dry-probe.png",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/04-action-probe.png",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-home-after-action.png"
+    ],
+    "ui_xml": [
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/01-launch-wait-0.xml",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/02-tools-wait-0.xml",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/02-tools-search-3.xml",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/03-dry-probe.xml",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/04-action-probe.xml",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-home-after-action.xml"
+    ],
+    "logs": [
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-back.txt",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/05-focus-after-home.txt",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat.txt",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-fatal-scan.txt",
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/evidence/logcat-app-fatal-scan.txt"
+    ],
+    "verifier_outputs": [
+      "docs/mobile-harness-benchmark/strategy-ablation/runs/p63-android-real-device-lane/phone_use_runtime_verifier.json"
+    ]
+  },
+  "apk": {
+    "apk": "mobile_agent/build/app/outputs/flutter-apk/app-debug.apk",
+    "sha256": "1fd40b060887fc6a9a25bc4082675ab1e272884dea138d2d0ebf98eff12ddf87",
+    "package": "com.mobilecode.app",
+    "activity": "com.mobilecode.app.MainActivity",
+    "accessibility_service": "com.mobilecode.app/com.mobilecode.app.PhoneUseAccessibilityService"
+  }
+}

@@ -376,7 +376,7 @@ class ApiManagerService extends ChangeNotifier {
       // Load provider priority
       final priorityJson = await _secureStorage.read(_keyProviderPriority);
       if (priorityJson != null && priorityJson.isNotEmpty) {
-        final List<dynamic> decoded = jsonDecode(priorityJson);
+        final decoded = jsonDecode(priorityJson) as List<dynamic>;
         _providerPriority.clear();
         _providerPriority.addAll(decoded.cast<String>());
       }
@@ -1132,7 +1132,7 @@ class ApiManagerService extends ChangeNotifier {
       final jsonStr = await _secureStorage.read(_keyCustomApis);
       if (jsonStr == null || jsonStr.isEmpty) return;
 
-      final List<dynamic> decoded = jsonDecode(jsonStr);
+      final decoded = jsonDecode(jsonStr) as List<dynamic>;
       _customApis.clear();
       for (final item in decoded) {
         final config = CustomApiConfig.fromJson(item as Map<String, dynamic>);

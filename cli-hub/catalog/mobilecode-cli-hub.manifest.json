@@ -1,0 +1,715 @@
+{
+  "schemaVersion": "1.0",
+  "updatedAt": "2026-06-26",
+  "entries": [
+    {
+      "id": "git",
+      "title": "Git",
+      "command": "git",
+      "category": "core",
+      "supportLevel": "supported",
+      "officialSources": [
+        "https://git-scm.com/downloads"
+      ],
+      "install": {
+        "strategy": "packageProfile",
+        "profileId": "devBasic",
+        "packages": [
+          "git",
+          "curl",
+          "ca-certificates"
+        ]
+      },
+      "probe": {
+        "taskKind": "git_version",
+        "safeArgs": [
+          "--version"
+        ]
+      },
+      "auth": {
+        "required": false,
+        "storage": "none",
+        "notes": "Repository credentials remain outside the CLI catalog and must use MobileCode credential boundaries."
+      },
+      "safetyNotes": [
+        "No arbitrary git shell is exposed to Agent by default.",
+        "Clone/push flows need separate workspace and credential approval."
+      ],
+      "riskLevel": "medium",
+      "credentialPolicy": "none",
+      "readOnlyTasks": [],
+      "mutationTasks": []
+    },
+    {
+      "id": "node-npm",
+      "title": "Node.js / npm",
+      "command": "node,npm",
+      "category": "package",
+      "supportLevel": "supported",
+      "officialSources": [
+        "https://nodejs.org/en/download",
+        "https://docs.npmjs.com/downloading-and-installing-node-js-and-npm"
+      ],
+      "install": {
+        "strategy": "packageProfile",
+        "profileId": "nodePack",
+        "packages": [
+          "nodejs",
+          "npm"
+        ]
+      },
+      "probe": {
+        "taskKind": "npm_version",
+        "safeArgs": [
+          "node --version",
+          "npm --version"
+        ]
+      },
+      "auth": {
+        "required": false,
+        "storage": "none",
+        "notes": "npm registry auth is not configured by this profile."
+      },
+      "safetyNotes": [
+        "npm_build stays a typed task with cwd validation.",
+        "Global package installs require explicit extension approval."
+      ],
+      "riskLevel": "medium",
+      "credentialPolicy": "none",
+      "readOnlyTasks": [],
+      "mutationTasks": []
+    },
+    {
+      "id": "lark-cli",
+      "title": "Lark CLI",
+      "command": "lark-cli",
+      "category": "collaboration",
+      "supportLevel": "preview",
+      "officialSources": [
+        "https://github.com/larksuite/cli",
+        "https://www.npmjs.com/package/@larksuite/cli"
+      ],
+      "install": {
+        "strategy": "packageProfile",
+        "profileId": "larkCli",
+        "packages": [
+          "nodejs",
+          "npm",
+          "curl",
+          "ca-certificates",
+          "@larksuite/cli"
+        ]
+      },
+      "probe": {
+        "taskKind": "lark_cli_probe",
+        "safeArgs": [
+          "node --version",
+          "npm --version",
+          "lark-cli --version"
+        ]
+      },
+      "auth": {
+        "required": true,
+        "storage": "secureStorage",
+        "notes": "Real Lark auth must use MobileCode native Lark connection or secure storage; never catalog tokens."
+      },
+      "tasks": [
+        {
+          "id": "lark-auth-start",
+          "label": "登录",
+          "taskKind": "lark_cli_auth_start",
+          "payload": {},
+          "requiresApproval": true
+        },
+        {
+          "id": "lark-auth-status",
+          "label": "状态",
+          "taskKind": "lark_cli_auth_status",
+          "payload": {},
+          "requiresApproval": false
+        },
+        {
+          "id": "lark-wiki-space-list",
+          "label": "执行",
+          "taskKind": "lark_cli_execute",
+          "payload": {
+            "commandId": "wiki_space_list"
+          },
+          "requiresApproval": true
+        }
+      ],
+      "safetyNotes": [
+        "This profile installs prerequisites first; CLI auth/execution remains typed.",
+        "No token, app_secret, cookie, or .env value may enter logs or evidence."
+      ],
+      "riskLevel": "high",
+      "credentialPolicy": "secureStorage",
+      "readOnlyTasks": [
+        "lark-auth-status",
+        "lark-wiki-space-list"
+      ],
+      "mutationTasks": [
+        "lark-auth-start"
+      ]
+    },
+    {
+      "id": "hyperframes-cli",
+      "title": "HyperFrames CLI",
+      "command": "hyperframes",
+      "category": "media",
+      "supportLevel": "preview",
+      "officialSources": [
+        "https://hyperframes.heygen.com/packages/cli",
+        "https://github.com/heygen-com/hyperframes"
+      ],
+      "install": {
+        "strategy": "packageProfile",
+        "profileId": "hyperframesCli",
+        "packages": [
+          "nodejs",
+          "npm",
+          "chromium",
+          "ffmpeg",
+          "ca-certificates",
+          "hyperframes"
+        ]
+      },
+      "probe": {
+        "taskKind": "hyperframes_cli_probe",
+        "safeArgs": [
+          "hyperframes --version"
+        ]
+      },
+      "auth": {
+        "required": false,
+        "storage": "none",
+        "notes": "HyperFrames CLI itself does not require a MobileCode credential. External media providers and publish credentials remain outside this catalog."
+      },
+      "tasks": [
+        {
+          "id": "hyperframes-lint",
+          "label": "Lint",
+          "taskKind": "hyperframes_lint",
+          "payload": {},
+          "requiresApproval": false
+        },
+        {
+          "id": "hyperframes-check",
+          "label": "Check",
+          "taskKind": "hyperframes_check",
+          "payload": {},
+          "requiresApproval": false
+        },
+        {
+          "id": "hyperframes-compositions",
+          "label": "Compositions",
+          "taskKind": "hyperframes_compositions",
+          "payload": {},
+          "requiresApproval": false
+        },
+        {
+          "id": "hyperframes-render",
+          "label": "Render MP4",
+          "taskKind": "hyperframes_render",
+          "payload": {
+            "output": "output.mp4"
+          },
+          "requiresApproval": true
+        }
+      ],
+      "safetyNotes": [
+        "Only fixed HyperFrames subcommands are exposed; raw shell and arbitrary CLI flags stay blocked.",
+        "Render writes only to a workspace-relative output path and requires approval.",
+        "HyperFrames render needs Node 22+, a browser runtime, and FFmpeg; Alpine package availability must be verified on the target ABI.",
+        "Preview is intentionally not a bounded Agent task because it is a long-running server; use MobileCode's preview surface instead.",
+        "Publish, add, transcribe, TTS, and background-removal flows remain outside this first compatibility slice."
+      ],
+      "riskLevel": "medium",
+      "credentialPolicy": "none",
+      "readOnlyTasks": [
+        "hyperframes-lint",
+        "hyperframes-check",
+        "hyperframes-compositions"
+      ],
+      "mutationTasks": [
+        "hyperframes-render"
+      ]
+    },
+    {
+      "id": "agent-mail-cli",
+      "title": "Agent Mail CLI",
+      "command": "agently-cli",
+      "category": "collaboration",
+      "supportLevel": "preview",
+      "officialSources": [
+        "https://agent.qq.com/doc/cli-setup.md",
+        "https://www.npmjs.com/package/@tencent-qqmail/agently-cli"
+      ],
+      "install": {
+        "strategy": "packageProfile",
+        "profileId": "agentMailCli",
+        "packages": [
+          "nodejs",
+          "npm",
+          "curl",
+          "ca-certificates",
+          "@tencent-qqmail/agently-cli"
+        ]
+      },
+      "probe": {
+        "taskKind": "agently_cli_probe",
+        "safeArgs": [
+          "node --version",
+          "npm --version",
+          "agently-cli --version"
+        ]
+      },
+      "auth": {
+        "required": true,
+        "storage": "secureStorage",
+        "notes": "OAuth must use official agently-cli auth login. Credentials and opaque auth URLs must never enter catalog, logs, or evidence."
+      },
+      "tasks": [
+        {
+          "id": "agent-mail-auth-start",
+          "label": "登录",
+          "taskKind": "agently_cli_auth_start",
+          "payload": {},
+          "requiresApproval": true
+        },
+        {
+          "id": "agent-mail-me",
+          "label": "状态",
+          "taskKind": "agently_cli_me",
+          "payload": {},
+          "requiresApproval": false
+        },
+        {
+          "id": "agent-mail-message-list",
+          "label": "最近邮件",
+          "taskKind": "agently_cli_execute",
+          "payload": {
+            "commandId": "message_list",
+            "limit": 10
+          },
+          "requiresApproval": true
+        }
+      ],
+      "safetyNotes": [
+        "No raw mail shell is exposed to Agent by default.",
+        "Message read/send/reply/attachment commands require separate typed approvals.",
+        "No token, cookie, .env, OAuth code, or credential-like value may enter logs or evidence."
+      ],
+      "riskLevel": "high",
+      "credentialPolicy": "secureStorage",
+      "readOnlyTasks": [
+        "agent-mail-me",
+        "agent-mail-message-list"
+      ],
+      "mutationTasks": [
+        "agent-mail-auth-start"
+      ]
+    },
+    {
+      "id": "google-workspace-cli",
+      "title": "Google Workspace CLI",
+      "command": "gws",
+      "category": "collaboration",
+      "supportLevel": "preview",
+      "officialSources": [
+        "https://github.com/googleworkspace/cli",
+        "https://www.npmjs.com/package/@googleworkspace/cli"
+      ],
+      "install": {
+        "strategy": "packageProfile",
+        "profileId": "googleWorkspaceCli",
+        "packages": [
+          "nodejs",
+          "npm",
+          "curl",
+          "ca-certificates",
+          "@googleworkspace/cli"
+        ]
+      },
+      "probe": {
+        "taskKind": "gws_cli_probe",
+        "safeArgs": [
+          "node --version",
+          "npm --version",
+          "gws --version"
+        ]
+      },
+      "auth": {
+        "required": true,
+        "storage": "secureStorage",
+        "notes": "Use official gws auth setup/login. OAuth setup may require gcloud and a Google Cloud project; never catalog tokens, exported credentials, or .env values."
+      },
+      "tasks": [
+        {
+          "id": "google-workspace-auth-setup",
+          "label": "配置",
+          "taskKind": "gws_cli_auth_setup",
+          "payload": {},
+          "requiresApproval": true
+        },
+        {
+          "id": "google-workspace-auth-login",
+          "label": "登录",
+          "taskKind": "gws_cli_auth_login",
+          "payload": {},
+          "requiresApproval": true
+        },
+        {
+          "id": "google-workspace-auth-status",
+          "label": "状态",
+          "taskKind": "gws_cli_auth_status",
+          "payload": {},
+          "requiresApproval": false
+        },
+        {
+          "id": "google-workspace-drive-files-list",
+          "label": "Drive",
+          "taskKind": "gws_cli_execute",
+          "payload": {
+            "commandId": "drive_files_list",
+            "pageSize": 5
+          },
+          "requiresApproval": true
+        }
+      ],
+      "safetyNotes": [
+        "This project is not an officially supported Google product and remains preview until real-device auth is verified.",
+        "No raw Workspace shell is exposed to Agent by default.",
+        "Drive, Gmail, Calendar, Sheets, Docs, Chat, and Admin commands require separate typed approvals.",
+        "Do not expose gws auth export, plaintext credential files, service account keys, or GOOGLE_WORKSPACE_CLI_TOKEN through CLI Hub."
+      ],
+      "riskLevel": "high",
+      "credentialPolicy": "secureStorage",
+      "readOnlyTasks": [
+        "google-workspace-auth-status",
+        "google-workspace-drive-files-list"
+      ],
+      "mutationTasks": [
+        "google-workspace-auth-setup",
+        "google-workspace-auth-login"
+      ]
+    },
+    {
+      "id": "github-cli",
+      "title": "GitHub CLI",
+      "command": "gh",
+      "category": "collaboration",
+      "supportLevel": "preview",
+      "officialSources": [
+        "https://cli.github.com/",
+        "https://cli.github.com/manual/installation"
+      ],
+      "install": {
+        "strategy": "packageProfile",
+        "profileId": "githubCli",
+        "packages": [
+          "github-cli",
+          "git",
+          "curl",
+          "ca-certificates"
+        ]
+      },
+      "probe": {
+        "taskKind": "github_cli_probe",
+        "safeArgs": [
+          "gh --version"
+        ]
+      },
+      "auth": {
+        "required": true,
+        "storage": "secureStorage",
+        "notes": "Use official gh auth login browser flow and unify with MobileCode's existing GitHub auth surface. Do not use --with-token, --show-token, or --insecure-storage."
+      },
+      "tasks": [
+        {
+          "id": "github-auth-login",
+          "label": "登录",
+          "taskKind": "github_cli_auth_login",
+          "payload": {},
+          "requiresApproval": true
+        },
+        {
+          "id": "github-auth-status",
+          "label": "状态",
+          "taskKind": "github_cli_auth_status",
+          "payload": {},
+          "requiresApproval": false
+        },
+        {
+          "id": "github-repo-list",
+          "label": "仓库",
+          "taskKind": "github_cli_execute",
+          "payload": {
+            "commandId": "repo_list",
+            "limit": 10
+          },
+          "requiresApproval": true
+        }
+      ],
+      "safetyNotes": [
+        "Do not ask users to paste GitHub tokens into raw CLI prompts.",
+        "Do not expose gh auth token, --show-token, GH_TOKEN, or GITHUB_TOKEN through CLI Hub.",
+        "Repo, issue, PR, workflow, release, and secret commands require separate typed approvals."
+      ],
+      "riskLevel": "high",
+      "credentialPolicy": "secureStorage",
+      "readOnlyTasks": [
+        "github-auth-status",
+        "github-repo-list"
+      ],
+      "mutationTasks": [
+        "github-auth-login"
+      ]
+    },
+    {
+      "id": "firebase-cli",
+      "title": "Firebase CLI",
+      "command": "firebase",
+      "category": "cloud",
+      "supportLevel": "planned",
+      "officialSources": [
+        "https://firebase.google.com/docs/cli"
+      ],
+      "install": {
+        "strategy": "npmGlobal",
+        "profileId": null,
+        "packages": [
+          "firebase-tools"
+        ]
+      },
+      "probe": {
+        "taskKind": null,
+        "safeArgs": [
+          "firebase --version"
+        ]
+      },
+      "auth": {
+        "required": true,
+        "storage": "officialBrowser",
+        "notes": "Requires a Google/Firebase login flow before commands can mutate projects."
+      },
+      "safetyNotes": [
+        "Deploy/delete commands require explicit approval and project binding."
+      ],
+      "riskLevel": "high",
+      "credentialPolicy": "officialBrowser",
+      "readOnlyTasks": [],
+      "mutationTasks": []
+    },
+    {
+      "id": "vercel-cli",
+      "title": "Vercel CLI",
+      "command": "vercel",
+      "category": "deploy",
+      "supportLevel": "planned",
+      "officialSources": [
+        "https://vercel.com/docs/cli"
+      ],
+      "install": {
+        "strategy": "npmGlobal",
+        "profileId": null,
+        "packages": [
+          "vercel"
+        ]
+      },
+      "probe": {
+        "taskKind": null,
+        "safeArgs": [
+          "vercel --version"
+        ]
+      },
+      "auth": {
+        "required": true,
+        "storage": "officialBrowser",
+        "notes": "Login/session storage must be explicit and redactable."
+      },
+      "safetyNotes": [
+        "Production deploy commands need user confirmation and evidence."
+      ],
+      "riskLevel": "high",
+      "credentialPolicy": "officialBrowser",
+      "readOnlyTasks": [],
+      "mutationTasks": []
+    },
+    {
+      "id": "netlify-cli",
+      "title": "Netlify CLI",
+      "command": "netlify",
+      "category": "deploy",
+      "supportLevel": "planned",
+      "officialSources": [
+        "https://docs.netlify.com/cli/get-started/"
+      ],
+      "install": {
+        "strategy": "npmGlobal",
+        "profileId": null,
+        "packages": [
+          "netlify-cli"
+        ]
+      },
+      "probe": {
+        "taskKind": null,
+        "safeArgs": [
+          "netlify --version"
+        ]
+      },
+      "auth": {
+        "required": true,
+        "storage": "officialBrowser",
+        "notes": "Auth token handling must go through secure storage."
+      },
+      "safetyNotes": [
+        "Deploy and site mutation commands need confirmation."
+      ],
+      "riskLevel": "high",
+      "credentialPolicy": "officialBrowser",
+      "readOnlyTasks": [],
+      "mutationTasks": []
+    },
+    {
+      "id": "cloudflare-wrangler",
+      "title": "Cloudflare Wrangler",
+      "command": "wrangler",
+      "category": "deploy",
+      "supportLevel": "planned",
+      "officialSources": [
+        "https://developers.cloudflare.com/workers/wrangler/install-and-update/"
+      ],
+      "install": {
+        "strategy": "npmGlobal",
+        "profileId": null,
+        "packages": [
+          "wrangler"
+        ]
+      },
+      "probe": {
+        "taskKind": null,
+        "safeArgs": [
+          "wrangler --version"
+        ]
+      },
+      "auth": {
+        "required": true,
+        "storage": "officialBrowser",
+        "notes": "Cloudflare account/API token storage must be explicit."
+      },
+      "safetyNotes": [
+        "Publish/delete commands require approval."
+      ],
+      "riskLevel": "high",
+      "credentialPolicy": "officialBrowser",
+      "readOnlyTasks": [],
+      "mutationTasks": []
+    },
+    {
+      "id": "aws-cli",
+      "title": "AWS CLI",
+      "command": "aws",
+      "category": "cloud",
+      "supportLevel": "planned",
+      "officialSources": [
+        "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+      ],
+      "install": {
+        "strategy": "nativeInstaller",
+        "profileId": null,
+        "packages": [
+          "awscli"
+        ]
+      },
+      "probe": {
+        "taskKind": null,
+        "safeArgs": [
+          "aws --version"
+        ]
+      },
+      "auth": {
+        "required": true,
+        "storage": "secureStorage",
+        "notes": "AWS credentials must never be written to catalog, logs, screenshots, or evidence."
+      },
+      "safetyNotes": [
+        "Resource mutation commands require explicit account/region confirmation."
+      ],
+      "riskLevel": "high",
+      "credentialPolicy": "secureStorage",
+      "readOnlyTasks": [],
+      "mutationTasks": []
+    },
+    {
+      "id": "google-cloud-cli",
+      "title": "Google Cloud CLI",
+      "command": "gcloud",
+      "category": "cloud",
+      "supportLevel": "planned",
+      "officialSources": [
+        "https://cloud.google.com/sdk/docs/install"
+      ],
+      "install": {
+        "strategy": "nativeInstaller",
+        "profileId": null,
+        "packages": [
+          "google-cloud-cli"
+        ]
+      },
+      "probe": {
+        "taskKind": null,
+        "safeArgs": [
+          "gcloud --version"
+        ]
+      },
+      "auth": {
+        "required": true,
+        "storage": "officialBrowser",
+        "notes": "Google auth should share the official account boundary used by provider login."
+      },
+      "safetyNotes": [
+        "Project and billing-affecting commands require confirmation."
+      ],
+      "riskLevel": "high",
+      "credentialPolicy": "officialBrowser",
+      "readOnlyTasks": [],
+      "mutationTasks": []
+    },
+    {
+      "id": "azure-cli",
+      "title": "Azure CLI",
+      "command": "az",
+      "category": "cloud",
+      "supportLevel": "planned",
+      "officialSources": [
+        "https://learn.microsoft.com/cli/azure/install-azure-cli-linux"
+      ],
+      "install": {
+        "strategy": "nativeInstaller",
+        "profileId": null,
+        "packages": [
+          "azure-cli"
+        ]
+      },
+      "probe": {
+        "taskKind": null,
+        "safeArgs": [
+          "az --version"
+        ]
+      },
+      "auth": {
+        "required": true,
+        "storage": "officialBrowser",
+        "notes": "Azure login/session state needs explicit user authorization."
+      },
+      "safetyNotes": [
+        "Subscription/resource-group mutations require confirmation."
+      ],
+      "riskLevel": "high",
+      "credentialPolicy": "officialBrowser",
+      "readOnlyTasks": [],
+      "mutationTasks": []
+    }
+  ]
+}

@@ -646,7 +646,7 @@ class SecureStorageService {
 
       if (listJson == null || listJson.isEmpty) return [];
 
-      final List<dynamic> decoded = jsonDecode(listJson);
+      final decoded = jsonDecode(listJson) as List<dynamic>;
       return decoded.cast<String>();
     } catch (e) {
       debugPrint('[SecureStorage] Failed to read providers list: $e');

@@ -4,7 +4,7 @@
 
 MobileCode uses semantic versioning, but the project is still pre-1.0. The version number should communicate release intent clearly, not simply increase because work happened.
 
-Current next release line: `0.1.30+49`.
+Current release line: `0.1.78+68`.
 
 ## Version Lines
 
@@ -56,6 +56,15 @@ Examples:
 - `0.1.28+47`: Runtime workspace browse/sync entry for Termux git clones, including shared-folder copy actions.
 - `0.1.29+48`: Recent shared runtime workspace sync history with quick open/copy actions.
 - `0.1.30+49`: Global Downloads / Shared folders surface for Actions artifacts and runtime shared copies.
+- `0.1.69+59`: controlled Phone Use evaluation, semantic element references, ActionEvidence, and hardened Android smoke evidence.
+- `0.1.71+61`: MobileCore generic local-vision pair discovery, capability reporting, model switching, and strict dual-app emulator evidence.
+- `0.1.72+62`: release-version consistency fix across package metadata, product UI, update service, and published update feed.
+- `0.1.73+63`: iOS generated-project privacy permission fix plus bundle-version and launch-crash release gates.
+- `0.1.74+64`: coherent MobileCoreClient v2 snapshots and model controls plus task-aware, pressure-aware, proactive offline routing.
+- `0.1.75+65`: one-task cloud inference consent, fail-closed MobileCore decline routing, and redacted approval evidence.
+- `0.1.76+66`: strict `mobilecore.local` v2 handshake, adaptive local output budgets, and timeout/user-pause inference cancellation with typed failures.
+- `0.1.77+67`: public release workflows reject raw runtime credentials and allow only non-secret relay/OAuth configuration in distributed app artifacts.
+- `0.1.78+68`: verified Omni activation, typed MobileCore background-restriction recovery, and coherent fail-closed local routing evidence.
 - `0.2.0+38`: Helper APK/runtime capability expansion starts.
 
 ## Stop Rules

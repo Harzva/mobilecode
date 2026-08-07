@@ -337,7 +337,7 @@ class SyncQueueService {
     final entityId = row['entity_id'] as String;
     final retryCount = (row['retry_count'] as int?) ?? 0;
     final dataRaw = row['data'] as String? ?? '{}';
-    final Map<String, dynamic> data;
+    Map<String, dynamic> data;
     try {
       data = jsonDecode(dataRaw) as Map<String, dynamic>;
     } catch (_) {

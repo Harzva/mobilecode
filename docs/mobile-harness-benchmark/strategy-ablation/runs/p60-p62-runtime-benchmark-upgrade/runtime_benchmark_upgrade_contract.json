@@ -1,0 +1,356 @@
+{
+  "schema_version": "0.1.0",
+  "contract_id": "p60_p62_runtime_benchmark_upgrade_contract",
+  "run_kind": "strategy_pilot_not_counted",
+  "counts_as_experiment": false,
+  "counts_as_strategy_ablation_result": false,
+  "task_taxonomy": [
+    {
+      "task_category": "ui_artifact",
+      "required_assertions": [
+        "keyboard",
+        "tap",
+        "screenshot",
+        "logcat"
+      ],
+      "evidence_refs": [
+        "screenshot",
+        "verifier_json"
+      ]
+    },
+    {
+      "task_category": "webview_artifact",
+      "required_assertions": [
+        "keyboard",
+        "tap",
+        "set_text",
+        "localStorage",
+        "webview_state",
+        "screenshot"
+      ],
+      "evidence_refs": [
+        "webview_state",
+        "screenshot",
+        "verifier_json"
+      ]
+    },
+    {
+      "task_category": "phone_use_permission",
+      "required_assertions": [
+        "tap",
+        "swipe",
+        "set_text",
+        "ui_xml",
+        "logcat",
+        "focus_state"
+      ],
+      "evidence_refs": [
+        "ui_xml",
+        "logcat",
+        "accessibility_state"
+      ]
+    },
+    {
+      "task_category": "file_intake",
+      "required_assertions": [
+        "tap",
+        "set_text",
+        "ui_xml",
+        "screenshot"
+      ],
+      "evidence_refs": [
+        "intake_log",
+        "content_hash",
+        "ui_xml"
+      ]
+    },
+    {
+      "task_category": "local_runtime",
+      "required_assertions": [
+        "logcat",
+        "screenshot",
+        "focus_state"
+      ],
+      "evidence_refs": [
+        "runtime_report",
+        "exit_code",
+        "log_excerpt"
+      ]
+    },
+    {
+      "task_category": "network_boundary",
+      "required_assertions": [
+        "logcat",
+        "screenshot"
+      ],
+      "evidence_refs": [
+        "network_summary",
+        "redaction_report"
+      ]
+    },
+    {
+      "task_category": "recovery_task",
+      "required_assertions": [
+        "keyboard",
+        "tap",
+        "screenshot",
+        "logcat"
+      ],
+      "evidence_refs": [
+        "strategy_trace",
+        "blocked_reason",
+        "recovery_action"
+      ]
+    },
+    {
+      "task_category": "real_device_task",
+      "required_assertions": [
+        "tap",
+        "swipe",
+        "set_text",
+        "ui_xml",
+        "screenshot",
+        "logcat",
+        "focus_state"
+      ],
+      "evidence_refs": [
+        "install_log",
+        "launch_log",
+        "ui_xml",
+        "screenshot",
+        "logcat"
+      ]
+    }
+  ],
+  "assertion_catalog": {
+    "keyboard": {
+      "state_proof": "visible_or_structured_state_change",
+      "required_redaction": "none"
+    },
+    "tap": {
+      "state_proof": "target_state_changed",
+      "required_redaction": "coordinate_only_or_app_owned_label"
+    },
+    "swipe": {
+      "state_proof": "scroll_drawer_or_canvas_state_changed",
+      "required_redaction": "coordinate_only"
+    },
+    "set_text": {
+      "state_proof": "value_or_app_state_changed",
+      "required_redaction": "test_string_only"
+    },
+    "localStorage": {
+      "state_proof": "key_roundtrip_or_refresh_persistence",
+      "required_redaction": "no_user_payload"
+    },
+    "ui_xml": {
+      "state_proof": "stable_app_owned_label_or_state_marker",
+      "required_redaction": "third_party_text_removed"
+    },
+    "screenshot": {
+      "state_proof": "nonblank_target_ui_not_launcher_or_error",
+      "required_redaction": "no_sensitive_screen"
+    },
+    "logcat": {
+      "state_proof": "fatal_anr_flutter_plugin_scan",
+      "required_redaction": "app_scoped_or_sanitized"
+    },
+    "webview_state": {
+      "state_proof": "url_dom_console_or_js_state_marker",
+      "required_redaction": "app_owned_state_only"
+    },
+    "focus_state": {
+      "state_proof": "foreground_package_activity_or_process",
+      "required_redaction": "device_id_hash"
+    }
+  },
+  "score_dimensions": {
+    "quality": 25,
+    "runtime_correctness": 25,
+    "phone_use_ability": 15,
+    "recovery": 15,
+    "latency_token": 10,
+    "safety_privacy": 10
+  },
+  "communication_substrate": {
+    "MailboxMessage": [
+      "message_id",
+      "from_role",
+      "to_role",
+      "task_id",
+      "allowed_tools",
+      "budget",
+      "input_filter",
+      "expected_return",
+      "evidence_refs"
+    ],
+    "EvidenceLedgerEntry": [
+      "evidence_id",
+      "kind",
+      "path",
+      "producer_role",
+      "redaction_state",
+      "created_at",
+      "summary"
+    ],
+    "RuntimeEvent": [
+      "event_id",
+      "source",
+      "target",
+      "action",
+      "status",
+      "timestamp",
+      "evidence_id",
+      "redaction_state"
+    ],
+    "MemoryCommitProposal": [
+      "proposal_id",
+      "source_trace",
+      "content_summary",
+      "ttl",
+      "redaction_state",
+      "approval_required"
+    ]
+  },
+  "role_contracts": {
+    "CodeAgent": {
+      "allowed_tools": [
+        "read_file",
+        "apply_patch",
+        "format",
+        "unit_test"
+      ],
+      "budget": {
+        "max_steps": 8
+      },
+      "input_filter": "code_files_and_scoped_task_only",
+      "return_contract": [
+        "patch_summary",
+        "tests",
+        "blockers"
+      ]
+    },
+    "RuntimeAgent": {
+      "allowed_tools": [
+        "adb",
+        "devicectl",
+        "browser_cdp",
+        "webview_probe"
+      ],
+      "budget": {
+        "max_steps": 8
+      },
+      "input_filter": "runtime_target_and_evidence_policy",
+      "return_contract": [
+        "runtime_events",
+        "screenshots",
+        "logs"
+      ]
+    },
+    "PreviewAgent": {
+      "allowed_tools": [
+        "screenshot",
+        "ui_xml",
+        "webview_state"
+      ],
+      "budget": {
+        "max_steps": 6
+      },
+      "input_filter": "app_owned_ui_only",
+      "return_contract": [
+        "visual_state",
+        "ui_markers",
+        "blockers"
+      ]
+    },
+    "VerifierAgent": {
+      "allowed_tools": [
+        "validators",
+        "static_checks",
+        "runtime_assertions"
+      ],
+      "budget": {
+        "max_steps": 8
+      },
+      "input_filter": "artifacts_and_evidence_refs",
+      "return_contract": [
+        "pass_fail",
+        "score_dimensions",
+        "missing_evidence"
+      ]
+    },
+    "MemoryAgent": {
+      "allowed_tools": [
+        "memory_packet",
+        "redaction",
+        "proposal"
+      ],
+      "budget": {
+        "max_steps": 4
+      },
+      "input_filter": "summaries_only",
+      "return_contract": [
+        "proposal_or_noop_reason"
+      ]
+    },
+    "ReporterAgent": {
+      "allowed_tools": [
+        "evidence_ledger",
+        "markdown_summary"
+      ],
+      "budget": {
+        "max_steps": 4
+      },
+      "input_filter": "verified_evidence_refs_only",
+      "return_contract": [
+        "public_safe_summary"
+      ]
+    }
+  },
+  "runtime_verifier_scaffold": {
+    "verifier_json_required_fields": [
+      "schema_version",
+      "run_kind",
+      "counts_as_experiment",
+      "task_id",
+      "task_category",
+      "assertion_results",
+      "score_dimensions",
+      "device_evidence_refs",
+      "webview_evidence_refs",
+      "privacy_boundary",
+      "blocked_reason"
+    ],
+    "non_counted_run_required_fields": [
+      "run_kind",
+      "counts_as_experiment",
+      "counts_as_strategy_ablation_result",
+      "evidence_boundary",
+      "results",
+      "summary"
+    ],
+    "android_webview_upgrade_assertions": [
+      "ui_xml",
+      "screenshot",
+      "logcat",
+      "webview_state",
+      "focus_state",
+      "accessibility_state"
+    ]
+  },
+  "next_android_real_device_lane_recommendation": {
+    "status": "recommended_next",
+    "required_evidence": [
+      "apk_install",
+      "launch_focus_state",
+      "accessibility_authorization_state",
+      "screenshot",
+      "ui_xml",
+      "app_scoped_logcat",
+      "phone_use_dry_probe",
+      "phone_use_action_probe",
+      "webview_state_assertions"
+    ],
+    "boundary": "non_counted_until_repeated_task_samples_and_promotion_gate"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": "0.1.0",
+  "verifier_id": "p60_p62_runtime_benchmark_upgrade_verifier",
+  "created_at": "2026-06-21T07:28:20Z",
+  "status": "passed",
+  "run_kind": "strategy_pilot_not_counted",
+  "counts_as_experiment": false,
+  "counts_as_strategy_ablation_result": false,
+  "scope": "P6.0 taxonomy, P6.1 communication substrate, and P6.2 runtime verifier scaffold contract only.",
+  "score": {
+    "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+    "total_score": 100.0,
+    "max_score": 100,
+    "checks": {
+      "contract_doc_exists": true,
+      "taxonomy_has_required_categories": true,
+      "runtime_assertion_matrix_complete": true,
+      "score_dimensions_complete": true,
+      "score_weights_sum_100": true,
+      "mailbox_contract_present": true,
+      "evidence_ledger_contract_present": true,
+      "runtime_event_bus_contract_present": true,
+      "memory_commit_proposal_contract_present": true,
+      "role_contracts_cover_six_roles": true,
+      "runtime_verifier_json_contract_present": true,
+      "non_counted_run_contract_present": true,
+      "android_webview_upgrade_assertions_present": true,
+      "next_android_real_device_lane_recommendation_present": true,
+      "non_counted_boundary": true
+    },
+    "blocked_reason": null
+  },
+  "contract": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+  "contract_doc": "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md"
+}

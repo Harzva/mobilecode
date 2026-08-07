@@ -411,7 +411,7 @@ class _ThemeBuilder {
       error: error,
       onError: Colors.white,
       errorContainer: error.withOpacity(0.15),
-      onErrorContainer: error.withLightness(+0.2),
+      onErrorContainer: error.withLightness(0.2),
       surface: surface,
       onSurface: textPrimary,
       surfaceContainerHighest: surfaceLight,
@@ -626,7 +626,7 @@ class _ThemeBuilder {
         elevation: 8,
       ),
       // -- Dialog --
-      dialogTheme: DialogTheme(
+      dialogTheme: DialogThemeData(
         backgroundColor: surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         titleTextStyle: textTheme.headlineSmall,
@@ -644,7 +644,7 @@ class _ThemeBuilder {
         side: BorderSide.none,
       ),
       // -- TabBar --
-      tabBarTheme: TabBarTheme(
+      tabBarTheme: TabBarThemeData(
         labelColor: primary,
         unselectedLabelColor: textMuted,
         indicatorColor: primary,

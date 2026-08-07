@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -15,12 +16,15 @@ import 'package:webview_flutter/webview_flutter.dart';
 import '../core/evidence/action_evidence_store.dart';
 import '../core/evidence/action_runner.dart';
 import '../core/evidence/evidence_model.dart';
+import '../core/mobilecode_version.dart';
 import 'agent_dashboard_screen.dart';
 import 'api_usage_screen.dart';
 import 'benchmark_lab_screen.dart';
+import 'capability_center_screen.dart';
 import 'device_telemetry_screen.dart';
 import 'downloads_shared_folders_screen.dart';
 import 'editor_screen.dart';
+import 'external_file_preview_screen.dart';
 import 'github_repo_hub_screen.dart';
 import 'github_screen.dart';
 import 'hook_registry_screen.dart';
@@ -32,23 +36,38 @@ import '../services/feature_flags_service.dart';
 import '../services/github_deep_service.dart';
 import '../services/github_pages_service.dart';
 import '../services/github_repo_hub_service.dart';
+import '../services/harness_permission_service.dart';
 import '../services/html_publish_readiness_service.dart';
+import '../services/html_render_provider.dart';
 import '../services/lark_api_service.dart';
+import '../services/cli_hub_runtime_events.dart';
+import '../services/mobile_code_helper_auth.dart';
 import '../services/mobilecode_local_model_manifest_service.dart';
 import '../services/mobilecode_update_service.dart';
+import '../services/mobilecore_adaptive_policy.dart';
 import '../services/model_provider_preset_service.dart';
 import '../services/model_routing_service.dart';
+import '../services/network_transport_service.dart';
 import '../services/role_library_service.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_actions.dart';
 import '../services/runtime_provider.dart';
 import '../services/agent_loop_controller.dart';
 import '../services/device_telemetry_service.dart';
+import '../services/device_automation_provider.dart';
+import '../services/external_file_preview_service.dart';
 import '../services/skill_manager_service.dart';
 import '../services/termux_service.dart';
 import '../services/token_usage_service.dart';
 import '../services/tool_call_adapter.dart';
+import '../services/tuima_provider_service.dart';
 import '../services/voice_service.dart';
+import '../themes/app_theme.dart';
+import '../widgets/phone_use_mode_card.dart';
+import '../widgets/strategy_mode_card.dart';
+import '../widgets/agent_trace_progress_box.dart';
+import '../widgets/agent_trace_recovery_box.dart';
+import '../widgets/cloud_inference_approval_dialog.dart';
 
 enum _ApiFlavor { openAi, anthropic }
 
@@ -148,9 +167,8 @@ const _mobileCodePagesUrl = MobileCodeUpdateService.pagesUrl;
 const _mobileCodeUpdateFeedUrl = MobileCodeUpdateService.defaultFeedUrl;
 const _mobileCodeLocalModelsManifestUrl =
     MobileCodeLocalModelManifestService.defaultManifestUrl;
-const _currentProductVersion = 'v0.1.68-mobile-harness-d2dd9a7';
-const _releaseUrl =
-    'https://github.com/Harzva/mobilecode/releases/tag/v0.1.68-mobile-harness-d2dd9a7';
+const _currentProductVersion = MobileCodeVersion.display;
+const _releaseUrl = MobileCodeVersion.releaseUrl;
 const _androidSmokeRunUrl =
     'https://github.com/Harzva/mobilecode/actions/workflows/android-app-test.yml';
 const _iosSimulatorRunUrl =
@@ -513,6 +531,7 @@ class _AgentTraceStep {
     this.avatarAsset,
     this.toolName,
     this.details = const {},
+    this.evidenceMetadata = const {},
     this.traceAction = MobileCodeAction.traceParseInstruction,
     String? evidenceId,
     this.state = _AgentStepState.queued,
@@ -527,6 +546,7 @@ class _AgentTraceStep {
   final String? avatarAsset;
   final String? toolName;
   final Map<String, String> details;
+  final Map<String, dynamic> evidenceMetadata;
   final MobileCodeAction traceAction;
   final String evidenceId;
   final _AgentStepState state;
@@ -541,6 +561,7 @@ class _AgentTraceStep {
     String? avatarAsset,
     String? toolName,
     Map<String, String>? details,
+    Map<String, dynamic>? evidenceMetadata,
     MobileCodeAction? traceAction,
     String? evidenceId,
     _AgentStepState? state,
@@ -555,6 +576,7 @@ class _AgentTraceStep {
       avatarAsset: avatarAsset ?? this.avatarAsset,
       toolName: toolName ?? this.toolName,
       details: details ?? this.details,
+      evidenceMetadata: evidenceMetadata ?? this.evidenceMetadata,
       traceAction: traceAction ?? this.traceAction,
       evidenceId: evidenceId ?? this.evidenceId,
       state: state ?? this.state,
@@ -934,7 +956,7 @@ const _providerNativeToolSpecs = [
   _LocalToolSpec(
     name: 'preview_snapshot',
     description:
-        'Record preview metadata/DOM evidence; this is not a native bitmap screenshot.',
+        'Capture preview evidence; native renderer produces a PNG artifact, otherwise metadata-only status is reported.',
     surface: 'ActionEvidence',
     icon: Icons.photo_camera_back_outlined,
     color: _cyan,
@@ -1087,7 +1109,8 @@ const _androidCommandSpecs = [
     commands: 'browser open, screenshot-like check',
     support: 'Supported',
     mobileCodePath: 'preview_html / preview_snapshot',
-    note: 'Snapshot is metadata/DOM evidence, not a native bitmap screenshot.',
+    note:
+        'Snapshot records a real PNG when the platform renderer is available and never claims one when it is not.',
     color: _mint,
     icon: Icons.preview_outlined,
   ),
@@ -1801,7 +1824,9 @@ Future<_RootProbeResult?> _probeRootAvailability() async {
 
 Future<bool?> _startMobileCodeHelperService() async {
   try {
-    return await _systemToolsChannel.invokeMethod<bool>('startHelperService');
+    return await _systemToolsChannel.invokeMethod<bool>('startHelperService', {
+      'authToken': MobileCodeHelperAuth.token,
+    });
   } on MissingPluginException {
     return null;
   } on PlatformException {
@@ -2258,22 +2283,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String get _runtimeDrawerLabel {
     final runtime = _bestRuntimeHealth;
-    final capabilityLabel = _runtimeCapabilityLabel(_runtimeCapabilities);
-    final fallback = <String>[
-      if (_termuxInstalled == true)
-        _termuxApiInstalled == true
-            ? 'External Termux API fallback'
-            : 'External Termux fallback',
-      if (_rootAvailable == true) 'root keepalive',
-    ];
     if (runtime == null) {
-      return fallback.isEmpty
-          ? 'Runtime discovery pending'
-          : fallback.join(' · ');
+      return '运行环境检测中';
     }
-    return fallback.isEmpty
-        ? '${runtime.name} · $capabilityLabel'
-        : '${runtime.name} · $capabilityLabel · ${fallback.join(' · ')}';
+    final role = switch (runtime.type) {
+      RuntimeProviderType.mobileCodeHelper => '默认本地 runtime',
+      RuntimeProviderType.linuxSandbox => '内置 Linux Sandbox',
+      RuntimeProviderType.embeddedLite => '轻量内置模式',
+      RuntimeProviderType.externalTermux => '高级 fallback',
+      RuntimeProviderType.cloud => 'Cloud runtime',
+      RuntimeProviderType.webViewOnly => 'WebView only',
+    };
+    return '$role · ${runtime.ready ? '可用' : '待配置'}';
   }
 
   @override
@@ -2444,23 +2465,33 @@ class _HomeScreenState extends State<HomeScreen> {
     if (presetModel.isNotEmpty) {
       await prefs.setString(_modelKey, presetModel);
     }
+    if (preset == _ProviderPreset.tuimaLocal) {
+      await prefs.setString(
+        _apiKeyKey,
+        ModelProviderPresetService.tuimaLocalToken,
+      );
+    }
     if (!mounted) return;
     setState(() {
       _customProviderOverride = true;
       _customProviderPreset = preset;
       if (presetBaseUrl.isNotEmpty) _baseUrlController.text = presetBaseUrl;
       if (presetModel.isNotEmpty) _modelController.text = presetModel;
-      _apiKeyController.text = prefs.getString(_apiKeyKey) ?? '';
+      _apiKeyController.text = preset == _ProviderPreset.tuimaLocal
+          ? ModelProviderPresetService.tuimaLocalToken
+          : prefs.getString(_apiKeyKey) ?? '';
     });
     _addLog(
       '${_providerPresetLabel(preset)} custom profile selected',
       preset == _ProviderPreset.custom
           ? 'Custom provider keeps the saved Base URL, model, and local key.'
-          : preset == _ProviderPreset.deepSeekAuto
-              ? 'DeepSeek Auto fills DeepSeek Base URL and starts with Flash; MobileCode can later route hard steps to Pro.'
-              : preset == _ProviderPreset.tierFlowAuto
-                  ? 'TierFlow Auto fills Base URL and model=auto; paste your TierFlow key if needed.'
-                  : 'No bundled key is active for this profile; paste a key in Models & Provider if needed.',
+          : preset == _ProviderPreset.tuimaLocal
+              ? 'TuiMa uses the on-device MobileCore OpenAI-compatible API. Prompts stay on this phone.'
+              : preset == _ProviderPreset.deepSeekAuto
+                  ? 'DeepSeek Auto fills DeepSeek Base URL and starts with Flash; MobileCode can later route hard steps to Pro.'
+                  : preset == _ProviderPreset.tierFlowAuto
+                      ? 'TierFlow Auto fills Base URL and model=auto; paste your TierFlow key if needed.'
+                      : 'No bundled key is active for this profile; paste a key in Models & Provider if needed.',
       Icons.tune_outlined,
       _cyan,
     );
@@ -2608,17 +2639,22 @@ class _HomeScreenState extends State<HomeScreen> {
       if (presetModel.isNotEmpty) {
         _modelController.text = presetModel;
       }
+      if (preset == _ProviderPreset.tuimaLocal) {
+        _apiKeyController.text = ModelProviderPresetService.tuimaLocalToken;
+      }
     });
     final label = _providerPresetLabel(preset);
     _addLog(
       '$label provider selected',
       preset == _ProviderPreset.custom
           ? 'Custom mode keeps your current Base URL/model so you can edit them directly.'
-          : preset == _ProviderPreset.deepSeekAuto
-              ? 'DeepSeek Auto fills DeepSeek Base URL and Flash/Pro routing metadata.'
-              : preset == _ProviderPreset.tierFlowAuto
-                  ? 'TierFlow Auto fills Base URL and model=auto for provider-side routing.'
-                  : 'Base URL and model filled. API key stays private.',
+          : preset == _ProviderPreset.tuimaLocal
+              ? 'TuiMa Local routes chat to 127.0.0.1:8080. No cloud credential is required.'
+              : preset == _ProviderPreset.deepSeekAuto
+                  ? 'DeepSeek Auto fills DeepSeek Base URL and Flash/Pro routing metadata.'
+                  : preset == _ProviderPreset.tierFlowAuto
+                      ? 'TierFlow Auto fills Base URL and model=auto for provider-side routing.'
+                      : 'Base URL and model filled. API key stays private.',
       Icons.tune_outlined,
       preset == _ProviderPreset.custom || preset == _ProviderPreset.tierFlowAuto
           ? _cyan
@@ -3756,20 +3792,6 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildCommandsTab() {
     final commands = [
       _CommandShortcut(
-        icon: Icons.videogame_asset_outlined,
-        title: '帮我做一个贪吃蛇游戏',
-        subtitle: '填入提示词，Run Agent 后展示写代码、写文件、预览流程。',
-        color: _mint,
-        action: _ModuleAction.aiChat,
-      ),
-      _CommandShortcut(
-        icon: Icons.grid_4x4_outlined,
-        title: '做 2048 网页小游戏',
-        subtitle: '生成本地 HTML/CSS/JS，并一键进入 Android WebView 预览。',
-        color: _cyan,
-        action: _ModuleAction.webDemo,
-      ),
-      _CommandShortcut(
         icon: Icons.edit_note_outlined,
         title: '做一个最小日记 App',
         subtitle: '验证 APK 内本地写入、读取、列表和空状态体验。',
@@ -3969,6 +3991,10 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ),
         const SizedBox(height: 12),
+        const StrategyModeCard(),
+        const SizedBox(height: 12),
+        const PhoneUseModeCard(),
+        const SizedBox(height: 12),
         _LocalModelManifestCard(
           manifest: _localModelManifest,
           checking: _localModelManifestChecking,
@@ -4086,7 +4112,6 @@ class _HomeScreenState extends State<HomeScreen> {
           onSave: _saveConfig,
           onHealth: _checkHealth,
         ),
-        const SizedBox(height: 12),
         _HealthCard(
           state: _healthState,
           message: _healthMessage,
@@ -4212,6 +4237,14 @@ class _HomeScreenState extends State<HomeScreen> {
         onNewChat: _newChatFromDrawer,
         onSelectSession: _selectChatFromDrawer,
         onPrompt: _usePromptShortcut,
+        onOpenCapabilityCenter: () {
+          Navigator.of(context).pop();
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const CapabilityCenterScreen(),
+            ),
+          );
+        },
         onOpenSettings: () {
           Navigator.of(context).pop();
           _setTab(_HomeTab.guard);
@@ -4584,6 +4617,7 @@ class _MobileCodeDrawer extends StatelessWidget {
     required this.onNewChat,
     required this.onSelectSession,
     required this.onPrompt,
+    required this.onOpenCapabilityCenter,
     required this.onOpenSettings,
     required this.onOpenTools,
   });
@@ -4595,6 +4629,7 @@ class _MobileCodeDrawer extends StatelessWidget {
   final VoidCallback onNewChat;
   final ValueChanged<String> onSelectSession;
   final Future<void> Function(String prompt, {bool runAgent}) onPrompt;
+  final VoidCallback onOpenCapabilityCenter;
   final VoidCallback onOpenSettings;
   final VoidCallback onOpenTools;
 
@@ -4617,6 +4652,9 @@ class _MobileCodeDrawer extends StatelessWidget {
                         style: TextStyle(
                             color: _text,
                             fontSize: 24,
+                            fontFamily: AppTheme.fontDisplay,
+                            fontFamilyFallback: AppTheme.fontFallback,
+                            letterSpacing: 0,
                             fontWeight: FontWeight.w900)),
                   ),
                   IconButton.filledTonal(
@@ -4639,44 +4677,59 @@ class _MobileCodeDrawer extends StatelessWidget {
                     Expanded(
                       child: Text(runtimeLabel,
                           style: const TextStyle(
-                              color: _muted, fontSize: 12, height: 1.3)),
+                            color: _muted,
+                            fontFamily: AppTheme.fontBody,
+                            fontFamilyFallback: AppTheme.fontFallback,
+                            fontSize: 12,
+                            height: 1.34,
+                          )),
                     ),
                   ],
                 ),
               ),
             ),
             const SizedBox(height: 12),
+            const _DrawerSectionLabel('主入口'),
             _DrawerAction(
-              icon: Icons.add_comment_outlined,
-              label: '新会话',
-              onTap: onNewChat,
+              icon: Icons.dashboard_customize_outlined,
+              label: '能力中心',
+              subtitle: '运行环境、CLI 扩展、账号订阅、权限安全',
+              onTap: onOpenCapabilityCenter,
             ),
+            const _DrawerSectionLabel('工作区'),
             _DrawerAction(
-              icon: Icons.videogame_asset_outlined,
-              label: '帮我做贪吃蛇游戏',
-              onTap: () => onPrompt(
-                  '帮我在手机端创建一个可运行的贪吃蛇网页小游戏，生成 index.html、展示写代码过程，并用 WebView 预览。',
-                  runAgent: true),
-            ),
-            _DrawerAction(
-              icon: Icons.handyman_outlined,
-              label: '工具与权限',
+              icon: Icons.rocket_launch_outlined,
+              label: '构建与发布',
+              subtitle: 'APK、Release、日志与发布检查',
               onTap: onOpenTools,
             ),
             _DrawerAction(
               icon: Icons.tune_outlined,
               label: '模型与设置',
+              subtitle: '模型、Provider、主题、工作区偏好',
               onTap: onOpenSettings,
             ),
-            const Padding(
+            Padding(
               padding: EdgeInsets.fromLTRB(18, 18, 18, 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Recent chats',
-                    style: TextStyle(
-                        color: _faint,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900)),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('Recent chats',
+                        style: TextStyle(
+                            color: _faint,
+                            fontFamily: AppTheme.fontBody,
+                            fontFamilyFallback: AppTheme.fontFallback,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                  IconButton(
+                    tooltip: '新会话',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onNewChat,
+                    icon: const Icon(Icons.add_circle_outline,
+                        color: _muted, size: 20),
+                  ),
+                ],
               ),
             ),
             Expanded(
@@ -4687,7 +4740,11 @@ class _MobileCodeDrawer extends StatelessWidget {
                         activeSessionId == null
                             ? 'Loading chat history...'
                             : 'No chat history yet',
-                        style: const TextStyle(color: _muted),
+                        style: const TextStyle(
+                          color: _muted,
+                          fontFamily: AppTheme.fontBody,
+                          fontFamilyFallback: AppTheme.fontFallback,
+                        ),
                       ),
                     )
                   : ListView.builder(
@@ -4719,12 +4776,10 @@ class _MobileCodeDrawer extends StatelessWidget {
                   const Expanded(
                     child: Text('Local user',
                         style: TextStyle(
-                            color: _text, fontWeight: FontWeight.w800)),
-                  ),
-                  IconButton(
-                    tooltip: 'Settings',
-                    onPressed: onOpenSettings,
-                    icon: const Icon(Icons.settings_outlined, color: _muted),
+                            color: _text,
+                            fontFamily: AppTheme.fontBody,
+                            fontFamilyFallback: AppTheme.fontFallback,
+                            fontWeight: FontWeight.w700)),
                   ),
                 ],
               ),
@@ -4741,20 +4796,67 @@ class _DrawerAction extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onTap,
+    this.subtitle,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
       leading: Icon(icon, color: _text),
-      title: Text(label,
-          style: const TextStyle(color: _text, fontWeight: FontWeight.w800)),
+      title: Text(
+        label,
+        style: AppTheme.zhTitleMedium.copyWith(
+          color: _text,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      subtitle: subtitle == null
+          ? null
+          : Text(
+              subtitle!,
+              style: const TextStyle(
+                color: _muted,
+                fontFamily: AppTheme.fontBody,
+                fontFamilyFallback: AppTheme.fontFallback,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                height: 1.32,
+              ),
+            ),
       onTap: onTap,
       minLeadingWidth: 26,
+    );
+  }
+}
+
+class _DrawerSectionLabel extends StatelessWidget {
+  const _DrawerSectionLabel(this.label);
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 10, 18, 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: _faint,
+            fontFamily: AppTheme.fontBody,
+            fontFamilyFallback: AppTheme.fontFallback,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -4787,10 +4889,20 @@ class _DrawerSessionTile extends StatelessWidget {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
-            color: selected ? _text : _muted, fontWeight: FontWeight.w800),
+          color: selected ? _text : _muted,
+          fontFamily: AppTheme.fontBody,
+          fontFamilyFallback: AppTheme.fontFallback,
+          fontWeight: FontWeight.w700,
+        ),
       ),
       subtitle: Text(_sessionTurnLabel(session),
-          style: const TextStyle(color: _faint, fontSize: 11)),
+          style: const TextStyle(
+            color: _faint,
+            fontFamily: AppTheme.fontBody,
+            fontFamilyFallback: AppTheme.fontFallback,
+            fontSize: 11,
+            height: 1.28,
+          )),
       onTap: onTap,
     );
   }
@@ -5769,9 +5881,9 @@ class _LocalModelRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withOpacity(0.24)),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -11997,7 +12109,7 @@ class _RuntimeDiagnosticsSheetState extends State<_RuntimeDiagnosticsSheet> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'External Termux remains a fallback. MobileCode should prefer Helper, Embedded Lite, or Cloud providers through RuntimeManager whenever possible.',
+            'MobileCode prefers the app Helper foreground service, then the External Termux daemon for shell and git work. Embedded Lite stays behind those providers until controlled task support is ready.',
             style: TextStyle(color: _muted, fontSize: 12, height: 1.4),
           ),
         ],
@@ -12030,7 +12142,7 @@ class _RuntimeActionsSheet extends StatefulWidget {
 
 class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
   final _projectPath = TextEditingController(
-      text: '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime');
+      text: '/data/data/com.mobilecode.app/files/mobilecode_runtime');
   final _message = TextEditingController(text: 'mobile runtime update');
   final List<String> _lines = ['No runtime action has run yet.'];
   bool _running = false;
@@ -12429,7 +12541,7 @@ class _RuntimeActionsSheetState extends State<_RuntimeActionsSheet> {
                 disabled: _running,
                 onTap: () {
                   _projectPath.text =
-                      '/data/data/com.mobilecode.mobile_agent/files/mobilecode_runtime';
+                      '/data/data/com.mobilecode.app/files/mobilecode_runtime';
                   setState(() => _lines.insert(
                       0, 'Project path reset to helper workspace default.'));
                 },
@@ -13802,6 +13914,7 @@ class _ChatPanelState extends State<_ChatPanel> {
   final _promptController = TextEditingController();
   final _chatScrollController = ScrollController();
   final _voiceService = VoiceService();
+  late final MobileCoreClient _tuimaProviderService;
   final List<_ChatSession> _sessions = [];
   Future<void>? _sessionLoadFuture;
   String? _activeSessionId;
@@ -13813,6 +13926,8 @@ class _ChatPanelState extends State<_ChatPanel> {
   bool _agentModeEnabled = false;
   AgentExecutionMode _agentExecutionMode = AgentExecutionMode.singleShot;
   AgentPreset _agentPreset = AgentPreset.autoAgent;
+  HarnessPermissionMode _harnessPermissionMode =
+      HarnessPermissionMode.approveSafeTypedTasks;
   bool _followChatBottom = true;
   bool _showJumpToBottom = false;
   bool _autoScrollScheduled = false;
@@ -13833,10 +13948,20 @@ class _ChatPanelState extends State<_ChatPanel> {
   final Map<String, int> _agentProviderLiveProcessKeys = {};
   final Map<String, int> _agentStreamTraceIndexes = {};
   final ActionEvidenceStore _agentEvidenceStore = ActionEvidenceStore.shared;
+  final Set<String> _approvedCliHubPreviewEvidenceIds = {};
+  final Set<String> _consumedPhoneUseApprovalTicketIds = {};
+  final List<String> _currentRunMobileCoreInferenceEvidenceIds = [];
+  final Map<String, _CloudInferenceApprovalRecord> _cloudApprovalsByContext =
+      {};
   final Map<String, GlobalKey> _turnKeys = {};
   Timer? _navPreviewTimer;
+  Timer? _tuimaHealthTimer;
   _ChatNavPreview? _navPreview;
   int? _lastNavActiveIndex;
+  TuimaHealth _tuimaHealth = TuimaHealth.unavailable('Not checked');
+  bool _tuimaHealthChecking = false;
+  bool _offlineFallbackActive = false;
+  MobileCoreAttachment? _pendingMobileCoreAttachment;
 
   _ChatSession? get _activeSession {
     if (_sessions.isEmpty) return null;
@@ -13851,8 +13976,15 @@ class _ChatPanelState extends State<_ChatPanel> {
   @override
   void initState() {
     super.initState();
+    _tuimaProviderService = MobileCoreClient();
     _chatScrollController.addListener(_handleChatScroll);
     RoleLibraryService.instance.addListener(_handleRoleLibraryChanged);
+    HarnessPermissionStore.instance
+        .addListener(_handleHarnessPermissionChanged);
+    unawaited(HarnessPermissionStore.instance.load().then((mode) {
+      if (!mounted) return;
+      setState(() => _harnessPermissionMode = mode);
+    }));
     unawaited(RoleLibraryService.instance.initialize().then((_) {
       if (!mounted) return;
       setState(() =>
@@ -13861,12 +13993,32 @@ class _ChatPanelState extends State<_ChatPanel> {
     unawaited(TokenUsageService.instance.initialize());
     _sessionLoadFuture = _loadSessions();
     _initVoiceInput();
+    unawaited(_refreshTuimaHealth());
+    _tuimaHealthTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => unawaited(_refreshTuimaHealth()),
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.providerPreset != widget.providerPreset) {
+      if (widget.providerPreset != _ProviderPreset.tuimaLocal) {
+        _pendingMobileCoreAttachment = null;
+      }
+      unawaited(_refreshTuimaHealth());
+    }
   }
 
   @override
   void dispose() {
     _agentProviderClient?.close(force: true);
+    _tuimaHealthTimer?.cancel();
+    _tuimaProviderService.close();
     RoleLibraryService.instance.removeListener(_handleRoleLibraryChanged);
+    HarnessPermissionStore.instance
+        .removeListener(_handleHarnessPermissionChanged);
     _voiceTranscriptSub?.cancel();
     _voiceStateSub?.cancel();
     _navPreviewTimer?.cancel();
@@ -13876,10 +14028,544 @@ class _ChatPanelState extends State<_ChatPanel> {
     super.dispose();
   }
 
+  Future<TuimaHealth> _refreshTuimaHealth() async {
+    if (_tuimaHealthChecking) return _tuimaHealth;
+    if (mounted) setState(() => _tuimaHealthChecking = true);
+    final previousState = _tuimaHealth.state;
+    final health = await _tuimaProviderService.probe();
+    if (!mounted) return health;
+    setState(() {
+      _tuimaHealth = health;
+      _tuimaHealthChecking = false;
+      if (health.state != TuimaConnectionState.modelReady) {
+        _offlineFallbackActive = false;
+      }
+    });
+    if (previousState != health.state) {
+      final detail = switch (health.state) {
+        TuimaConnectionState.modelReady =>
+          'MobileCore ${health.version} is ready with ${health.activeModel ?? 'a local model'}.',
+        TuimaConnectionState.serviceReady =>
+          'MobileCore ${health.version} is running, but no model is loaded.',
+        TuimaConnectionState.unavailable => health.failureCode == null
+            ? 'MobileCore is not reachable at 127.0.0.1:8080.'
+            : 'MobileCore compatibility check failed (${health.failureCode}).',
+      };
+      widget.onLog(
+        'TuiMa status changed',
+        detail,
+        health.canInfer
+            ? Icons.offline_bolt_outlined
+            : Icons.portable_wifi_off_outlined,
+        health.canInfer ? _mint : _amber,
+      );
+    }
+    return health;
+  }
+
+  Future<_MobileCoreControlData> _loadMobileCoreControlData() async {
+    final snapshot = await _tuimaProviderService.runtimeSnapshot();
+    final omniStatus = await _tuimaProviderService
+        .omniStatus()
+        .catchError((_) => const MobileCoreOmniStatus());
+    if (mounted) setState(() => _tuimaHealth = snapshot.health);
+    if (snapshot.health.state == TuimaConnectionState.unavailable) {
+      throw MobileCoreProviderException(
+        code: snapshot.health.failureCode ?? 'service_unavailable',
+        message: snapshot.health.failure ??
+            'MobileCore is unavailable on the loopback service.',
+      );
+    }
+    return _MobileCoreControlData(
+      health: snapshot.health,
+      models: snapshot.models,
+      metrics: snapshot.metrics,
+      recommendations: snapshot.recommendations,
+      omniStatus: omniStatus,
+    );
+  }
+
+  Future<void> _recordMobileCoreControl({
+    required String operation,
+    required String? modelId,
+    required DateTime startedAt,
+    required bool success,
+    Object? error,
+    Map<String, Object?> safeMetadata = const {},
+  }) async {
+    final safeFailure = error is MobileCoreProviderException
+        ? error.code
+        : error == null
+            ? null
+            : 'model_control_failed';
+    _agentEvidenceStore.add(ActionEvidence(
+      evidenceId: generateEvidenceId(),
+      actionName: MobileCodeAction.traceCallProvider,
+      paramsSummary: 'MobileCore $operation · ${modelId ?? 'active model'}',
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: success,
+      failureKind: safeFailure,
+      logs: [
+        success
+            ? 'MobileCore model control completed.'
+            : 'MobileCore model control failed with ${safeFailure ?? 'unknown'}.'
+      ],
+      metadata: {
+        'inferenceProvider': 'mobilecore',
+        'inferenceLocation': 'on_device',
+        'operation': operation,
+        'modelId': modelId,
+        ...safeMetadata,
+        'redactionApplied': true,
+      },
+    ));
+  }
+
+  Future<void> _switchMobileCoreModel(String modelId) async {
+    final startedAt = DateTime.now();
+    try {
+      final result =
+          await _tuimaProviderService.switchModelWithPreflight(modelId);
+      if (mounted) setState(() => _tuimaHealth = result.health);
+      await _recordMobileCoreControl(
+        operation: 'switch_model',
+        modelId: modelId,
+        startedAt: startedAt,
+        success: true,
+        safeMetadata: {'switchPreflight': result.plan.evidenceMetadata},
+      );
+    } on Object catch (error) {
+      await _recordMobileCoreControl(
+        operation: 'switch_model',
+        modelId: modelId,
+        startedAt: startedAt,
+        success: false,
+        error: error,
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> _unloadMobileCoreModel() async {
+    final startedAt = DateTime.now();
+    final modelId = _tuimaHealth.activeModel;
+    try {
+      await _tuimaProviderService.unloadModel();
+      await _refreshTuimaHealth();
+      await _recordMobileCoreControl(
+        operation: 'unload_model',
+        modelId: modelId,
+        startedAt: startedAt,
+        success: true,
+      );
+    } on Object catch (error) {
+      await _recordMobileCoreControl(
+        operation: 'unload_model',
+        modelId: modelId,
+        startedAt: startedAt,
+        success: false,
+        error: error,
+      );
+      rethrow;
+    }
+  }
+
+  Future<TuimaHealth> _activateVerifiedOmni({
+    MobileCoreAttachmentKind? requiredCapability,
+    int contextLength = 4096,
+  }) async {
+    final startedAt = DateTime.now();
+    try {
+      final result = await _tuimaProviderService.loadVerifiedOmni(
+        requiredCapability: requiredCapability,
+        contextLength: contextLength,
+      );
+      if (mounted) setState(() => _tuimaHealth = result.health);
+      await _recordMobileCoreControl(
+        operation: requiredCapability == null
+            ? 'activate_verified_omni'
+            : 'activate_verified_omni_for_${requiredCapability.name}',
+        modelId: result.status.modelId,
+        startedAt: startedAt,
+        success: true,
+        safeMetadata: result.status.evidenceMetadata,
+      );
+      return result.health;
+    } on Object catch (error) {
+      await _recordMobileCoreControl(
+        operation: requiredCapability == null
+            ? 'activate_verified_omni'
+            : 'activate_verified_omni_for_${requiredCapability.name}',
+        modelId: 'verified-omni-pair',
+        startedAt: startedAt,
+        success: false,
+        error: error,
+      );
+      rethrow;
+    }
+  }
+
+  Future<void> _openMobileCoreControlSheet() async {
+    var loader = _loadMobileCoreControlData();
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _panel,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, setSheetState) => SafeArea(
+          child: SizedBox(
+            height: MediaQuery.sizeOf(context).height * 0.78,
+            child: FutureBuilder<_MobileCoreControlData>(
+              future: loader,
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  final error = snapshot.error;
+                  final failureCode = error is MobileCoreProviderException
+                      ? error.code
+                      : 'control_snapshot_failed';
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.sync_problem_outlined,
+                              color: _amber, size: 30),
+                          const SizedBox(height: 10),
+                          Text(
+                            'MobileCore control state is not stable ($failureCode).',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: _text),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: () => setSheetState(
+                                () => loader = _loadMobileCoreControlData()),
+                            icon: const Icon(Icons.refresh_outlined),
+                            label: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final data = snapshot.data!;
+                Future<void> run(Future<void> Function() action) async {
+                  try {
+                    await action();
+                  } on Object catch (error) {
+                    if (sheetContext.mounted) {
+                      ScaffoldMessenger.of(sheetContext).showSnackBar(SnackBar(
+                        content: Text(_compact(error.toString(), limit: 160)),
+                      ));
+                    }
+                  } finally {
+                    if (sheetContext.mounted) {
+                      setSheetState(
+                          () => loader = _loadMobileCoreControlData());
+                    }
+                  }
+                }
+
+                return ListView(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 28),
+                  children: [
+                    Row(children: [
+                      const Icon(Icons.memory_outlined, color: _mint),
+                      const SizedBox(width: 9),
+                      const Expanded(
+                        child: Text('MobileCore control',
+                            style: TextStyle(
+                                color: _text,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w900)),
+                      ),
+                      IconButton(
+                        tooltip: 'Refresh',
+                        onPressed: () => setSheetState(
+                            () => loader = _loadMobileCoreControlData()),
+                        icon: const Icon(Icons.refresh_outlined),
+                      ),
+                    ]),
+                    const SizedBox(height: 10),
+                    _Panel(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            data.health.activeModel ?? 'No model loaded',
+                            style: const TextStyle(
+                                color: _text, fontWeight: FontWeight.w900),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${data.health.runtime} · ${data.health.backend} · ${data.health.quantization}',
+                            style: const TextStyle(color: _muted, fontSize: 12),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            '${data.metrics.decodeTokensPerSecond.toStringAsFixed(2)} tok/s · first ${data.metrics.firstTokenMs} ms · peak ${data.metrics.memoryPeakMb} MB',
+                            style: const TextStyle(color: _muted, fontSize: 12),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            'Preflight ${data.health.preflight.ok ? 'ready' : data.health.preflight.failureCode ?? 'not ready'} · image ${data.health.capabilities.imageInput ? 'yes' : 'no'} · audio ${data.health.capabilities.audioInput ? 'yes' : 'no'}',
+                            style: const TextStyle(color: _muted, fontSize: 12),
+                          ),
+                          if (data.health.backgroundRestricted) ...[
+                            const SizedBox(height: 5),
+                            const Text(
+                              'Android is restricting MobileCore background operation. Allow background use in MobileCore battery settings before selecting the local route.',
+                              style: TextStyle(color: _amber, fontSize: 12),
+                            ),
+                          ],
+                          if (data.health.canInfer) ...[
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              onPressed: () =>
+                                  unawaited(run(_unloadMobileCoreModel)),
+                              icon:
+                                  const Icon(Icons.power_settings_new_outlined),
+                              label: const Text('Unload active model'),
+                            ),
+                          ],
+                          if (data.omniStatus.loadable &&
+                              !(data.health.canInfer &&
+                                  data.health.mainArtifact.verified &&
+                                  data.health.projectorArtifact.verified &&
+                                  data.health.runtime.contains('libmtmd'))) ...[
+                            const SizedBox(height: 10),
+                            Text(
+                              'A verified local Omni pair is installed. Media controls remain hidden until the runtime capability check passes.',
+                              style:
+                                  const TextStyle(color: _muted, fontSize: 12),
+                            ),
+                            const SizedBox(height: 8),
+                            FilledButton.icon(
+                              onPressed: () => unawaited(run(() async {
+                                await _activateVerifiedOmni();
+                              })),
+                              icon: const Icon(Icons.auto_awesome_outlined),
+                              label: const Text('Activate verified Omni'),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text('Installed models',
+                        style: TextStyle(
+                            color: _text, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 8),
+                    if (data.models.isEmpty)
+                      const Text('No installed GGUF models reported.',
+                          style: TextStyle(color: _muted))
+                    else
+                      for (final model in data.models)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(model.id,
+                              style: const TextStyle(color: _text)),
+                          subtitle: Text(
+                            '${model.backend} · ${model.quantization} · ${_formatBytes(model.sizeBytes)} · context ${model.contextLength}'
+                            '${model.capabilities.imageInput ? ' · image' : ''}',
+                            style: const TextStyle(color: _muted, fontSize: 12),
+                          ),
+                          trailing: model.loaded
+                              ? const _TinyBadge(label: 'Active', color: _mint)
+                              : FilledButton(
+                                  onPressed: () => unawaited(run(
+                                      () => _switchMobileCoreModel(model.id))),
+                                  child: const Text('Load'),
+                                ),
+                        ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _tuimaMessages(
+      List<_ChatTurn> history, String systemPrompt,
+      {MobileCoreAttachment? attachment}) {
+    final messages = <Map<String, dynamic>>[
+      {'role': 'system', 'content': systemPrompt},
+      ..._providerMessages(history),
+    ];
+    if (attachment == null) return messages;
+    final userIndex = messages.lastIndexWhere((item) => item['role'] == 'user');
+    if (userIndex < 0) return messages;
+    final text = messages[userIndex]['content']?.toString() ?? '';
+    messages[userIndex] = {
+      'role': 'user',
+      'content': [
+        {'type': 'text', 'text': text},
+        attachment.toContentPart(),
+      ],
+    };
+    return messages;
+  }
+
+  ModelRouteDecision _tuimaRouteDecision({
+    required ModelRouteEndpoint endpoint,
+    required int maxTokens,
+    required List<_ChatTurn> history,
+    required String systemPrompt,
+  }) =>
+      ModelRoutingService.decide(
+        preset: _ProviderPreset.tuimaLocal,
+        configuredModel: _tuimaHealth.activeModel?.trim().isNotEmpty == true
+            ? _tuimaHealth.activeModel!
+            : ModelProviderPresetService.tuimaModel,
+        endpoint: endpoint,
+        maxTokens: maxTokens,
+        inputCharacters: _tokenInputChars(history, systemPrompt),
+        userText: _routeUserText(history),
+      );
+
+  Future<TuimaHealth> _requireTuimaReady() async {
+    final health = await _refreshTuimaHealth();
+    if (health.state == TuimaConnectionState.modelReady) return health;
+    if (health.state == TuimaConnectionState.serviceReady) {
+      throw Exception(
+          'TuiMa is running but no model is loaded. Open TuiMa and load the benchmark model first.');
+    }
+    throw Exception(
+        'TuiMa is offline. Open TuiMa, start the local API, and load a model.');
+  }
+
+  Future<_MobileCoreRuntimeDecision> _applyMobileCoreAdaptivePolicy(
+    TuimaHealth health, {
+    MobileCoreAttachment? attachment,
+    MobileCoreTaskSignals taskSignals = const MobileCoreTaskSignals(),
+  }) async {
+    final results = await Future.wait<Object?>([
+      DeviceTelemetryService.instance.getLatestSnapshot(),
+      _tuimaProviderService
+          .recommendations()
+          .catchError((_) => const MobileCoreRecommendations()),
+      _tuimaProviderService
+          .metrics()
+          .catchError((_) => const MobileCoreMetrics()),
+    ]);
+    final telemetry = results[0] as DeviceTelemetrySnapshot;
+    final recommendations = results[1] as MobileCoreRecommendations;
+    final metrics = results[2] as MobileCoreMetrics;
+    double measuredSpeedFor(TuimaHealth candidate) =>
+        metrics.activeModel == candidate.activeModel
+            ? metrics.decodeTokensPerSecond
+            : 0;
+    var decision = MobileCoreAdaptivePolicy.decideForTask(
+      health: health,
+      recommendations: recommendations,
+      telemetry: telemetry,
+      task: taskSignals,
+      attachmentKind: attachment?.kind,
+      measuredDecodeTokensPerSecond: measuredSpeedFor(health),
+    );
+    var currentHealth = health;
+    if (attachment != null &&
+        !currentHealth.capabilities.supports(attachment.kind)) {
+      final omniStatus = await _tuimaProviderService
+          .omniStatus()
+          .catchError((_) => const MobileCoreOmniStatus());
+      if (MobileCoreAdaptivePolicy.shouldActivateVerifiedOmni(
+        health: currentHealth,
+        omniStatus: omniStatus,
+        attachmentKind: attachment.kind,
+      )) {
+        currentHealth = await _activateVerifiedOmni(
+          requiredCapability: attachment.kind,
+          contextLength: decision.contextLength,
+        );
+        decision = MobileCoreAdaptivePolicy.decideForTask(
+          health: currentHealth,
+          recommendations: recommendations,
+          telemetry: telemetry,
+          task: taskSignals,
+          attachmentKind: attachment.kind,
+          measuredDecodeTokensPerSecond: measuredSpeedFor(currentHealth),
+        );
+      }
+    }
+    if (MobileCoreAdaptivePolicy.shouldSwitchToRecommendedModel(
+      decision: decision,
+      activeModelId: currentHealth.activeModel,
+      attachmentKind: attachment?.kind,
+    )) {
+      currentHealth = await _tuimaProviderService.loadModel(
+        decision.recommendedModelId!,
+        contextLength: decision.contextLength,
+      );
+      decision = MobileCoreAdaptivePolicy.decideForTask(
+        health: currentHealth,
+        recommendations: recommendations,
+        telemetry: telemetry,
+        task: taskSignals,
+        attachmentKind: attachment?.kind,
+        measuredDecodeTokensPerSecond: measuredSpeedFor(currentHealth),
+      );
+    }
+    if (mounted && currentHealth.activeModel != _tuimaHealth.activeModel) {
+      setState(() => _tuimaHealth = currentHealth);
+    }
+    return _MobileCoreRuntimeDecision(
+      health: currentHealth,
+      policy: decision,
+      taskSignals: taskSignals,
+    );
+  }
+
+  bool _isCloudTransportFailure(Object error) =>
+      error is SocketException ||
+      error is TimeoutException ||
+      error is HttpException;
+
+  Future<bool> _canFallbackToTuima({
+    required Object cloudError,
+    required bool emittedCloudText,
+  }) async {
+    if (widget.providerPreset == _ProviderPreset.tuimaLocal ||
+        !_isCloudTransportFailure(cloudError)) {
+      return false;
+    }
+    final health = await _refreshTuimaHealth();
+    final decision = TuimaProviderService.fallbackAfterCloudFailure(
+      localState: health.state,
+      emittedCloudText: emittedCloudText,
+    );
+    return decision.target == HybridModelTarget.tuimaLocal;
+  }
+
+  void _recordOfflineFallback() {
+    if (mounted) setState(() => _offlineFallbackActive = true);
+    widget.onLog(
+      'Cloud offline fallback',
+      'The cloud transport failed before returning text. This request was rerouted to the ready TuiMa model on this phone.',
+      Icons.offline_bolt_outlined,
+      _mint,
+    );
+  }
+
   void _handleRoleLibraryChanged() {
     if (!mounted) return;
     setState(
         () => _roleRecruitRoles = RoleLibraryService.instance.recruitmentRoles);
+  }
+
+  void _handleHarnessPermissionChanged() {
+    if (!mounted) return;
+    setState(
+        () => _harnessPermissionMode = HarnessPermissionStore.instance.mode);
   }
 
   Future<void> _initVoiceInput() async {
@@ -14084,10 +14770,29 @@ class _ChatPanelState extends State<_ChatPanel> {
   Future<void> _send() async {
     await _ensureSessionsLoaded();
     if (!mounted) return;
-    final prompt = _promptController.text.trim();
+    final attachment = _pendingMobileCoreAttachment;
+    var prompt = _promptController.text.trim();
+    if (prompt.isEmpty && attachment != null) {
+      prompt = attachment.kind == MobileCoreAttachmentKind.image
+          ? '请描述并分析这张图片。'
+          : '请转写并分析这段音频。';
+    }
     if (prompt.isEmpty) {
       _showMessage('Enter a prompt first');
       return;
+    }
+    if (attachment != null) {
+      if (widget.providerPreset != _ProviderPreset.tuimaLocal) {
+        _showMessage('Local attachments can only be sent to TuiMa/MobileCore.');
+        return;
+      }
+      final health = await _refreshTuimaHealth();
+      if (!health.canInfer || !health.capabilities.supports(attachment.kind)) {
+        _showMessage(
+          '${attachment.kind.name} input is not available in the active MobileCore model.',
+        );
+        return;
+      }
     }
     final active = _activeSession;
     if (active == null) {
@@ -14108,6 +14813,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       _sending = true;
       _error = null;
       _promptController.clear();
+      _pendingMobileCoreAttachment = null;
       _storeSession(pending);
     });
     _scrollConversationToEnd(force: true);
@@ -14138,6 +14844,8 @@ class _ChatPanelState extends State<_ChatPanel> {
         responseTimeout: const Duration(minutes: 2),
         onUsageChunk: usageAccumulator.addChunk,
         onRoute: (decision) => routeDecision = decision,
+        localAttachment: attachment,
+        cloudApprovalContextId: runId,
       )) {
         answerBuffer.write(chunk);
         final answer = answerBuffer.toString();
@@ -14189,7 +14897,14 @@ class _ChatPanelState extends State<_ChatPanel> {
           _mint);
     } on Object catch (error) {
       if (!mounted) return;
-      final message = error.toString().replaceFirst('Exception: ', '');
+      final requestedTimeout = const Duration(minutes: 2);
+      final message = _providerRequestErrorMessage(
+        error,
+        stream: true,
+        responseTimeout: widget.providerPreset == _ProviderPreset.tuimaLocal
+            ? _mobileCoreResponseTimeout(requestedTimeout)
+            : requestedTimeout,
+      );
       setState(() => _error = message);
       await TokenUsageService.instance.recordCompleted(
         provider: _flavorLabel(flavor),
@@ -14207,6 +14922,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       widget.onLog('AI request error', _compact(message, limit: 140),
           Icons.error_outline, _rose);
     } finally {
+      _cloudApprovalsByContext.remove(runId);
       if (mounted) {
         setState(() => _sending = false);
       }
@@ -14285,6 +15001,57 @@ class _ChatPanelState extends State<_ChatPanel> {
     }
   }
 
+  Future<void> _pickMobileCoreAttachment(MobileCoreAttachmentKind kind) async {
+    if (widget.providerPreset != _ProviderPreset.tuimaLocal) return;
+    final health = await _refreshTuimaHealth();
+    if (!health.canInfer || !health.capabilities.supports(kind)) {
+      _showMessage('${kind.name} input is not supported by the active model.');
+      return;
+    }
+    final allowed = kind == MobileCoreAttachmentKind.image
+        ? const ['jpg', 'jpeg', 'png', 'webp']
+        : const ['wav', 'mp3', 'flac', 'ogg', 'm4a', 'mp4', 'aac'];
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: allowed,
+      allowMultiple: false,
+      withData: true,
+    );
+    if (!mounted || result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    final bytes = file.bytes;
+    if (bytes == null) {
+      _showMessage('The selected media could not be read in memory.');
+      return;
+    }
+    try {
+      final mimeType = _mobileCoreMimeType(file.extension ?? '');
+      final attachment = MobileCoreAttachment(
+        kind: kind,
+        bytes: bytes,
+        mimeType: mimeType,
+        displayName: p.basename(file.name),
+      );
+      setState(() => _pendingMobileCoreAttachment = attachment);
+    } on Object catch (error) {
+      _showMessage(_compact(error.toString(), limit: 120));
+    }
+  }
+
+  String _mobileCoreMimeType(String extension) {
+    return switch (extension.trim().toLowerCase()) {
+      'jpg' || 'jpeg' => 'image/jpeg',
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'wav' => 'audio/wav',
+      'mp3' => 'audio/mpeg',
+      'flac' => 'audio/flac',
+      'ogg' => 'audio/ogg',
+      'm4a' || 'mp4' || 'aac' => 'audio/mp4',
+      _ => throw const FormatException('Unsupported local media type.'),
+    };
+  }
+
   String _usageProviderKind(_ApiFlavor flavor) {
     return flavor == _ApiFlavor.anthropic ? 'anthropic' : 'openai';
   }
@@ -14324,13 +15091,22 @@ class _ChatPanelState extends State<_ChatPanel> {
     ModelRouteDecision decision, {
     required int maxTokens,
     required int inputCharacters,
+    MobileCoreTaskSignals? taskSignals,
   }) {
     final now = DateTime.now();
     final metadata = Map<String, dynamic>.from(decision.metadata)
       ..addAll({
         'maxTokens': maxTokens,
         'inputCharacters': inputCharacters,
+        if (taskSignals != null) 'routingSignals': taskSignals.evidenceMetadata,
       });
+    if (decision.preset == _ProviderPreset.tuimaLocal) {
+      metadata.addAll({
+        'inferenceLocation': 'on_device',
+        'mobileCore': _tuimaHealth.evidenceMetadata,
+        'redactionApplied': true,
+      });
+    }
     _agentEvidenceStore.add(ActionEvidence(
       evidenceId: generateEvidenceId(),
       actionName: MobileCodeAction.traceCallProvider,
@@ -14343,11 +15119,77 @@ class _ChatPanelState extends State<_ChatPanel> {
     ));
   }
 
+  String _recordMobileCoreInferenceEvidence({
+    required TuimaHealth health,
+    required DateTime startedAt,
+    required bool success,
+    MobileCoreMetrics? metrics,
+    MobileCoreAttachment? attachment,
+    MobileCorePolicyDecision? policy,
+    MobileCoreTaskSignals? taskSignals,
+    Object? error,
+  }) {
+    final failureCode = error is MobileCoreProviderException
+        ? error.code
+        : error == null
+            ? null
+            : 'local_inference_failed';
+    final metadata = <String, dynamic>{
+      'inferenceProvider': 'mobilecore',
+      'inferenceLocation': 'on_device',
+      'model': health.activeModel,
+      'serviceVersion': health.version,
+      'backend': health.backend,
+      'runtime': health.runtime,
+      'runtimeRevision': health.runtimeRevision,
+      'quantization': health.quantization,
+      'capabilitySnapshot': health.capabilities.evidenceSnapshot,
+      'preflightOk': health.preflight.ok,
+      'modelArtifactVerified': health.mainArtifact.verified,
+      'projectorArtifactVerified': health.projectorArtifact.verified,
+      if (metrics != null) 'metrics': metrics.evidenceMetadata,
+      if (attachment != null) 'attachment': attachment.evidenceMetadata,
+      if (policy != null) 'adaptivePolicy': policy.evidenceMetadata,
+      if (taskSignals != null) 'routingSignals': taskSignals.evidenceMetadata,
+      'redactionApplied': true,
+      'redactionState': 'prompt_media_credentials_omitted',
+    };
+    final evidenceId = generateEvidenceId();
+    _agentEvidenceStore.add(ActionEvidence(
+      evidenceId: evidenceId,
+      actionName: MobileCodeAction.traceCallProvider,
+      paramsSummary:
+          'MobileCore local inference · ${health.activeModel ?? 'active model'} · ${success ? 'completed' : 'failed'}',
+      startedAt: startedAt,
+      endedAt: DateTime.now(),
+      success: success,
+      failureKind: failureCode,
+      logs: [
+        success
+            ? 'Local inference completed; prompt and media were omitted from evidence.'
+            : 'Local inference failed with ${failureCode ?? 'unknown'}; payload omitted.',
+      ],
+      recoveryActions: success
+          ? const []
+          : const [
+              'Refresh MobileCore health and inspect the typed failure code.',
+            ],
+      metadata: metadata,
+    ));
+    if (_agentRunning) {
+      _currentRunMobileCoreInferenceEvidenceIds.add(evidenceId);
+    }
+    return evidenceId;
+  }
+
   String _providerRequestErrorMessage(
     Object error, {
     required bool stream,
     required Duration responseTimeout,
   }) {
+    if (error is MobileCoreProviderException) {
+      return 'MobileCore ${error.code}: ${error.message}';
+    }
     if (error is SocketException) {
       return 'Provider network error: ${_friendlySocketError(error)}';
     }
@@ -14360,6 +15202,11 @@ class _ChatPanelState extends State<_ChatPanel> {
           : 'Provider timed out after ${responseTimeout.inSeconds}s while waiting for a model response. Try a shorter prompt/model output or stop and retry.';
     }
     return error.toString().replaceFirst('Exception: ', '');
+  }
+
+  Duration _mobileCoreResponseTimeout(Duration requested) {
+    const minimum = Duration(minutes: 3);
+    return requested < minimum ? minimum : requested;
   }
 
   bool get _usesManagedRelay =>
@@ -14453,6 +15300,114 @@ class _ChatPanelState extends State<_ChatPanel> {
         .set(HttpHeaders.authorizationHeader, 'Bearer ${widget.apiKey}');
   }
 
+  Future<MobileCoreTaskSignals> _mobileCoreTaskSignals(
+    List<_ChatTurn> history, {
+    required String systemPrompt,
+    required int maxTokens,
+    required ModelRouteEndpoint endpoint,
+  }) async {
+    final cloudSelected = widget.providerPreset != _ProviderPreset.tuimaLocal;
+    final transport = await NetworkTransportService.instance.snapshot();
+    final osOffline = transport.definitelyOffline;
+    final offline = _offlineFallbackActive || osOffline;
+    final offlineSource = switch ((_offlineFallbackActive, osOffline)) {
+      (true, true) => MobileCoreOfflineSource.osAndCloudTransport,
+      (true, false) => MobileCoreOfflineSource.cloudTransport,
+      (false, true) => MobileCoreOfflineSource.osConnectivity,
+      _ => MobileCoreOfflineSource.none,
+    };
+    return MobileCoreTaskSignals.classify(
+      userText: _routeUserText(history),
+      offline: offline,
+      agentTask: endpoint != ModelRouteEndpoint.chat,
+      inputCharacters: _tokenInputChars(history, systemPrompt),
+      maxTokens: maxTokens,
+      cloudAvailable: cloudSelected,
+      // Selecting and configuring a cloud provider is the explicit approval
+      // boundary. MobileCode never switches a TuiMa-only request to cloud.
+      // Complex cloud work must receive an approval scoped to the current
+      // chat/Agent task. Selecting a provider only makes cloud available.
+      cloudApproved: false,
+      offlineSource: offlineSource,
+    );
+  }
+
+  Future<MobileCoreTaskSignals> _authorizeComplexCloudTask(
+    MobileCoreTaskSignals signals, {
+    String? approvalContextId,
+  }) async {
+    if (!signals.requiresCloudApproval) return signals;
+    final contextId = approvalContextId?.trim() ?? '';
+    final cached =
+        contextId.isEmpty ? null : _cloudApprovalsByContext[contextId];
+    if (cached != null) {
+      return signals.resolveCloudApproval(
+        approved: cached.approved,
+        approvalId: cached.approvalId,
+      );
+    }
+
+    var localAvailable = _tuimaHealth.canInfer;
+    if (!localAvailable) {
+      localAvailable = (await _refreshTuimaHealth()).canInfer;
+    }
+    final approvalId = 'cloud-${generateEvidenceId()}';
+    final approved = mounted
+        ? await showDialog<bool>(
+              context: context,
+              barrierDismissible: false,
+              builder: (dialogContext) => CloudInferenceApprovalDialog(
+                providerLabel: widget.providerPreset.name,
+                localAvailable: localAvailable,
+                onDecision: (value) => Navigator.of(dialogContext).pop(value),
+              ),
+            ) ??
+            false
+        : false;
+    final record = _CloudInferenceApprovalRecord(
+      approvalId: approvalId,
+      approved: approved,
+    );
+    if (contextId.isNotEmpty) {
+      _cloudApprovalsByContext[contextId] = record;
+    }
+    final resolved = signals.resolveCloudApproval(
+      approved: approved,
+      approvalId: approvalId,
+    );
+    _recordCloudInferenceApproval(resolved);
+    return resolved;
+  }
+
+  void _recordCloudInferenceApproval(MobileCoreTaskSignals signals) {
+    final now = DateTime.now();
+    final approved = signals.cloudApproved;
+    _agentEvidenceStore.add(ActionEvidence(
+      evidenceId: generateEvidenceId(),
+      actionName: MobileCodeAction.traceCallProvider,
+      paramsSummary: approved
+          ? 'User approved one-task cloud inference.'
+          : 'User kept the complex task local.',
+      startedAt: now,
+      endedAt: now,
+      success: true,
+      logs: [
+        approved
+            ? 'Cloud inference approved for this task only; payload omitted.'
+            : 'Cloud inference declined; task payload omitted.',
+      ],
+      metadata: {
+        'approvalType': 'cloud_inference',
+        'approvalScope': 'single_task',
+        'approved': approved,
+        'providerPreset': widget.providerPreset.name,
+        'routingSignals': signals.evidenceMetadata,
+        'redactionApplied': true,
+        'redactionState': 'prompt_media_credentials_network_ids_omitted',
+      },
+    ));
+  }
+
   Future<String> _callProvider(
     List<_ChatTurn> history, {
     required String systemPrompt,
@@ -14462,7 +15417,78 @@ class _ChatPanelState extends State<_ChatPanel> {
     bool Function()? isCancelled,
     ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
     void Function(ModelRouteDecision decision)? onRoute,
+    String? cloudApprovalContextId,
   }) async {
+    var taskSignals = await _mobileCoreTaskSignals(
+      history,
+      systemPrompt: systemPrompt,
+      maxTokens: maxTokens,
+      endpoint: endpoint,
+    );
+    taskSignals = await _authorizeComplexCloudTask(
+      taskSignals,
+      approvalContextId: cloudApprovalContextId,
+    );
+    final routeToMobileCore = MobileCoreAdaptivePolicy.shouldUseMobileCore(
+      mobileCoreSelected: widget.providerPreset == _ProviderPreset.tuimaLocal,
+      task: taskSignals,
+    );
+    if (routeToMobileCore) {
+      final readyHealth = await _requireTuimaReady();
+      final runtimeDecision = await _applyMobileCoreAdaptivePolicy(
+        readyHealth,
+        taskSignals: taskSignals,
+      );
+      final health = runtimeDecision.health;
+      final effectiveMaxTokens =
+          runtimeDecision.policy.constrainOutputTokens(maxTokens);
+      final decision = _tuimaRouteDecision(
+        endpoint: endpoint,
+        maxTokens: effectiveMaxTokens,
+        history: history,
+        systemPrompt: systemPrompt,
+      );
+      onRoute?.call(decision);
+      _recordProviderRouteEvidence(
+        decision,
+        maxTokens: effectiveMaxTokens,
+        inputCharacters: _tokenInputChars(history, systemPrompt),
+        taskSignals: taskSignals,
+      );
+      final startedAt = DateTime.now();
+      MobileCoreMetrics? inferenceMetrics;
+      try {
+        final localResponseTimeout =
+            _mobileCoreResponseTimeout(responseTimeout);
+        final answer = await _tuimaProviderService.completeChat(
+          messages: _tuimaMessages(history, systemPrompt),
+          model: decision.model,
+          maxTokens: effectiveMaxTokens,
+          timeout: localResponseTimeout,
+          onMetrics: (value) => inferenceMetrics = value,
+        );
+        _recordMobileCoreInferenceEvidence(
+          health: health,
+          metrics: inferenceMetrics,
+          startedAt: startedAt,
+          success: true,
+          policy: runtimeDecision.policy,
+          taskSignals: runtimeDecision.taskSignals,
+        );
+        return answer;
+      } on Object catch (error) {
+        _recordMobileCoreInferenceEvidence(
+          health: health,
+          metrics: inferenceMetrics,
+          startedAt: startedAt,
+          success: false,
+          error: error,
+          policy: runtimeDecision.policy,
+          taskSignals: runtimeDecision.taskSignals,
+        );
+        rethrow;
+      }
+    }
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
     }
@@ -14487,6 +15513,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         decision,
         maxTokens: maxTokens,
         inputCharacters: inputCharacters,
+        taskSignals: taskSignals,
       );
     }
 
@@ -14555,6 +15582,69 @@ class _ChatPanelState extends State<_ChatPanel> {
           announceRoute(routeDecision);
           continue;
         }
+        if (await _canFallbackToTuima(
+          cloudError: error,
+          emittedCloudText: false,
+        )) {
+          final readyHealth = await _requireTuimaReady();
+          final runtimeDecision = await _applyMobileCoreAdaptivePolicy(
+            readyHealth,
+            taskSignals: taskSignals.copyWith(
+              offline: true,
+              offlineSource: MobileCoreOfflineSource.cloudTransport,
+            ),
+          );
+          final health = runtimeDecision.health;
+          final effectiveMaxTokens =
+              runtimeDecision.policy.constrainOutputTokens(maxTokens);
+          final localDecision = _tuimaRouteDecision(
+            endpoint: endpoint,
+            maxTokens: effectiveMaxTokens,
+            history: history,
+            systemPrompt: systemPrompt,
+          );
+          onRoute?.call(localDecision);
+          _recordProviderRouteEvidence(
+            localDecision,
+            maxTokens: effectiveMaxTokens,
+            inputCharacters: inputCharacters,
+            taskSignals: runtimeDecision.taskSignals,
+          );
+          _recordOfflineFallback();
+          final startedAt = DateTime.now();
+          MobileCoreMetrics? inferenceMetrics;
+          try {
+            final localResponseTimeout =
+                _mobileCoreResponseTimeout(responseTimeout);
+            final answer = await _tuimaProviderService.completeChat(
+              messages: _tuimaMessages(history, systemPrompt),
+              model: localDecision.model,
+              maxTokens: effectiveMaxTokens,
+              timeout: localResponseTimeout,
+              onMetrics: (value) => inferenceMetrics = value,
+            );
+            _recordMobileCoreInferenceEvidence(
+              health: health,
+              metrics: inferenceMetrics,
+              startedAt: startedAt,
+              success: true,
+              policy: runtimeDecision.policy,
+              taskSignals: runtimeDecision.taskSignals,
+            );
+            return answer;
+          } on Object catch (localError) {
+            _recordMobileCoreInferenceEvidence(
+              health: health,
+              metrics: inferenceMetrics,
+              startedAt: startedAt,
+              success: false,
+              error: localError,
+              policy: runtimeDecision.policy,
+              taskSignals: runtimeDecision.taskSignals,
+            );
+            rethrow;
+          }
+        }
         throw Exception(message);
       } finally {
         if (identical(_agentProviderClient, client)) {
@@ -14575,7 +15665,102 @@ class _ChatPanelState extends State<_ChatPanel> {
     void Function(Map<String, dynamic> chunk)? onUsageChunk,
     ModelRouteEndpoint endpoint = ModelRouteEndpoint.chat,
     void Function(ModelRouteDecision decision)? onRoute,
+    MobileCoreAttachment? localAttachment,
+    String? cloudApprovalContextId,
   }) async* {
+    var taskSignals = await _mobileCoreTaskSignals(
+      history,
+      systemPrompt: systemPrompt,
+      maxTokens: maxTokens,
+      endpoint: endpoint,
+    );
+    taskSignals = await _authorizeComplexCloudTask(
+      taskSignals,
+      approvalContextId: cloudApprovalContextId,
+    );
+    final routeToMobileCore = MobileCoreAdaptivePolicy.shouldUseMobileCore(
+      mobileCoreSelected: widget.providerPreset == _ProviderPreset.tuimaLocal,
+      task: taskSignals,
+    );
+    if (localAttachment != null && !routeToMobileCore) {
+      throw const MobileCoreProviderException(
+        code: 'local_only_media',
+        message: 'Local media is never forwarded to a cloud provider.',
+      );
+    }
+    if (routeToMobileCore) {
+      final readyHealth = await _requireTuimaReady();
+      final runtimeDecision = await _applyMobileCoreAdaptivePolicy(
+        readyHealth,
+        attachment: localAttachment,
+        taskSignals: taskSignals,
+      );
+      final health = runtimeDecision.health;
+      final effectiveMaxTokens =
+          runtimeDecision.policy.constrainOutputTokens(maxTokens);
+      if (localAttachment != null &&
+          !health.capabilities.supports(localAttachment.kind)) {
+        throw MobileCoreProviderException(
+          code: 'unsupported_modality',
+          message:
+              '${localAttachment.kind.name} input is unavailable in the active MobileCore runtime.',
+        );
+      }
+      final decision = _tuimaRouteDecision(
+        endpoint: endpoint,
+        maxTokens: effectiveMaxTokens,
+        history: history,
+        systemPrompt: systemPrompt,
+      );
+      onRoute?.call(decision);
+      _recordProviderRouteEvidence(
+        decision,
+        maxTokens: effectiveMaxTokens,
+        inputCharacters: _tokenInputChars(history, systemPrompt),
+        taskSignals: taskSignals,
+      );
+      final startedAt = DateTime.now();
+      MobileCoreMetrics? inferenceMetrics;
+      try {
+        final localResponseTimeout =
+            _mobileCoreResponseTimeout(responseTimeout);
+        await for (final chunk in _tuimaProviderService.streamChat(
+          messages: _tuimaMessages(
+            history,
+            systemPrompt,
+            attachment: localAttachment,
+          ),
+          model: decision.model,
+          maxTokens: effectiveMaxTokens,
+          timeout: localResponseTimeout,
+          onMetrics: (value) => inferenceMetrics = value,
+        )) {
+          yield chunk;
+        }
+        _recordMobileCoreInferenceEvidence(
+          health: health,
+          metrics: inferenceMetrics,
+          attachment: localAttachment,
+          startedAt: startedAt,
+          success: true,
+          policy: runtimeDecision.policy,
+          taskSignals: runtimeDecision.taskSignals,
+        );
+      } on Object catch (error) {
+        _recordMobileCoreInferenceEvidence(
+          health: health,
+          metrics: inferenceMetrics,
+          attachment: localAttachment,
+          startedAt: startedAt,
+          success: false,
+          error: error,
+          policy: runtimeDecision.policy,
+          taskSignals: runtimeDecision.taskSignals,
+        );
+        rethrow;
+      }
+      return;
+    }
     if (widget.baseUrl.trim().isEmpty) {
       throw Exception('Provider is not configured: Base URL is empty.');
     }
@@ -14600,6 +15785,7 @@ class _ChatPanelState extends State<_ChatPanel> {
         decision,
         maxTokens: maxTokens,
         inputCharacters: inputCharacters,
+        taskSignals: taskSignals,
       );
     }
 
@@ -14702,6 +15888,71 @@ class _ChatPanelState extends State<_ChatPanel> {
           routeDecision = retry;
           announceRoute(routeDecision);
           continue;
+        }
+        if (await _canFallbackToTuima(
+          cloudError: error,
+          emittedCloudText: emittedText,
+        )) {
+          final readyHealth = await _requireTuimaReady();
+          final runtimeDecision = await _applyMobileCoreAdaptivePolicy(
+            readyHealth,
+            taskSignals: taskSignals.copyWith(
+              offline: true,
+              offlineSource: MobileCoreOfflineSource.cloudTransport,
+            ),
+          );
+          final health = runtimeDecision.health;
+          final effectiveMaxTokens =
+              runtimeDecision.policy.constrainOutputTokens(maxTokens);
+          final localDecision = _tuimaRouteDecision(
+            endpoint: endpoint,
+            maxTokens: effectiveMaxTokens,
+            history: history,
+            systemPrompt: systemPrompt,
+          );
+          onRoute?.call(localDecision);
+          _recordProviderRouteEvidence(
+            localDecision,
+            maxTokens: effectiveMaxTokens,
+            inputCharacters: inputCharacters,
+            taskSignals: runtimeDecision.taskSignals,
+          );
+          _recordOfflineFallback();
+          final startedAt = DateTime.now();
+          MobileCoreMetrics? inferenceMetrics;
+          try {
+            final localResponseTimeout =
+                _mobileCoreResponseTimeout(responseTimeout);
+            await for (final chunk in _tuimaProviderService.streamChat(
+              messages: _tuimaMessages(history, systemPrompt),
+              model: localDecision.model,
+              maxTokens: effectiveMaxTokens,
+              timeout: localResponseTimeout,
+              onMetrics: (value) => inferenceMetrics = value,
+            )) {
+              yield chunk;
+            }
+            _recordMobileCoreInferenceEvidence(
+              health: health,
+              metrics: inferenceMetrics,
+              startedAt: startedAt,
+              success: true,
+              policy: runtimeDecision.policy,
+              taskSignals: runtimeDecision.taskSignals,
+            );
+          } on Object catch (localError) {
+            _recordMobileCoreInferenceEvidence(
+              health: health,
+              metrics: inferenceMetrics,
+              startedAt: startedAt,
+              success: false,
+              error: localError,
+              policy: runtimeDecision.policy,
+              taskSignals: runtimeDecision.taskSignals,
+            );
+            rethrow;
+          }
+          return;
         }
         throw Exception(message);
       } finally {
@@ -14913,11 +16164,30 @@ class _ChatPanelState extends State<_ChatPanel> {
     required TokenUsageAccumulator usageAccumulator,
     required AgentPreset preset,
     required void Function(String detail) onStatus,
+    required String cloudApprovalContextId,
     void Function(AgentLoopEvent event)? onLoopEvent,
     void Function(int round, String detail)? onStreamStatus,
     bool Function()? isCancelled,
     void Function(ModelRouteDecision decision)? onRoute,
   }) async {
+    var taskSignals = await _mobileCoreTaskSignals(
+      history,
+      systemPrompt: systemPrompt,
+      maxTokens: 4096,
+      endpoint: ModelRouteEndpoint.agent,
+    );
+    taskSignals = await _authorizeComplexCloudTask(
+      taskSignals,
+      approvalContextId: cloudApprovalContextId,
+    );
+    if (MobileCoreAdaptivePolicy.shouldUseMobileCore(
+      mobileCoreSelected: widget.providerPreset == _ProviderPreset.tuimaLocal,
+      task: taskSignals,
+    )) {
+      // MobileCore does not own provider-native device/tool execution. Returning
+      // null moves this task into the guarded local single-shot path below.
+      return null;
+    }
     final routeDecision = _providerRouteDecision(
       history,
       systemPrompt: systemPrompt,
@@ -14929,6 +16199,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       routeDecision,
       maxTokens: 4096,
       inputCharacters: _tokenInputChars(history, systemPrompt),
+      taskSignals: taskSignals,
     );
 
     final adapter =
@@ -14938,6 +16209,9 @@ class _ChatPanelState extends State<_ChatPanel> {
     final rootDirectory = await _mobileCodeProjectsRootDirectory();
     final supportsRuntimeTermuxTask =
         widget.runtimeManager.activeProvider is RuntimeTypedTaskRunner;
+    final supportsCliHubTask = widget.runtimeManager.providers.any((provider) =>
+        provider.type == RuntimeProviderType.linuxSandbox &&
+        provider is RuntimeTypedTaskRunner);
     final actionRunner = ActionRunner(
       workspaceRootPath: rootDirectory.path,
       evidenceStore: _agentEvidenceStore,
@@ -14946,6 +16220,15 @@ class _ChatPanelState extends State<_ChatPanel> {
           ? (taskKind, payload) =>
               widget.runtimeManager.startTermuxTask(taskKind, payload)
           : null,
+      cliHubTaskInvoker: supportsCliHubTask
+          ? (taskKind, payload) =>
+              widget.runtimeManager.startCliHubTask(taskKind, payload)
+          : null,
+      deviceAutomationCoordinator: DeviceAutomationCoordinator(
+        provider: EmbeddedAccessibilityDeviceAutomationProvider(),
+        evidenceStore: _agentEvidenceStore,
+      ),
+      htmlRenderProvider: const PlatformHtmlRenderProvider(),
     );
     final messages = _providerMessages(history)
         .map((message) => Map<String, dynamic>.from(message))
@@ -14954,6 +16237,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       adapter: adapter,
       actionRunner: actionRunner,
       preset: preset,
+      permissionMode: _harnessPermissionMode,
       maxRounds: 6,
     );
 
@@ -15055,6 +16339,10 @@ class _ChatPanelState extends State<_ChatPanel> {
         ..clear()
         ..addAll(_agentRunTraceTemplate(prompt));
       _agentTraceEventKeys.clear();
+      _approvedCliHubPreviewEvidenceIds.clear();
+      _consumedPhoneUseApprovalTicketIds.clear();
+      _currentRunMobileCoreInferenceEvidenceIds.clear();
+      DeviceAutomationApprovalTicketStore.shared.clear();
       _agentProviderLiveProcess.clear();
       _agentProviderLiveProcessKeys.clear();
       _agentStreamTraceIndexes.clear();
@@ -15113,6 +16401,7 @@ class _ChatPanelState extends State<_ChatPanel> {
               systemPrompt: agentSystemPrompt,
               usageAccumulator: usageAccumulator,
               preset: _agentPreset,
+              cloudApprovalContextId: runId,
               isCancelled: () => _agentCancelRequested,
               onRoute: (decision) => routeDecision = decision,
               onStatus: (detail) =>
@@ -15157,6 +16446,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           onUsageChunk: usageAccumulator.addChunk,
           endpoint: ModelRouteEndpoint.agent,
           onRoute: (decision) => routeDecision = decision,
+          cloudApprovalContextId: runId,
         )) {
           if (_agentCancelRequested)
             throw Exception('Agent run stopped by user.');
@@ -15204,6 +16494,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           originalAnswer: modelAnswer ?? '',
           isCancelled: () => _agentCancelRequested,
           onRoute: (decision) => routeDecision = decision,
+          cloudApprovalContextId: runId,
         );
         _setAgentRunStep(
           2,
@@ -15259,6 +16550,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       }
     }
 
+    _cloudApprovalsByContext.remove(runId);
     if (!mounted) return;
     final current = _sessions.firstWhere((session) => session.id == pending.id,
         orElse: () => pending);
@@ -15354,6 +16646,10 @@ class _ChatPanelState extends State<_ChatPanel> {
       _agentStopping = true;
     });
     _agentProviderClient?.close(force: true);
+    // A cloud task may have failed closed or been declined into MobileCore
+    // without changing the selected provider chip. Cancellation is idempotent,
+    // so always notify the loopback runtime when the user pauses the Agent.
+    unawaited(_tuimaProviderService.cancelInference().catchError((_) => false));
     _failAgentRunStep('Stopped by user.');
     widget.onLog(
         'Agent pause requested',
@@ -15489,6 +16785,16 @@ class _ChatPanelState extends State<_ChatPanel> {
       AgentLoopEventType.failed => Icons.error_outline,
     };
     final round = event.round == null ? '' : 'Round ${event.round}: ';
+    final eventDetails = _agentLoopTraceDetails(event);
+    final evidenceMetadata = Map<String, dynamic>.from(event.evidenceMetadata);
+    if (event.toolName == 'phone_use_action' &&
+        evidenceMetadata['approvalTicket'] is Map &&
+        _currentRunMobileCoreInferenceEvidenceIds.isNotEmpty) {
+      evidenceMetadata['mobileCoreInferenceEvidenceIds'] =
+          List<String>.unmodifiable(
+        _currentRunMobileCoreInferenceEvidenceIds,
+      );
+    }
     final step = _AgentTraceStep(
       title: title,
       detail: '$round${event.message}',
@@ -15497,7 +16803,9 @@ class _ChatPanelState extends State<_ChatPanel> {
       details: {
         if (event.roleName != null) 'Role': event.roleName!,
         if (event.evidenceId != null) 'Evidence ID': event.evidenceId!,
+        ...eventDetails,
       },
+      evidenceMetadata: evidenceMetadata,
       traceAction: action,
       state: state,
       startedAt: event.createdAt,
@@ -15508,6 +16816,286 @@ class _ChatPanelState extends State<_ChatPanel> {
       _agentTrace.add(_withStepEvidence(step, state));
     });
     _scrollConversationToEnd();
+  }
+
+  Map<String, String> _agentLoopTraceDetails(AgentLoopEvent event) {
+    final metadata = event.evidenceMetadata;
+    if (metadata.isEmpty) return const {};
+    final details = <String, String>{};
+    final isCliHubPreview = metadata['previewOnly'] == true ||
+        metadata['status'] == 'approvalRequired';
+    if (event.toolName == 'cli_hub_task' && isCliHubPreview) {
+      void add(String label, Object? value) {
+        final text = value?.toString().trim() ?? '';
+        if (text.isNotEmpty) details[label] = text;
+      }
+
+      add('CLI Hub status', metadata['status']);
+      add(
+          'CLI',
+          [
+            metadata['cliTitle']?.toString() ?? '',
+            if ((metadata['cliId']?.toString() ?? '').isNotEmpty)
+              '(${metadata['cliId']})',
+          ].where((part) => part.trim().isNotEmpty).join(' '));
+      add('Task kind', metadata['taskKind']);
+      add('Runtime', metadata['runtime']);
+      add('Risk', metadata['riskLevel']);
+      add('Credential policy', metadata['credentialPolicy']);
+      add('Access', metadata['access']);
+      final packages = metadata['packages'];
+      if (packages is List && packages.isNotEmpty) {
+        details['Packages'] =
+            packages.map((item) => item.toString()).join(', ');
+      }
+      add(
+          'Estimated download',
+          metadata['estimatedDownloadMb'] == null
+              ? null
+              : '${metadata['estimatedDownloadMb']} MB');
+      add(
+          'Installed size',
+          metadata['installedSizeMb'] == null
+              ? null
+              : '${metadata['installedSizeMb']} MB');
+      details['Approval'] = 'Required; tap Confirm typed task to execute.';
+    }
+    if (event.toolName == 'phone_use_action') {
+      final assessment = metadata['riskAssessment'];
+      final ticket = metadata['approvalTicket'];
+      if (assessment is Map && ticket is Map) {
+        void add(String label, Object? value) {
+          final text = value?.toString().trim() ?? '';
+          if (text.isNotEmpty) details[label] = text;
+        }
+
+        add('Action', metadata['deviceAction']);
+        add('Target', assessment['targetLabel']);
+        add('Risk', assessment['riskClass']);
+        add('Policy', assessment['policyId']);
+        add('Reason', assessment['reason']);
+        add('Expires', ticket['expiresAt']);
+        add('Credential slot', metadata['credentialSlot']);
+        details['Approval'] =
+            'One tap, one execution; bound to the current semantic snapshot.';
+      }
+    }
+    return details;
+  }
+
+  Future<void> _approveCliHubPreviewStep(_AgentTraceStep step) async {
+    if (_approvedCliHubPreviewEvidenceIds.contains(step.evidenceId)) {
+      _showMessage('This CLI Hub preview was already submitted.');
+      return;
+    }
+    final metadata = step.evidenceMetadata;
+    if (!_isCliHubApprovalPreviewMetadata(metadata)) {
+      _showMessage('No CLI Hub approval preview is attached to this step.');
+      return;
+    }
+    final cliId = metadata['cliId']?.toString() ?? '';
+    final taskKind = metadata['taskKind']?.toString() ?? '';
+    if (cliId.isEmpty || taskKind.isEmpty) {
+      _showMessage('CLI Hub preview is missing cliId or taskKind.');
+      return;
+    }
+    final payloadPreview = metadata['payloadPreview'];
+    final payload = <String, dynamic>{
+      if (payloadPreview is Map) ...payloadPreview.cast<String, dynamic>(),
+      'approved': true,
+    };
+    final rootDirectory = await _mobileCodeProjectsRootDirectory();
+    final supportsCliHubTask = widget.runtimeManager.providers.any((provider) =>
+        provider.type == RuntimeProviderType.linuxSandbox &&
+        provider is RuntimeTypedTaskRunner);
+    final actionRunner = ActionRunner(
+      workspaceRootPath: rootDirectory.path,
+      evidenceStore: _agentEvidenceStore,
+      htmlRenderProvider: const PlatformHtmlRenderProvider(),
+      cliHubTaskInvoker: supportsCliHubTask
+          ? (taskKind, payload) =>
+              widget.runtimeManager.startCliHubTask(taskKind, payload)
+          : null,
+    );
+    final runningStartedAt = DateTime.now();
+    final runningStep = _AgentTraceStep(
+      title: 'Running approved CLI Hub task',
+      detail: 'cli_hub_task $cliId.$taskKind is executing in Linux Sandbox.',
+      icon: Icons.sync_outlined,
+      toolName: 'cli_hub_task',
+      details: {
+        'CLI': metadata['cliTitle']?.toString() ?? cliId,
+        'Task kind': taskKind,
+        'Runtime': metadata['runtime']?.toString() ?? 'linuxSandbox',
+        'Status': 'running',
+      },
+      evidenceMetadata: {
+        ...metadata,
+        'status': 'running',
+        'runtimeStatus': 'running',
+        'approved': true,
+      },
+      traceAction: MobileCodeAction.cliHubTaskStart,
+      state: _AgentStepState.running,
+      startedAt: runningStartedAt,
+    );
+    late final int runningIndex;
+    setState(() {
+      _approvedCliHubPreviewEvidenceIds.add(step.evidenceId);
+      _agentTrace.add(_withStepEvidence(runningStep, _AgentStepState.running));
+      runningIndex = _agentTrace.length - 1;
+    });
+    final result = await actionRunner.run(ActionSchema(
+      actionName: MobileCodeAction.cliHubTaskStart,
+      paramsSummary: 'approved cli_hub_task $cliId.$taskKind from chat preview',
+      params: {
+        'cliId': cliId,
+        'taskKind': taskKind,
+        'payload': payload,
+        'reason': 'User approved CLI Hub typed task from chat preview.',
+      },
+    ));
+    if (!mounted) return;
+    CliHubRuntimeEvents.publish(CliHubRuntimeEvent(
+      cliId: cliId,
+      taskKind: taskKind,
+      status: result.evidence.metadata['status']?.toString() ??
+          (result.success ? 'completed' : 'failed'),
+      success: result.success,
+      profileId: result.evidence.metadata['profileId']?.toString(),
+    ));
+    final color = result.success ? _mint : _rose;
+    final approvedStep = _AgentTraceStep(
+      title: result.success
+          ? 'Approved CLI Hub task completed'
+          : 'Approved CLI Hub task failed',
+      detail: result.evidence.logs.isEmpty
+          ? 'cli_hub_task $cliId.$taskKind finished.'
+          : result.evidence.logs.join(' '),
+      icon: result.success ? Icons.verified_outlined : Icons.error_outline,
+      toolName: 'cli_hub_task',
+      details: {
+        'CLI': metadata['cliTitle']?.toString() ?? cliId,
+        'Task kind': taskKind,
+        'Evidence ID': result.evidence.evidenceId,
+        'Status': result.success
+            ? 'success'
+            : (result.evidence.failureKind ?? 'failed'),
+      },
+      evidenceMetadata: result.evidence.metadata,
+      traceAction: MobileCodeAction.cliHubTaskStart,
+      state: result.success ? _AgentStepState.done : _AgentStepState.failed,
+      startedAt: runningStartedAt,
+      finishedAt: result.evidence.endedAt,
+    );
+    setState(() {
+      if (runningIndex >= 0 && runningIndex < _agentTrace.length) {
+        _agentTrace[runningIndex] = approvedStep..evidence = result.evidence;
+      } else {
+        _agentTrace.add(approvedStep..evidence = result.evidence);
+      }
+    });
+    _showMessage(result.success
+        ? 'CLI Hub typed task completed.'
+        : 'CLI Hub typed task failed: ${result.evidence.failureKind ?? 'failed'}');
+    widget.onLog(
+      result.success
+          ? 'CLI Hub typed task completed'
+          : 'CLI Hub typed task failed',
+      '$cliId.$taskKind',
+      result.success ? Icons.verified_outlined : Icons.error_outline,
+      color,
+    );
+    _scrollConversationToEnd(force: true);
+  }
+
+  Future<void> _approvePhoneUsePreviewStep(_AgentTraceStep step) async {
+    final rawTicket = step.evidenceMetadata['approvalTicket'];
+    if (rawTicket is! Map) {
+      _showMessage('No Phone Use approval ticket is attached to this step.');
+      return;
+    }
+    final ticketId = rawTicket['id']?.toString() ?? '';
+    if (ticketId.isEmpty) {
+      _showMessage('The Phone Use approval ticket is invalid.');
+      return;
+    }
+    if (_consumedPhoneUseApprovalTicketIds.contains(ticketId)) {
+      _showMessage('This one-shot Phone Use approval was already consumed.');
+      return;
+    }
+    setState(() => _consumedPhoneUseApprovalTicketIds.add(ticketId));
+
+    final startedAt = DateTime.now();
+    final coordinator = DeviceAutomationCoordinator(
+      provider: EmbeddedAccessibilityDeviceAutomationProvider(),
+      evidenceStore: _agentEvidenceStore,
+      approvalTickets: DeviceAutomationApprovalTicketStore.shared,
+    );
+    final execution = await coordinator.executeApprovedTicket(
+      ticketId,
+      approvalId: 'phone-user-${generateEvidenceId()}',
+      persistEvidence: true,
+    );
+    if (!mounted) return;
+    if (execution == null) {
+      _showMessage(
+        'Phone Use approval expired or was already consumed. Observe again to create a fresh card.',
+      );
+      return;
+    }
+
+    var evidence = execution.evidence;
+    final inferenceEvidenceIds =
+        step.evidenceMetadata['mobileCoreInferenceEvidenceIds'];
+    if (inferenceEvidenceIds is List) {
+      for (final rawId in inferenceEvidenceIds) {
+        final inferenceEvidenceId = rawId.toString().trim();
+        if (inferenceEvidenceId.isEmpty) continue;
+        _agentEvidenceStore.linkMobileCoreInferenceToDeviceOperation(
+          inferenceEvidenceId: inferenceEvidenceId,
+          deviceOperationEvidenceId: evidence.evidenceId,
+        );
+      }
+      evidence = _agentEvidenceStore.getById(evidence.evidenceId) ?? evidence;
+    }
+    final completedStep = _AgentTraceStep(
+      title: execution.success
+          ? 'Approved Phone Use action completed'
+          : 'Approved Phone Use action blocked',
+      detail: evidence.logs.isEmpty
+          ? 'The one-shot Phone Use ticket was consumed.'
+          : evidence.logs.join(' '),
+      icon: execution.success
+          ? Icons.touch_app_outlined
+          : Icons.gpp_maybe_outlined,
+      toolName: 'phone_use_action',
+      details: {
+        'Action': evidence.metadata['deviceAction']?.toString() ?? 'unknown',
+        'Evidence ID': evidence.evidenceId,
+        'Status':
+            execution.success ? 'success' : (evidence.failureKind ?? 'blocked'),
+        'Approval': 'One-shot ticket consumed',
+      },
+      evidenceMetadata: evidence.metadata,
+      traceAction: MobileCodeAction.phoneUseAct,
+      state: execution.success ? _AgentStepState.done : _AgentStepState.failed,
+      startedAt: startedAt,
+      finishedAt: evidence.endedAt,
+    )..evidence = evidence;
+    setState(() => _agentTrace.add(completedStep));
+    _showMessage(execution.success
+        ? 'Approved Phone Use action completed.'
+        : 'Phone Use action blocked: ${evidence.failureKind ?? 'failed'}');
+    widget.onLog(
+      execution.success
+          ? 'Phone Use action completed'
+          : 'Phone Use action blocked',
+      evidence.metadata['deviceAction']?.toString() ?? 'phone_use_action',
+      execution.success ? Icons.touch_app_outlined : Icons.gpp_maybe_outlined,
+      execution.success ? _mint : _rose,
+    );
+    _scrollConversationToEnd(force: true);
   }
 
   void _appendAgentLoopStreamTraceEvent(int round, String detail) {
@@ -15950,6 +17538,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     required List<_ChatTurn> originalTurns,
     required String systemPrompt,
     required String originalAnswer,
+    required String cloudApprovalContextId,
     bool Function()? isCancelled,
     void Function(ModelRouteDecision decision)? onRoute,
   }) async {
@@ -15989,6 +17578,7 @@ class _ChatPanelState extends State<_ChatPanel> {
       isCancelled: isCancelled,
       endpoint: ModelRouteEndpoint.agent,
       onRoute: onRoute,
+      cloudApprovalContextId: cloudApprovalContextId,
     );
     if (_extractHtmlDocument(repaired) != null) return repaired;
     throw Exception(
@@ -16010,12 +17600,20 @@ class _ChatPanelState extends State<_ChatPanel> {
     await projectDirectory.create(recursive: true);
     final supportsRuntimeTermuxTask =
         widget.runtimeManager.activeProvider is RuntimeTypedTaskRunner;
+    final supportsCliHubTask = widget.runtimeManager.providers.any((provider) =>
+        provider.type == RuntimeProviderType.linuxSandbox &&
+        provider is RuntimeTypedTaskRunner);
     final actionRunner = ActionRunner(
       workspaceRootPath: rootDirectory.path,
       evidenceStore: _agentEvidenceStore,
+      htmlRenderProvider: const PlatformHtmlRenderProvider(),
       termuxTaskInvoker: supportsRuntimeTermuxTask
           ? (taskKind, payload) =>
               widget.runtimeManager.startTermuxTask(taskKind, payload)
+          : null,
+      cliHubTaskInvoker: supportsCliHubTask
+          ? (taskKind, payload) =>
+              widget.runtimeManager.startCliHubTask(taskKind, payload)
           : null,
     );
 
@@ -16483,18 +18081,20 @@ class _ChatPanelState extends State<_ChatPanel> {
         _showMessage('Generated web file was not found on this phone.');
         return;
       }
-      final html = await file.readAsString();
+      final sizeBytes = await file.length();
       if (!mounted) return;
-      await showModalBottomSheet<void>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: _panel,
-        shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(10))),
-        builder: (context) => _WebPreviewSheet(
-          title: 'Generated web preview',
-          subtitle: path,
-          html: html,
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ExternalFilePreviewScreen(
+            file: ExternalPreviewFile(
+              path: path,
+              displayName: p.basename(path),
+              mimeType: 'text/html',
+              sizeBytes: sizeBytes,
+              source: 'mobilecode_generated_artifact',
+              kind: ExternalPreviewKind.html,
+            ),
+          ),
         ),
       );
     } on Object catch (error) {
@@ -16657,6 +18257,7 @@ class _ChatPanelState extends State<_ChatPanel> {
     var selectedMode = _agentExecutionMode;
     var selectedPreset = _agentPreset;
     var rrEnabled = _agentModeEnabled;
+    var selectedPermissionMode = _harnessPermissionMode;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: _panel,
@@ -16668,6 +18269,7 @@ class _ChatPanelState extends State<_ChatPanel> {
           mode: selectedMode,
           preset: selectedPreset,
           rrEnabled: rrEnabled,
+          permissionMode: selectedPermissionMode,
           running: _agentRunning || _sending,
           onModeChanged: (mode) {
             setState(() => _agentExecutionMode = mode);
@@ -16680,6 +18282,11 @@ class _ChatPanelState extends State<_ChatPanel> {
           onRrChanged: (value) {
             setState(() => _agentModeEnabled = value);
             modalSetState(() => rrEnabled = value);
+          },
+          onPermissionModeChanged: (mode) {
+            setState(() => _harnessPermissionMode = mode);
+            modalSetState(() => selectedPermissionMode = mode);
+            unawaited(HarnessPermissionStore.instance.setMode(mode));
           },
         ),
       ),
@@ -16768,6 +18375,20 @@ class _ChatPanelState extends State<_ChatPanel> {
             title:
                 _agentRunning ? 'Agent is writing code' : 'Last agent process',
             steps: _agentTrace,
+            approvedCliHubPreviewEvidenceIds: _approvedCliHubPreviewEvidenceIds,
+            onApproveCliHubPreview: (step) =>
+                unawaited(_approveCliHubPreviewStep(step)),
+            consumedPhoneUseApprovalTicketIds:
+                _consumedPhoneUseApprovalTicketIds,
+            onApprovePhoneUsePreview: (step) =>
+                unawaited(_approvePhoneUsePreviewStep(step)),
+            onOpenCapabilityCenter: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const CapabilityCenterScreen(),
+                ),
+              );
+            },
           ),
         ],
         if (!_agentRunning &&
@@ -16862,6 +18483,15 @@ class _ChatPanelState extends State<_ChatPanel> {
                         : _openModelSelectionSheet,
                   ),
                   const SizedBox(width: 8),
+                  _TuimaStatusButton(
+                    health: _tuimaHealth,
+                    checking: _tuimaHealthChecking,
+                    fallbackActive: _offlineFallbackActive,
+                    onTap: _tuimaHealthChecking
+                        ? null
+                        : () => unawaited(_openMobileCoreControlSheet()),
+                  ),
+                  const SizedBox(width: 8),
                   _AgentModeSummaryButton(
                     mode: _agentExecutionMode,
                     preset: _agentPreset,
@@ -16877,6 +18507,26 @@ class _ChatPanelState extends State<_ChatPanel> {
               ),
             ),
             const SizedBox(height: 7),
+            if (_pendingMobileCoreAttachment != null) ...[
+              InputChip(
+                avatar: Icon(
+                  _pendingMobileCoreAttachment!.kind ==
+                          MobileCoreAttachmentKind.image
+                      ? Icons.image_outlined
+                      : Icons.audio_file_outlined,
+                  size: 17,
+                  color: _mint,
+                ),
+                label: Text(
+                  '${_pendingMobileCoreAttachment!.displayName} · local only',
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onDeleted: _sending
+                    ? null
+                    : () => setState(() => _pendingMobileCoreAttachment = null),
+              ),
+              const SizedBox(height: 7),
+            ],
             Container(
               padding: const EdgeInsets.fromLTRB(12, 4, 6, 4),
               decoration: BoxDecoration(
@@ -16903,6 +18553,31 @@ class _ChatPanelState extends State<_ChatPanel> {
                     ),
                   ),
                   const SizedBox(width: 6),
+                  if (widget.providerPreset == _ProviderPreset.tuimaLocal &&
+                      _tuimaHealth.capabilities.imageInput) ...[
+                    IconButton(
+                      tooltip: 'Attach image to MobileCore (local only)',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _sending || _agentRunning
+                          ? null
+                          : () => unawaited(_pickMobileCoreAttachment(
+                              MobileCoreAttachmentKind.image)),
+                      icon: const Icon(Icons.add_photo_alternate_outlined,
+                          size: 20),
+                    ),
+                  ],
+                  if (widget.providerPreset == _ProviderPreset.tuimaLocal &&
+                      _tuimaHealth.capabilities.audioInput) ...[
+                    IconButton(
+                      tooltip: 'Attach audio to MobileCore (local only)',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _sending || _agentRunning
+                          ? null
+                          : () => unawaited(_pickMobileCoreAttachment(
+                              MobileCoreAttachmentKind.audio)),
+                      icon: const Icon(Icons.audio_file_outlined, size: 20),
+                    ),
+                  ],
                   _VoiceInputButton(
                     enabled: !_sending && (!_agentRunning || voiceActive),
                     available: _voiceAvailable,
@@ -18378,19 +20053,23 @@ class _AgentModeSheet extends StatelessWidget {
     required this.mode,
     required this.preset,
     required this.rrEnabled,
+    required this.permissionMode,
     required this.running,
     required this.onModeChanged,
     required this.onPresetChanged,
     required this.onRrChanged,
+    required this.onPermissionModeChanged,
   });
 
   final AgentExecutionMode mode;
   final AgentPreset preset;
   final bool rrEnabled;
+  final HarnessPermissionMode permissionMode;
   final bool running;
   final ValueChanged<AgentExecutionMode> onModeChanged;
   final ValueChanged<AgentPreset> onPresetChanged;
   final ValueChanged<bool> onRrChanged;
+  final ValueChanged<HarnessPermissionMode> onPermissionModeChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -18465,6 +20144,41 @@ class _AgentModeSheet extends StatelessWidget {
             ),
             const SizedBox(height: 10),
           ],
+          const SizedBox(height: 10),
+          _Panel(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.verified_user_outlined, color: _amber, size: 18),
+                    SizedBox(width: 7),
+                    Expanded(
+                      child: Text('Harness 权限',
+                          style: TextStyle(
+                              color: _text,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 14)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  permissionMode.description,
+                  style: const TextStyle(
+                      color: _muted, fontSize: 12, height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                _HarnessPermissionModeSegment(
+                  mode: permissionMode,
+                  running: running,
+                  onChanged: onPermissionModeChanged,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
           _Panel(
             padding: const EdgeInsets.all(12),
             child: Row(
@@ -18579,6 +20293,93 @@ class _AgentExecutionModeChip extends StatelessWidget {
             color: selected ? _text : _muted,
             fontSize: 11.5,
             fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HarnessPermissionModeSegment extends StatelessWidget {
+  const _HarnessPermissionModeSegment({
+    required this.mode,
+    required this.running,
+    required this.onChanged,
+  });
+
+  final HarnessPermissionMode mode;
+  final bool running;
+  final ValueChanged<HarnessPermissionMode> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 7,
+      runSpacing: 7,
+      children: [
+        for (final item in HarnessPermissionMode.values)
+          _HarnessPermissionModeChip(
+            mode: item,
+            selected: mode == item,
+            enabled: !running,
+            onTap: () => onChanged(item),
+          ),
+      ],
+    );
+  }
+}
+
+class _HarnessPermissionModeChip extends StatelessWidget {
+  const _HarnessPermissionModeChip({
+    required this.mode,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final HarnessPermissionMode mode;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = mode == HarnessPermissionMode.fullAccess ? _amber : _violet;
+    return Tooltip(
+      message: mode.description,
+      child: InkWell(
+        onTap: enabled && !selected ? onTap : null,
+        borderRadius: BorderRadius.circular(999),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: selected ? color.withOpacity(0.16) : _panelSoft,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected ? color.withOpacity(0.55) : _line,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                mode == HarnessPermissionMode.fullAccess
+                    ? Icons.security_outlined
+                    : Icons.verified_user_outlined,
+                color: selected ? color : _muted,
+                size: 14,
+              ),
+              const SizedBox(width: 5),
+              Text(
+                mode.shortLabel,
+                style: TextStyle(
+                  color: selected ? _text : _muted,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -18912,22 +20713,6 @@ List<_PromptTaskSectionData> _taskDispatchSections() {
       title: '快速生成',
       subtitle: '检查写文件、读回验证和 WebView 预览链路。',
       tasks: [
-        _PromptTaskData(
-          icon: Icons.videogame_asset_outlined,
-          title: '贪吃蛇游戏',
-          subtitle: '生成 index.html，展示写代码过程，并用 WebView 预览。',
-          meta: ['Builder', 'write/read/preview'],
-          color: _mint,
-          prompt: '帮我在手机端创建一个可运行的贪吃蛇网页小游戏，生成 index.html、展示写代码过程，并用 WebView 预览。',
-        ),
-        _PromptTaskData(
-          icon: Icons.grid_4x4_outlined,
-          title: '2048 Demo',
-          subtitle: '生成单文件 2048 小游戏，适合回归 artifact 保存。',
-          meta: ['Builder', 'index.html'],
-          color: _cyan,
-          prompt: '帮我创建一个 2048 网页小游戏，保存为 index.html，并打开本地 WebView 预览。',
-        ),
         _PromptTaskData(
           icon: Icons.edit_note_outlined,
           title: '日记 App',
@@ -19377,6 +21162,136 @@ class _ComposerModelButton extends StatelessWidget {
   }
 }
 
+class _MobileCoreControlData {
+  const _MobileCoreControlData({
+    required this.health,
+    this.models = const [],
+    this.metrics = const MobileCoreMetrics(),
+    this.recommendations = const MobileCoreRecommendations(),
+    this.omniStatus = const MobileCoreOmniStatus(),
+  });
+
+  final TuimaHealth health;
+  final List<MobileCoreModel> models;
+  final MobileCoreMetrics metrics;
+  final MobileCoreRecommendations recommendations;
+  final MobileCoreOmniStatus omniStatus;
+}
+
+class _MobileCoreRuntimeDecision {
+  const _MobileCoreRuntimeDecision({
+    required this.health,
+    required this.policy,
+    required this.taskSignals,
+  });
+
+  final TuimaHealth health;
+  final MobileCorePolicyDecision policy;
+  final MobileCoreTaskSignals taskSignals;
+}
+
+class _CloudInferenceApprovalRecord {
+  const _CloudInferenceApprovalRecord({
+    required this.approvalId,
+    required this.approved,
+  });
+
+  final String approvalId;
+  final bool approved;
+}
+
+class _TuimaStatusButton extends StatelessWidget {
+  const _TuimaStatusButton({
+    required this.health,
+    required this.checking,
+    required this.fallbackActive,
+    required this.onTap,
+  });
+
+  final TuimaHealth health;
+  final bool checking;
+  final bool fallbackActive;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = health.state == TuimaConnectionState.modelReady;
+    final serviceOnly = health.state == TuimaConnectionState.serviceReady;
+    final color = ready
+        ? _mint
+        : serviceOnly
+            ? _amber
+            : _muted;
+    final label = checking
+        ? '检测 TuiMa'
+        : fallbackActive
+            ? '本地降级中'
+            : ready
+                ? 'TuiMa 就绪'
+                : serviceOnly
+                    ? '待加载模型'
+                    : 'TuiMa 离线';
+    final detail = ready
+        ? 'MobileCore ${health.version} · ${health.activeModel ?? 'model ready'}'
+        : serviceOnly
+            ? 'MobileCore 服务已运行，但尚未加载模型'
+            : '点按重新检测 127.0.0.1:8080';
+    return Tooltip(
+      message: detail,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          height: 42,
+          constraints: const BoxConstraints(minWidth: 86, maxWidth: 116),
+          padding: const EdgeInsets.symmetric(horizontal: 9),
+          decoration: BoxDecoration(
+            color: color.withOpacity(ready ? 0.13 : 0.07),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withOpacity(ready ? 0.36 : 0.20)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (checking)
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 1.8,
+                    color: color,
+                  ),
+                )
+              else
+                Icon(
+                  fallbackActive
+                      ? Icons.offline_bolt_outlined
+                      : ready
+                          ? Icons.memory_outlined
+                          : Icons.portable_wifi_off_outlined,
+                  color: color,
+                  size: 15,
+                ),
+              const SizedBox(width: 5),
+              Flexible(
+                child: Text(
+                  label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ModelSelectionSheet extends StatelessWidget {
   const _ModelSelectionSheet({
     required this.selected,
@@ -19465,10 +21380,14 @@ class _ModelSelectionRow extends StatelessWidget {
             ? _violet
             : preset == _ProviderPreset.tierFlowAuto
                 ? _cyan
-                : preset == _ProviderPreset.mimo
+                : preset == _ProviderPreset.tuimaLocal
                     ? _mint
-                    : _blue;
+                    : preset == _ProviderPreset.mimo
+                        ? _mint
+                        : _blue;
     final subtitle = switch (preset) {
+      _ProviderPreset.tuimaLocal =>
+        '本机 TuiMa/MobileCore · 断网可用 · 127.0.0.1 OpenAI-compatible',
       _ProviderPreset.mimo =>
         managed ? '内置体验模型，稳定聊天与中文移动开发任务' : '需要构建时配置 Mimo managed key',
       _ProviderPreset.deepSeek => managed
@@ -19495,13 +21414,15 @@ class _ModelSelectionRow extends StatelessWidget {
             Icon(
               preset == _ProviderPreset.custom
                   ? Icons.tune_outlined
-                  : preset == _ProviderPreset.deepSeek
-                      ? Icons.psychology_alt_outlined
-                      : preset == _ProviderPreset.deepSeekAuto
-                          ? Icons.alt_route_outlined
-                          : preset == _ProviderPreset.tierFlowAuto
-                              ? Icons.route_outlined
-                              : Icons.auto_awesome_outlined,
+                  : preset == _ProviderPreset.tuimaLocal
+                      ? Icons.memory_outlined
+                      : preset == _ProviderPreset.deepSeek
+                          ? Icons.psychology_alt_outlined
+                          : preset == _ProviderPreset.deepSeekAuto
+                              ? Icons.alt_route_outlined
+                              : preset == _ProviderPreset.tierFlowAuto
+                                  ? Icons.route_outlined
+                                  : Icons.auto_awesome_outlined,
               color: color,
               size: 20,
             ),
@@ -19524,6 +21445,10 @@ class _ModelSelectionRow extends StatelessWidget {
                       if (managed) ...[
                         const SizedBox(width: 8),
                         _TinyBadge(label: 'Managed', color: color),
+                      ],
+                      if (preset == _ProviderPreset.tuimaLocal) ...[
+                        const SizedBox(width: 6),
+                        const _TinyBadge(label: 'On-device', color: _mint),
                       ],
                       if (preset == _ProviderPreset.deepSeek) ...[
                         const SizedBox(width: 6),
@@ -21595,10 +23520,20 @@ class _AgentTracePanel extends StatelessWidget {
   const _AgentTracePanel({
     required this.title,
     required this.steps,
+    required this.approvedCliHubPreviewEvidenceIds,
+    required this.onApproveCliHubPreview,
+    required this.consumedPhoneUseApprovalTicketIds,
+    required this.onApprovePhoneUsePreview,
+    required this.onOpenCapabilityCenter,
   });
 
   final String title;
   final List<_AgentTraceStep> steps;
+  final Set<String> approvedCliHubPreviewEvidenceIds;
+  final ValueChanged<_AgentTraceStep> onApproveCliHubPreview;
+  final Set<String> consumedPhoneUseApprovalTicketIds;
+  final ValueChanged<_AgentTraceStep> onApprovePhoneUsePreview;
+  final VoidCallback onOpenCapabilityCenter;
 
   @override
   Widget build(BuildContext context) {
@@ -21643,6 +23578,16 @@ class _AgentTracePanel extends StatelessWidget {
               step: steps[index],
               index: index,
               isLast: index == steps.length - 1,
+              cliHubPreviewApproved: approvedCliHubPreviewEvidenceIds.contains(
+                steps[index].evidenceId,
+              ),
+              onApproveCliHubPreview: onApproveCliHubPreview,
+              phoneUseApprovalConsumed:
+                  consumedPhoneUseApprovalTicketIds.contains(
+                _phoneUseApprovalTicketId(steps[index]),
+              ),
+              onApprovePhoneUsePreview: onApprovePhoneUsePreview,
+              onOpenCapabilityCenter: onOpenCapabilityCenter,
             ),
           ],
           const SizedBox(height: 12),
@@ -21667,6 +23612,24 @@ _AgentTraceStep? _latestAgentTraceStatusStep(List<_AgentTraceStep> steps) {
     if (step.state != _AgentStepState.queued) return step;
   }
   return steps.isEmpty ? null : steps.first;
+}
+
+bool _isCliHubApprovalPreviewStep(_AgentTraceStep step) =>
+    step.toolName == 'cli_hub_task' &&
+    _isCliHubApprovalPreviewMetadata(step.evidenceMetadata);
+
+bool _isCliHubApprovalPreviewMetadata(Map<String, dynamic> metadata) =>
+    metadata['previewOnly'] == true || metadata['status'] == 'approvalRequired';
+
+bool _isPhoneUseApprovalPreviewStep(_AgentTraceStep step) =>
+    step.toolName == 'phone_use_action' &&
+    step.evidenceMetadata['approvalTicket'] is Map &&
+    (step.evidenceMetadata['approval'] is! Map ||
+        (step.evidenceMetadata['approval'] as Map)['granted'] != true);
+
+String _phoneUseApprovalTicketId(_AgentTraceStep step) {
+  final ticket = step.evidenceMetadata['approvalTicket'];
+  return ticket is Map ? ticket['id']?.toString() ?? '' : '';
 }
 
 class _AgentTraceLiveStatus extends StatelessWidget {
@@ -21813,16 +23776,38 @@ class _AgentTraceRow extends StatelessWidget {
     required this.step,
     required this.index,
     required this.isLast,
+    required this.cliHubPreviewApproved,
+    required this.onApproveCliHubPreview,
+    required this.phoneUseApprovalConsumed,
+    required this.onApprovePhoneUsePreview,
+    required this.onOpenCapabilityCenter,
   });
 
   final _AgentTraceStep step;
   final int index;
   final bool isLast;
+  final bool cliHubPreviewApproved;
+  final ValueChanged<_AgentTraceStep> onApproveCliHubPreview;
+  final bool phoneUseApprovalConsumed;
+  final ValueChanged<_AgentTraceStep> onApprovePhoneUsePreview;
+  final VoidCallback onOpenCapabilityCenter;
 
   @override
   Widget build(BuildContext context) {
     final color = _agentStepColor(step.state);
     final icon = _agentStepStatusIcon(step.state);
+    final recoveryActions = _agentTraceRecoveryActions(step);
+    final phoneAssessment = step.evidenceMetadata['riskAssessment'];
+    final phoneTicket = step.evidenceMetadata['approvalTicket'];
+    final phoneRisk = phoneAssessment is Map
+        ? phoneAssessment['riskClass']?.toString() ?? ''
+        : '';
+    final phoneExternalTransaction =
+        phoneRisk == DeviceAutomationRiskClass.externalTransaction.name;
+    final showProgress = step.toolName == 'cli_hub_task' &&
+        (step.state == _AgentStepState.running ||
+            agentTraceProgressSummary(step.evidenceMetadata) != null) &&
+        !_isCliHubApprovalPreviewStep(step);
     return Padding(
       padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
       child: InkWell(
@@ -21923,6 +23908,142 @@ class _AgentTraceRow extends StatelessWidget {
                         initiallyExpanded: false,
                       ),
                     ],
+                    if (_isCliHubApprovalPreviewStep(step)) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed: cliHubPreviewApproved
+                                  ? null
+                                  : () => onApproveCliHubPreview(step),
+                              icon: Icon(
+                                cliHubPreviewApproved
+                                    ? Icons.check_circle_outline
+                                    : Icons.verified_user_outlined,
+                                size: 16,
+                              ),
+                              label: Text(cliHubPreviewApproved
+                                  ? 'Typed task submitted'
+                                  : 'Confirm typed task'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (_isPhoneUseApprovalPreviewStep(step)) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: (phoneExternalTransaction ? _rose : _amber)
+                              .withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: (phoneExternalTransaction ? _rose : _amber)
+                                .withOpacity(0.38),
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  phoneExternalTransaction
+                                      ? Icons.payment_outlined
+                                      : Icons.touch_app_outlined,
+                                  size: 17,
+                                  color:
+                                      phoneExternalTransaction ? _rose : _amber,
+                                ),
+                                const SizedBox(width: 7),
+                                Expanded(
+                                  child: Text(
+                                    phoneExternalTransaction
+                                        ? 'Trusted transaction approval'
+                                        : 'One-shot Phone Use approval',
+                                    style: TextStyle(
+                                      color: phoneExternalTransaction
+                                          ? _rose
+                                          : _amber,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 7),
+                            Text(
+                              phoneAssessment is Map
+                                  ? 'Target: ${phoneAssessment['targetLabel'] ?? '<unavailable>'}\nRisk: $phoneRisk · ${phoneAssessment['reason'] ?? 'trusted policy'}'
+                                  : 'Trusted target preview unavailable.',
+                              style: const TextStyle(
+                                color: _muted,
+                                fontSize: 11.5,
+                                height: 1.4,
+                              ),
+                            ),
+                            if (phoneTicket is Map) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Expires ${phoneTicket['expiresAt'] ?? 'soon'} · valid once · page-bound',
+                                style: const TextStyle(
+                                  color: _faint,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 9),
+                            SizedBox(
+                              width: double.infinity,
+                              child: FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor:
+                                      phoneExternalTransaction ? _rose : _amber,
+                                  foregroundColor: Colors.white,
+                                ),
+                                onPressed: phoneUseApprovalConsumed
+                                    ? null
+                                    : () => onApprovePhoneUsePreview(step),
+                                icon: Icon(
+                                  phoneUseApprovalConsumed
+                                      ? Icons.lock_clock_outlined
+                                      : Icons.verified_user_outlined,
+                                  size: 16,
+                                ),
+                                label: Text(
+                                  phoneUseApprovalConsumed
+                                      ? 'Approval ticket consumed'
+                                      : phoneExternalTransaction
+                                          ? 'Confirm transaction action once'
+                                          : 'Allow once',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (showProgress) ...[
+                      const SizedBox(height: 10),
+                      AgentTraceProgressBox(
+                        metadata: step.evidenceMetadata,
+                        color: color,
+                        running: step.state == _AgentStepState.running,
+                      ),
+                    ],
+                    if (recoveryActions.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      AgentTraceRecoveryBox(
+                        actions: recoveryActions,
+                        color: color,
+                        onOpenCapabilityCenter: onOpenCapabilityCenter,
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -22020,6 +24141,42 @@ class _AgentTraceInlineDetailsState extends State<_AgentTraceInlineDetails> {
       ),
     );
   }
+}
+
+List<String> _agentTraceRecoveryActions(_AgentTraceStep step) {
+  final evidenceActions = step.evidence?.recoveryActions ?? const <String>[];
+  if (evidenceActions.isNotEmpty) {
+    return evidenceActions
+        .where((item) => item.trim().isNotEmpty)
+        .toList(growable: false);
+  }
+
+  final metadata = step.evidenceMetadata;
+  for (final key in const [
+    'recoveryActions',
+    'recovery',
+    'recoveryHints',
+  ]) {
+    final value = metadata[key];
+    if (value is List) {
+      final actions = value
+          .map((item) => item.toString().trim())
+          .where((item) => item.isNotEmpty)
+          .toList(growable: false);
+      if (actions.isNotEmpty) return actions;
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      return [value.trim()];
+    }
+  }
+
+  final status = metadata['status']?.toString().toLowerCase() ?? '';
+  if (status == 'needssetup' || status == 'needsetup') {
+    return const [
+      'Open Capability Center, install Alpine Runtime or the required CLI profile, then retry this typed task.'
+    ];
+  }
+  return const [];
 }
 
 class _AgentTraceAvatar extends StatelessWidget {
@@ -22359,6 +24516,9 @@ class _ActionEvidenceCenterItem extends StatelessWidget {
 }
 
 String _recoveryEvidenceSubtitle(ActionEvidence evidence) {
+  final cliHubPreview = _cliHubPreviewSubtitle(evidence);
+  if (cliHubPreview.isNotEmpty) return cliHubPreview;
+
   final metadata = evidence.metadata;
   switch (evidence.actionName) {
     case MobileCodeAction.saveSnapshot:
@@ -22398,6 +24558,94 @@ String _recoveryEvidenceSubtitle(ActionEvidence evidence) {
   }
 }
 
+String _cliHubPreviewSubtitle(ActionEvidence evidence) {
+  if (evidence.actionName != MobileCodeAction.cliHubTaskStart) return '';
+  final metadata = evidence.metadata;
+  if (metadata['previewOnly'] != true &&
+      metadata['status'] != 'approvalRequired') {
+    return '';
+  }
+  final cliTitle = metadata['cliTitle']?.toString();
+  final cliId = metadata['cliId']?.toString();
+  final taskKind = metadata['taskKind']?.toString();
+  final risk = metadata['riskLevel']?.toString();
+  final credentialPolicy = metadata['credentialPolicy']?.toString();
+  final packages = metadata['packages'];
+  final packageCount = packages is List ? packages.length : null;
+  return [
+    'CLI Hub preview',
+    if (cliTitle != null && cliTitle.isNotEmpty) cliTitle,
+    if ((cliTitle == null || cliTitle.isEmpty) &&
+        cliId != null &&
+        cliId.isNotEmpty)
+      cliId,
+    if (taskKind != null && taskKind.isNotEmpty) taskKind,
+    if (risk != null && risk.isNotEmpty) 'risk:$risk',
+    if (credentialPolicy != null && credentialPolicy.isNotEmpty)
+      'credential:$credentialPolicy',
+    if (packageCount != null) 'packages:$packageCount',
+  ].join(' · ');
+}
+
+List<_EvidenceInfoRow> _cliHubPreviewRows(ActionEvidence evidence) {
+  if (evidence.actionName != MobileCodeAction.cliHubTaskStart) return const [];
+  final metadata = evidence.metadata;
+  if (metadata['previewOnly'] != true &&
+      metadata['status'] != 'approvalRequired') {
+    return const [];
+  }
+  String value(String key) => metadata[key]?.toString() ?? '';
+  String listValue(String key) {
+    final raw = metadata[key];
+    if (raw is List) return raw.map((item) => item.toString()).join(', ');
+    return raw?.toString() ?? '';
+  }
+
+  final payloadPreview = metadata['payloadPreview'];
+  final payloadPreviewText = payloadPreview == null
+      ? ''
+      : const JsonEncoder.withIndent('  ').convert(payloadPreview);
+  final approval = metadata['approval'];
+  final approvalText = approval == null
+      ? ''
+      : const JsonEncoder.withIndent('  ').convert(approval);
+
+  return [
+    _EvidenceInfoRow(label: 'CLI Hub status', value: value('status')),
+    _EvidenceInfoRow(
+        label: 'CLI',
+        value: [
+          value('cliTitle'),
+          if (value('cliId').isNotEmpty) '(${value('cliId')})',
+        ].where((part) => part.isNotEmpty).join(' ')),
+    _EvidenceInfoRow(label: 'Task kind', value: value('taskKind')),
+    _EvidenceInfoRow(label: 'Runtime', value: value('runtime')),
+    _EvidenceInfoRow(label: 'Access', value: value('access')),
+    _EvidenceInfoRow(label: 'Risk', value: value('riskLevel')),
+    _EvidenceInfoRow(
+        label: 'Credential policy', value: value('credentialPolicy')),
+    if (value('profileId').isNotEmpty)
+      _EvidenceInfoRow(label: 'Install profile', value: value('profileId')),
+    if (listValue('packages').isNotEmpty)
+      _EvidenceInfoRow(label: 'Packages', value: listValue('packages')),
+    if (value('estimatedDownloadMb').isNotEmpty)
+      _EvidenceInfoRow(
+          label: 'Estimated download',
+          value: '${value('estimatedDownloadMb')} MB'),
+    if (value('installedSizeMb').isNotEmpty)
+      _EvidenceInfoRow(
+          label: 'Installed size', value: '${value('installedSizeMb')} MB'),
+    if (approvalText.isNotEmpty)
+      _EvidenceInfoRow(
+          label: 'Approval preview', value: approvalText, monospace: true),
+    if (payloadPreviewText.isNotEmpty)
+      _EvidenceInfoRow(
+          label: 'Typed payload preview',
+          value: payloadPreviewText,
+          monospace: true),
+  ].where((row) => row.value.trim().isNotEmpty).toList(growable: false);
+}
+
 void _showActionEvidenceSheet(BuildContext context, ActionEvidence evidence) {
   showModalBottomSheet<void>(
     context: context,
@@ -22407,6 +24655,7 @@ void _showActionEvidenceSheet(BuildContext context, ActionEvidence evidence) {
     builder: (context) {
       final evidenceDurationLabel =
           _durationLabel(Duration(milliseconds: evidence.durationMs));
+      final cliHubPreviewRows = _cliHubPreviewRows(evidence);
       return SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
@@ -22461,6 +24710,15 @@ void _showActionEvidenceSheet(BuildContext context, ActionEvidence evidence) {
                 if (evidence.failureKind != null)
                   _EvidenceInfoRow(
                       label: 'Failure kind', value: evidence.failureKind!),
+                if (cliHubPreviewRows.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text(
+                    'CLI Hub Preview',
+                    style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 10),
+                  ...cliHubPreviewRows,
+                ],
                 if (evidence.paramsSummary.isNotEmpty)
                   _EvidenceInfoRow(
                       label: 'Params', value: evidence.paramsSummary),
@@ -22882,7 +25140,7 @@ final List<_CapabilityLayer> _capabilityLayers = [
   _CapabilityLayer(
     name: 'AI Core',
     subtitle:
-        'Model gateway, multimodal input, local AI, API operations, and prompt templates.',
+        'Model gateway, multimodal input, API operations, and prompt templates.',
     icon: Icons.auto_awesome_outlined,
     color: _mint,
     capabilities: [
@@ -22942,30 +25200,12 @@ final List<_CapabilityLayer> _capabilityLayers = [
         ],
         primaryAction: _ModuleAction.apiConfig,
       ),
-      _Capability(
-        title: 'Local AI',
-        subtitle:
-            'On-device inference surface for offline or privacy-sensitive coding workflows.',
-        icon: Icons.memory_outlined,
-        status: _CapabilityStatus.local,
-        services: [
-          'local_ai_service.dart',
-          'offline_manager.dart',
-          'device_perf_service.dart'
-        ],
-        actions: [
-          'Inspect device readiness',
-          'Prefer local model when offline',
-          'Monitor memory and heat limits'
-        ],
-        primaryAction: _ModuleAction.inspect,
-      ),
     ],
   ),
   _CapabilityLayer(
     name: 'Agents',
     subtitle:
-        'Supervisor-worker orchestration, ReAct actions, Deep Dive Solo, and self-use automation.',
+        'Supervisor-worker orchestration, ReAct actions, and Deep Dive Solo.',
     icon: Icons.psychology_alt_outlined,
     color: _violet,
     capabilities: [
@@ -23005,30 +25245,12 @@ final List<_CapabilityLayer> _capabilityLayers = [
         ],
         primaryAction: _ModuleAction.deepDive,
       ),
-      _Capability(
-        title: 'Self-Use Actions',
-        subtitle:
-            'App-level action registry for navigation, file, editor, terminal, and workflow automation.',
-        icon: Icons.touch_app_outlined,
-        status: _CapabilityStatus.preview,
-        services: [
-          'self_invocation_service.dart',
-          'self_action_registry.dart',
-          'navigation_controller.dart'
-        ],
-        actions: [
-          'Inspect 52 registered actions',
-          'Trigger UI-aware workflow',
-          'Audit action metadata'
-        ],
-        primaryAction: _ModuleAction.inspect,
-      ),
     ],
   ),
   _CapabilityLayer(
     name: 'Code',
     subtitle:
-        'Editor, LSP-like controls, code index, context injection, similarity, snippets, and terminal.',
+        'Editor, LSP-like controls, code index, context injection, similarity, and snippets.',
     icon: Icons.code_outlined,
     color: _cyan,
     capabilities: [
@@ -23082,51 +25304,15 @@ final List<_CapabilityLayer> _capabilityLayers = [
         actions: ['Save snippet', 'Prepare quick paste', 'Queue offline sync'],
         primaryAction: _ModuleAction.snippet,
       ),
-      _Capability(
-        title: 'Terminal',
-        subtitle:
-            'Local shell state, command history, autocomplete, and streaming output surfaces.',
-        icon: Icons.terminal_outlined,
-        status: _CapabilityStatus.preview,
-        services: [
-          'terminal_service.dart',
-          'terminal_controller.dart',
-          'terminal_provider.dart'
-        ],
-        actions: [
-          'Prepare command session',
-          'Inspect output stream',
-          'Bridge to SSH or Runtime'
-        ],
-        primaryAction: _ModuleAction.terminal,
-      ),
     ],
   ),
   _CapabilityLayer(
     name: 'Remote',
     subtitle:
-        'SSH, Runtime, build orchestration, previews, GitHub, Gist, Pages, and WeChat publishing.',
+        'Runtime, build orchestration, previews, GitHub, Gist, and Pages.',
     icon: Icons.cloud_sync_outlined,
     color: _amber,
     capabilities: [
-      _Capability(
-        title: 'Remote Dev',
-        subtitle:
-            'SSH, SFTP, port forwarding, Runtime commands, and mobile Linux workflows.',
-        icon: Icons.dns_outlined,
-        status: _CapabilityStatus.needsConfig,
-        services: [
-          'ssh_service.dart',
-          'termux_service.dart',
-          'ssh_provider.dart'
-        ],
-        actions: [
-          'Attach host',
-          'Run remote command',
-          'Sync files through SFTP'
-        ],
-        primaryAction: _ModuleAction.terminal,
-      ),
       _Capability(
         title: 'Build Orchestrator',
         subtitle:
@@ -23164,24 +25350,6 @@ final List<_CapabilityLayer> _capabilityLayers = [
           'Publish Gist or Pages site'
         ],
         primaryAction: _ModuleAction.project,
-      ),
-      _Capability(
-        title: 'WeChat Publish',
-        subtitle:
-            'Mini-program upload and release pipeline surfaced beside GitHub and build flows.',
-        icon: Icons.send_to_mobile_outlined,
-        status: _CapabilityStatus.preview,
-        services: [
-          'wechat_publish_service.dart',
-          'build_orchestrator.dart',
-          'logger_service.dart'
-        ],
-        actions: [
-          'Prepare upload',
-          'Validate project metadata',
-          'Track publish log'
-        ],
-        primaryAction: _ModuleAction.build,
       ),
     ],
   ),
@@ -23346,7 +25514,7 @@ final List<_CapabilityLayer> _capabilityLayers = [
         services: [
           'skill_manager_service.dart',
           'remote_skill_service.dart',
-          'self_action_registry.dart'
+          'agent_action_system.dart'
         ],
         actions: [
           'Import skill from GitHub',
@@ -23418,51 +25586,6 @@ final List<_CapabilityLayer> _capabilityLayers = [
           'Tune interaction density'
         ],
         primaryAction: _ModuleAction.inspect,
-      ),
-    ],
-  ),
-  _CapabilityLayer(
-    name: 'Team',
-    subtitle:
-        'Team members, shared knowledge, collaboration surfaces, and foreground execution.',
-    icon: Icons.groups_outlined,
-    color: _amber,
-    capabilities: [
-      _Capability(
-        title: 'Team Hub',
-        subtitle:
-            'Members, permissions, shared projects, knowledge, and collaborative task views.',
-        icon: Icons.groups_outlined,
-        status: _CapabilityStatus.preview,
-        services: [
-          'team_service.dart',
-          'team_provider.dart',
-          'team_knowledge_screen.dart'
-        ],
-        actions: [
-          'Inspect members',
-          'Share project knowledge',
-          'Prepare collaboration backend endpoint'
-        ],
-        primaryAction: _ModuleAction.inspect,
-      ),
-      _Capability(
-        title: 'Foreground Runs',
-        subtitle:
-            'Keep Deep Dive and long-running build tasks visible during background execution.',
-        icon: Icons.notifications_active_outlined,
-        status: _CapabilityStatus.preview,
-        services: [
-          'foreground_service.dart',
-          'notification_manager.dart',
-          'deep_dive_task_manager.dart'
-        ],
-        actions: [
-          'Publish progress notification',
-          'Keep background task alive',
-          'Resume from notification tap'
-        ],
-        primaryAction: _ModuleAction.deepDive,
       ),
     ],
   ),

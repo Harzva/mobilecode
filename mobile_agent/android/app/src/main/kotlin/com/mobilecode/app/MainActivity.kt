@@ -10,6 +10,8 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import android.provider.Settings
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -19,6 +21,12 @@ import java.util.Locale
 class MainActivity : FlutterActivity() {
     private var pendingInitialDeepLink: String? = null
     private var pendingSharedIntent: Intent? = null
+    private val linuxSandboxRunner: LinuxSandboxRunner by lazy {
+        LinuxSandboxRunner(this)
+    }
+    private val htmlRenderRunner: HtmlRenderRunner by lazy {
+        HtmlRenderRunner(this)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -36,7 +44,83 @@ class MainActivity : FlutterActivity() {
                     "getDeviceTelemetry" -> result.success(deviceTelemetry())
                     "isPackageInstalled" -> result.success(isPackageInstalled(call.argument<String>("packageName")))
                     "launchPackage" -> result.success(launchPackage(call.argument<String>("packageName")))
-                    "startHelperService" -> result.success(false)
+                    "rootProbe" -> result.success(rootProbe())
+                    "startHelperService" -> {
+                        val authToken = call.argument<String>("authToken") ?: ""
+                        result.success(startHelperService(authToken))
+                    }
+                    "stopHelperService" -> {
+                        stopService(
+                            Intent(this, MobileCodeHelperService::class.java)
+                                .setAction(MobileCodeHelperService.ACTION_STOP)
+                        )
+                        result.success(true)
+                    }
+                    "helperServiceStatus" -> result.success(MobileCodeHelperService.status())
+                    "linuxSandboxStatus" -> result.success(linuxSandboxRunner.status())
+                    "linuxSandboxSetup" -> runLinuxSandboxAsync(result) {
+                        @Suppress("UNCHECKED_CAST")
+                        val manifest = call.argument<Map<String, Any?>>("manifest") ?: emptyMap()
+                        linuxSandboxRunner.setup(manifest)
+                    }
+                    "linuxSandboxReset" -> runLinuxSandboxAsync(result) {
+                        linuxSandboxRunner.reset()
+                    }
+                    "linuxSandboxRunTypedTask" -> runLinuxSandboxAsync(result) {
+                        val taskKind = call.argument<String>("taskKind") ?: ""
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.argument<Map<String, Any?>>("payload") ?: emptyMap()
+                        linuxSandboxRunner.runTypedTask(taskKind, payload)
+                    }
+                    "renderPng" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPng(payload, result)
+                    }
+                    "renderPdf" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPdf(payload, result)
+                    }
+                    "getPhoneUseAccessibilityStatus" -> result.success(PhoneUseAccessibilityService.status(this))
+                    "openPhoneUseAccessibilitySettings" -> result.success(openPhoneUseAccessibilitySettings())
+                    "openAppSettings" -> result.success(openAppSettings())
+                    "openBatteryOptimizationSettings" -> result.success(openBatteryOptimizationSettings())
+                    "runPhoneUseDryProbe" -> result.success(PhoneUseAccessibilityService.dryProbe(this))
+                    "markPhoneUseRecoveryRequested" ->
+                        result.success(PhoneUseAccessibilityService.markRecoveryRequested(this))
+                    "capturePhoneUseScreenshot" ->
+                        PhoneUseAccessibilityService.captureScreenshot(
+                            this,
+                            call.argument<Boolean>("approved") == true,
+                            call.argument<Boolean>("sensitiveFlow") == true,
+                        ) { screenshot ->
+                            result.success(screenshot)
+                        }
+                    "performPhoneUseAction" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val action = call.argument<Map<String, Any?>>("action") ?: emptyMap()
+                        result.success(PhoneUseAccessibilityService.performPhoneUseAction(this, action))
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // Keep the renderer channel separate from general system tools so the
+        // Flutter provider has the same contract on Android and iOS.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "mobilecode/html_renderer")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "renderPng" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPng(payload, result)
+                    }
+                    "renderPdf" -> {
+                        @Suppress("UNCHECKED_CAST")
+                        val payload = call.arguments as? Map<String, Any?> ?: emptyMap()
+                        htmlRenderRunner.renderPdf(payload, result)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -177,6 +261,115 @@ class MainActivity : FlutterActivity() {
         return true
     }
 
+    private fun rootProbe(): Map<String, Any> {
+        val knownPaths = listOf(
+            "/system/bin/su",
+            "/system/xbin/su",
+            "/sbin/su",
+            "/su/bin/su",
+            "/data/adb/magisk/su",
+            "/debug_ramdisk/su"
+        )
+        val existingPath = knownPaths.firstOrNull { File(it).exists() && File(it).canExecute() }
+        if (existingPath != null) {
+            return mapOf(
+                "available" to true,
+                "detail" to "su binary visible at $existingPath. Grant root when Android prompts."
+            )
+        }
+        return try {
+            val process = ProcessBuilder("which", "su")
+                .redirectErrorStream(true)
+                .start()
+            val finished = process.waitFor(900, java.util.concurrent.TimeUnit.MILLISECONDS)
+            val output = process.inputStream.bufferedReader().readText().trim()
+            val ok = finished && process.exitValue() == 0 && output.isNotBlank()
+            mapOf(
+                "available" to ok,
+                "detail" to if (ok) "su found at $output. Grant root when Android prompts." else "No executable su was found from the app process."
+            )
+        } catch (_: Throwable) {
+            mapOf(
+                "available" to false,
+                "detail" to "Root probe failed; the app process cannot see su."
+            )
+        }
+    }
+
+    private fun openPhoneUseAccessibilitySettings(): Boolean {
+        return try {
+            val settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(settingsIntent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun openAppSettings(): Boolean {
+        return try {
+            val settingsIntent = Intent(
+                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:$packageName")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(settingsIntent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun openBatteryOptimizationSettings(): Boolean {
+        return try {
+            val settingsIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(settingsIntent)
+            true
+        } catch (_: Exception) {
+            openAppSettings()
+        }
+    }
+
+    private fun startHelperService(authToken: String): Boolean {
+        return try {
+            val serviceIntent = Intent(this, MobileCodeHelperService::class.java)
+            if (authToken.isNotBlank()) {
+                serviceIntent.putExtra(MobileCodeHelperService.EXTRA_AUTH_TOKEN, authToken)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+            Log.i(TAG, "MobileCode helper service start requested")
+            true
+        } catch (error: Throwable) {
+            Log.e(TAG, "Failed to request MobileCode helper service start", error)
+            false
+        }
+    }
+
+    private fun runLinuxSandboxAsync(
+        result: MethodChannel.Result,
+        block: () -> Map<String, Any?>,
+    ) {
+        Thread {
+            try {
+                result.success(block())
+            } catch (error: Throwable) {
+                result.success(
+                    mapOf(
+                        "success" to false,
+                        "status" to "failed",
+                        "failureKind" to "processFailed",
+                        "stderr" to (error.localizedMessage ?: error.javaClass.simpleName),
+                    )
+                )
+            }
+        }.start()
+    }
+
     private fun installerPackage(): String? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             packageManager.getInstallSourceInfo(packageName).installingPackageName
@@ -222,5 +415,9 @@ class MainActivity : FlutterActivity() {
             "timestamp" to System.currentTimeMillis(),
             "fallback" to false,
         )
+    }
+
+    companion object {
+        private const val TAG = "MobileCodeMain"
     }
 }

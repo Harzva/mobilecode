@@ -1,0 +1,2110 @@
+{
+  "benchmark": "MobileHarnessBench",
+  "run_id": "p60-p62-runtime-benchmark-upgrade",
+  "created_at": "2026-06-21T07:28:20Z",
+  "counts_as_experiment": false,
+  "counts_as_strategy_ablation_result": false,
+  "run_kind": "strategy_pilot_not_counted",
+  "schema_version": "0.1.0-p60-p62-runtime-benchmark-upgrade",
+  "strategy_family": "mixed_strategy_ablation",
+  "evidence_boundary": "pilot_not_counted:p60_p62_runtime_benchmark_upgrade_contract_not_counted",
+  "environment": {
+    "execution_tier": "P6.0-P6.2-contract-scaffold",
+    "mode": "strategy_pilot_not_counted",
+    "model_provider": "none",
+    "model_name": "none",
+    "runtime_backend": "contract_materializer_no_device_actions",
+    "credential_source": "none"
+  },
+  "mode": {
+    "name": "P6.0-P6.2 runtime benchmark upgrade",
+    "mode": "strategy_pilot_not_counted",
+    "non_counted_reason": "Contract/scaffold materialization only; no formal strategy benchmark."
+  },
+  "strategies": [
+    {
+      "strategy_id": "react_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "description": "One agent alternates think, act, and observe until completion or block."
+    },
+    {
+      "strategy_id": "plan_execute_verify_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "description": "One agent creates a short plan, executes a step, verifies it, and retries or replans as needed."
+    },
+    {
+      "strategy_id": "react_with_final_verifier",
+      "strategy_family": "single_agent_with_verifier",
+      "description": "A ReAct actor completes the task and a separate verifier checks the final artifact and trace."
+    },
+    {
+      "strategy_id": "supervisor_handoff_multi_agent",
+      "strategy_family": "multi_agent_handoff",
+      "description": "A Supervisor plans and delegates typed HandoffPacket work to specialist mobile coding roles."
+    },
+    {
+      "strategy_id": "swarm_router_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "description": "A router selects the best specialist swarm by task category, device/runtime profile, and load."
+    },
+    {
+      "strategy_id": "hierarchical_swarm_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "description": "A manager decomposes the task and delegates to workers, then reconciles judged outputs."
+    }
+  ],
+  "task_subset": {
+    "name": "p60-p62-runtime-benchmark-upgrade",
+    "task_count": 3,
+    "tasks": [
+      {
+        "task_id": "P60-BENCHMARK-TAXONOMY-001",
+        "task_category": "benchmark_taxonomy_contract",
+        "title": "P6.0 benchmark task taxonomy, runtime assertion matrix, and score dimensions",
+        "max_score": 100
+      },
+      {
+        "task_id": "P61-COMMUNICATION-SUBSTRATE-001",
+        "task_category": "communication_substrate_contract",
+        "title": "P6.1 mailbox, evidence ledger, runtime event bus, and memory proposal contracts",
+        "max_score": 100
+      },
+      {
+        "task_id": "P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+        "task_category": "runtime_verifier_scaffold_contract",
+        "title": "P6.2 runtime verifier JSON and non-counted run contract scaffold",
+        "max_score": 100
+      }
+    ]
+  },
+  "contract_summary": {
+    "taxonomy_categories": 8,
+    "runtime_assertions": [
+      "focus_state",
+      "keyboard",
+      "localStorage",
+      "logcat",
+      "screenshot",
+      "set_text",
+      "swipe",
+      "tap",
+      "ui_xml",
+      "webview_state"
+    ],
+    "score_dimensions": {
+      "quality": 25,
+      "runtime_correctness": 25,
+      "phone_use_ability": 15,
+      "recovery": 15,
+      "latency_token": 10,
+      "safety_privacy": 10
+    },
+    "communication_substrate_contracts": [
+      "EvidenceLedgerEntry",
+      "MailboxMessage",
+      "MemoryCommitProposal",
+      "RuntimeEvent"
+    ],
+    "runtime_verifier_upgrade": [
+      "ui_xml",
+      "screenshot",
+      "logcat",
+      "webview_state",
+      "focus_state",
+      "accessibility_state"
+    ]
+  },
+  "results": [
+    {
+      "strategy_id": "react_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "task_id": "P60-BENCHMARK-TAXONOMY-001",
+      "task_category": "benchmark_taxonomy_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_react_single_agent_P60-BENCHMARK-TAXONOMY-001",
+        "strategy_id": "react_single_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_react_single_agent_P60-BENCHMARK-TAXONOMY-001",
+            "summary": "P6.0 contract scaffold materialized for react_single_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/react_single_agent_P60-BENCHMARK-TAXONOMY-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "react_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "task_id": "P61-COMMUNICATION-SUBSTRATE-001",
+      "task_category": "communication_substrate_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_react_single_agent_P61-COMMUNICATION-SUBSTRATE-001",
+        "strategy_id": "react_single_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_react_single_agent_P61-COMMUNICATION-SUBSTRATE-001",
+            "summary": "P6.1 contract scaffold materialized for react_single_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/react_single_agent_P61-COMMUNICATION-SUBSTRATE-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "react_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "task_id": "P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+      "task_category": "runtime_verifier_scaffold_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_react_single_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+        "strategy_id": "react_single_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_react_single_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+            "summary": "P6.2 contract scaffold materialized for react_single_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/react_single_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "plan_execute_verify_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "task_id": "P60-BENCHMARK-TAXONOMY-001",
+      "task_category": "benchmark_taxonomy_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_plan_execute_verify_single_agent_P60-BENCHMARK-TAXONOMY-001",
+        "strategy_id": "plan_execute_verify_single_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_plan_execute_verify_single_agent_P60-BENCHMARK-TAXONOMY-001",
+            "summary": "P6.0 contract scaffold materialized for plan_execute_verify_single_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/plan_execute_verify_single_agent_P60-BENCHMARK-TAXONOMY-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "plan_execute_verify_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "task_id": "P61-COMMUNICATION-SUBSTRATE-001",
+      "task_category": "communication_substrate_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_plan_execute_verify_single_agent_P61-COMMUNICATION-SUBSTRATE-001",
+        "strategy_id": "plan_execute_verify_single_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_plan_execute_verify_single_agent_P61-COMMUNICATION-SUBSTRATE-001",
+            "summary": "P6.1 contract scaffold materialized for plan_execute_verify_single_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/plan_execute_verify_single_agent_P61-COMMUNICATION-SUBSTRATE-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "plan_execute_verify_single_agent",
+      "strategy_family": "single_agent_reasoning",
+      "task_id": "P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+      "task_category": "runtime_verifier_scaffold_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_plan_execute_verify_single_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+        "strategy_id": "plan_execute_verify_single_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_plan_execute_verify_single_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+            "summary": "P6.2 contract scaffold materialized for plan_execute_verify_single_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/plan_execute_verify_single_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "react_with_final_verifier",
+      "strategy_family": "single_agent_with_verifier",
+      "task_id": "P60-BENCHMARK-TAXONOMY-001",
+      "task_category": "benchmark_taxonomy_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_react_with_final_verifier_P60-BENCHMARK-TAXONOMY-001",
+        "strategy_id": "react_with_final_verifier",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_react_with_final_verifier_P60-BENCHMARK-TAXONOMY-001",
+            "summary": "P6.0 contract scaffold materialized for react_with_final_verifier.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/react_with_final_verifier_P60-BENCHMARK-TAXONOMY-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "react_with_final_verifier",
+      "strategy_family": "single_agent_with_verifier",
+      "task_id": "P61-COMMUNICATION-SUBSTRATE-001",
+      "task_category": "communication_substrate_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_react_with_final_verifier_P61-COMMUNICATION-SUBSTRATE-001",
+        "strategy_id": "react_with_final_verifier",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_react_with_final_verifier_P61-COMMUNICATION-SUBSTRATE-001",
+            "summary": "P6.1 contract scaffold materialized for react_with_final_verifier.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/react_with_final_verifier_P61-COMMUNICATION-SUBSTRATE-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "react_with_final_verifier",
+      "strategy_family": "single_agent_with_verifier",
+      "task_id": "P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+      "task_category": "runtime_verifier_scaffold_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_react_with_final_verifier_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+        "strategy_id": "react_with_final_verifier",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_react_with_final_verifier_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+            "summary": "P6.2 contract scaffold materialized for react_with_final_verifier.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/react_with_final_verifier_P62-RUNTIME-VERIFIER-SCAFFOLD-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "supervisor_handoff_multi_agent",
+      "strategy_family": "multi_agent_handoff",
+      "task_id": "P60-BENCHMARK-TAXONOMY-001",
+      "task_category": "benchmark_taxonomy_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_supervisor_handoff_multi_agent_P60-BENCHMARK-TAXONOMY-001",
+        "strategy_id": "supervisor_handoff_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_supervisor_handoff_multi_agent_P60-BENCHMARK-TAXONOMY-001",
+            "summary": "P6.0 contract scaffold materialized for supervisor_handoff_multi_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/supervisor_handoff_multi_agent_P60-BENCHMARK-TAXONOMY-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "supervisor_handoff_multi_agent",
+      "strategy_family": "multi_agent_handoff",
+      "task_id": "P61-COMMUNICATION-SUBSTRATE-001",
+      "task_category": "communication_substrate_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_supervisor_handoff_multi_agent_P61-COMMUNICATION-SUBSTRATE-001",
+        "strategy_id": "supervisor_handoff_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_supervisor_handoff_multi_agent_P61-COMMUNICATION-SUBSTRATE-001",
+            "summary": "P6.1 contract scaffold materialized for supervisor_handoff_multi_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/supervisor_handoff_multi_agent_P61-COMMUNICATION-SUBSTRATE-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "supervisor_handoff_multi_agent",
+      "strategy_family": "multi_agent_handoff",
+      "task_id": "P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+      "task_category": "runtime_verifier_scaffold_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_supervisor_handoff_multi_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+        "strategy_id": "supervisor_handoff_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_supervisor_handoff_multi_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+            "summary": "P6.2 contract scaffold materialized for supervisor_handoff_multi_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/supervisor_handoff_multi_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "swarm_router_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "task_id": "P60-BENCHMARK-TAXONOMY-001",
+      "task_category": "benchmark_taxonomy_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_swarm_router_multi_agent_P60-BENCHMARK-TAXONOMY-001",
+        "strategy_id": "swarm_router_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_swarm_router_multi_agent_P60-BENCHMARK-TAXONOMY-001",
+            "summary": "P6.0 contract scaffold materialized for swarm_router_multi_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/swarm_router_multi_agent_P60-BENCHMARK-TAXONOMY-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "swarm_router_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "task_id": "P61-COMMUNICATION-SUBSTRATE-001",
+      "task_category": "communication_substrate_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_swarm_router_multi_agent_P61-COMMUNICATION-SUBSTRATE-001",
+        "strategy_id": "swarm_router_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_swarm_router_multi_agent_P61-COMMUNICATION-SUBSTRATE-001",
+            "summary": "P6.1 contract scaffold materialized for swarm_router_multi_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/swarm_router_multi_agent_P61-COMMUNICATION-SUBSTRATE-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "swarm_router_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "task_id": "P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+      "task_category": "runtime_verifier_scaffold_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_swarm_router_multi_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+        "strategy_id": "swarm_router_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_swarm_router_multi_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+            "summary": "P6.2 contract scaffold materialized for swarm_router_multi_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/swarm_router_multi_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "hierarchical_swarm_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "task_id": "P60-BENCHMARK-TAXONOMY-001",
+      "task_category": "benchmark_taxonomy_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_hierarchical_swarm_multi_agent_P60-BENCHMARK-TAXONOMY-001",
+        "strategy_id": "hierarchical_swarm_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_hierarchical_swarm_multi_agent_P60-BENCHMARK-TAXONOMY-001",
+            "summary": "P6.0 contract scaffold materialized for hierarchical_swarm_multi_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/hierarchical_swarm_multi_agent_P60-BENCHMARK-TAXONOMY-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "hierarchical_swarm_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "task_id": "P61-COMMUNICATION-SUBSTRATE-001",
+      "task_category": "communication_substrate_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_hierarchical_swarm_multi_agent_P61-COMMUNICATION-SUBSTRATE-001",
+        "strategy_id": "hierarchical_swarm_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_hierarchical_swarm_multi_agent_P61-COMMUNICATION-SUBSTRATE-001",
+            "summary": "P6.1 contract scaffold materialized for hierarchical_swarm_multi_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/hierarchical_swarm_multi_agent_P61-COMMUNICATION-SUBSTRATE-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    },
+    {
+      "strategy_id": "hierarchical_swarm_multi_agent",
+      "strategy_family": "multi_agent_swarm",
+      "task_id": "P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+      "task_category": "runtime_verifier_scaffold_contract",
+      "status": "passed",
+      "strategy_trace": {
+        "trace_id": "strace_p60-p62-runtime-benchmark-upgrade_hierarchical_swarm_multi_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+        "strategy_id": "hierarchical_swarm_multi_agent",
+        "trace_status": "pilot_not_counted",
+        "events": [
+          {
+            "event_id": "evt_001",
+            "type": "contract_verify",
+            "role": "RuntimeBenchmarkContractVerifier",
+            "step_id": "step_001",
+            "started_at": "2026-06-21T07:28:20Z",
+            "ended_at": "2026-06-21T07:28:20Z",
+            "tool_name": "p60_p62_contract_materializer",
+            "evidence_id": "p60-p62-runtime-benchmark-upgrade_hierarchical_swarm_multi_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001",
+            "summary": "P6.2 contract scaffold materialized for hierarchical_swarm_multi_agent.",
+            "artifact_path": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+          }
+        ],
+        "handoff_count": 0,
+        "planning_revisions": 0,
+        "verification_failures_recovered": 0,
+        "failure_kind": null
+      },
+      "time_metrics": {
+        "planning_ms": 0,
+        "execution_ms": 0,
+        "verification_ms": 0,
+        "reporting_ms": 0,
+        "wall_ms": 0
+      },
+      "token_metrics": {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_tool_io_tokens": 0,
+        "total_tokens": 0,
+        "estimated_cost_usd": 0,
+        "tokens_per_verified_success": 0
+      },
+      "effect_metrics": {
+        "task_success": 1.0,
+        "verified_success": 1.0,
+        "trace_completeness": 1.0,
+        "artifact_availability": 1.0,
+        "recovery_rate": null,
+        "human_intervention_count": 0,
+        "handoff_success_rate": null,
+        "memory_reuse_score": null,
+        "steps_to_completion": 1
+      },
+      "evidence": {
+        "boundary": "pilot_not_counted",
+        "artifact_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/p60-p62-runtime-benchmark-contract.md",
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+        ],
+        "trace_paths": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/strategy_traces/hierarchical_swarm_multi_agent_P62-RUNTIME-VERIFIER-SCAFFOLD-001.json"
+        ],
+        "screenshot_paths": [],
+        "logs": [
+          "P6.0-P6.2 runtime benchmark upgrade contract materialized.",
+          "Run is non-counted and must not be cited as a formal benchmark.",
+          "No model callback, device action, raw transcript, or secret material was used."
+        ],
+        "verifier_outputs": [
+          "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+        ],
+        "transcript_paths": [],
+        "human_intervention_notes": []
+      },
+      "pilot_verifier": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "verifier_output": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_verifier.json"
+      },
+      "pilot_score": {
+        "score_boundary": "pilot_p60_p62_contract_score_not_counted",
+        "total_score": 100.0,
+        "max_score": 100,
+        "checks": {
+          "contract_doc_exists": true,
+          "taxonomy_has_required_categories": true,
+          "runtime_assertion_matrix_complete": true,
+          "score_dimensions_complete": true,
+          "score_weights_sum_100": true,
+          "mailbox_contract_present": true,
+          "evidence_ledger_contract_present": true,
+          "runtime_event_bus_contract_present": true,
+          "memory_commit_proposal_contract_present": true,
+          "role_contracts_cover_six_roles": true,
+          "runtime_verifier_json_contract_present": true,
+          "non_counted_run_contract_present": true,
+          "android_webview_upgrade_assertions_present": true,
+          "next_android_real_device_lane_recommendation_present": true,
+          "non_counted_boundary": true
+        },
+        "blocked_reason": null
+      },
+      "contract_refs": {
+        "task_taxonomy": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "communication_substrate": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json",
+        "runtime_verifier_scaffold": "docs/mobile-harness-benchmark/strategy-ablation/runs/p60-p62-runtime-benchmark-upgrade/runtime_benchmark_upgrade_contract.json"
+      },
+      "counts_as_strategy_ablation_result": false
+    }
+  ],
+  "summary": {
+    "total": 18,
+    "strategies": 6,
+    "tasks_per_strategy": 3,
+    "passed": 18,
+    "warning": 0,
+    "failed": 0,
+    "blocked": 0,
+    "average_pilot_score_not_counted": 100.0
+  },
+  "score_boundary": "pilot_p60_p62_contract_score_not_counted"
+}

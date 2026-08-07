@@ -4,7 +4,7 @@ MobileCode Helper daemon prototype.
 
 Runs a localhost HTTP server that implements the MobileCode Helper Runtime
 Protocol v1. It is intentionally small and dependency-free so it can run inside
-Termux while the real Helper APK is being built.
+a local development shell while the built-in Helper APK path is being built.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import queue
+import re
 import shlex
 import signal
 import subprocess
@@ -92,6 +93,12 @@ TYPED_TASK_KINDS = {
     "flutter_analyze",
     "flutter_test",
     "npm_build",
+    "copilot_chat",
+    "hyperframes_cli_probe",
+    "hyperframes_lint",
+    "hyperframes_check",
+    "hyperframes_compositions",
+    "hyperframes_render",
 }
 BLOCKED_TYPED_ARG_KEYS = {"command", "cmd", "shell"}
 
@@ -490,6 +497,53 @@ def bounded_int(raw: Any, default: int, minimum: int, maximum: int) -> int:
     return max(minimum, min(maximum, value))
 
 
+def hyperframes_command_args(
+    task_kind: str,
+    typed_args: dict[str, Any],
+    cwd: Path,
+) -> list[str]:
+    if task_kind == "hyperframes_cli_probe":
+        return ["hyperframes", "--version"]
+    if task_kind == "hyperframes_lint":
+        return ["hyperframes", "lint", ".", "--json"]
+    if task_kind == "hyperframes_compositions":
+        return ["hyperframes", "compositions", ".", "--json"]
+    if task_kind == "hyperframes_check":
+        args = ["hyperframes", "check", ".", "--json"]
+        if typed_args.get("snapshots") is True:
+            args.append("--snapshots")
+        if typed_args.get("strict") is True:
+            args.append("--strict")
+        if typed_args.get("noContrast") is True:
+            args.append("--no-contrast")
+        if typed_args.get("frameCheck") is True:
+            args.append("--frame-check")
+        if typed_args.get("samples") is not None:
+            args.extend(["--samples", str(bounded_int(typed_args.get("samples"), 1, 1, 100))])
+        return args
+    if task_kind == "hyperframes_render":
+        output = str(typed_args.get("output") or "output.mp4").strip()
+        if (
+            not output
+            or output.startswith("/")
+            or ".." in Path(output).parts
+            or not re.fullmatch(r"[A-Za-z0-9._/-]+", output)
+            or not output.lower().endswith(".mp4")
+        ):
+            raise ValueError("HyperFrames output must be a workspace-relative .mp4 path.")
+        resolved_output = (cwd / output).resolve()
+        if cwd not in resolved_output.parents and resolved_output != cwd:
+            raise ValueError("HyperFrames output is outside the task path.")
+        args = ["hyperframes", "render", ".", "-o", output]
+        composition = str(typed_args.get("composition") or "").strip()
+        if composition:
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+", composition):
+                raise ValueError("HyperFrames composition must be a simple identifier.")
+            args.extend(["-c", composition])
+        return args
+    raise ValueError(f"Unsupported HyperFrames task: {task_kind}")
+
+
 def validate_typed_file(cwd: Path, target: str) -> str:
     if not target:
         return json.dumps({"valid": True, "cwd": str(cwd), "note": "No file target supplied; workspace path is reachable."})
@@ -820,8 +874,36 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
             return
         task_id = str(payload.get("taskId") or f"typed-{int(time.time() * 1000)}-{uuid.uuid4().hex[:8]}")
 
+        if task_kind == "hyperframes_render" and payload.get("approved") is not True:
+            self.send_json(
+                {
+                    "success": False,
+                    "taskId": task_id,
+                    "taskKind": task_kind,
+                    "status": "failed",
+                    "stdout": "",
+                    "stderr": "HyperFrames render requires explicit user approval because it writes an MP4 artifact.",
+                    "exitCode": 126,
+                    "durationMs": 0,
+                    "failureKind": "approvalRequired",
+                }
+            )
+            return
+
         if task_kind in {"project_check", "validate", "build_preview"}:
             self.run_builtin_typed_task(task_id, task_kind, cwd, typed_args, max_output_bytes)
+            return
+        if task_kind == "copilot_chat":
+            self.run_copilot_chat_task(task_id, cwd, typed_args, timeout_ms, max_output_bytes)
+            return
+
+        if task_kind.startswith("hyperframes_"):
+            try:
+                args = hyperframes_command_args(task_kind, typed_args, cwd)
+            except ValueError as exc:
+                self.send_error_json(HTTPStatus.BAD_REQUEST, str(exc), "commandBlocked")
+                return
+            self.run_process_typed_task(task_id, task_kind, args, cwd, timeout_ms, max_output_bytes)
             return
 
         command_map = {
@@ -892,6 +974,161 @@ class MobileCodeHandler(BaseHTTPRequestHandler):
                 "status": status,
                 "stdout": truncate_text(stdout, max_output_bytes),
                 "stderr": truncate_text(stderr, max_output_bytes),
+                "exitCode": exit_code,
+                "durationMs": duration_ms,
+                "failureKind": snapshot.get("failureKind", "none"),
+            }
+        )
+
+    def run_copilot_chat_task(
+        self,
+        task_id: str,
+        cwd: Path,
+        typed_args: dict[str, Any],
+        timeout_ms: int,
+        max_output_bytes: int,
+    ) -> None:
+        command = "typed:copilot_chat"
+        task = self.state.begin_task(command, cwd)
+        task_id = str(task.get("id") or task_id)
+        started = time.monotonic()
+        bridge_cmd = os.environ.get("MOBILECODE_COPILOT_BRIDGE_CMD", "").strip()
+        if not bridge_cmd:
+            stderr = (
+                "MOBILECODE_COPILOT_BRIDGE_CMD is not configured. Install the official "
+                "GitHub Copilot SDK bridge in the built-in Helper or provider-native adapter path, "
+                "then point this env var at the development bridge."
+            )
+            self.state.append_log(task_id, "stderr: Copilot SDK bridge is not configured.")
+            self.state.finish_task(task_id, "failed", 127, int((time.monotonic() - started) * 1000), stderr)
+            self.send_json(
+                {
+                    "success": False,
+                    "taskId": task_id,
+                    "taskKind": "copilot_chat",
+                    "status": "failed",
+                    "stdout": "",
+                    "stderr": truncate_text(stderr, max_output_bytes),
+                    "exitCode": 127,
+                    "durationMs": int((time.monotonic() - started) * 1000),
+                    "failureKind": "dependencyMissing",
+                }
+            )
+            return
+
+        model_id = str(typed_args.get("modelId") or "copilot-chat")
+        messages_json = str(typed_args.get("messagesJson") or "[]")
+        github_token = str(typed_args.get("githubToken") or "")
+        if not github_token:
+            stderr = "GitHub credential is missing; connect GitHub before using Copilot forwarding."
+            self.state.append_log(task_id, "stderr: GitHub credential is missing.")
+            self.state.finish_task(task_id, "failed", 1, int((time.monotonic() - started) * 1000), stderr)
+            self.send_json(
+                {
+                    "success": False,
+                    "taskId": task_id,
+                    "taskKind": "copilot_chat",
+                    "status": "failed",
+                    "stdout": "",
+                    "stderr": stderr,
+                    "exitCode": 1,
+                    "durationMs": int((time.monotonic() - started) * 1000),
+                    "failureKind": "credentialMissing",
+                }
+            )
+            return
+
+        try:
+            messages = json.loads(messages_json)
+            if not isinstance(messages, list):
+                raise ValueError("messagesJson must decode to a list")
+        except Exception as exc:
+            stderr = f"Invalid messagesJson: {exc}"
+            self.state.append_log(task_id, f"stderr: {stderr}")
+            self.state.finish_task(task_id, "failed", 1, int((time.monotonic() - started) * 1000), stderr)
+            self.send_json(
+                {
+                    "success": False,
+                    "taskId": task_id,
+                    "taskKind": "copilot_chat",
+                    "status": "failed",
+                    "stdout": "",
+                    "stderr": stderr,
+                    "exitCode": 1,
+                    "durationMs": int((time.monotonic() - started) * 1000),
+                    "failureKind": "invalidPayload",
+                }
+            )
+            return
+
+        request = {
+            "modelId": model_id,
+            "messages": messages,
+            "temperature": typed_args.get("temperature"),
+            "maxTokens": typed_args.get("maxTokens"),
+        }
+        env = os.environ.copy()
+        env["GITHUB_TOKEN"] = github_token
+        env["MOBILECODE_MODEL_ID"] = model_id
+        try:
+            process = subprocess.Popen(
+                shlex.split(bridge_cmd),
+                cwd=str(cwd),
+                env=env,
+                text=True,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+        except (OSError, ValueError) as exc:
+            stderr = f"Copilot SDK bridge could not be started: {exc}"
+            self.state.append_log(task_id, "stderr: Copilot SDK bridge could not be started.")
+            duration_ms = int((time.monotonic() - started) * 1000)
+            self.state.finish_task(task_id, "failed", 127, duration_ms, stderr)
+            self.send_json(
+                {
+                    "success": False,
+                    "taskId": task_id,
+                    "taskKind": "copilot_chat",
+                    "status": "failed",
+                    "stdout": "",
+                    "stderr": truncate_text(stderr, max_output_bytes),
+                    "exitCode": 127,
+                    "durationMs": duration_ms,
+                    "failureKind": "dependencyMissing",
+                }
+            )
+            return
+        self.state.register_process(task_id, process)
+        timed_out = False
+        try:
+            stdout, stderr = process.communicate(
+                input=json.dumps(request, ensure_ascii=False),
+                timeout=max(timeout_ms / 1000, 1),
+            )
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            process.kill()
+            stdout, stderr = process.communicate()
+            stderr = (stderr or "") + f"\nCopilot bridge timed out after {timeout_ms}ms.\n"
+        self.state.clear_process(task_id, process)
+        duration_ms = int((time.monotonic() - started) * 1000)
+        exit_code = 124 if timed_out else process.returncode
+        for line in (stdout or "").splitlines():
+            self.state.append_log(task_id, f"stdout: {line}")
+        for line in (stderr or "").splitlines():
+            self.state.append_log(task_id, f"stderr: {line}")
+        status = "timedOut" if timed_out else "succeeded" if exit_code == 0 else "failed"
+        self.state.finish_task(task_id, status, exit_code, duration_ms, (stderr or "").strip() or None)
+        snapshot = self.state.find_task(task_id) or {}
+        self.send_json(
+            {
+                "success": status == "succeeded",
+                "taskId": task_id,
+                "taskKind": "copilot_chat",
+                "status": status,
+                "stdout": truncate_text(stdout or "", max_output_bytes),
+                "stderr": truncate_text(stderr or "", max_output_bytes),
                 "exitCode": exit_code,
                 "durationMs": duration_ms,
                 "failureKind": snapshot.get("failureKind", "none"),

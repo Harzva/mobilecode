@@ -855,9 +855,11 @@ class _GistDetailScreenState extends State<_GistDetailScreen> {
                         decoration: BoxDecoration(
                           color: isSelected ? AppTheme.primaryMuted : Colors.transparent,
                           borderRadius: BorderRadius.circular(8),
-                          border: isSelected
-                              ? const BorderSide(color: AppTheme.primary)
-                              : BorderSide(color: AppTheme.border.withOpacity(0.5)),
+                          border: Border.all(
+                            color: isSelected
+                                ? AppTheme.primary
+                                : AppTheme.border.withOpacity(0.5),
+                          ),
                         ),
                         child: Text(
                           name,

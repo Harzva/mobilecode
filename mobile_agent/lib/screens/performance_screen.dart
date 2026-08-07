@@ -1101,5 +1101,6 @@ final math = const _Math();
 
 class _Math {
   const _Math();
+  double get pi => 3.1415926535897932;
   double min(double a, double b) => a < b ? a : b;
 }

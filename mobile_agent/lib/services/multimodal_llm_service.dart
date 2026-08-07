@@ -8,7 +8,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import '../models/api_config.dart';
-import '../models/chat_message.dart';
 import 'api_service.dart';
 import 'llm_service.dart';
 
@@ -224,7 +223,7 @@ class MultimodalLLMService {
       'max_tokens': 4096, 'temperature': 0.2,
     };
     final response = await _api.post('/v1/chat/completions', data: body);
-    return _extractOpenAIContent(response.data);
+    return _extractOpenAIContent(response.data as Map<String, dynamic>);
   }
 
   Stream<String> _openAIStreamAnalyzeImage(String prompt, String imageBase64, ApiConfig config) async* {
@@ -266,7 +265,7 @@ class MultimodalLLMService {
       ]}],
     };
     final response = await _api.post('/v1/messages', data: body);
-    return _extractClaudeContent(response.data);
+    return _extractClaudeContent(response.data as Map<String, dynamic>);
   }
 
   Stream<String> _claudeStreamAnalyzeImage(String prompt, String imageBase64, ApiConfig config) async* {
@@ -307,7 +306,7 @@ class MultimodalLLMService {
     final url = '/${config.model}:generateContent?key=${config.apiKey}';
     _api.setBaseUrl(config.baseUrl);
     final response = await _api.post(url, data: body);
-    return _extractGeminiContent(response.data);
+    return _extractGeminiContent(response.data as Map<String, dynamic>);
   }
 
   Stream<String> _geminiStreamAnalyzeImage(String prompt, String imageBase64, ApiConfig config) async* {
@@ -385,8 +384,10 @@ class MultimodalLLMService {
 
   List<CodeBlock> extractCodeBlocks(String response) {
     final blocks = <CodeBlock>[];
-    final regex = RegExp(r'```(\w+)(?::([^
-]+))?\n([\s\S]*?)\n?```', multiLine: true);
+    final regex = RegExp(
+      r'```(\w+)(?::([^\n]+))?\n([\s\S]*?)\n?```',
+      multiLine: true,
+    );
     for (final match in regex.allMatches(response)) {
       final lang = match.group(1) ?? 'text';
       final path = match.group(2);

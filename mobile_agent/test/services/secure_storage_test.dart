@@ -44,7 +44,7 @@ class MockSecureStorage {
     if (key.isEmpty) throw ArgumentError('Key cannot be empty');
     if (_biometricEnabled && !_biometricAuthenticated) {
       _failedAuthAttempts++;
-      if (_failedAuthAttempts >= _maxFailedAttempts) {
+      if (_failedAuthAttempts > _maxFailedAttempts) {
         throw SecurityException('Too many failed authentication attempts');
       }
       return null;
@@ -230,7 +230,7 @@ class SecurityUtils {
   static bool containsPotentialSecret(String text) {
     final patterns = [
       RegExp(r'sk-[a-zA-Z0-9]{20,}'),
-      RegExp(r'ghp_[a-zA-Z0-9]{30,}'),
+      RegExp(r'ghp_[a-zA-Z0-9]{20,}'),
       RegExp(r'AKIA[0-9A-Z]{16}'),
       RegExp(r'[a-f0-9]{32,}'), // Hex tokens
     ];
@@ -248,7 +248,7 @@ class SecurityUtils {
       (m) => SecurityUtils.maskApiKey(m.group(0)!),
     );
     sanitized = sanitized.replaceAllMapped(
-      RegExp(r'ghp_[a-zA-Z0-9]{30,}'),
+      RegExp(r'ghp_[a-zA-Z0-9]{20,}'),
       (m) => SecurityUtils.maskApiKey(m.group(0)!),
     );
 
@@ -260,7 +260,8 @@ class SecurityUtils {
     var hash = 0x811c9dc5;
     for (var i = 0; i < input.length; i++) {
       hash ^= input.codeUnitAt(i);
-      hash += (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
+      hash +=
+          (hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24);
     }
     return hash & 0x7fffffff;
   }
@@ -467,9 +468,12 @@ void main() {
       await storage.storeApiKey(provider: 'claude', apiKey: 'sk-claude-456');
       await storage.storeApiKey(provider: 'gemini', apiKey: 'gemini-789');
 
-      expect(await storage.retrieveApiKey(provider: 'openai'), equals('sk-openai-123'));
-      expect(await storage.retrieveApiKey(provider: 'claude'), equals('sk-claude-456'));
-      expect(await storage.retrieveApiKey(provider: 'gemini'), equals('gemini-789'));
+      expect(await storage.retrieveApiKey(provider: 'openai'),
+          equals('sk-openai-123'));
+      expect(await storage.retrieveApiKey(provider: 'claude'),
+          equals('sk-claude-456'));
+      expect(await storage.retrieveApiKey(provider: 'gemini'),
+          equals('gemini-789'));
     });
 
     // ── Biometric Authentication ────────────────────────────────────
@@ -659,21 +663,24 @@ void main() {
     // ── Secret Detection ────────────────────────────────────────────
     test('containsPotentialSecret detects OpenAI key', () {
       expect(
-        SecurityUtils.containsPotentialSecret('My key is sk-abc1234567890123456789'),
+        SecurityUtils.containsPotentialSecret(
+            'My key is sk-abc1234567890123456789'),
         isTrue,
       );
     });
 
     test('containsPotentialSecret detects GitHub token', () {
       expect(
-        SecurityUtils.containsPotentialSecret('token: ghp_abcdefghijklmnopqrstuv'),
+        SecurityUtils.containsPotentialSecret(
+            'token: ghp_abcdefghijklmnopqrstuv'),
         isTrue,
       );
     });
 
     test('containsPotentialSecret returns false for clean text', () {
       expect(
-        SecurityUtils.containsPotentialSecret('This is just normal text about programming'),
+        SecurityUtils.containsPotentialSecret(
+            'This is just normal text about programming'),
         isFalse,
       );
     });
@@ -694,11 +701,13 @@ void main() {
 
     // ── Password Strength ───────────────────────────────────────────
     test('checkPasswordStrength returns empty for empty string', () {
-      expect(SecurityUtils.checkPasswordStrength(''), equals(PasswordStrength.empty));
+      expect(SecurityUtils.checkPasswordStrength(''),
+          equals(PasswordStrength.empty));
     });
 
     test('checkPasswordStrength returns weak for short password', () {
-      expect(SecurityUtils.checkPasswordStrength('abc'), equals(PasswordStrength.weak));
+      expect(SecurityUtils.checkPasswordStrength('abc'),
+          equals(PasswordStrength.weak));
     });
 
     test('checkPasswordStrength returns medium for moderate password', () {
@@ -766,7 +775,8 @@ void main() {
       await clipboard.copy('expires-soon');
       // Simulate time passing beyond the 30s clear delay
       // In the mock, we manipulate the internal state to test this
-      clipboard._copiedAt = DateTime.now().subtract(const Duration(seconds: 31));
+      clipboard._copiedAt =
+          DateTime.now().subtract(const Duration(seconds: 31));
       final pasted = await clipboard.paste();
       expect(pasted, isNull);
     });
@@ -802,7 +812,8 @@ void main() {
 
     test('full API key lifecycle: store, retrieve, delete', () async {
       // Store
-      await storage.storeApiKey(provider: 'openai', apiKey: 'sk-proj-abc123456789');
+      await storage.storeApiKey(
+          provider: 'openai', apiKey: 'sk-proj-abc123456789');
       expect(await storage.retrieveApiKey(provider: 'openai'), isNotNull);
 
       // Retrieve

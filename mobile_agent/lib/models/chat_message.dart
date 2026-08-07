@@ -22,6 +22,9 @@ enum MessageType {
   }
 }
 
+/// Legacy chat role names used by older providers.
+enum MessageRole { user, assistant, system }
+
 /// {@template chat_message}
 /// Represents a single message in the AI chat conversation.
 ///
@@ -67,8 +70,17 @@ class ChatMessage {
   /// Programming language for code type messages (e.g., 'dart', 'python')
   final String? language;
 
+  /// Optional code context attached to this message.
+  final String? codeContext;
+
+  /// Semantic role used by LLM providers.
+  final MessageRole role;
+
   /// Whether the message is still being generated (streaming)
   final bool isStreaming;
+
+  /// Whether generation is complete.
+  final bool isComplete;
 
   /// Creates a [ChatMessage] with all fields specified.
   const ChatMessage({
@@ -78,7 +90,10 @@ class ChatMessage {
     required this.timestamp,
     required this.type,
     this.language,
+    this.codeContext,
+    this.role = MessageRole.assistant,
     this.isStreaming = false,
+    this.isComplete = true,
   });
 
   // ── Factory Constructors ──────────────────────────────────────────────
@@ -86,6 +101,8 @@ class ChatMessage {
   /// Creates a user message.
   factory ChatMessage.user(
     String content, {
+    String? codeContext,
+    String? language,
     DateTime? timestamp,
   }) {
     return ChatMessage(
@@ -94,6 +111,21 @@ class ChatMessage {
       isUser: true,
       timestamp: timestamp ?? DateTime.now(),
       type: MessageType.text,
+      language: language,
+      codeContext: codeContext,
+      role: MessageRole.user,
+    );
+  }
+
+  /// Creates a system message.
+  factory ChatMessage.system(String content, {DateTime? timestamp}) {
+    return ChatMessage(
+      id: const Uuid().v4(),
+      content: content,
+      isUser: false,
+      timestamp: timestamp ?? DateTime.now(),
+      type: MessageType.text,
+      role: MessageRole.system,
     );
   }
 
@@ -102,6 +134,7 @@ class ChatMessage {
     String content, {
     DateTime? timestamp,
     bool isStreaming = false,
+    bool isComplete = true,
   }) {
     return ChatMessage(
       id: const Uuid().v4(),
@@ -109,7 +142,9 @@ class ChatMessage {
       isUser: false,
       timestamp: timestamp ?? DateTime.now(),
       type: MessageType.text,
+      role: MessageRole.assistant,
       isStreaming: isStreaming,
+      isComplete: isComplete,
     );
   }
 
@@ -119,6 +154,7 @@ class ChatMessage {
     String? language,
     DateTime? timestamp,
     bool isStreaming = false,
+    bool isComplete = true,
   }) {
     return ChatMessage(
       id: const Uuid().v4(),
@@ -127,7 +163,9 @@ class ChatMessage {
       timestamp: timestamp ?? DateTime.now(),
       type: MessageType.code,
       language: language,
+      role: MessageRole.assistant,
       isStreaming: isStreaming,
+      isComplete: isComplete,
     );
   }
 
@@ -142,6 +180,7 @@ class ChatMessage {
       isUser: false,
       timestamp: timestamp ?? DateTime.now(),
       type: MessageType.error,
+      role: MessageRole.assistant,
     );
   }
 
@@ -153,7 +192,9 @@ class ChatMessage {
       isUser: false,
       timestamp: DateTime.now(),
       type: MessageType.text,
+      role: MessageRole.assistant,
       isStreaming: true,
+      isComplete: false,
     );
   }
 
@@ -168,7 +209,15 @@ class ChatMessage {
       timestamp: DateTime.parse(json['timestamp'] as String),
       type: MessageType.fromString(json['type'] as String? ?? 'text'),
       language: json['language'] as String?,
+      codeContext: json['codeContext'] as String?,
+      role: MessageRole.values.firstWhere(
+        (role) => role.name == (json['role'] as String?),
+        orElse: () => (json['isUser'] as bool? ?? false)
+            ? MessageRole.user
+            : MessageRole.assistant,
+      ),
       isStreaming: json['isStreaming'] as bool? ?? false,
+      isComplete: json['isComplete'] as bool? ?? true,
     );
   }
 
@@ -181,7 +230,10 @@ class ChatMessage {
       'timestamp': timestamp.toIso8601String(),
       'type': type.name,
       if (language != null) 'language': language,
+      if (codeContext != null) 'codeContext': codeContext,
+      'role': role.name,
       'isStreaming': isStreaming,
+      'isComplete': isComplete,
     };
   }
 
@@ -195,7 +247,10 @@ class ChatMessage {
     DateTime? timestamp,
     MessageType? type,
     String? language,
+    String? codeContext,
+    MessageRole? role,
     bool? isStreaming,
+    bool? isComplete,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -204,7 +259,10 @@ class ChatMessage {
       timestamp: timestamp ?? this.timestamp,
       type: type ?? this.type,
       language: language ?? this.language,
+      codeContext: codeContext ?? this.codeContext,
+      role: role ?? this.role,
       isStreaming: isStreaming ?? this.isStreaming,
+      isComplete: isComplete ?? this.isComplete,
     );
   }
 
@@ -265,7 +323,10 @@ class ChatMessage {
         other.timestamp == timestamp &&
         other.type == type &&
         other.language == language &&
-        other.isStreaming == isStreaming;
+        other.codeContext == codeContext &&
+        other.role == role &&
+        other.isStreaming == isStreaming &&
+        other.isComplete == isComplete;
   }
 
   @override
@@ -276,7 +337,10 @@ class ChatMessage {
         timestamp,
         type,
         language,
+        codeContext,
+        role,
         isStreaming,
+        isComplete,
       );
 
   @override

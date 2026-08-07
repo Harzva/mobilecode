@@ -564,7 +564,7 @@ class AgentNotifier extends StateNotifier<AgentState> {
     // Try to find JSON-like action descriptions in the response.
     // This is a best-effort parser for LLM output.
     final jsonPattern = RegExp(
-      r'\{\s*["\']?name["\']?\s*:\s*["\'](\w+)["\']',
+      r'''\{\s*["']?name["']?\s*:\s*["'](\w+)["']''',
       multiLine: true,
     );
 
@@ -600,7 +600,7 @@ class AgentNotifier extends StateNotifier<AgentState> {
 
     // Simple param extraction.
     final params = <String, dynamic>{};
-    final paramPattern = RegExp(r'["\'](\w+)["\']\s*:\s*["\']([^"\']+)["\']');
+    final paramPattern = RegExp(r'''["'](\w+)["']\s*:\s*["']([^"']+)["']''');
     for (final match in paramPattern.allMatches(jsonStr)) {
       final key = match.group(1);
       final value = match.group(2);

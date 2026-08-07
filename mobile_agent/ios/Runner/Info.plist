@@ -8,6 +8,19 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>MobileCode</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.mobilecode.app</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mobilecode</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -28,6 +41,11 @@
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>MobileCode uses the microphone for optional voice-driven coding prompts.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>MobileCode uses speech recognition for optional voice-driven coding prompts.</string>
 	<key>UIApplicationSceneManifest</key>

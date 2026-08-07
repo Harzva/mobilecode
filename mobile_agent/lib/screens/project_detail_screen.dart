@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../themes/app_theme.dart';
 import '../widgets/file_tree_widget.dart';
-import '../models/project_model.dart';
 import 'editor_screen.dart';
 
 /// Project detail screen with file tree sidebar and editor
@@ -185,7 +184,7 @@ class MobileAgentApp extends StatelessWidget {
   void _onFileSelected(FileNode node) {
     if (node.isDirectory) {
       setState(() {
-        node.isExpanded = !node.isExpanded;
+        _replaceNode(node, node.copyWith(isExpanded: !node.isExpanded));
       });
       // Update breadcrumb
       _updateBreadcrumb(node);
@@ -633,7 +632,7 @@ class MobileAgentApp extends StatelessWidget {
             onPressed: () {
               if (controller.text.isNotEmpty) {
                 setState(() {
-                  node.name = controller.text;
+                  _replaceNode(node, node.copyWith(name: controller.text));
                 });
               }
               Navigator.pop(context);
@@ -675,5 +674,20 @@ class MobileAgentApp extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _replaceNode(FileNode oldNode, FileNode newNode) {
+    List<FileNode> replaceIn(List<FileNode> nodes) {
+      return nodes.map((node) {
+        if (node.id == oldNode.id) return newNode;
+        if (node.children.isEmpty) return node;
+        return node.copyWith(children: replaceIn(node.children));
+      }).toList();
+    }
+
+    _fileTree = replaceIn(_fileTree);
+    if (_selectedFile?.id == oldNode.id) {
+      _selectedFile = newNode;
+    }
   }
 }

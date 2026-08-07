@@ -12,6 +12,7 @@ class GlassCardWidget extends StatefulWidget {
   final EdgeInsetsGeometry? margin;
   final double borderRadius;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final bool glowEffect;
   final List<Color>? glowColors;
   final double glowIntensity;
@@ -25,6 +26,7 @@ class GlassCardWidget extends StatefulWidget {
     this.margin,
     this.borderRadius = 16.0,
     this.onTap,
+    this.onLongPress,
     this.glowEffect = false,
     this.glowColors,
     this.glowIntensity = 0.1,
@@ -98,8 +100,8 @@ class _GlassCardWidgetState extends State<GlassCardWidget>
       child: widget.child,
     );
 
-    // Add interactivity if onTap is provided
-    if (widget.onTap != null) {
+    // Add interactivity if tap or long-press behavior is provided.
+    if (widget.onTap != null || widget.onLongPress != null) {
       card = MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
@@ -107,9 +109,10 @@ class _GlassCardWidgetState extends State<GlassCardWidget>
           onTapDown: (_) => setState(() => _isPressed = true),
           onTapUp: (_) {
             setState(() => _isPressed = false);
-            widget.onTap!();
+            widget.onTap?.call();
           },
           onTapCancel: () => setState(() => _isPressed = false),
+          onLongPress: widget.onLongPress,
           child: AnimatedContainer(
             duration: AppTheme.animFast,
             curve: Curves.easeInOut,

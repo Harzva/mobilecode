@@ -2,6 +2,13 @@ node_modules/
 dist/
 build/
 release/*.zip
+.DS_Store
+**/.DS_Store
+tmp/
+.tmp/
+**/.tmp/
+__pycache__/
+*.pyc
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
@@ -13,6 +20,7 @@ pubspec.lock
 android/key.properties
 *.jks
 *.keystore
+.qa-artifacts/
 
 # Local-only handoff notes may contain absolute paths or private workspace context.
 docs/local/

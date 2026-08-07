@@ -432,12 +432,11 @@ class DevicePerfService {
     try {
       if (Platform.isAndroid) {
         final info = await _deviceInfo.androidInfo;
-        // memTotal is in KB on Android.
-        final memTotalKb = info.memTotal;
-        if (memTotalKb != null && memTotalKb > 0) {
-          totalRamMB = memTotalKb ~/ 1024;
+        final physicalRamSize = info.physicalRamSize;
+        if (physicalRamSize > 0) {
+          totalRamMB = physicalRamSize;
         } else {
-          totalRamMB = _estimateRamFromDeviceModel(info.model ?? '');
+          totalRamMB = _estimateRamFromDeviceModel(info.model);
         }
       } else if (Platform.isIOS) {
         totalRamMB = _estimateIosRam();

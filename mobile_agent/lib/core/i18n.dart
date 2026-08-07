@@ -17,6 +17,7 @@ library;
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 
@@ -848,15 +849,3 @@ extension AppLocalizationsContext on BuildContext {
   /// Get the current locale
   Locale get currentLocale => Localizations.localeOf(this);
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Required imports for Flutter localization delegates
-// ═══════════════════════════════════════════════════════════════════════════
-
-// These are required by [AppLocalizations.localizationsDelegates]
-// ignore: unused_import
-typedef GlobalMaterialLocalizations = MaterialLocalizations;
-// ignore: unused_import
-typedef GlobalWidgetsLocalizations = WidgetsLocalizations;
-// ignore: unused_import
-typedef GlobalCupertinoLocalizations = CupertinoLocalizations;

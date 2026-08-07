@@ -17,6 +17,7 @@ import '../services/build_orchestrator.dart';
 import '../services/runtime_manager.dart';
 import '../services/runtime_provider.dart';
 import '../services/termux_service.dart';
+import 'preview_screen.dart';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Build & Preview Screen
@@ -268,6 +269,23 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
       _activeMethod = null;
       _isBuilding = false;
     });
+  }
+
+  void _openActivePreview() {
+    final rawUrl = _activeSession?.previewUrl;
+    if (rawUrl == null || rawUrl.isEmpty) return;
+    final parsed = Uri.tryParse(rawUrl);
+    final previewUrl = parsed?.hasScheme == true
+        ? rawUrl
+        : Uri.file(rawUrl).toString();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PreviewScreen(
+          projectPath: widget.projectPath,
+          initialUrl: previewUrl,
+        ),
+      ),
+    );
   }
 
   Future<void> _buildApk(BuildMode mode) async {
@@ -911,6 +929,12 @@ class _BuildPreviewScreenState extends State<BuildPreviewScreen>
                 ),
               ),
               const Spacer(),
+              if (_activeSession?.previewUrl != null)
+                TextButton.icon(
+                  onPressed: _openActivePreview,
+                  icon: const Icon(Icons.open_in_new, size: 18),
+                  label: const Text('Open Preview'),
+                ),
               TextButton.icon(
                 onPressed: _stopPreview,
                 icon: const Icon(Icons.stop, color: AppTheme.error, size: 18),

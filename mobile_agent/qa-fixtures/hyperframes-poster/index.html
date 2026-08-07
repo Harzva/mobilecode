@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <style>
+      @font-face {
+        font-family: "Inter";
+        src: local("Arial");
+        font-style: normal;
+        font-weight: 100 900;
+      }
+
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #000;
+      }
+
+      body {
+        font-family: Inter, sans-serif;
+        color: #f7f8fb;
+        background: #10131a;
+      }
+
+      .poster {
+        width: 1920px;
+        height: 1080px;
+        padding: 112px 128px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        background: linear-gradient(135deg, #10131a 0%, #19273b 52%, #db5b3f 140%);
+      }
+
+      .eyebrow {
+        color: #f5c26b;
+        font-size: 28px;
+        letter-spacing: 3px;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        max-width: 1120px;
+        margin-top: 48px;
+        font-size: 112px;
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        max-width: 900px;
+        margin-top: 42px;
+        color: #c8d0dc;
+        font-size: 36px;
+        line-height: 1.3;
+      }
+
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: end;
+        color: #aeb9c9;
+        font-size: 24px;
+      }
+
+      .badge {
+        padding: 14px 22px;
+        border: 1px solid rgba(245, 194, 107, 0.7);
+        border-radius: 999px;
+        color: #f5c26b;
+      }
+
+      .grid {
+        position: absolute;
+        right: 128px;
+        top: 112px;
+        width: 520px;
+        height: 520px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: repeating-linear-gradient(0deg, transparent 0 51px, rgba(255,255,255,.08) 52px), repeating-linear-gradient(90deg, transparent 0 51px, rgba(255,255,255,.08) 52px);
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      data-composition-id="main"
+      data-start="0"
+      data-duration="10"
+      data-width="1920"
+      data-height="1080"
+    >
+      <div id="poster-card" class="poster clip" data-start="0" data-duration="10" data-track-index="1">
+        <div>
+          <div class="eyebrow">MobileCode / HyperFrames</div>
+          <h1>可编辑的<br />HTML 海报</h1>
+          <p class="subtitle">先用代码构图，再导出 PNG、PDF 或视频。每一处文字、颜色和布局都可以继续修改。</p>
+        </div>
+        <div class="footer">
+          <span>HTML is the source · pixels are the artifact</span>
+          <span class="badge">EDITABLE BY DESIGN</span>
+        </div>
+      </div>
+      <div class="grid" data-layout-ignore aria-hidden="true"></div>
+    </div>
+    <script>
+      // This tiny adapter keeps the QA fixture offline while exposing the
+      // timeline surface HyperFrames uses for deterministic seeking.
+      window.__timelines = window.__timelines || {};
+      let currentTime = 0;
+      const tl = {
+        pause() { return this; },
+        play() { return this; },
+        duration() { return 10; },
+        totalTime(value) {
+          if (typeof value === 'number') {
+            currentTime = Math.max(0, Math.min(10, value));
+            const opacity = Math.min(1, currentTime);
+            const title = document.querySelector('h1');
+            title.style.opacity = opacity;
+            title.style.transform = `translateY(${18 * (1 - opacity)}px)`;
+            return this;
+          }
+          return currentTime;
+        },
+        seek(value) { return this.totalTime(value); },
+        progress(value) { return this.totalTime(value * 10); },
+      };
+      window.__timelines['main'] = tl;
+    </script>
+  </body>
+</html>

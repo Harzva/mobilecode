@@ -4,22 +4,59 @@ import 'package:mobile_agent/core/evidence/action_evidence_store.dart';
 
 void main() {
   group('MobileCodeAction enum', () {
-    test('contains all 41 canonical action names', () {
-      expect(MobileCodeAction.values.length, 41);
-      expect(MobileCodeAction.values.map((e) => e.name), containsAll([
-        'listFiles', 'findFiles', 'grepFiles', 'writeFile', 'readFile',
-        'copyFile', 'makeDirectory', 'deleteFile', 'moveFile',
-        'saveSnapshot', 'virtualDiff', 'restoreSnapshot', 'projectSummary',
-        'changeHistory', 'virtualStatus', 'detectProjectType',
-        'validateHtml', 'validateJson', 'validateMarkdown',
-        'applyPatch', 'termuxTaskStart', 'openFile', 'previewHtml',
-        'webSearch', 'fetchUrl', 'previewSnapshot',
-        'publishPages', 'runCommand', 'cloneRepo', 'linkRemoteRepo',
-        'commitFiles', 'triggerGitHubAction', 'inspectRelease',
-        'installSkill', 'registerMcp', 'openFolder',
-        'traceParseInstruction', 'traceSelectTool', 'traceCallProvider',
-        'traceWriteArtifact', 'traceReportChat',
-      ]));
+    test('contains all 47 canonical action names', () {
+      expect(MobileCodeAction.values.length, 47);
+      expect(
+          MobileCodeAction.values.map((e) => e.name),
+          containsAll([
+            'listFiles',
+            'findFiles',
+            'grepFiles',
+            'writeFile',
+            'readFile',
+            'copyFile',
+            'makeDirectory',
+            'deleteFile',
+            'moveFile',
+            'saveSnapshot',
+            'virtualDiff',
+            'restoreSnapshot',
+            'projectSummary',
+            'changeHistory',
+            'virtualStatus',
+            'detectProjectType',
+            'validateHtml',
+            'validateJson',
+            'validateMarkdown',
+            'applyPatch',
+            'termuxTaskStart',
+            'cliHubTaskStart',
+            'phoneUseObserve',
+            'phoneUseAct',
+            'phoneUseCapture',
+            'phoneUseReplay',
+            'openFile',
+            'previewHtml',
+            'webSearch',
+            'fetchUrl',
+            'previewSnapshot',
+            'larkApi',
+            'publishPages',
+            'runCommand',
+            'cloneRepo',
+            'linkRemoteRepo',
+            'commitFiles',
+            'triggerGitHubAction',
+            'inspectRelease',
+            'installSkill',
+            'registerMcp',
+            'openFolder',
+            'traceParseInstruction',
+            'traceSelectTool',
+            'traceCallProvider',
+            'traceWriteArtifact',
+            'traceReportChat',
+          ]));
     });
   });
 
@@ -343,6 +380,89 @@ void main() {
 
       expect(store.length, 1);
       expect(store.getById('ev-dup')!.success, true);
+    });
+
+    test('links MobileCore inference and Phone Use evidence by id only', () {
+      store.add(ActionEvidence(
+        evidenceId: 'inference-1',
+        actionName: MobileCodeAction.traceCallProvider,
+        startedAt: DateTime(2026, 8, 7, 10),
+        success: true,
+        metadata: const {
+          'inferenceProvider': 'mobilecore',
+          'inferenceLocation': 'on_device',
+          'redactionApplied': true,
+        },
+      ));
+      store.add(ActionEvidence(
+        evidenceId: 'device-1',
+        actionName: MobileCodeAction.phoneUseAct,
+        startedAt: DateTime(2026, 8, 7, 10, 0, 1),
+        success: true,
+        metadata: const {
+          'deviceAction': 'tap',
+          'redaction': {'credentialValueStored': false},
+        },
+      ));
+
+      expect(
+        store.linkMobileCoreInferenceToDeviceOperation(
+          inferenceEvidenceId: 'inference-1',
+          deviceOperationEvidenceId: 'device-1',
+        ),
+        true,
+      );
+      expect(
+        store.getById('inference-1')!.metadata['deviceOperationEvidenceIds'],
+        ['device-1'],
+      );
+      expect(
+        store.getById('device-1')!.metadata['mobileCoreInferenceEvidenceIds'],
+        ['inference-1'],
+      );
+      expect(store.getById('inference-1')!.metadata, isNot(contains('prompt')));
+      expect(store.getById('device-1')!.metadata, isNot(contains('content')));
+
+      // Re-linking is idempotent and does not duplicate identifiers.
+      expect(
+        store.linkMobileCoreInferenceToDeviceOperation(
+          inferenceEvidenceId: 'inference-1',
+          deviceOperationEvidenceId: 'device-1',
+        ),
+        true,
+      );
+      expect(
+        store.getById('inference-1')!.metadata['deviceOperationEvidenceIds'],
+        ['device-1'],
+      );
+    });
+
+    test('rejects links between unrelated evidence action types', () {
+      store.add(ActionEvidence(
+        evidenceId: 'runtime-1',
+        actionName: MobileCodeAction.runCommand,
+        startedAt: DateTime(2026, 8, 7, 10),
+      ));
+      store.add(ActionEvidence(
+        evidenceId: 'device-1',
+        actionName: MobileCodeAction.phoneUseAct,
+        startedAt: DateTime(2026, 8, 7, 10, 0, 1),
+      ));
+
+      expect(
+        store.linkMobileCoreInferenceToDeviceOperation(
+          inferenceEvidenceId: 'runtime-1',
+          deviceOperationEvidenceId: 'device-1',
+        ),
+        false,
+      );
+      expect(
+        store.linkMobileCoreInferenceToDeviceOperation(
+          inferenceEvidenceId: 'runtime-1\nsecret=value',
+          deviceOperationEvidenceId: 'device-1',
+        ),
+        false,
+      );
     });
 
     test('getById returns null for missing id', () {

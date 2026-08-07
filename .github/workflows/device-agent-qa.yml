@@ -1,0 +1,166 @@
+name: External agent-device QA
+
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: QA lane to run
+        required: true
+        type: choice
+        default: ios-simulator
+        options:
+          - ios-simulator
+          - physical-device-lab
+      platform:
+        description: Physical device platform (ignored by iOS simulator lane)
+        required: true
+        type: choice
+        default: android
+        options:
+          - android
+          - ios
+      app_id:
+        description: Installed package or bundle identifier
+        required: true
+        default: com.mobilecode.app
+      device:
+        description: Optional simulator name, Android serial, or iOS device selector
+        required: false
+        default: ''
+      approve_artifacts:
+        description: Explicitly approve non-sensitive visual artifacts
+        required: true
+        type: boolean
+        default: false
+      approve_video:
+        description: Explicitly approve iOS Simulator video (requires artifacts approval)
+        required: true
+        type: boolean
+        default: false
+      sensitive_flow:
+        description: Login/credential QA mode; forbids screenshots, video, and logs
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  AGENT_DEVICE_VERSION: 0.19.3
+  AGENT_DEVICE_NO_UPDATE_NOTIFIER: '1'
+
+jobs:
+  ios-simulator:
+    if: ${{ inputs.lane == 'ios-simulator' }}
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install pinned external device CLI
+        run: npm install --global "agent-device@${AGENT_DEVICE_VERSION}"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.44.1
+          channel: stable
+          cache: true
+
+      - name: Build unsigned simulator app
+        working-directory: mobile_agent
+        run: |
+          flutter pub get
+          (cd ios && pod install)
+          xcodebuild \
+            -workspace ios/Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/ios/agent-device-derived \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Boot simulator
+        env:
+          QA_DEVICE: ${{ inputs.device }}
+        run: |
+          if [[ -n "$QA_DEVICE" ]]; then
+            agent-device boot --platform ios --device "$QA_DEVICE"
+          else
+            agent-device boot --platform ios
+          fi
+
+      - name: Run bounded MobileCode device QA
+        env:
+          QA_APPROVE_ARTIFACTS: ${{ inputs.approve_artifacts }}
+          QA_APPROVE_VIDEO: ${{ inputs.approve_video }}
+          QA_SENSITIVE_FLOW: ${{ inputs.sensitive_flow }}
+          QA_DEVICE: ${{ inputs.device }}
+        run: |
+          args=(
+            --platform ios
+            --app-id com.mobilecode.app
+            --app-binary mobile_agent/build/ios/agent-device-derived/Build/Products/Debug-iphonesimulator/Runner.app
+            --output .artifacts/agent-device-qa
+          )
+          if [[ -n "$QA_DEVICE" ]]; then args+=(--device "$QA_DEVICE"); fi
+          if [[ "$QA_APPROVE_ARTIFACTS" == 'true' ]]; then args+=(--approve-artifacts); fi
+          if [[ "$QA_APPROVE_VIDEO" == 'true' ]]; then args+=(--approve-video); fi
+          if [[ "$QA_SENSITIVE_FLOW" == 'true' ]]; then args+=(--sensitive-flow); fi
+          python3 scripts/run_agent_device_mobilecode_qa.py "${args[@]}"
+
+      - name: Upload reviewed local evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobilecode-agent-device-ios-evidence
+          path: .artifacts/agent-device-qa
+          if-no-files-found: warn
+          retention-days: 7
+
+  physical-device-lab:
+    if: ${{ inputs.lane == 'physical-device-lab' }}
+    runs-on: [self-hosted, macOS, mobilecode-device-lab]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install pinned external device CLI
+        run: npm install --global "agent-device@${AGENT_DEVICE_VERSION}"
+
+      - name: Run against preinstalled physical-device app
+        env:
+          QA_PLATFORM: ${{ inputs.platform }}
+          QA_APP_ID: ${{ inputs.app_id }}
+          QA_DEVICE: ${{ inputs.device }}
+          QA_APPROVE_ARTIFACTS: ${{ inputs.approve_artifacts }}
+          QA_SENSITIVE_FLOW: ${{ inputs.sensitive_flow }}
+        run: |
+          args=(
+            --platform "$QA_PLATFORM"
+            --app-id "$QA_APP_ID"
+            --output .artifacts/agent-device-qa
+          )
+          if [[ -n "$QA_DEVICE" ]]; then args+=(--device "$QA_DEVICE"); fi
+          if [[ "$QA_APPROVE_ARTIFACTS" == 'true' ]]; then args+=(--approve-artifacts); fi
+          if [[ "$QA_SENSITIVE_FLOW" == 'true' ]]; then args+=(--sensitive-flow); fi
+          python3 scripts/run_agent_device_mobilecode_qa.py "${args[@]}"
+
+      - name: Upload reviewed local evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobilecode-agent-device-physical-evidence
+          path: .artifacts/agent-device-qa
+          if-no-files-found: warn
+          retention-days: 7

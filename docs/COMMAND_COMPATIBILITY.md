@@ -48,7 +48,7 @@ This lets models reuse Linux/macOS development habits while MobileCode keeps And
 | Web fetch | `curl`, `wget` | App should not fetch private/local targets | Supported when relay configured | `fetch_url` relay |
 | Web search | search CLI / browser | Requires managed relay | Supported when relay configured | `web_search` relay |
 | Preview | browser open | App has WebView | Supported | `preview_html` |
-| Preview evidence | screenshot | Native bitmap capture not implemented | Partial | `preview_snapshot` metadata |
+| Preview evidence | screenshot | Platform WebView bitmap renderer is available in the APK; helper/remote full-page capture remains separate | Supported locally / partial for remote full-page | `preview_snapshot` PNG + metadata |
 | Package managers | `npm`, `pip`, `brew`, `apt` | Not guaranteed on Android app sandbox | Runtime only | typed Helper/Termux/CI later |
 | Build tools | `flutter`, `dart`, `gradle`, `make` | Not guaranteed in APK | Supported when configured | `termux_task_start` through typed Helper/Termux route |
 | Git local | `git status`, `git diff` | Git binary not guaranteed | Partial virtual | `virtual_status` / `change_history` / `save_snapshot` / `virtual_diff` / `restore_snapshot` |

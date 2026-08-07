@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mobile_agent/core/evidence/action_evidence_store.dart';
 import 'package:mobile_agent/core/evidence/action_runner.dart';
 import 'package:mobile_agent/core/evidence/evidence_model.dart';
+import 'package:mobile_agent/services/cli_hub_catalog_service.dart';
 import 'package:mobile_agent/services/lark_api_service.dart';
 import 'package:mobile_agent/services/tool_call_adapter.dart';
 
@@ -88,6 +89,8 @@ void main() {
       'list_files',
       'find_files',
       'grep_files',
+      'phone_use_observe',
+      'phone_use_action',
       'project_summary',
       'detect_project_type',
       'change_history',
@@ -120,8 +123,10 @@ void main() {
       'preview_html',
       'preview_snapshot',
       'termux_task_start',
+      'cli_hub_task',
       'report_result',
     ]);
+    expect(names, isNot(contains('raw_shell')));
     for (final tool in tools) {
       final function = tool['function'] as Map<String, dynamic>;
       final parameters = function['parameters'] as Map<String, dynamic>;
@@ -150,6 +155,25 @@ void main() {
     expect(names, isNot(contains('web_search')));
     expect(names, isNot(contains('fetch_url')));
     expect(names, isNot(contains('agent_open')));
+    expect(names, isNot(contains('raw_shell')));
+  });
+
+  test('exposes raw_shell only when full access tooling allows it', () {
+    final fullAccessTools = OpenAiCompatibleToolCallAdapter.toolDefinitions(
+      allowedToolNames: const ['list_files', 'raw_shell', 'report_result'],
+    );
+    final fullAccessNames = fullAccessTools
+        .map((tool) =>
+            ((tool['function'] as Map<String, dynamic>)['name'] as String))
+        .toList();
+    expect(fullAccessNames, ['list_files', 'raw_shell', 'report_result']);
+
+    final defaultTools = OpenAiCompatibleToolCallAdapter.toolDefinitions();
+    final defaultNames = defaultTools
+        .map((tool) =>
+            ((tool['function'] as Map<String, dynamic>)['name'] as String))
+        .toList();
+    expect(defaultNames, isNot(contains('raw_shell')));
   });
 
   test('filters Sub-Agent Lite tools when allowed by the preset', () {
@@ -162,6 +186,62 @@ void main() {
         .toList();
 
     expect(names, ['agent_open', 'agent_eval', 'agent_close']);
+  });
+
+  test('maps phone_use_observe to an observation-only action', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-pro',
+      ),
+    );
+
+    final schema = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_phone_observe',
+      name: 'phone_use_observe',
+      arguments: {},
+    ));
+
+    expect(schema, isNotNull);
+    expect(schema!.actionName, MobileCodeAction.phoneUseObserve);
+    expect(schema.params, {'action': 'observe'});
+    expect(schema.approvalRequired, isFalse);
+  });
+
+  test('maps phone_use_action to preview-only approval parameters', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-pro',
+      ),
+    );
+
+    final schema = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_phone_action',
+      name: 'phone_use_action',
+      arguments: {
+        'action': 'tapRef',
+        'target_ref': '@e3~s9',
+        'x': 0,
+        'y': 0,
+        'x2': 0,
+        'y2': 0,
+        'duration_ms': 300,
+        'text': '',
+        'secret_id': '',
+        'sensitive_flow': false,
+        'approved': true,
+        'externalTransaction': false,
+      },
+    ));
+
+    expect(schema, isNotNull);
+    expect(schema!.actionName, MobileCodeAction.phoneUseAct);
+    expect(schema.approvalRequired, isTrue);
+    expect(schema.params['approvalPreview'], isTrue);
+    expect(schema.params['approved'], isFalse);
+    expect(schema.params['targetRef'], '@e3~s9');
+    expect(schema.params, isNot(contains('externalTransaction')));
   });
 
   test('parses non-streaming tool_calls and maps write_file to ActionSchema',
@@ -325,6 +405,152 @@ void main() {
     expect(markdown.actionName, MobileCodeAction.validateMarkdown);
     expect(termux.actionName, MobileCodeAction.termuxTaskStart);
     expect(termux.params['taskKind'], 'project_check');
+  });
+
+  test('maps raw_shell to approval-gated runCommand preview', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.openai.com/v1',
+        'gpt-4o-mini',
+      ),
+    );
+
+    final schema = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_shell',
+      name: 'raw_shell',
+      arguments: {
+        'command': 'rm -rf .',
+        'cwd': '.',
+        'timeout_ms': 30000,
+        'reason': 'user selected full access',
+      },
+    ))!;
+
+    expect(schema.actionName, MobileCodeAction.runCommand);
+    expect(schema.approvalRequired, isTrue);
+    expect(schema.risk, ActionRisk.high);
+    expect(schema.params['command'], 'rm -rf .');
+    expect(schema.params['requiresSecondApproval'], isTrue);
+  });
+
+  test('maps cli_hub_task to catalog-gated ActionSchema', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.deepseek.com',
+        'deepseek-v4-flash',
+      ),
+    );
+
+    final schema = adapter.toActionSchema(const ProviderToolCall(
+      id: 'call_cli_hub',
+      name: 'cli_hub_task',
+      arguments: {
+        'cliId': 'github-cli',
+        'taskKind': 'github_cli_auth_status',
+        'payload': {},
+        'reason': 'check gh login status',
+      },
+    ))!;
+
+    expect(schema.actionName, MobileCodeAction.cliHubTaskStart);
+    expect(schema.params['cliId'], 'github-cli');
+    expect(schema.params['taskKind'], 'github_cli_auth_status');
+    expect(schema.params['payload'], isEmpty);
+    expect(schema.params, isNot(contains('maxOutputBytes')));
+    expect(schema.paramsSummary, contains('github-cli.github_cli_auth_status'));
+  });
+
+  test('adds CLI Hub typed task context when cli_hub_task is exposed', () {
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.openai.com/v1',
+        'gpt-4o-mini',
+      ),
+    );
+
+    final request = adapter.buildChatCompletionRequest(
+      model: 'gpt-4o-mini',
+      systemPrompt: 'You are MobileCode.',
+      messages: const [
+        {'role': 'user', 'content': '帮我看 gh 登录状态'},
+      ],
+      allowedToolNames: const ['cli_hub_task', 'report_result'],
+    );
+    final system = (request['messages'] as List).first as Map<String, dynamic>;
+
+    expect(system['content'], contains('CLI Hub typed task context'));
+    expect(system['content'], contains('github-cli.github_cli_auth_status'));
+    expect(system['content'], contains('"帮我安装 GitHub CLI"'));
+    expect(system['content'], contains('taskKind:"package_install"'));
+    expect(system['content'], contains('profileId:"githubCli"'));
+    expect(system['content'], contains('"列出我的 GitHub repo"'));
+    expect(system['content'], contains('commandId:"repo_list"'));
+    expect(system['content'], contains('"看最近邮件"'));
+    expect(system['content'], contains('agently_cli_execute'));
+    expect(system['content'], contains('needsSetup'));
+  });
+
+  test('adds imported CLI extension tasks to CLI Hub tool context', () async {
+    const catalogService = CliHubCatalogService();
+    final extension = await catalogService.loadFromManifestJson('''
+{
+  "schemaVersion": "1.0",
+  "updatedAt": "2026-06-26T12:00:00Z",
+  "entries": [
+    {
+      "id": "safe-notes-cli",
+      "title": "Safe Notes CLI",
+      "command": "safe-notes",
+      "category": "productivity",
+      "supportLevel": "preview",
+      "officialSources": ["https://example.invalid/safe-notes-cli"],
+      "install": {"strategy": "packageProfile", "profileId": "safeNotesCli", "packages": ["safe-notes-cli"]},
+      "probe": {"taskKind": "safe_notes_cli_probe", "safeArgs": ["--version"]},
+      "auth": {"required": false, "storage": "none", "notes": "No account required."},
+      "riskLevel": "medium",
+      "credentialPolicy": "none",
+      "tasks": [
+        {
+          "id": "note-list",
+          "label": "List local notes",
+          "taskKind": "safe_notes_cli_execute",
+          "payload": {"commandId": "note_list", "limit": 20},
+          "requiresApproval": false
+        }
+      ],
+      "readOnlyTasks": ["note-list"],
+      "mutationTasks": []
+    }
+  ]
+}
+''');
+    final adapter = OpenAiCompatibleToolCallAdapter(
+      profile: ToolCallProviderProfile.detect(
+        'https://api.openai.com/v1',
+        'gpt-4o-mini',
+      ),
+      cliHubCatalog: extension,
+    );
+
+    final request = adapter.buildChatCompletionRequest(
+      model: 'gpt-4o-mini',
+      systemPrompt: 'You are MobileCode.',
+      messages: const [
+        {'role': 'user', 'content': '列出本地 notes'},
+      ],
+      allowedToolNames: const ['cli_hub_task', 'report_result'],
+    );
+    final system = (request['messages'] as List).first as Map<String, dynamic>;
+
+    expect(system['content'], contains('safe-notes-cli.safe_notes_cli_probe'));
+    expect(
+      system['content'],
+      contains('safe-notes-cli:profileId=safeNotesCli'),
+    );
+    expect(
+      system['content'],
+      contains('safe_notes_cli_execute commandId:note_list'),
+    );
   });
 
   test(

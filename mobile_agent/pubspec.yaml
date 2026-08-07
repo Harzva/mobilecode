@@ -2,7 +2,7 @@ name: mobile_agent
 description: "Mobile Agent - A lightweight Vibing Coding AI companion for mobile devices"
 publish_to: 'none'
 
-version: 0.1.39+58
+version: 0.1.78+68
 
 environment:
   sdk: ^3.6.0
@@ -10,6 +10,8 @@ environment:
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
 
   # State Management
@@ -21,6 +23,7 @@ dependencies:
 
   # Networking
   dio: ^5.8.0
+  connectivity_plus: ^7.3.1
   web_socket_channel: ^3.0.2
   dartssh2: ^2.11.0
 
@@ -31,6 +34,7 @@ dependencies:
   local_auth_darwin: ^2.0.3
   encrypt: ^5.0.3
   crypto: ^3.0.6
+  cryptography: ^2.9.0
 
   # Local Storage
   hive: ^2.2.3
@@ -58,6 +62,7 @@ dependencies:
   share_plus: ^10.1.4
   url_launcher: ^6.3.1
   webview_flutter: ^4.13.0
+  image_picker: ^1.1.2
   speech_to_text: ^7.3.0
 
   # Utilities
@@ -68,6 +73,14 @@ dependencies:
 
   # Responsive
   flutter_screenutil: ^5.9.3
+  shelf_static: ^1.1.3
+  file_picker: ^10.3.3
+  sqflite: ^2.4.3
+  device_info_plus: ^12.4.0
+  archive: ^4.0.9
+  shelf: ^1.4.2
+  flutter_local_notifications: ^22.0.1
+  flutter_foreground_task: ^9.2.2
 
 dev_dependencies:
   flutter_test:

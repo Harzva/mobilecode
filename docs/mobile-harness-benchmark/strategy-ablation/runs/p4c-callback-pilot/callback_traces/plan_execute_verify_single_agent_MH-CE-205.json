@@ -1,0 +1,88 @@
+{
+  "events": [
+    {
+      "ended_at": "2026-01-01T00:00:00Z",
+      "event_id": "evt_001",
+      "evidence_id": null,
+      "role": "CallbackPilotHarness",
+      "started_at": "2026-01-01T00:00:00Z",
+      "step_id": null,
+      "summary": "P4c fake callback pilot initialized for plan_execute_verify_single_agent/MH-CE-205; non-counted.",
+      "tool_name": null,
+      "type": "scaffold"
+    },
+    {
+      "ended_at": "2026-01-01T00:00:01Z",
+      "event_id": "evt_002",
+      "evidence_id": "fake_model_log_plan_execute_verify_single_agent_MH-CE-205",
+      "role": "PlannerAgent",
+      "started_at": "2026-01-01T00:00:01Z",
+      "step_id": "step_001",
+      "summary": "Fake model callback produced a compact non-secret plan.",
+      "tool_name": null,
+      "type": "plan"
+    },
+    {
+      "ended_at": "2026-01-01T00:00:02Z",
+      "event_id": "evt_003",
+      "evidence_id": "fake_model_step_plan_execute_verify_single_agent_MH-CE-205",
+      "role": "CodeAgent",
+      "started_at": "2026-01-01T00:00:02Z",
+      "step_id": "step_001",
+      "summary": "Fake model callback selected a fake tool action.",
+      "tool_name": null,
+      "type": "think"
+    },
+    {
+      "ended_at": "2026-01-01T00:00:03Z",
+      "event_id": "evt_004",
+      "evidence_id": "fake_tool_ev_plan_execute_verify_single_agent_MH-CE-205",
+      "role": "CodeAgent",
+      "started_at": "2026-01-01T00:00:03Z",
+      "step_id": "step_001",
+      "summary": "Fake tool callback returned scripted observation; no real tool executed.",
+      "tool_name": "fake_callback_tool",
+      "type": "act"
+    },
+    {
+      "ended_at": "2026-01-01T00:00:04Z",
+      "event_id": "evt_005",
+      "evidence_id": "fake_tool_ev_plan_execute_verify_single_agent_MH-CE-205",
+      "role": "CodeAgent",
+      "started_at": "2026-01-01T00:00:04Z",
+      "step_id": "step_001",
+      "summary": "Fake observation captured for validator-compatible pilot artifact.",
+      "tool_name": null,
+      "type": "observe"
+    },
+    {
+      "ended_at": "2026-01-01T00:00:05Z",
+      "event_id": "evt_006",
+      "evidence_id": "fake_verifier_ev_plan_execute_verify_single_agent_MH-CE-205",
+      "role": "VerifierAgent",
+      "started_at": "2026-01-01T00:00:05Z",
+      "step_id": "step_001",
+      "summary": "Fake verifier callback marked artifact as non-counted warning, not verified success.",
+      "tool_name": null,
+      "type": "verify"
+    },
+    {
+      "ended_at": "2026-01-01T00:00:06Z",
+      "event_id": "evt_007",
+      "evidence_id": null,
+      "role": "ReporterAgent",
+      "started_at": "2026-01-01T00:00:06Z",
+      "step_id": null,
+      "summary": "P4c callback pilot completed; no formal comparison may be inferred.",
+      "tool_name": null,
+      "type": "report"
+    }
+  ],
+  "failure_kind": "fake_callback_pilot_not_counted",
+  "handoff_count": 0,
+  "planning_revisions": 0,
+  "strategy_id": "plan_execute_verify_single_agent",
+  "trace_id": "strace_p4c-callback-pilot_plan_execute_verify_single_agent_MH-CE-205_p4c",
+  "trace_status": "pilot_not_counted",
+  "verification_failures_recovered": 0
+}

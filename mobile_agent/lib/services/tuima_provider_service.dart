@@ -312,6 +312,12 @@ class MobileCoreMetrics {
   final int completionTokens;
   final int totalTokens;
 
+  /// Prefer the most recent completed decode rate, then fall back to the
+  /// service-wide average when the latest request has not emitted a rate yet.
+  double get effectiveDecodeTokensPerSecond => decodeTokensPerSecond > 0
+      ? decodeTokensPerSecond
+      : averageDecodeTokensPerSecond;
+
   Map<String, Object?> get evidenceMetadata => {
         'activeModel': activeModel,
         'backend': backend,

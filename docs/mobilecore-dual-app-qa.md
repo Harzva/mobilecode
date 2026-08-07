@@ -59,7 +59,7 @@ Adaptive routing currently applies these rules:
 - privacy-sensitive or offline work stays on MobileCore;
 - local image/audio work requires an advertised local capability;
 - memory or thermal pressure reduces context to 2048 tokens and selects the smallest safe installed recommendation, including when privacy/offline routing is also active; multimodal attachments retain their capability-compatible active model instead of blindly switching to a text-only recommendation;
-- the latest measured decode rate caps the next local output budget at 8, 32, 128, or 256 tokens, preventing an extremely slow runtime from accepting an unbounded mobile request;
+- the latest completed decode rate, or the service average while the latest rate is unavailable, caps the next local output budget at 8, 32, 128, or 256 tokens, preventing an extremely slow runtime from accepting an unbounded mobile request;
 - complex cloud routing requires explicit approval;
 - Phone Use plans may use MobileCore inference, but every device action remains in MobileCode's approval and evidence boundary.
 
@@ -186,6 +186,30 @@ remain open. A separate strict preflight supplied the same APKs to the emulator
 with `--require-physical-device`; it verified all three pinned APK signatures,
 classified the target as an emulator, failed before installation, and recorded
 `offline_during_tasks=false`.
+
+### Attachment reactivation and adaptive-switch regression
+
+On 2026-08-07, MobileCode closed two client-side integration gaps without
+changing the MobileCore/Phone Use authority boundary. A selected local image or
+audio attachment now survives an external change to a text-only model when
+MobileCore reports a complete verified Omni pair: the send preflight permits the
+adaptive policy to reactivate that pair, and the actual request still requires
+the refreshed `/health` capability. When memory or thermal pressure recommends a
+smaller text model, the adaptive route now uses the coherent
+`switchModelWithPreflight` lifecycle path and writes a redacted
+`adaptive_pressure_switch` control record to ActionEvidence. Decode throttling
+also falls back to MobileCore's completed service average when the latest request
+has not yet published its own rate.
+
+The complete Flutter regression suite passed 583 tests and the focused
+MobileCore/adaptive-policy/evidence set passed 88 tests. A new `pureDebug`
+v0.1.78 (`68`) APK was built with SHA-256
+`eeb22d81cb53903bc5342c9a38f9328d670d53ce7718deef02e2c210e41172ef`;
+the AndroidTest APK SHA-256 remained
+`967847cbfac116ae30f59297d495f73eac763eea310df96e3c6bfe9406c47144`.
+Both verify with Android APK Signature Scheme v2. These are local debug build and
+contract-regression results, not physical-device, verified-Omni, or release-asset
+acceptance.
 
 ### One-task cloud approval check
 
@@ -539,7 +563,7 @@ Raw screenshots and sanitized logcat remain under the ignored `.qa-artifacts/` d
   15-minute thermal duration, observed airplane-mode restoration, and
   fail-closed `RUNNING_LOW` injection.
 - ActionEvidence inference-to-device linking passes focused unit coverage, including idempotency and action-type rejection.
-- The final v0.1.78 client regression passes 582 Flutter tests, including stale-runtime rejection before model load and projected-memory refusal without a load request.
+- The final v0.1.78 client regression passes 583 Flutter tests, including stale-runtime rejection before model load, projected-memory refusal without a load request, and decode-rate fallback to the completed service average.
 
 ## Remaining Release Gates
 

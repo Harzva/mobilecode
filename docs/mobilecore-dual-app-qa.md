@@ -151,6 +151,16 @@ and the real Qwen2.5 GGUF loaded, and the post-run log scan found no app fatal
 exception, ANR, OOM, or SIGABRT. This is repeatable emulator evidence; it does
 not replace the pending physical-device lane.
 
+The published, stable-signed `mobilecode-v0.1.78.apk` was then downloaded from
+the successful Android release workflow. Its 33,073,027-byte payload and
+SHA-256 `76e29905fb06aa007517559c54fd5f36b4af569b95d9fd74f34dca76d1ab26a7`
+match the GitHub Release record. It reports `0.1.78+68`, verifies with the
+existing MobileCode release certificate, clean-installs and renders
+`v0.1.78` plus `TuiMa 就绪`, while MobileCore remains a foreground protocol-v2
+service with the real local model ready. Strict post-download scans found no
+recognizable credential or concrete private-host-path value, and logcat found
+no fatal exception, ANR, OOM, or SIGABRT.
+
 ### One-task cloud approval check
 
 On 2026-08-07, the one-task cloud approval path was exercised through the real

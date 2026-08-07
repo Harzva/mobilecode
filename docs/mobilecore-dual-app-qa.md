@@ -161,6 +161,32 @@ service with the real local model ready. Strict post-download scans found no
 recognizable credential or concrete private-host-path value, and logcat found
 no fatal exception, ANR, OOM, or SIGABRT.
 
+### main-dev strict-evidence regression
+
+On 2026-08-07, source commit `5dad210` was rebuilt after the physical-device
+runner became fail-closed. The `pureDebug` APK SHA-256 was
+`8866bbf09edac497bc15dc051cedce7e7c9ff56e428f9497afd1ce549c92e567`;
+the matching AndroidTest APK SHA-256 was
+`967847cbfac116ae30f59297d495f73eac763eea310df96e3c6bfe9406c47144`.
+Both APKs verified with Android APK Signature Scheme v2.
+
+The Android 16 ARM64 emulator then completed another 30-task dual-app run with
+30 requests completed, zero request failures, and zero failed host steps across
+37 recorded steps. The runner observed airplane mode enabled for the controlled
+tasks and restored afterward, rather than writing a fixed offline claim. It also
+completed a two-model switch and accepted `RUNNING_LOW` while MobileCore
+remained model-ready. The active runtime reported about 0.35 average decode
+tokens/s and 462 MB peak memory on this constrained emulator.
+
+This run intentionally records multimodal as `not_available`: the active
+MobileCore runtime advertised neither image nor audio input, so MobileCode did
+not expose or execute those attachment lanes. Background-restriction recovery,
+the 15-minute thermal lane, verified Omni media, and physical-device acceptance
+remain open. A separate strict preflight supplied the same APKs to the emulator
+with `--require-physical-device`; it verified all three pinned APK signatures,
+classified the target as an emulator, failed before installation, and recorded
+`offline_during_tasks=false`.
+
 ### One-task cloud approval check
 
 On 2026-08-07, the one-task cloud approval path was exercised through the real
